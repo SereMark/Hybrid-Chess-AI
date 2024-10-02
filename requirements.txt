@@ -1,0 +1,14 @@
+numpy
+pandas
+torch
+torchvision
+scikit-learn
+matplotlib
+pyqt5
+chess
+tqdm
+pyyaml
+flask
+notebook
+pytest
+sphinx

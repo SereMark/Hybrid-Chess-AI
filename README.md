@@ -19,11 +19,11 @@ A projekt futtatásához szükséges szoftverek és könyvtárak telepítése az
 
 ### 1. Docker használatával:
 
-Ha rendelkezésre áll Docker, a projekt futtatása nagyon egyszerű. A Docker használatához:
+Ha rendelkezésre áll a Docker, a projekt futtatása nagyon egyszerű. A Docker használatához:
 
 ```bash
-docker build -t sakk_ai .
-docker run -p 5000:5000 sakk_ai
+docker build -t hybrid_chess_ai .
+docker run -p 5000:5000 hybrid_chess_ai
 ```
 
 ### 2. Kézi telepítés:
@@ -45,8 +45,8 @@ python main.py
 
 ## Használat
 
-- Az AI mesterséges intelligencia ellen lehet játszani az interaktív sakkfelületen keresztül, amely drag-and-drop funkcióval rendelkezik.
-- Az AI belső működésének megfigyelésére lehetőség van az MCTS keresés vizualizálásával és a lépések valószínűségeinek megjelenítésével.
+- A mesterséges intelligencia ellen lehet játszani az interaktív sakkfelületen keresztül, amely drag-and-drop funkcióval rendelkezik.
+- Az MI belső működésének megfigyelésére lehetőség van az MCTS keresés vizualizálásával és a lépések valószínűségeinek megjelenítésével.
 
 ## További Információk
 
