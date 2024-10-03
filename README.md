@@ -17,17 +17,6 @@ A projekt futtatásához szükséges szoftverek és könyvtárak telepítése az
 
 ## Telepítés
 
-### 1. Docker használatával:
-
-Ha rendelkezésre áll a Docker, a projekt futtatása nagyon egyszerű. A Docker használatához:
-
-```bash
-docker build -t hybrid_chess_ai .
-docker run -p 5000:5000 hybrid_chess_ai
-```
-
-### 2. Kézi telepítés:
-
 Először klónozza a projektet, majd hozza létre a környezetet a conda segítségével.
 
 ```bash
