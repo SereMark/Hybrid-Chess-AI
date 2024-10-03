@@ -48,10 +48,6 @@ env/
 .vscode/
 *.iml
 
-# Docker
-docker-compose.yml
-Dockerfile
-
 # Data
 *.csv
 *.h5
