@@ -80,9 +80,17 @@ class ChessAIVisualization(QWidget):
         policy_ax.tick_params(colors='#E0E0E0', which='both')
         for spine in policy_ax.spines.values():
             spine.set_color('#E0E0E0')
-        sorted_policy = sorted(policy_output.items(), key=lambda x: x[1], reverse=True)[:5]
-        moves, probabilities = zip(*sorted_policy)
-        policy_ax.bar(moves, probabilities, color='#00BFFF')
+        
+        if policy_output:
+            sorted_policy = sorted(policy_output.items(), key=lambda x: x[1], reverse=True)[:5]
+            if sorted_policy:
+                moves, probabilities = zip(*sorted_policy)
+                policy_ax.bar(moves, probabilities, color='#00BFFF')
+            else:
+                moves, probabilities = [], []
+        else:
+            moves, probabilities = [], []
+        
         policy_ax.set_xlabel('Moves', color='#E0E0E0')
         policy_ax.set_ylabel('Probability', color='#E0E0E0')
         policy_ax.set_title('Top 5 Move Probabilities', color='#E0E0E0')
@@ -101,8 +109,14 @@ class ChessAIVisualization(QWidget):
         mcts_ax.set_xlabel('MCTS Metrics', color='#E0E0E0')
         mcts_ax.set_ylabel('Count', color='#E0E0E0')
         mcts_ax.set_title('MCTS Statistics', color='#E0E0E0')
-        mcts_ax.text(0.5, max(values)*0.9, f"Best Move: {mcts_stats['best_move']}",
-                     ha='center', color='#E0E0E0', fontsize=12)
+        
+        best_move = mcts_stats.get('best_move')
+        if best_move:
+            mcts_ax.text(0.5, max(values)*0.9, f"Best Move: {best_move}",
+                        ha='center', color='#E0E0E0', fontsize=12)
+        else:
+            mcts_ax.text(0.5, max(values)*0.9, "Game Over", ha='center', color='#E0E0E0', fontsize=12)
+        
         self.mcts_canvas.draw()
 
     def clear_visualization(self):

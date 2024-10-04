@@ -299,20 +299,28 @@ class ChessMainWindow(QMainWindow):
         self.ai_visualization.move_evaluations.append(evaluation)
 
         legal_moves = list(self.board_widget.board_state.legal_moves)
-        policy_output = {move.uci(): random.random() for move in legal_moves}
-        total = sum(policy_output.values())
-        for move in policy_output:
-            policy_output[move] /= total
 
-        mcts_stats = {
-            'simulations': random.randint(100, 500),
-            'nodes_explored': random.randint(50, 200),
-            'best_move': max(policy_output, key=policy_output.get)
-        }
+        if legal_moves:
+            policy_output = {move.uci(): random.random() for move in legal_moves}
+            total = sum(policy_output.values())
+            for move in policy_output:
+                policy_output[move] /= total
+
+            mcts_stats = {
+                'simulations': random.randint(100, 500),
+                'nodes_explored': random.randint(50, 200),
+                'best_move': max(policy_output, key=policy_output.get)
+            }
+        else:
+            mcts_stats = {
+                'simulations': 0,
+                'nodes_explored': 0,
+                'best_move': None
+            }
 
         self.ai_visualization.visualize_evaluation(
             evaluations=self.ai_visualization.move_evaluations,
-            policy_output=policy_output,
+            policy_output=policy_output if legal_moves else {},
             mcts_stats=mcts_stats
         )
 
