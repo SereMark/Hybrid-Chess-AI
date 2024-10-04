@@ -219,8 +219,16 @@ class ChessBoardWidget(QWidget):
         self.move_made.emit("Move undone")
 
     def show_hint(self):
-        hint_move = list(self.board_state.legal_moves)[0]
-        QMessageBox.information(self, "Hint", f"Consider the move: {hint_move.uci()}")
+        if self.board_state.is_game_over():
+            QMessageBox.information(self, "Game Over", "No more hints available, the game is over.")
+            return
+
+        legal_moves = list(self.board_state.legal_moves)
+        if legal_moves:
+            hint_move = legal_moves[0]
+            QMessageBox.information(self, "Hint", f"Consider the move: {hint_move.uci()}")
+        else:
+            QMessageBox.information(self, "Hint", "No legal moves available.")
 
     def ai_move(self):
         if self.board_state.is_game_over():
