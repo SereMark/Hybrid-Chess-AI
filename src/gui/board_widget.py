@@ -169,6 +169,10 @@ class ChessBoardWidget(QWidget):
             sq.highlighted = False
             sq.update()
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.update_board()
+
     def update_board(self):
         asset_path = os.path.join(os.path.dirname(__file__), 'assets')
         piece_to_asset = {

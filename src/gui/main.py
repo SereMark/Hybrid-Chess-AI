@@ -27,7 +27,8 @@ QPushButton {
     background-color: #1E1E1E;
     color: #E0E0E0;
     border: none;
-    padding: 8px 12px;
+    padding: 10px 15px;
+    margin: 5px;
     border-radius: 4px;
 }
 QPushButton:hover {
@@ -92,10 +93,38 @@ class ChessMainWindow(QMainWindow):
         self.board_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.move_history = QListWidget()
-        self.move_history.setStyleSheet("border: none;")
-        self.move_history_font = QFont('Segoe UI', 10)
+        self.move_history.setStyleSheet("""
+            QListWidget {
+                background-color: #2B2B2B;
+                color: #E0E0E0;
+                border: 1px solid #444444;
+                border-radius: 6px;
+                padding: 8px;
+                margin: 10px;
+            }
+            QListWidget::item {
+                padding: 10px;
+                margin: 4px 0;
+                border-radius: 4px;
+                background-color: #1E1E1E;
+                border: 1px solid #333333;
+                transition: background-color 0.3s ease;
+            }
+            QListWidget::item:hover {
+                background-color: #3A3A3A;
+            }
+            QListWidget::item:selected {
+                background-color: #555555;
+                color: #FFFFFF;
+                border: 1px solid #777777;
+            }
+        """)
+        self.move_history_font = QFont('Segoe UI', 11, QFont.Bold)
         self.move_history.setFont(self.move_history_font)
         self.move_history.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.move_history.setSpacing(6)
+        self.move_history.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.move_history.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self.ai_visualization = ChessAIVisualization()
 
@@ -119,7 +148,8 @@ class ChessMainWindow(QMainWindow):
             background-color: #1E1E1E;
             color: #E0E0E0;
             border: none;
-            padding: 8px 12px;
+            padding: 10px 15px;
+            margin: 5px;
             border-radius: 4px;
         }
         QPushButton:hover {
