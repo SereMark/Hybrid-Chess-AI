@@ -31,6 +31,9 @@ QPushButton {
     margin: 5px;
     border-radius: 4px;
 }
+QPushButton:focus {
+    outline: none;
+}
 QPushButton:hover {
     background-color: #333333;
 }
@@ -39,6 +42,9 @@ QLineEdit, QTextEdit, QListWidget {
     color: #E0E0E0;
     border: 1px solid #333333;
     border-radius: 4px;
+}
+QListWidget:focus {
+    outline: none;
 }
 QLabel {
     color: #E0E0E0;
@@ -108,7 +114,6 @@ class ChessMainWindow(QMainWindow):
                 border-radius: 4px;
                 background-color: #1E1E1E;
                 border: 1px solid #333333;
-                transition: background-color 0.3s ease;
             }
             QListWidget::item:hover {
                 background-color: #3A3A3A;
@@ -291,12 +296,12 @@ class ChessMainWindow(QMainWindow):
     def update_status_bar(self, message):
         if message.startswith("AI moved:") or message.startswith("Move made:") or message == "Game loaded":
             self.update_move_history()
-            self.update_visualization()
+            self.update_visualization(append_evaluation=True)
             self.current_player = self.board_widget.board_state.turn
             if not self.timer_running and not self.board_widget.game_over:
                 self.timer.start(1000)
                 self.timer_running = True
-        elif message == "Board reset" or message == "Move undone":
+        elif message == "Board reset":
             self.update_move_history()
             self.ai_visualization.clear_visualization()
             self.white_time = self.time_control
@@ -305,6 +310,14 @@ class ChessMainWindow(QMainWindow):
             self.update_clock_labels()
             self.timer_running = False
             self.timer.stop()
+        elif message == "Move undone":
+            self.update_move_history()
+            
+            for _ in range(2):
+                if self.ai_visualization.move_evaluations:
+                    self.ai_visualization.move_evaluations.pop()
+            
+            self.update_visualization(append_evaluation=False)
 
     def update_move_history(self):
         self.move_history.clear()
@@ -323,10 +336,11 @@ class ChessMainWindow(QMainWindow):
     def show_hint(self):
         self.board_widget.show_hint()
 
-    def update_visualization(self):
+    def update_visualization(self, append_evaluation=True):
         import random
-        evaluation = random.uniform(-1, 1)
-        self.ai_visualization.move_evaluations.append(evaluation)
+        if append_evaluation:
+            evaluation = random.uniform(-1, 1)
+            self.ai_visualization.move_evaluations.append(evaluation)
 
         legal_moves = list(self.board_widget.board_state.legal_moves)
 
@@ -342,6 +356,7 @@ class ChessMainWindow(QMainWindow):
                 'best_move': max(policy_output, key=policy_output.get)
             }
         else:
+            policy_output = {}
             mcts_stats = {
                 'simulations': 0,
                 'nodes_explored': 0,
@@ -387,6 +402,7 @@ class ChessMainWindow(QMainWindow):
         else:
             self.player_color = chess.BLACK
         self.board_widget.reset_board(self.player_color)
+        self.ai_visualization.clear_visualization()
         self.white_time = self.time_control
         self.black_time = self.time_control
         self.update_clock_labels()
