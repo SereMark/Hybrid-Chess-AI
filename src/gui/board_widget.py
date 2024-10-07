@@ -5,7 +5,9 @@ from PyQt5.QtWidgets import (
     QDialogButtonBox, QComboBox, QSizePolicy, QVBoxLayout
 )
 from PyQt5.QtGui import QPixmap, QPainter, QBrush, QColor
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QRectF, QSize
+from PyQt5.QtSvg import QSvgRenderer
+from ..common.config import ASSETS_DIR
 
 class SquareLabel(QLabel):
     square_clicked = pyqtSignal(int)
@@ -17,6 +19,9 @@ class SquareLabel(QLabel):
         self.piece = None
         self.highlighted = False
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        size_policy = self.sizePolicy()
+        size_policy.setHeightForWidth(True)
+        self.setSizePolicy(size_policy)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -40,6 +45,9 @@ class ChessBoardWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        size_policy = self.sizePolicy()
+        size_policy.setHeightForWidth(True)
+        self.setSizePolicy(size_policy)
 
         self.board_layout = QGridLayout()
         self.board_layout.setSpacing(0)
@@ -53,12 +61,17 @@ class ChessBoardWidget(QWidget):
         self.board_orientation = True
         self.player_color = chess.WHITE
         self.game_over = False
+        self.undone_moves = []
+
+        self.svg_renderer = QSvgRenderer(os.path.join(ASSETS_DIR, 'chess_pieces.svg'))
+
         self.init_board()
 
     def init_board(self):
         for i in reversed(range(self.board_layout.count())):
             self.board_layout.itemAt(i).widget().setParent(None)
         self.squares = []
+
         for row in range(8):
             for col in range(8):
                 square_index = self.get_square_index(row, col)
@@ -66,9 +79,11 @@ class ChessBoardWidget(QWidget):
                 label.square_clicked.connect(self.square_clicked)
                 self.board_layout.addWidget(label, row, col)
                 self.squares.append(label)
+
         for i in range(8):
             self.board_layout.setRowStretch(i, 1)
             self.board_layout.setColumnStretch(i, 1)
+
         self.set_background()
         self.update_board()
 
@@ -99,6 +114,7 @@ class ChessBoardWidget(QWidget):
         if self.game_over:
             QMessageBox.information(self, "Game Over", "The game is over. Start a new game to continue.")
             return
+
         piece = self.board_state.piece_at(square_index)
         if self.selected_square is None:
             if piece and piece.color == self.board_state.turn and piece.color == self.player_color:
@@ -113,6 +129,7 @@ class ChessBoardWidget(QWidget):
     def handle_move(self, from_square, to_square):
         move = chess.Move(from_square, to_square)
         promotion = None
+
         if chess.PAWN == self.board_state.piece_type_at(from_square):
             if (self.board_state.turn == chess.WHITE and chess.square_rank(to_square) == 7) or \
                (self.board_state.turn == chess.BLACK and chess.square_rank(to_square) == 0):
@@ -123,14 +140,17 @@ class ChessBoardWidget(QWidget):
                 move.promotion = promotion
 
         if move in self.board_state.legal_moves:
+            self.undone_moves.clear()
             self.board_state.push(move)
             self.update_board()
             self.move_made.emit(f"Move made: {self.board_state.peek().uci()}")
+
             if self.board_state.is_game_over():
                 result = self.board_state.result()
                 QMessageBox.information(self, "Game Over", f"Game over: {result}")
                 self.game_over = True
                 return
+
             if self.board_state.turn != self.player_color:
                 self.ai_move()
 
@@ -138,17 +158,21 @@ class ChessBoardWidget(QWidget):
         dialog = QDialog(self)
         dialog.setWindowTitle("Choose Promotion Piece")
         layout = QVBoxLayout()
+
         combo = QComboBox()
         combo.addItem("Queen", chess.QUEEN)
         combo.addItem("Rook", chess.ROOK)
         combo.addItem("Bishop", chess.BISHOP)
         combo.addItem("Knight", chess.KNIGHT)
         layout.addWidget(combo)
+
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
+
         dialog.setLayout(layout)
+
         if dialog.exec_() == QDialog.Accepted:
             return combo.currentData()
         else:
@@ -158,7 +182,8 @@ class ChessBoardWidget(QWidget):
         self.clear_highlights()
         legal_moves = [
             move.to_square for move in self.board_state.legal_moves
-            if move.from_square == square_index]
+            if move.from_square == square_index
+        ]
         for sq in self.squares:
             if sq.square_index in legal_moves:
                 sq.highlighted = True
@@ -174,35 +199,61 @@ class ChessBoardWidget(QWidget):
         self.update_board()
 
     def update_board(self):
-        asset_path = os.path.join(os.path.dirname(__file__), 'assets')
-        piece_to_asset = {
-            chess.PAWN:   {True: 'w_pawn.png', False: 'b_pawn.png'},
-            chess.KNIGHT: {True: 'w_knight.png', False: 'b_knight.png'},
-            chess.BISHOP: {True: 'w_bishop.png', False: 'b_bishop.png'},
-            chess.ROOK:   {True: 'w_rook.png', False: 'b_rook.png'},
-            chess.QUEEN:  {True: 'w_queen.png', False: 'b_queen.png'},
-            chess.KING:   {True: 'w_king.png', False: 'b_king.png'}
-        }
+            if self.width() < 50 or self.height() < 50:
+                return
 
-        for idx, label in enumerate(self.squares):
-            square_index = label.square_index
-            piece = self.board_state.piece_at(square_index)
-            if piece:
-                image_file = os.path.join(
-                    asset_path, piece_to_asset[piece.piece_type][piece.color])
-                if not os.path.exists(image_file):
-                    print(f"Error: Image file not found: {image_file}")
-                    label.clear()
-                    continue
-                pixmap = QPixmap(image_file)
-                if pixmap.isNull():
-                    print(f"Error: Failed to load image: {image_file}")
-                    label.clear()
+            piece_names = {
+                chess.PAWN: 'pawn',
+                chess.KNIGHT: 'knight',
+                chess.BISHOP: 'bishop',
+                chess.ROOK: 'rook',
+                chess.QUEEN: 'queen',
+                chess.KING: 'king'
+            }
+
+            for idx, label in enumerate(self.squares):
+                square_index = label.square_index
+                piece = self.board_state.piece_at(square_index)
+                if piece:
+                    pixmap_width = label.width()
+                    pixmap_height = label.height()
+                    if pixmap_width <= 0 or pixmap_height <= 0:
+                        label.clear()
+                        continue
+
+                    element_id = piece_names[piece.piece_type]
+                    pixmap = QPixmap(pixmap_width, pixmap_height)
+                    pixmap.fill(Qt.transparent)
+                    painter = QPainter(pixmap)
+                    painter.setRenderHint(QPainter.Antialiasing)
+                    painter.setRenderHint(QPainter.SmoothPixmapTransform)
+
+                    margin_ratio = 0.1
+                    margin = min(pixmap_width, pixmap_height) * margin_ratio
+                    render_size = min(pixmap_width, pixmap_height) - 2 * margin
+                    if render_size <= 0:
+                        label.clear()
+                        painter.end()
+                        continue
+
+                    render_rect = QRectF(
+                        (pixmap_width - render_size) / 2,
+                        (pixmap_height - render_size) / 2,
+                        render_size,
+                        render_size
+                    )
+
+                    self.svg_renderer.render(painter, element_id, render_rect)
+                    painter.end()
+
+                    if piece.color == chess.WHITE:
+                        image = pixmap.toImage()
+                        image.invertPixels()
+                        pixmap = QPixmap.fromImage(image)
+
+                    label.setPixmap(pixmap)
                 else:
-                    label.setPixmap(pixmap.scaled(
-                        label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            else:
-                label.clear()
+                    label.clear()
 
     def reset_board(self, player_color=chess.WHITE):
         self.board_state.reset()
@@ -212,15 +263,35 @@ class ChessBoardWidget(QWidget):
         self.update_board()
         self.move_made.emit("Board reset")
         self.game_over = False
+        self.undone_moves.clear()
 
     def undo_move(self):
+        moves_undone = 0
         if len(self.board_state.move_stack) >= 1:
-            self.board_state.pop()
+            move = self.board_state.pop()
+            self.undone_moves.append(move)
+            moves_undone += 1
             if self.board_state.turn != self.player_color and len(self.board_state.move_stack) >= 1:
-                self.board_state.pop()
+                move = self.board_state.pop()
+                self.undone_moves.append(move)
+                moves_undone += 1
             self.game_over = self.board_state.is_game_over()
         self.update_board()
-        self.move_made.emit("Move undone")
+        self.move_made.emit(f"Move undone:{moves_undone}")
+
+    def redo_move(self):
+        moves_redone = 0
+        if self.undone_moves:
+            move = self.undone_moves.pop()
+            self.board_state.push(move)
+            moves_redone += 1
+            if self.board_state.turn != self.player_color and self.undone_moves:
+                move = self.undone_moves.pop()
+                self.board_state.push(move)
+                moves_redone += 1
+            self.game_over = self.board_state.is_game_over()
+            self.update_board()
+            self.move_made.emit(f"Move redone:{moves_redone}")
 
     def show_hint(self):
         if self.board_state.is_game_over():
@@ -240,6 +311,7 @@ class ChessBoardWidget(QWidget):
             QMessageBox.information(self, "Game Over", f"Game over: {result}")
             self.game_over = True
             return
+        self.undone_moves.clear()
         move = self.get_ai_move()
         self.board_state.push(move)
         self.update_board()

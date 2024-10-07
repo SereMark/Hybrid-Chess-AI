@@ -1,5 +1,7 @@
 import sys
 import os
+import ctypes
+import random
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QListWidget,
     QWidget, QVBoxLayout, QAction, QFileDialog,
@@ -9,82 +11,12 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QIcon, QFont
 import matplotlib
 matplotlib.use('Qt5Agg')
-from board_widget import ChessBoardWidget
-from visualization import ChessAIVisualization
-import chess.pgn
 
-dark_stylesheet = """
-QMainWindow {
-    background-color: #121212;
-}
-QWidget {
-    background-color: #121212;
-    color: #E0E0E0;
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 12pt;
-}
-QPushButton {
-    background-color: #1E1E1E;
-    color: #E0E0E0;
-    border: none;
-    padding: 10px 15px;
-    margin: 5px;
-    border-radius: 4px;
-}
-QPushButton:focus {
-    outline: none;
-}
-QPushButton:hover {
-    background-color: #333333;
-}
-QLineEdit, QTextEdit, QListWidget {
-    background-color: #1E1E1E;
-    color: #E0E0E0;
-    border: 1px solid #333333;
-    border-radius: 4px;
-}
-QListWidget:focus {
-    outline: none;
-}
-QLabel {
-    color: #E0E0E0;
-}
-QMenuBar, QMenu {
-    background-color: #121212;
-    color: #E0E0E0;
-}
-QMenuBar::item:selected, QMenu::item:selected {
-    background-color: #333333;
-}
-QStatusBar {
-    background-color: #121212;
-    color: #E0E0E0;
-}
-QToolTip {
-    background-color: #333333;
-    color: #E0E0E0;
-    border: none;
-}
-QMessageBox {
-    background-color: #121212;
-    color: #E0E0E0;
-}
-QScrollBar:vertical {
-    background: #1E1E1E;
-    width: 12px;
-    margin: 15px 3px 15px 3px;
-    border: 1px solid #333333;
-}
-QScrollBar::handle:vertical {
-    background: #333333;
-    min-height: 20px;
-    border-radius: 4px;
-}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-    background: none;
-    height: 15px;
-}
-"""
+from .board_widget import ChessBoardWidget
+from .visualization import ChessAIVisualization
+import chess.pgn
+from .styles import DARK_STYLESHEET, MOVE_HISTORY_STYLESHEET, BUTTON_STYLE
+from ..common.config import ASSETS_DIR, DEFAULT_TIME_CONTROL
 
 class ChessMainWindow(QMainWindow):
     def __init__(self):
@@ -93,37 +25,29 @@ class ChessMainWindow(QMainWindow):
         self.setGeometry(100, 100, 1200, 800)
         self.player_color = chess.WHITE
 
+        self.undone_evaluations = []
+        self.setFocusPolicy(Qt.StrongFocus)
+
+        self.init_board_widget()
+        self.init_move_history()
+        self.init_ai_visualization()
+        self.init_timer_labels()
+        self.init_buttons()
+        self.init_layouts()
+        self.init_timer()
+        self.create_menus()
+
+        self.setWindowIcon(QIcon(os.path.join(ASSETS_DIR, 'chess_icon.png')))
+
+    def init_board_widget(self):
         self.board_widget = ChessBoardWidget(self)
         self.board_widget.move_made.connect(self.update_status_bar)
         self.board_widget.show_hint_signal.connect(self.show_hint)
         self.board_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
+    def init_move_history(self):
         self.move_history = QListWidget()
-        self.move_history.setStyleSheet("""
-            QListWidget {
-                background-color: #2B2B2B;
-                color: #E0E0E0;
-                border: 1px solid #444444;
-                border-radius: 6px;
-                padding: 8px;
-                margin: 10px;
-            }
-            QListWidget::item {
-                padding: 10px;
-                margin: 4px 0;
-                border-radius: 4px;
-                background-color: #1E1E1E;
-                border: 1px solid #333333;
-            }
-            QListWidget::item:hover {
-                background-color: #3A3A3A;
-            }
-            QListWidget::item:selected {
-                background-color: #555555;
-                color: #FFFFFF;
-                border: 1px solid #777777;
-            }
-        """)
+        self.move_history.setStyleSheet(MOVE_HISTORY_STYLESHEET)
         self.move_history_font = QFont('Segoe UI', 11, QFont.Bold)
         self.move_history.setFont(self.move_history_font)
         self.move_history.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -131,8 +55,10 @@ class ChessMainWindow(QMainWindow):
         self.move_history.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.move_history.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
+    def init_ai_visualization(self):
         self.ai_visualization = ChessAIVisualization()
 
+    def init_timer_labels(self):
         self.white_time_label = QLabel("White: 10:00")
         self.black_time_label = QLabel("Black: 10:00")
         self.white_time_label.setStyleSheet("font-size: 12pt;")
@@ -142,60 +68,41 @@ class ChessMainWindow(QMainWindow):
         self.timer_layout.addStretch()
         self.timer_layout.addWidget(self.black_time_label)
 
+    def init_buttons(self):
         self.undo_button = QPushButton("Undo Move")
         self.undo_button.setToolTip("Undo the last move")
         self.help_button = QPushButton("Hint")
         self.help_button.setToolTip("Show a hint for your next move")
         self.undo_button.clicked.connect(self.board_widget.undo_move)
         self.help_button.clicked.connect(self.show_hint)
-        button_style = """
-        QPushButton {
-            background-color: #1E1E1E;
-            color: #E0E0E0;
-            border: none;
-            padding: 10px 15px;
-            margin: 5px;
-            border-radius: 4px;
-        }
-        QPushButton:hover {
-            background-color: #333333;
-        }
-        """
-        self.undo_button.setStyleSheet(button_style)
-        self.help_button.setStyleSheet(button_style)
+        self.undo_button.setStyleSheet(BUTTON_STYLE)
+        self.help_button.setStyleSheet(BUTTON_STYLE)
         self.button_layout = QHBoxLayout()
         self.button_layout.addWidget(self.undo_button)
         self.button_layout.addWidget(self.help_button)
 
+    def init_layouts(self):
         self.right_layout = QVBoxLayout()
         self.right_layout.addLayout(self.timer_layout)
         self.right_layout.addLayout(self.button_layout)
+        self.right_layout.addWidget(self.board_widget)
+        self.right_layout.addWidget(self.move_history)
 
-        self.board_history_splitter = QSplitter(Qt.Vertical)
-        self.board_history_splitter.addWidget(self.board_widget)
-        self.board_history_splitter.addWidget(self.move_history)
-        self.board_history_splitter.setStretchFactor(0, 3)
-        self.board_history_splitter.setStretchFactor(1, 1)
-
-        self.right_layout.addWidget(self.board_history_splitter)
         self.right_widget = QWidget()
         self.right_widget.setLayout(self.right_layout)
 
-        self.main_splitter = QSplitter(Qt.Horizontal)
-        self.main_splitter.setHandleWidth(1)
-        self.main_splitter.setStyleSheet("QSplitter::handle { background-color: #333333; }")
-        self.main_splitter.addWidget(self.ai_visualization)
-        self.main_splitter.addWidget(self.right_widget)
-        self.main_splitter.setStretchFactor(0, 2)
-        self.main_splitter.setStretchFactor(1, 1)
+        self.main_layout = QHBoxLayout()
+        self.main_layout.addWidget(self.ai_visualization)
+        self.main_layout.addWidget(self.right_widget)
+        self.main_layout.setStretch(0, 1)
+        self.main_layout.setStretch(1, 1)
 
         self.central_widget = QWidget()
-        self.main_layout = QHBoxLayout()
-        self.main_layout.addWidget(self.main_splitter)
         self.central_widget.setLayout(self.main_layout)
         self.setCentralWidget(self.central_widget)
 
-        self.time_control = 10 * 60
+    def init_timer(self):
+        self.time_control = DEFAULT_TIME_CONTROL
         self.white_time = self.time_control
         self.black_time = self.time_control
         self.timer = QTimer()
@@ -203,16 +110,10 @@ class ChessMainWindow(QMainWindow):
         self.current_player = chess.WHITE
         self.timer_running = False
 
-        self.create_menus()
-
-        self.setWindowIcon(QIcon(os.path.join('src/gui/assets', 'chess_icon.png')))
-
     def create_menus(self):
         menubar = self.menuBar()
-        file_menu = menubar.addMenu("File")
-        settings_menu = menubar.addMenu("Settings")
-        help_menu = menubar.addMenu("Help")
 
+        file_menu = menubar.addMenu("File")
         new_game_action = QAction("New Game", self)
         new_game_action.setShortcut("Ctrl+N")
         new_game_action.triggered.connect(self.new_game)
@@ -225,13 +126,13 @@ class ChessMainWindow(QMainWindow):
         exit_action = QAction("Exit", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
-
         file_menu.addAction(new_game_action)
         file_menu.addAction(save_game_action)
         file_menu.addAction(load_game_action)
         file_menu.addSeparator()
         file_menu.addAction(exit_action)
 
+        settings_menu = menubar.addMenu("Settings")
         ai_difficulty_action = QAction("Set AI Difficulty", self)
         ai_difficulty_action.triggered.connect(self.set_ai_difficulty)
         time_control_action = QAction("Set Time Control", self)
@@ -239,6 +140,7 @@ class ChessMainWindow(QMainWindow):
         settings_menu.addAction(ai_difficulty_action)
         settings_menu.addAction(time_control_action)
 
+        help_menu = menubar.addMenu("Help")
         about_action = QAction("About", self)
         about_action.triggered.connect(self.show_about_dialog)
         help_menu.addAction(about_action)
@@ -265,7 +167,7 @@ class ChessMainWindow(QMainWindow):
             try:
                 with open(filename, 'r') as f:
                     game = chess.pgn.read_game(f)
-                    board = game.board()
+                    board = chess.Board()
                     for move in game.mainline_moves():
                         board.push(move)
                     self.board_widget.board_state = board
@@ -310,14 +212,21 @@ class ChessMainWindow(QMainWindow):
             self.update_clock_labels()
             self.timer_running = False
             self.timer.stop()
-        elif message == "Move undone":
+            self.undone_evaluations.clear()
+        elif message.startswith("Move undone"):
             self.update_move_history()
-            
-            for _ in range(2):
-                if self.ai_visualization.move_evaluations:
-                    self.ai_visualization.move_evaluations.pop()
-            
-            self.update_visualization(append_evaluation=False)
+            moves_undone = 2
+            if ':' in message:
+                _, num_moves = message.split(':')
+                moves_undone = int(num_moves)
+            self.update_visualization(append_evaluation=False, moves_count=moves_undone)
+        elif message.startswith("Move redone"):
+            self.update_move_history()
+            moves_redone = 2
+            if ':' in message:
+                _, num_moves = message.split(':')
+                moves_redone = int(num_moves)
+            self.update_visualization(append_evaluation=True, redo=True, moves_count=moves_redone)
 
     def update_move_history(self):
         self.move_history.clear()
@@ -336,11 +245,24 @@ class ChessMainWindow(QMainWindow):
     def show_hint(self):
         self.board_widget.show_hint()
 
-    def update_visualization(self, append_evaluation=True):
-        import random
+    def update_visualization(self, append_evaluation=True, redo=False, moves_count=1):
         if append_evaluation:
-            evaluation = random.uniform(-1, 1)
-            self.ai_visualization.move_evaluations.append(evaluation)
+            if redo:
+                for _ in range(moves_count):
+                    if self.undone_evaluations:
+                        evaluation = self.undone_evaluations.pop()
+                        self.ai_visualization.move_evaluations.append(evaluation)
+                    else:
+                        evaluation = random.uniform(-1, 1)
+                        self.ai_visualization.move_evaluations.append(evaluation)
+            else:
+                evaluation = random.uniform(-1, 1)
+                self.ai_visualization.move_evaluations.append(evaluation)
+        else:
+            for _ in range(moves_count):
+                if self.ai_visualization.move_evaluations:
+                    evaluation = self.ai_visualization.move_evaluations.pop()
+                    self.undone_evaluations.append(evaluation)
 
         legal_moves = list(self.board_widget.board_state.legal_moves)
 
@@ -408,18 +330,27 @@ class ChessMainWindow(QMainWindow):
         self.update_clock_labels()
         self.timer_running = False
         self.timer.stop()
+        self.undone_evaluations.clear()
         if self.player_color == chess.BLACK:
             self.board_widget.ai_move()
 
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Left:
+            self.board_widget.undo_move()
+        elif event.key() == Qt.Key_Right:
+            self.board_widget.redo_move()
+        else:
+            super().keyPressEvent(event)
+
 if __name__ == "__main__":
-    import ctypes
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
     except Exception:
         pass
+
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     app = QApplication(sys.argv)
-    app.setStyleSheet(dark_stylesheet)
+    app.setStyleSheet(DARK_STYLESHEET)
     main_window = ChessMainWindow()
     main_window.show()
     sys.exit(app.exec_())
