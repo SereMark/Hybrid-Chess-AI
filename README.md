@@ -29,7 +29,7 @@ conda activate hybrid_chess_ai
 A környezet aktiválása után futtassa a fő szkriptet:
 
 ```bash
-python main.py
+python -m src.gui.main
 ```
 
 ## Használat
