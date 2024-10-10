@@ -43,5 +43,3 @@ Ez a projekt erősen épít a következő területekre:
 - Konvolúciós Neurális Hálózatok
 - Monte Carlo Tree Search
 - Sakk nyitókönyvek
-
-A részletes technikai dokumentáció megtalálható a docs/ mappában.

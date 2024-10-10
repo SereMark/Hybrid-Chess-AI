@@ -53,6 +53,8 @@ env/
 *.h5
 *.db
 *.sqlite
+*.npy
+*.pgn
 
 # Jupyter notebook checkpoints
 .ipynb_checkpoints/
