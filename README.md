@@ -1,45 +1,38 @@
-# Hibrid Sakk AI Tervezése és Implementációja
+# Hibrid Chess AI using CNN, MCTS and Opening Book
 
-## Bevezetés
+## Introduction
 
-Ez a projekt egy hibrid sakk mesterséges intelligencia fejlesztésére irányul, amely konvolúciós neurális hálózatot (CNN), Monte Carlo Tree Search algoritmust (MCTS), nyitókönyvet és grafikus felhasználói felületet (GUI) integrál. Ez a mesterséges intelligencia képes a sakkjátszmák értékelésére és megoldására, felhasználva a mélytanulási technikák és keresési algoritmusok előnyeit.
+This project aims to develop a hybrid chess artificial intelligence that integrates a convolutional neural network (CNN), Monte Carlo Tree Search algorithm (MCTS), opening book, and graphical user interface (GUI). This AI is capable of evaluating and solving chess games by leveraging the advantages of deep learning techniques and search algorithms.
 
-### Fontos Megjegyzés
+### Important Note
 
-Ez a projekt egy diplomamunka része, ezért az itt található kód csak oktatási és kutatási célokra használható fel. A kereskedelmi felhasználás nem engedélyezett.
+This project is part of a thesis, so the code found here is only for educational and research purposes. Commercial use is not permitted.
 
-## Követelmények
+## Requirements
 
-A projekt futtatásához szükséges szoftverek és könyvtárak telepítése az alábbi lépésekben történik:
+The software and libraries required to run the project are installed in the following steps:
 
 - Python 3.12
-- Anaconda: Ajánlott a projekt futtatásához.
+- Anaconda
 
-## Telepítés
+## Installation
 
-Először klónozza a projektet, majd hozza létre a környezetet a conda segítségével.
+First, clone the project and then create the environment using conda.
 
 ```bash
-git clone <projekt-repo-url>
-cd <project-helye>
+git clone <project-repo-url>
+cd <project-location>
 conda env create -f environment.yml
 conda activate hybrid_chess_ai
 ```
 
-A környezet aktiválása után futtassa a fő szkriptet:
+After activating the environment, run the main script:
 
 ```bash
 python -m src.gui.main
 ```
 
-## Használat
+## Usage
 
-- A mesterséges intelligencia ellen lehet játszani az interaktív sakkfelületen keresztül, amely drag-and-drop funkcióval rendelkezik.
-- Az MI belső működésének megfigyelésére lehetőség van az MCTS keresés vizualizálásával és a lépések valószínűségeinek megjelenítésével.
-
-## További Információk
-
-Ez a projekt erősen épít a következő területekre:
-- Konvolúciós Neurális Hálózatok
-- Monte Carlo Tree Search
-- Sakk nyitókönyvek
+- You can play against the AI through the interactive chess interface.
+- It is possible to observe the internal workings of the AI by visualizing the MCTS search and displaying the probabilities of moves.
