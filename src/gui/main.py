@@ -8,11 +8,12 @@ from src.gui.tabs.evaluation_tab import EvaluationTab
 class ChessMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Hyprid Chess AI")
+        self.setWindowTitle("Hybrid Chess AI")
         self.setGeometry(100, 100, 1600, 800)
-        self.setCentralWidget(QTabWidget(self))
+        self.tab_widget = QTabWidget(self)
+        self.setCentralWidget(self.tab_widget)
         for widget, name in [(ChessGameTab, "Gameplay"), (DataPreparationTab, "Data Preparation"), (TrainingTab, "Training"), (EvaluationTab, "Evaluation")]:
-            self.centralWidget().addTab(widget(), name)
+            self.tab_widget.addTab(widget(), name)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
