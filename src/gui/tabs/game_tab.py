@@ -1,5 +1,9 @@
-import os, chess
-from PyQt5.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QSplitter, QLabel, QPushButton, QDialog, QGridLayout, QSizePolicy
+import os
+import chess
+from PyQt5.QtWidgets import (
+    QWidget, QHBoxLayout, QVBoxLayout, QSplitter, QLabel, QPushButton,
+    QDialog, QGridLayout, QSizePolicy, QComboBox, QMessageBox
+)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QRectF
 from PyQt5.QtGui import QPainter, QPixmap, QBrush, QColor, QFont
 from PyQt5.QtSvg import QSvgRenderer
@@ -7,23 +11,45 @@ from src.gui.visualizations.game_visualization import GameVisualization
 from scripts.chess_engine import ChessEngine
 
 class ChessBoardView(QWidget):
-    move_made_signal, status_message, promotion_requested = pyqtSignal(str), pyqtSignal(str), pyqtSignal(int, int)
+    move_made_signal = pyqtSignal(str)
+    status_message = pyqtSignal(str)
+    promotion_requested = pyqtSignal(int, int)
 
     def __init__(self, engine: ChessEngine, parent=None):
         super().__init__(parent)
-        self.engine, self.selected_square, self.is_orientation_flipped, self.highlighted_squares = engine, None, False, []
+        self.engine = engine
+        self.selected_square = None
+        self.is_orientation_flipped = False
+        self.highlighted_squares = []
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._setup_svg_renderer()
         self._connect_signals()
+        self.policy_output = {}
+        self.square_probs = {}
 
     def _setup_svg_renderer(self):
         svg_path = os.path.join(os.path.dirname(__file__), '..', 'assets', 'chess_pieces.svg')
+        svg_path = os.path.abspath(svg_path)
         self.svg_renderer = QSvgRenderer(svg_path)
-        if not self.svg_renderer.isValid(): raise ValueError("Invalid SVG file for chess pieces.")
+        if not self.svg_renderer.isValid():
+            raise ValueError("Invalid SVG file for chess pieces.")
 
     def _connect_signals(self):
         self.engine.move_made_signal.connect(self.on_move_made)
         self.engine.game_over_signal.connect(self.on_game_over)
+        self.engine.policy_output_signal.connect(self.update_policy_output)
+
+    def update_policy_output(self, policy_output):
+        self.policy_output = policy_output
+        self.square_probs = {}
+        for move_uci, prob in policy_output.items():
+            move = chess.Move.from_uci(move_uci)
+            to_sq = move.to_square
+            if to_sq in self.square_probs:
+                self.square_probs[to_sq] += prob
+            else:
+                self.square_probs[to_sq] = prob
+        self.update()
 
     def on_move_made(self, msg):
         self.move_made_signal.emit(msg)
@@ -34,7 +60,8 @@ class ChessBoardView(QWidget):
         self.update()
 
     def paintEvent(self, event):
-        painter, size = QPainter(self), min(self.width(), self.height()) / 8
+        painter = QPainter(self)
+        size = min(self.width(), self.height()) / 8
         painter.setRenderHint(QPainter.Antialiasing)
         if self.is_orientation_flipped:
             painter.translate(self.width(), self.height())
@@ -45,22 +72,51 @@ class ChessBoardView(QWidget):
     def _draw_board(self, painter, size):
         for r in range(8):
             for c in range(8):
-                painter.fillRect(int(c * size), int(r * size), int(size), int(size), QColor('#F0D9B5') if (r + c) % 2 == 0 else QColor('#B58863'))
+                color = QColor('#F0D9B5') if (r + c) % 2 == 0 else QColor('#B58863')
+                painter.fillRect(int(c * size), int(r * size), int(size), int(size), color)
+
+    def _get_square_coordinates(self, square, size):
+        col = chess.square_file(square)
+        row = chess.square_rank(square)
+        if self.is_orientation_flipped:
+            col = 7 - col
+        else:
+            row = 7 - row
+        x = col * size
+        y = row * size
+        return x, y
 
     def _draw_pieces_and_highlights(self, painter, size):
-        for r in range(8):
-            for c in range(8):
-                square = chess.square(c, 7 - r if not self.is_orientation_flipped else r)
-                piece = self.engine.board.piece_at(square)
-                if piece: self._draw_piece(painter, piece, c * size, r * size, size)
-                if square in self.highlighted_squares: self._draw_highlight(painter, c * size, r * size, size)
+        if hasattr(self, 'square_probs') and self.square_probs:
+            max_prob = max(self.square_probs.values())
+            for square, prob in self.square_probs.items():
+                intensity = prob / max_prob if max_prob > 0 else 0
+                color = QColor(255, 0, 0, int(255 * intensity * 0.6))
+                x, y = self._get_square_coordinates(square, size)
+                painter.fillRect(int(x), int(y), int(size), int(size), color)
+        for square in self.highlighted_squares:
+            x, y = self._get_square_coordinates(square, size)
+            self._draw_highlight(painter, x, y, size)
+        for square in chess.SQUARES:
+            piece = self.engine.board.piece_at(square)
+            if piece:
+                x, y = self._get_square_coordinates(square, size)
+                self._draw_piece(painter, piece, x, y, size)
 
     def _draw_piece(self, painter, piece, x, y, size):
-        pad, ps = size * 0.15, size * 0.7
+        pad = size * 0.15
+        ps = size * 0.7
         pixmap = QPixmap(int(ps), int(ps))
         pixmap.fill(Qt.transparent)
         svg_painter = QPainter(pixmap)
-        piece_name = {chess.PAWN: 'pawn', chess.KNIGHT: 'knight', chess.BISHOP: 'bishop', chess.ROOK: 'rook', chess.QUEEN: 'queen', chess.KING: 'king'}
+        piece_name = {
+            chess.PAWN: 'pawn',
+            chess.KNIGHT: 'knight',
+            chess.BISHOP: 'bishop',
+            chess.ROOK: 'rook',
+            chess.QUEEN: 'queen',
+            chess.KING: 'king'
+        }
         piece_group = f"{piece_name[piece.piece_type]}_{'white' if piece.color == chess.WHITE else 'black'}"
         self.svg_renderer.render(svg_painter, piece_group, QRectF(0, 0, ps, ps))
         svg_painter.end()
@@ -70,7 +126,11 @@ class ChessBoardView(QWidget):
         r = size / 8
         painter.setBrush(QBrush(QColor(255, 255, 0, 100)))
         painter.setPen(Qt.NoPen)
-        painter.drawEllipse(int(x + size / 2 - r), int(y + size / 2 - r), int(2 * r), int(2 * r))
+        painter.drawEllipse(
+            int(x + size / 2 - r),
+            int(y + size / 2 - r),
+            int(2 * r), int(2 * r)
+        )
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -82,33 +142,60 @@ class ChessBoardView(QWidget):
         if self.engine.is_game_over:
             self.status_message.emit("The game is over.")
             return
+
         piece = self.engine.board.piece_at(sq)
-        if self.selected_square is None and piece and piece.color == self.engine.player_color:
-            self.selected_square, self.highlighted_squares = sq, [m.to_square for m in self.engine.board.legal_moves if m.from_square == sq]
-        else:
-            if self.selected_square is not None:
-                move = chess.Move(self.selected_square, sq)
-                if move in self.engine.board.legal_moves and (chess.square_rank(sq) == 0 or chess.square_rank(sq) == 7):
-                    self.promotion_requested.emit(self.selected_square, sq)
-                elif not self.engine.make_move(self.selected_square, sq):
-                    self.status_message.emit("Invalid Move.")
+        if self.selected_square is None:
+            if piece and piece.color == self.engine.board.turn:
+                self.selected_square = sq
+                self.highlighted_squares = [
+                    m.to_square for m in self.engine.board.legal_moves if m.from_square == sq
+                ]
             else:
-                self.status_message.emit("No piece selected to move.")
-            self.selected_square, self.highlighted_squares = None, []
+                self.status_message.emit("Select a piece to move.")
+        else:
+            if sq == self.selected_square:
+                self.selected_square = None
+                self.highlighted_squares = []
+            elif piece and piece.color == self.engine.board.turn:
+                self.selected_square = sq
+                self.highlighted_squares = [
+                    m.to_square for m in self.engine.board.legal_moves if m.from_square == sq
+                ]
+            else:
+                moving_piece = self.engine.board.piece_at(self.selected_square)
+                is_pawn_promotion_move = (
+                    moving_piece.piece_type == chess.PAWN and
+                    chess.square_rank(sq) in [0, 7]
+                )
+                if is_pawn_promotion_move:
+                    self.promotion_requested.emit(self.selected_square, sq)
+                else:
+                    move = chess.Move(self.selected_square, sq)
+                    if move in self.engine.board.legal_moves:
+                        if not self.engine.make_move(self.selected_square, sq):
+                            self.status_message.emit("Invalid Move.")
+                    else:
+                        self.status_message.emit("Invalid Move.")
+                self.selected_square = None
+                self.highlighted_squares = []
         self.update()
 
     def _get_square(self, row, col):
-        return chess.square(col, 7 - row if not self.is_orientation_flipped else row)
+        return chess.square(
+            col, 7 - row if not self.is_orientation_flipped else row
+        )
 
     def reset_view(self):
-        self.selected_square, self.highlighted_squares = None, []
+        self.selected_square = None
+        self.highlighted_squares = []
         self.update()
 
 class ChessGameTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.time_limit = self.white_timer = self.black_timer = 600
-        self.engine = ChessEngine(player_color=chess.WHITE)
+        self.opponent_type = 'random'
+        self.engine = ChessEngine(player_color=chess.WHITE, opponent_type=self.opponent_type)
         self._setup_ui()
         self._connect_signals()
         self.timer = QTimer(self)
@@ -116,14 +203,24 @@ class ChessGameTab(QWidget):
         self.timer.start(1000)
 
     def _setup_ui(self):
-        main_layout, splitter = QHBoxLayout(self), QSplitter(Qt.Horizontal)
-        self.board_view, self.visual = ChessBoardView(self.engine, self), GameVisualization()
+        main_layout = QHBoxLayout(self)
+        splitter = QSplitter(Qt.Horizontal)
+        self.board_view = ChessBoardView(self.engine, self)
+        self.visual = GameVisualization()
         timers_layout = self._create_timer_layout()
         self.status = QLabel("", alignment=Qt.AlignCenter)
+        self.ai_selection = QComboBox()
+        self.ai_selection.addItem("Random Move Opponent", userData='random')
+        self.ai_selection.addItem("CNN AI Opponent", userData='cnn')
+        self.ai_selection_label = QLabel("Select Opponent:")
+        ai_selection_layout = QHBoxLayout()
+        ai_selection_layout.addWidget(self.ai_selection_label)
+        ai_selection_layout.addWidget(self.ai_selection)
         left_layout = QVBoxLayout()
         left_layout.addLayout(timers_layout)
         left_layout.addWidget(self.board_view)
         left_layout.addWidget(self.status)
+        left_layout.addLayout(ai_selection_layout)
         left_widget = QWidget()
         left_widget.setLayout(left_layout)
         splitter.addWidget(left_widget)
@@ -149,10 +246,15 @@ class ChessGameTab(QWidget):
         self.engine.value_evaluation_signal.connect(self.visual.update_value_evaluation)
         self.engine.policy_output_signal.connect(self.visual.update_policy_output)
         self.engine.mcts_statistics_signal.connect(self.visual.update_mcts_statistics)
+        self.engine.move_made_signal.connect(self.status.setText)
+        self.engine.policy_output_signal.connect(self.board_view.update_policy_output)
+        self.ai_selection.currentIndexChanged.connect(self.change_opponent_type)
 
     def refresh_status(self, msg):
-        if "Move made:" in msg or "AI moved:" in msg: self.refresh_labels()
-        elif "Game over" in msg: self.timer.stop()
+        if "Move made:" in msg or "AI moved:" in msg:
+            self.refresh_labels()
+        elif "Game over" in msg:
+            self.timer.stop()
         self.status.setText(msg)
 
     def decrement_timer(self):
@@ -191,12 +293,15 @@ class ChessGameTab(QWidget):
         selected_piece = {'piece': None}
         for i, piece in enumerate(['Queen', 'Rook', 'Bishop', 'Knight']):
             btn = QPushButton(piece)
-            btn.clicked.connect(lambda _, p=piece: self._handle_promotion_selection(p, dialog, selected_piece))
+            btn.clicked.connect(
+                lambda _, p=piece: self._handle_promotion_selection(p, dialog, selected_piece)
+            )
             layout.addWidget(btn, 0, i)
         dialog.setLayout(layout)
         dialog.exec_()
         if selected_piece['piece'] and self.engine.make_move(from_sq, to_sq, promotion=selected_piece['piece']):
-            self.board_view.highlighted_squares, self.board_view.selected_square = [], None
+            self.board_view.highlighted_squares = []
+            self.board_view.selected_square = None
             self.board_view.update()
         else:
             self.status.setText("Invalid Move.")
@@ -204,3 +309,34 @@ class ChessGameTab(QWidget):
     def _handle_promotion_selection(self, piece, dialog, selected_piece):
         selected_piece['piece'] = piece
         dialog.accept()
+
+    def change_opponent_type(self):
+        new_opponent_type = self.ai_selection.currentData()
+        if new_opponent_type != self.opponent_type:
+            reply = QMessageBox.question(self, 'Restart Game',
+                                         "Changing opponent will restart the game. Do you want to continue?",
+                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.opponent_type = new_opponent_type
+                self.restart_game()
+            else:
+                index = self.ai_selection.findData(self.opponent_type)
+                self.ai_selection.setCurrentIndex(index)
+
+    def restart_game(self):
+        self.engine.move_made_signal.disconnect()
+        self.engine.game_over_signal.disconnect()
+        self.engine.value_evaluation_signal.disconnect()
+        self.engine.policy_output_signal.disconnect()
+        self.engine.mcts_statistics_signal.disconnect()
+        self.engine = ChessEngine(player_color=chess.WHITE, opponent_type=self.opponent_type)
+        self.board_view.engine = self.engine
+        self.visual.engine = self.engine
+        self.board_view.reset_view()
+        self.visual.reset_visualizations()
+        self.white_timer = self.black_timer = self.time_limit
+        self.engine.is_game_over = False
+        self.timer.start(1000)
+        self._connect_signals()
+        self.refresh_labels()
+        self.status.setText("Game restarted.")

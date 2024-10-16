@@ -31,12 +31,15 @@ class ValueEvaluationPlot(QWidget):
         if evaluations:
             moves = list(range(1, len(evaluations) + 1))
             self.ax.plot(moves, evaluations, marker='o', linewidth=2, label='Evaluation')
+
             if len(evaluations) >= 5:
                 moving_avg = np.convolve(evaluations, np.ones(5)/5, mode='valid')
                 self.ax.plot(moves[4:], moving_avg, linestyle='--', color='orange', label='5-Move Moving Avg')
+
             self.ax.annotate(f'{evaluations[-1]:.2f}', xy=(moves[-1], evaluations[-1]),
                              xytext=(moves[-1], evaluations[-1] + 0.05 * max(evaluations)),
                              ha='center', fontsize=10)
+
             self.ax.legend()
         else:
             self.ax.text(0.5, 0.5, 'No Data Yet\nMake a move to start',
@@ -144,6 +147,7 @@ class GameVisualization(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.init_ui()
+        self.evaluations = []
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -161,10 +165,15 @@ class GameVisualization(QWidget):
         self.setLayout(layout)
 
     def update_value_evaluation(self, evaluations):
-        self.value_evaluation_plot.plot_evaluations(evaluations)
+        self.evaluations.extend(evaluations)
+        self.value_evaluation_plot.plot_evaluations(self.evaluations)
 
     def update_policy_output(self, policy_output):
         self.policy_output_plot.plot_policy_output(policy_output)
 
     def update_mcts_statistics(self, mcts_stats):
         self.mcts_statistics_plot.plot_mcts_statistics(mcts_stats)
+
+    def reset_visualizations(self):
+        self.evaluations = []
+        self.value_evaluation_plot.plot_evaluations(self.evaluations)

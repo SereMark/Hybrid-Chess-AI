@@ -1,32 +1,67 @@
-from PyQt5.QtWidgets import QMessageBox, QVBoxLayout, QFileDialog, QGroupBox, QHBoxLayout, QPushButton, QProgressBar, QTextEdit, QWidget, QLabel, QLineEdit
-from PyQt5.QtCore import pyqtSignal, QThread
-import os, numpy as np, h5py
+from PyQt5.QtWidgets import (
+    QMessageBox, QVBoxLayout, QFileDialog, QGroupBox, QHBoxLayout,
+    QPushButton, QProgressBar, QTextEdit, QWidget, QLabel, QLineEdit
+)
+from PyQt5.QtCore import pyqtSignal, QThread, QWaitCondition, QMutex
+import os
 from scripts.data_pipeline import DataProcessor, split_dataset
 from src.gui.visualizations.data_preparation_visualization import DataPreparationVisualization
 
 class DataPreparationWorker(QThread):
     progress_update = pyqtSignal(int)
     log_update = pyqtSignal(str)
+    stats_update = pyqtSignal(dict)
+    time_left_update = pyqtSignal(str)
     finished = pyqtSignal()
 
     def __init__(self, raw_data_dir, processed_data_dir, max_games):
         super().__init__()
-        self.raw_data_dir, self.processed_data_dir, self.max_games = raw_data_dir, processed_data_dir, max_games
-        self._is_paused, self._is_stopped = False, False
+        self.raw_data_dir = raw_data_dir
+        self.processed_data_dir = processed_data_dir
+        self.max_games = max_games
+        self._is_paused = False
+        self._is_stopped = False
+        self._pause_condition = QWaitCondition()
+        self._mutex = QMutex()
 
     def run(self):
         try:
-            processor = DataProcessor(self.raw_data_dir, self.processed_data_dir, self.max_games)
-            processor.process_pgn_files(progress_callback=self.emit_progress, log_callback=self.log_update.emit)
-            if not self._is_stopped: split_dataset(self.processed_data_dir, log_callback=self.log_update.emit)
-        except Exception as e: self.log_update.emit(f"Error: {e}")
-        finally: self.finished.emit()
+            processor = DataProcessor(
+                self.raw_data_dir, self.processed_data_dir, self.max_games,
+                progress_callback=self.emit_progress, log_callback=self.log_update.emit,
+                stats_callback=self.stats_update.emit, time_left_callback=self.time_left_update.emit,
+                stop_callback=lambda: self._is_stopped,
+                pause_callback=lambda: self._is_paused
+            )
+            processor.process_pgn_files()
+            if not self._is_stopped:
+                split_dataset(self.processed_data_dir, log_callback=self.log_update.emit)
+        except Exception as e:
+            self.log_update.emit(f"Error: {e}")
+        finally:
+            self.finished.emit()
 
     def emit_progress(self, value):
-        if not self._is_paused and not self._is_stopped: self.progress_update.emit(value)
-    def pause(self): self._is_paused = True
-    def resume(self): self._is_paused = False
-    def stop(self): self._is_stopped = True
+        self.progress_update.emit(value)
+
+    def pause(self):
+        self._mutex.lock()
+        self._is_paused = True
+        self._mutex.unlock()
+
+    def resume(self):
+        self._mutex.lock()
+        self._is_paused = False
+        self._pause_condition.wakeAll()
+        self._mutex.unlock()
+
+    def stop(self):
+        self._mutex.lock()
+        self._is_stopped = True
+        if self._is_paused:
+            self._is_paused = False
+            self._pause_condition.wakeAll()
+        self._mutex.unlock()
 
 class DataPreparationTab(QWidget):
     def __init__(self, parent=None):
@@ -37,26 +72,28 @@ class DataPreparationTab(QWidget):
 
     def init_specific_ui(self):
         layout = QVBoxLayout(self)
-        
+
         self.max_games_input = QLineEdit("100000")
         self.raw_data_dir_input = QLineEdit("data/raw")
         self.processed_data_dir_input = QLineEdit("data/processed")
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Idle")
+        self.remaining_time_label = QLabel("Time Left: Calculating...")
         self.log_text_edit = QTextEdit()
         self.log_text_edit.setReadOnly(True)
-        
+
         max_games_layout = self.create_input_layout("Max Games:", self.max_games_input)
         raw_dir_layout = self.create_input_layout("Raw Data Directory:", self.raw_data_dir_input, "Browse", self.browse_raw_dir)
         processed_dir_layout = self.create_input_layout("Processed Data Directory:", self.processed_data_dir_input, "Browse", self.browse_processed_dir)
         control_buttons_layout = self.create_control_buttons()
-        
+
         layout.addLayout(max_games_layout)
         layout.addLayout(raw_dir_layout)
         layout.addLayout(processed_dir_layout)
         layout.addLayout(control_buttons_layout)
         layout.addWidget(self.progress_bar)
+        layout.addWidget(self.remaining_time_label)
         layout.addWidget(self.log_text_edit)
         layout.addWidget(self.create_visualization_group())
 
@@ -72,7 +109,10 @@ class DataPreparationTab(QWidget):
 
     def create_control_buttons(self):
         layout = QHBoxLayout()
-        self.start_button, self.pause_button, self.resume_button, self.stop_button = QPushButton("Start Data Preparation"), QPushButton("Pause"), QPushButton("Resume"), QPushButton("Stop")
+        self.start_button = QPushButton("Start Data Preparation")
+        self.pause_button = QPushButton("Pause")
+        self.resume_button = QPushButton("Resume")
+        self.stop_button = QPushButton("Stop")
         layout.addWidget(self.start_button)
         layout.addWidget(self.pause_button)
         layout.addWidget(self.resume_button)
@@ -97,22 +137,26 @@ class DataPreparationTab(QWidget):
 
     def browse_raw_dir(self):
         self.browse_dir(self.raw_data_dir_input, "Raw Data")
+
     def browse_processed_dir(self):
         self.browse_dir(self.processed_data_dir_input, "Processed Data")
 
     def browse_dir(self, line_edit, title):
         dir_path = QFileDialog.getExistingDirectory(self, f"Select {title} Directory", line_edit.text())
-        if dir_path: line_edit.setText(dir_path)
+        if dir_path:
+            line_edit.setText(dir_path)
 
     def start_data_preparation(self):
         try:
             max_games = int(self.max_games_input.text())
-            if max_games <= 0: raise ValueError
+            if max_games <= 0:
+                raise ValueError
         except ValueError:
             QMessageBox.warning(self, "Input Error", "Max Games must be a positive integer.")
             return
 
-        raw_data_dir, processed_data_dir = self.raw_data_dir_input.text(), self.processed_data_dir_input.text()
+        raw_data_dir = self.raw_data_dir_input.text()
+        processed_data_dir = self.processed_data_dir_input.text()
         if not os.path.exists(raw_data_dir):
             QMessageBox.warning(self, "Error", "Raw data directory does not exist.")
             return
@@ -125,11 +169,14 @@ class DataPreparationTab(QWidget):
         self.log_text_edit.append("Starting data preparation...")
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
+        self.remaining_time_label.setText("Time Left: Calculating...")
 
         self.worker = DataPreparationWorker(raw_data_dir, processed_data_dir, max_games)
         self.worker.log_update.connect(self.log_text_edit.append)
         self.worker.progress_update.connect(self.update_progress)
+        self.worker.time_left_update.connect(self.update_time_left)
         self.worker.finished.connect(self.on_data_preparation_finished)
+        self.worker.stats_update.connect(self.visualization.update_data_visualization)
         self.worker.start()
 
     def pause_data_preparation(self):
@@ -161,31 +208,12 @@ class DataPreparationTab(QWidget):
         self.resume_button.setEnabled(False)
         self.stop_button.setEnabled(False)
         self.progress_bar.setFormat("Data Preparation Finished")
+        self.remaining_time_label.setText("Time Left: N/A")
         self.log_text_edit.append("Data preparation process finished.")
-        self.update_data_visualization()
 
     def update_progress(self, value):
         self.progress_bar.setValue(value)
         self.progress_bar.setFormat(f"Progress: {value}%")
 
-    def update_data_visualization(self):
-        dataset_path = os.path.join(self.processed_data_dir_input.text(), 'dataset.h5')
-        if not os.path.exists(dataset_path):
-            QMessageBox.warning(self, "Error", "Processed dataset not found.")
-            return
-
-        try:
-            with h5py.File(dataset_path, 'r') as h5_file:
-                value_targets = h5_file['value_targets'][:]
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to load dataset: {e}")
-            return
-
-        game_results = value_targets
-        results = [np.sum(game_results == val) for val in [1.0, -1.0, 0.0]]
-        total_games = sum(results)
-        if total_games == 0:
-            QMessageBox.warning(self, "Error", "No game results found in dataset.")
-            return
-
-        self.visualization.update_data_visualization(dataset_path)
+    def update_time_left(self, time_left_str):
+        self.remaining_time_label.setText(f"Time Left: {time_left_str}")

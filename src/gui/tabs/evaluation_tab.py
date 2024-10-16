@@ -1,23 +1,37 @@
-from PyQt5.QtWidgets import QMessageBox, QVBoxLayout, QFileDialog, QProgressBar, QTextEdit, QWidget, QLabel, QLineEdit, QHBoxLayout, QPushButton, QGroupBox
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtWidgets import (
+    QMessageBox, QVBoxLayout, QFileDialog, QProgressBar, QTextEdit,
+    QWidget, QLabel, QLineEdit, QHBoxLayout, QPushButton, QGroupBox, QCheckBox
+)
+from PyQt5.QtCore import QThread, pyqtSignal, QWaitCondition, QMutex
 from src.neural_network.evaluate import ModelEvaluator
 from src.gui.visualizations.evaluation_visualization import EvaluationVisualization
 import os
+import numpy as np
 
 class EvaluationWorker(QThread):
     log_update = pyqtSignal(str)
-    metrics_update = pyqtSignal(float, dict, dict)
+    metrics_update = pyqtSignal(float, dict, dict, np.ndarray, float, list)
+    progress_update = pyqtSignal(int)
+    time_left_update = pyqtSignal(str)
     finished = pyqtSignal()
 
-    def __init__(self, model_path, dataset_path):
+    def __init__(self, model_path, dataset_indices_path):
         super().__init__()
-        self.model_path, self.dataset_path, self._is_stopped = model_path, dataset_path, False
+        self.model_path = model_path
+        self.dataset_indices_path = dataset_indices_path
+        self._is_stopped = False
+        self._pause_condition = QWaitCondition()
+        self._mutex = QMutex()
 
     def run(self):
         try:
             evaluator = ModelEvaluator(
-                model_path=self.model_path, dataset_path=self.dataset_path,
-                log_fn=self.log_update.emit, metrics_fn=self.metrics_update.emit,
+                model_path=self.model_path,
+                dataset_indices_path=self.dataset_indices_path,
+                log_fn=self.log_update.emit,
+                metrics_fn=self.metrics_update.emit,
+                progress_fn=self.progress_update.emit,
+                time_left_fn=self.time_left_update.emit,
                 stop_fn=lambda: self._is_stopped
             )
             evaluator.evaluate_model()
@@ -29,22 +43,34 @@ class EvaluationWorker(QThread):
             self.finished.emit()
 
     def stop(self):
+        self._mutex.lock()
         self._is_stopped = True
+        self._mutex.unlock()
         self.log_update.emit("Evaluation stopped...")
 
 class EvaluationTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.worker, self.visualization = None, EvaluationVisualization()
+        self.worker = None
+        self.visualization = EvaluationVisualization()
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
 
-        layout.addLayout(self.create_input_layout("Model Path:", "models/saved_models/final_model.pth", "model_browse_button", self.browse_model))
-        layout.addLayout(self.create_input_layout("Evaluation Dataset:", "data/processed/val_indices.npy", "dataset_browse_button", self.browse_dataset))
+        layout.addLayout(self.create_input_layout(
+            "Model Path:", "models/saved_models/final_model.pth", "model_browse_button", self.browse_model
+        ))
+        layout.addLayout(self.create_input_layout(
+            "Evaluation Dataset:", "data/processed/test_indices.npy", "dataset_browse_button", self.browse_dataset
+        ))
 
-        self.start_button, self.stop_button = QPushButton("Start Evaluation"), QPushButton("Stop Evaluation")
+        self.compare_baseline_checkbox = QCheckBox("Compare with Baseline")
+        self.compare_baseline_checkbox.setChecked(False)
+        layout.addWidget(self.compare_baseline_checkbox)
+
+        self.start_button = QPushButton("Start Evaluation")
+        self.stop_button = QPushButton("Stop Evaluation")
         self.stop_button.setEnabled(False)
         layout.addLayout(self.create_buttons_layout())
 
@@ -52,6 +78,9 @@ class EvaluationTab(QWidget):
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Idle")
         layout.addWidget(self.progress_bar)
+
+        self.remaining_time_label = QLabel("Time Left: Calculating...")
+        layout.addWidget(self.remaining_time_label)
 
         self.log_text_edit = QTextEdit()
         self.log_text_edit.setReadOnly(True)
@@ -89,7 +118,7 @@ class EvaluationTab(QWidget):
         self.browse_file("model_browse_button_input", "Select Model File", "PyTorch Model (*.pth *.pt)")
 
     def browse_dataset(self):
-        self.browse_file("dataset_browse_button_input", "Select Evaluation Dataset File", "NumPy Array (*.npy);;HDF5 File (*.h5)")
+        self.browse_file("dataset_browse_button_input", "Select Evaluation Dataset Indices File", "NumPy Array (*.npy)")
 
     def browse_file(self, input_attr, title, file_filter):
         file_path, _ = QFileDialog.getOpenFileName(self, title, getattr(self, input_attr).text(), file_filter)
@@ -97,20 +126,24 @@ class EvaluationTab(QWidget):
             getattr(self, input_attr).setText(file_path)
 
     def start_evaluation(self):
-        model_path, dataset_path = self.model_browse_button_input.text(), self.dataset_browse_button_input.text()
-        if not all(os.path.exists(p) for p in [model_path, dataset_path]):
-            QMessageBox.warning(self, "Error", "Model or dataset file does not exist.")
+        model_path = self.model_browse_button_input.text()
+        dataset_indices_path = self.dataset_browse_button_input.text()
+        if not all(os.path.exists(p) for p in [model_path, dataset_indices_path]):
+            QMessageBox.warning(self, "Error", "Model or dataset indices file does not exist.")
             return
 
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting Evaluation...")
+        self.remaining_time_label.setText("Time Left: Calculating...")
         self.log_text_edit.clear()
 
-        self.worker = EvaluationWorker(model_path, dataset_path)
+        self.worker = EvaluationWorker(model_path, dataset_indices_path)
         self.worker.log_update.connect(self.update_log)
         self.worker.metrics_update.connect(self.visualization.update_metrics_visualization)
+        self.worker.progress_update.connect(self.update_progress)
+        self.worker.time_left_update.connect(self.update_time_left)
         self.worker.finished.connect(self.on_evaluation_finished)
         self.worker.start()
 
@@ -123,22 +156,17 @@ class EvaluationTab(QWidget):
 
     def update_log(self, message):
         self.log_text_edit.append(message)
-        if "Progress:" in message:
-            try:
-                progress = int(message.split("Progress:")[1].strip('%').strip())
-                self.progress_bar.setValue(progress)
-                self.progress_bar.setFormat(f"Progress: {progress}%")
-            except (IndexError, ValueError):
-                pass
-        elif "Accuracy:" in message:
-            try:
-                accuracy = float(message.split("Accuracy:")[1].strip('%').strip())
-                self.progress_bar.setFormat(f"Accuracy: {accuracy}%")
-            except (IndexError, ValueError):
-                pass
 
     def on_evaluation_finished(self):
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.progress_bar.setFormat("Evaluation Finished")
+        self.remaining_time_label.setText("Time Left: N/A")
         self.log_text_edit.append("Evaluation process finished.")
+
+    def update_progress(self, value):
+        self.progress_bar.setValue(value)
+        self.progress_bar.setFormat(f"Progress: {value}%")
+
+    def update_time_left(self, time_left_str):
+        self.remaining_time_label.setText(f"Time Left: {time_left_str}")
