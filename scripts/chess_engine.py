@@ -39,8 +39,8 @@ class ChessEngine(QObject):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = ChessModel(num_moves=TOTAL_MOVES)
         try:
-            checkpoint = torch.load(model_path, map_location=device)
-            self.model.load_state_dict(checkpoint)
+            weights = torch.load(model_path, map_location=device, weights_only=True)
+            self.model.load_state_dict(weights)
             self.model.to(device)
             self.model.eval()
             self.device = device

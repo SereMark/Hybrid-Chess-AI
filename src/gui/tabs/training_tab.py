@@ -274,11 +274,6 @@ class TrainingTab(QWidget):
 
     def resume_training(self):
         if self.worker and self.worker.isRunning():
-            self.worker.epochs = int(self.epochs_input.text())
-            self.worker.learning_rate = float(self.learning_rate_input.text())
-            self.worker.momentum = float(self.momentum_input.text())
-            self.worker.weight_decay = float(self.weight_decay_input.text())
-            self.worker.checkpoint_interval = int(self.checkpoint_interval_input.text())
             self.worker.resume()
             self.pause_button.setEnabled(True)
             self.resume_button.setEnabled(False)

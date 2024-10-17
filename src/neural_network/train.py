@@ -203,7 +203,7 @@ class ModelTrainer:
         start_epoch = 1
 
         if self.checkpoint_path and os.path.exists(self.checkpoint_path):
-            checkpoint = torch.load(self.checkpoint_path)
+            checkpoint = torch.load(self.checkpoint_path, weights_only=False)
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])

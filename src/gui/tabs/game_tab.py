@@ -53,6 +53,8 @@ class ChessBoardView(QWidget):
 
     def on_move_made(self, msg):
         self.move_made_signal.emit(msg)
+        self.selected_square = None
+        self.highlighted_squares = []
         self.update()
 
     def on_game_over(self, msg):
@@ -91,17 +93,17 @@ class ChessBoardView(QWidget):
             max_prob = max(self.square_probs.values())
             for square, prob in self.square_probs.items():
                 intensity = prob / max_prob if max_prob > 0 else 0
-                color = QColor(255, 0, 0, int(255 * intensity * 0.6))
+                color = QColor(255, 0, 0, int(255 * intensity * 0.3))
                 x, y = self._get_square_coordinates(square, size)
                 painter.fillRect(int(x), int(y), int(size), int(size), color)
-        for square in self.highlighted_squares:
-            x, y = self._get_square_coordinates(square, size)
-            self._draw_highlight(painter, x, y, size)
         for square in chess.SQUARES:
             piece = self.engine.board.piece_at(square)
             if piece:
                 x, y = self._get_square_coordinates(square, size)
                 self._draw_piece(painter, piece, x, y, size)
+        for square in self.highlighted_squares:
+            x, y = self._get_square_coordinates(square, size)
+            self._draw_highlight(painter, x, y, size)
 
     def _draw_piece(self, painter, piece, x, y, size):
         pad = size * 0.15
@@ -124,7 +126,7 @@ class ChessBoardView(QWidget):
 
     def _draw_highlight(self, painter, x, y, size):
         r = size / 8
-        painter.setBrush(QBrush(QColor(255, 255, 0, 100)))
+        painter.setBrush(QBrush(QColor(255, 255, 0, 180), Qt.SolidPattern))
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(
             int(x + size / 2 - r),
@@ -169,6 +171,10 @@ class ChessBoardView(QWidget):
                 )
                 if is_pawn_promotion_move:
                     self.promotion_requested.emit(self.selected_square, sq)
+                    self.selected_square = None
+                    self.highlighted_squares = []
+                    self.update()
+                    return
                 else:
                     move = chess.Move(self.selected_square, sq)
                     if move in self.engine.board.legal_moves:
