@@ -107,7 +107,7 @@ class ChessTrainingDataset(Dataset):
             self.h5_file.close()
 
 class ModelTrainer:
-    def __init__(self, epochs=10, batch_size=70, lr=0.1, momentum=0.9, weight_decay=1e-4,
+    def __init__(self, epochs=3, batch_size=256, lr=0.1, momentum=0.9, weight_decay=1e-4,
                  log_fn=None, progress_fn=None, loss_fn=None, val_loss_fn=None, accuracy_fn=None,
                  stop_fn=None, pause_fn=None, time_left_fn=None,
                  save_checkpoints=True, checkpoint_interval=1,
