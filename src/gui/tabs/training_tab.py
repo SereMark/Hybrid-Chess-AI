@@ -111,7 +111,7 @@ class TrainingTab(QWidget):
         layout.addLayout(self.create_input_layout("Train Indices Path:", "data/processed/train_indices.npy", "train_indices_input", "Browse", self.browse_train_indices))
         layout.addLayout(self.create_input_layout("Validation Indices Path:", "data/processed/val_indices.npy", "val_indices_input", "Browse", self.browse_val_indices))
         layout.addLayout(self.create_input_layout("Epochs:", "10", "epochs_input"))
-        layout.addLayout(self.create_input_layout("Batch Size:", "4096", "batch_size_input"))
+        layout.addLayout(self.create_input_layout("Batch Size:", "70", "batch_size_input"))
         layout.addLayout(self.create_input_layout("Learning Rate:", "0.1", "learning_rate_input"))
         layout.addLayout(self.create_input_layout("Momentum:", "0.9", "momentum_input"))
         layout.addLayout(self.create_input_layout("Weight Decay:", "1e-4", "weight_decay_input"))
