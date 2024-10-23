@@ -6,7 +6,6 @@ from PyQt5.QtWidgets import (
 from src.gui.visualizations.data_preparation_visualization import DataPreparationVisualization
 from scripts.data_pipeline import DataPreparationWorker
 
-
 class DataPreparationTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -118,10 +117,7 @@ class DataPreparationTab(QWidget):
 
         self.visualization.reset_visualizations()
 
-        self.worker = DataPreparationWorker(
-            raw_data_dir, processed_data_dir, max_games, min_elo
-        )
-        # Connect signals directly
+        self.worker = DataPreparationWorker(raw_data_dir, processed_data_dir, max_games, min_elo)
         self.worker.log_update.connect(self.log_text_edit.append)
         self.worker.progress_update.connect(self.update_progress)
         self.worker.time_left_update.connect(self.update_time_left)

@@ -1,9 +1,7 @@
-import numpy as np
-import time
+import numpy as np, time
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-
 
 class DataPreparationVisualization(QWidget):
     def __init__(self, parent=None):
@@ -57,7 +55,6 @@ class DataPreparationVisualization(QWidget):
 
         self.init_visualization()
 
-        # Game Results Pie Chart
         self.ax_game_results.clear()
         results = [self.game_results.get(val, 0) for val in [1.0, -1.0, 0.0]]
         total = sum(results)
@@ -68,7 +65,6 @@ class DataPreparationVisualization(QWidget):
         else:
             self.ax_game_results.text(0.5, 0.5, 'No Data Yet', ha='center', va='center')
 
-        # Games Processed Over Time
         self.ax_games_processed.clear()
         if self.total_games_processed and self.processing_times:
             self.ax_games_processed.plot(self.processing_times, self.total_games_processed, marker='o')
@@ -77,7 +73,6 @@ class DataPreparationVisualization(QWidget):
         else:
             self.ax_games_processed.text(0.5, 0.5, 'No Data Yet', ha='center', va='center')
 
-        # Game Length Distribution Histogram
         self.ax_game_lengths.clear()
         if self.game_length_histogram is not None:
             self.ax_game_lengths.bar(self.game_length_bins[:-1], self.game_length_histogram,
@@ -87,7 +82,6 @@ class DataPreparationVisualization(QWidget):
         else:
             self.ax_game_lengths.text(0.5, 0.5, 'No Data Yet', ha='center', va='center')
 
-        # Player Rating Distribution Histogram
         self.ax_player_ratings.clear()
         if self.player_rating_histogram is not None:
             self.ax_player_ratings.bar(self.player_rating_bins[:-1], self.player_rating_histogram,

@@ -1,12 +1,5 @@
-import os
-import chess.pgn
-import chess
-import numpy as np
-import h5py
-import glob
-import time
+import os, chess.pgn, chess, numpy as np, h5py, glob, time
 from PyQt5.QtCore import QThread, pyqtSignal
-
 
 def initialize_move_mappings():
     MOVE_MAPPING = {}
@@ -31,7 +24,6 @@ def initialize_move_mappings():
 
 
 MOVE_MAPPING, INDEX_MAPPING, TOTAL_MOVES = initialize_move_mappings()
-
 
 def convert_board_to_tensor(board):
     planes = np.zeros((20, 8, 8), dtype=np.float32)
@@ -80,7 +72,6 @@ def convert_board_to_tensor(board):
 
     return planes
 
-
 def process_game(game, min_elo):
     board = game.board()
     inputs = []
@@ -126,7 +117,6 @@ def process_game(game, min_elo):
 
     return inputs, policy_targets, value_targets, game_length, avg_rating
 
-
 def split_dataset(processed_data_dir, log_callback=None):
     output_dir = processed_data_dir
     h5_file_path = os.path.join(output_dir, 'dataset.h5')
@@ -155,7 +145,6 @@ def split_dataset(processed_data_dir, log_callback=None):
     except Exception as e:
         if log_callback:
             log_callback(f"Error during dataset splitting: {e}")
-
 
 class DataPreparationWorker(QThread):
     progress_update = pyqtSignal(int)
@@ -193,7 +182,6 @@ class DataPreparationWorker(QThread):
     def stop(self):
         self._is_stopped = True
 
-
 class DataProcessor:
     def __init__(self, raw_data_dir, processed_data_dir, max_games, min_elo,
                  progress_callback=None, log_callback=None, stats_callback=None,
@@ -211,7 +199,6 @@ class DataProcessor:
         self.time_left_callback = time_left_callback
         self.stop_callback = stop_callback or (lambda: False)
         self.game_results_counter = {1.0: 0, -1.0: 0, 0.0: 0}
-        # Initialize histograms
         self.game_length_bins = np.arange(0, 200, 5)
         self.game_length_histogram = np.zeros(len(self.game_length_bins)-1, dtype=int)
         self.player_rating_bins = np.arange(1000, 3000, 50)
@@ -233,8 +220,7 @@ class DataProcessor:
         os.makedirs(self.processed_data_dir, exist_ok=True)
 
         h5_file_path = os.path.join(self.processed_data_dir, 'dataset.h5')
-        # Pre-allocate a large dataset to minimize resizing
-        initial_size = 1000000  # Adjust as needed based on expected data size
+        initial_size = 1000000
         with h5py.File(h5_file_path, 'w') as h5_file:
             inputs_dataset = h5_file.create_dataset('inputs', shape=(initial_size, 20, 8, 8),
                                                     maxshape=(None, 20, 8, 8), dtype='float32', chunks=True)
@@ -285,10 +271,9 @@ class DataProcessor:
                                             'player_rating_histogram': self.player_rating_histogram.copy()
                                         }
                                         self.stats_callback(stats)
-                                    QThread.msleep(1)  # Yield control to keep the GUI responsive
+                                    QThread.msleep(1)
                             if self.total_games_processed >= self.max_games:
                                 break
-                # After processing, resize datasets to actual size
                 inputs_dataset.resize((self.total_samples, 20, 8, 8))
                 policy_targets_dataset.resize((self.total_samples,))
                 value_targets_dataset.resize((self.total_samples,))
@@ -305,8 +290,7 @@ class DataProcessor:
             self.total_samples += num_new_samples
 
             if end_index > inputs_dataset.shape[0]:
-                # Extend datasets if needed
-                new_size = inputs_dataset.shape[0] + 100000  # Adjust increment size as needed
+                new_size = inputs_dataset.shape[0] + 100000
                 inputs_dataset.resize((new_size, 20, 8, 8))
                 policy_targets_dataset.resize((new_size,))
                 value_targets_dataset.resize((new_size,))
@@ -318,7 +302,6 @@ class DataProcessor:
             self.total_moves_processed += num_new_samples
             self.game_results_counter[value_targets[0]] += 1
 
-            # Update histograms
             idx = np.digitize(game_length, self.game_length_bins) - 1
             if 0 <= idx < len(self.game_length_histogram):
                 self.game_length_histogram[idx] += 1
