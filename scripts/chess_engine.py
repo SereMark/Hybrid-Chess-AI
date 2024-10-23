@@ -1,12 +1,17 @@
 from PyQt5.QtCore import QObject, pyqtSignal
-import chess, random, torch, numpy as np
+import chess
+import random
+import torch
+import numpy as np
 from scripts.data_pipeline import MOVE_MAPPING, INDEX_MAPPING, TOTAL_MOVES, convert_board_to_tensor
+
 
 class ChessEngine(QObject):
     move_made_signal = pyqtSignal(str)
     game_over_signal = pyqtSignal(str)
     value_evaluation_signal = pyqtSignal(list)
     policy_output_signal = pyqtSignal(dict)
+    material_balance_signal = pyqtSignal(list)
 
     def __init__(self, player_color=chess.WHITE, opponent_type='random'):
         super().__init__()
@@ -35,7 +40,7 @@ class ChessEngine(QObject):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = ChessModel(num_moves=TOTAL_MOVES)
         try:
-            weights = torch.load(model_path, map_location=device, weights_only=True)
+            weights = torch.load(model_path, map_location=device)
             self.model.load_state_dict(weights)
             self.model.to(device)
             self.model.eval()
@@ -60,6 +65,8 @@ class ChessEngine(QObject):
             self.move_history.append(move)
             self.move_made_signal.emit(f"Move made: {move.uci()}")
             self._check_game_over()
+            balance = self._compute_material_balance()
+            self.material_balance_signal.emit([balance])
             self._compute_and_emit_ai_data()
             if self.board.turn != self.player_color:
                 self.make_ai_move()
@@ -87,7 +94,8 @@ class ChessEngine(QObject):
         self.move_history.append(move)
         self.move_made_signal.emit(f"AI moved: {move.uci()}")
         self._check_game_over()
-
+        balance = self._compute_material_balance()
+        self.material_balance_signal.emit([balance])
         self._compute_and_emit_ai_data()
 
     def _select_move_with_cnn(self):
@@ -110,7 +118,7 @@ class ChessEngine(QObject):
         if total_prob > 0:
             move_probs = {k: v / total_prob for k, v in move_probs.items()}
         else:
-            move_probs = {k: 1.0 / len(move_probs) for k in move_probs}
+            move_probs = {k: 1.0 / len(move_probs) for k in move_probs.items()}
 
         self.policy_output_signal.emit(move_probs)
 
@@ -159,9 +167,23 @@ class ChessEngine(QObject):
         if total_prob > 0:
             move_probs = {k: v / total_prob for k, v in move_probs.items()}
         else:
-            move_probs = {k: 1.0 / len(move_probs) for k in move_probs}
+            move_probs = {k: 1.0 / len(move_probs) for k in move_probs.items()}
 
         self.policy_output_signal.emit(move_probs)
+
+    def _compute_material_balance(self):
+        material = {
+            chess.PAWN: 1,
+            chess.KNIGHT: 3,
+            chess.BISHOP: 3,
+            chess.ROOK: 5,
+            chess.QUEEN: 9,
+            chess.KING: 0
+        }
+        white_material = sum(material[p.piece_type] for p in self.board.piece_map().values() if p.color == chess.WHITE)
+        black_material = sum(material[p.piece_type] for p in self.board.piece_map().values() if p.color == chess.BLACK)
+        balance = white_material - black_material
+        return balance
 
     def _check_game_over(self):
         if self.board.is_game_over():

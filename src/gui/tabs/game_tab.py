@@ -1,4 +1,5 @@
-import os, chess
+import os
+import chess
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QSplitter, QLabel, QPushButton,
     QDialog, QGridLayout, QSizePolicy, QComboBox, QMessageBox
@@ -8,6 +9,7 @@ from PyQt5.QtGui import QPainter, QPixmap, QBrush, QColor, QFont
 from PyQt5.QtSvg import QSvgRenderer
 from src.gui.visualizations.game_visualization import GameVisualization
 from scripts.chess_engine import ChessEngine
+
 
 class ChessBoardView(QWidget):
     move_made_signal = pyqtSignal(str)
@@ -44,10 +46,7 @@ class ChessBoardView(QWidget):
         for move_uci, prob in policy_output.items():
             move = chess.Move.from_uci(move_uci)
             to_sq = move.to_square
-            if to_sq in self.square_probs:
-                self.square_probs[to_sq] += prob
-            else:
-                self.square_probs[to_sq] = prob
+            self.square_probs[to_sq] = self.square_probs.get(to_sq, 0) + prob
         self.update()
 
     def on_move_made(self, msg):
@@ -88,7 +87,7 @@ class ChessBoardView(QWidget):
         return x, y
 
     def _draw_pieces_and_highlights(self, painter, size):
-        if hasattr(self, 'square_probs') and self.square_probs:
+        if self.square_probs:
             max_prob = max(self.square_probs.values())
             for square, prob in self.square_probs.items():
                 intensity = prob / max_prob if max_prob > 0 else 0
@@ -181,8 +180,8 @@ class ChessBoardView(QWidget):
                             self.status_message.emit("Invalid Move.")
                     else:
                         self.status_message.emit("Invalid Move.")
-                self.selected_square = None
-                self.highlighted_squares = []
+                    self.selected_square = None
+                    self.highlighted_squares = []
         self.update()
 
     def _get_square(self, row, col):
@@ -195,13 +194,17 @@ class ChessBoardView(QWidget):
         self.highlighted_squares = []
         self.update()
 
+
 class ChessGameTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.time_limit = self.white_timer = self.black_timer = 600
         self.opponent_type = 'random'
         self.engine = ChessEngine(player_color=chess.WHITE, opponent_type=self.opponent_type)
+        self.board_view = ChessBoardView(self.engine, self)
+        self.visual = GameVisualization()
         self._setup_ui()
+        self._connect_board_view_signals()
         self._connect_signals()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.decrement_timer)
@@ -210,8 +213,6 @@ class ChessGameTab(QWidget):
     def _setup_ui(self):
         main_layout = QHBoxLayout(self)
         splitter = QSplitter(Qt.Horizontal)
-        self.board_view = ChessBoardView(self.engine, self)
-        self.visual = GameVisualization()
         timers_layout = self._create_timer_layout()
         self.status = QLabel("", alignment=Qt.AlignCenter)
         self.ai_selection = QComboBox()
@@ -243,13 +244,15 @@ class ChessGameTab(QWidget):
         timers_layout.addWidget(self.black_label)
         return timers_layout
 
-    def _connect_signals(self):
+    def _connect_board_view_signals(self):
         self.board_view.move_made_signal.connect(self.refresh_status)
         self.board_view.status_message.connect(self.status.setText)
         self.board_view.promotion_requested.connect(self.handle_promotion)
+
+    def _connect_signals(self):
         self.engine.game_over_signal.connect(self.handle_game_over)
         self.engine.value_evaluation_signal.connect(self.visual.update_value_evaluation)
-        self.engine.policy_output_signal.connect(self.visual.update_policy_output)
+        self.engine.material_balance_signal.connect(self.visual.update_material_balance)
         self.engine.move_made_signal.connect(self.status.setText)
         self.engine.policy_output_signal.connect(self.board_view.update_policy_output)
         self.ai_selection.currentIndexChanged.connect(self.change_opponent_type)
@@ -331,11 +334,11 @@ class ChessGameTab(QWidget):
         self.engine.move_made_signal.disconnect()
         self.engine.game_over_signal.disconnect()
         self.engine.value_evaluation_signal.disconnect()
+        self.engine.material_balance_signal.disconnect()
         self.engine.policy_output_signal.disconnect()
+        self.ai_selection.currentIndexChanged.disconnect()
         self.engine = ChessEngine(player_color=chess.WHITE, opponent_type=self.opponent_type)
         self.board_view.engine = self.engine
-        self.visual.engine = self.engine
-        self.board_view.reset_view()
         self.visual.reset_visualizations()
         self.white_timer = self.black_timer = self.time_limit
         self.engine.is_game_over = False
