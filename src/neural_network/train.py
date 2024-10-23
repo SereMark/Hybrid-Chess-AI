@@ -158,6 +158,19 @@ class ModelTrainer:
         self.batch_accuracy_fn = batch_accuracy_fn
         self.lr_fn = lr_fn
 
+    def format_time_left(self, seconds):
+        days = seconds // 86400
+        remainder = seconds % 86400
+        hours = remainder // 3600
+        minutes = (remainder % 3600) // 60
+        secs = remainder % 60
+
+        if days >= 1:
+            day_str = f"{int(days)}d " if days > 1 else "1d "
+            return f"{day_str}{int(hours):02d}:{int(minutes):02d}:{int(secs):02d}"
+        else:
+            return f"{int(hours):02d}:{int(minutes):02d}:{int(secs):02d}"
+
     def estimate_max_batch_size(self, model, device):
         sample_input = torch.randn(1, 20, 8, 8).to(device)
         try:
@@ -301,7 +314,7 @@ class ModelTrainer:
                     if self.time_left_fn and batch_idx % 10 == 0:
                         estimated_total_time = (elapsed_time / steps_done) * total_steps
                         time_left = estimated_total_time - elapsed_time
-                        time_left_str = time.strftime('%H:%M:%S', time.gmtime(time_left))
+                        time_left_str = self.format_time_left(time_left)
                         self.time_left_fn(time_left_str)
                     if batch_idx % 100 == 0 and self.log_fn:
                         avg_policy_loss = total_policy_loss / batch_idx

@@ -16,6 +16,19 @@ class ModelEvaluator:
         self.stop_fn = stop_fn or (lambda: False)
         self.compare_baseline = compare_baseline
 
+    def format_time_left(self, seconds):
+            days = seconds // 86400
+            remainder = seconds % 86400
+            hours = remainder // 3600
+            minutes = (remainder % 3600) // 60
+            secs = remainder % 60
+
+            if days >= 1:
+                day_str = f"{int(days)}d " if days > 1 else "1d "
+                return f"{day_str}{int(hours):02d}:{int(minutes):02d}:{int(secs):02d}"
+            else:
+                return f"{int(hours):02d}:{int(minutes):02d}:{int(secs):02d}"
+
     def evaluate_model(self):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if self.log_fn:
@@ -23,7 +36,7 @@ class ModelEvaluator:
 
         model = ChessModel(num_moves=TOTAL_MOVES)
         try:
-            checkpoint = torch.load(self.model_path, map_location=device)
+            checkpoint = torch.load(self.model_path, map_location=device, weights_only=True)
             if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
                 model.load_state_dict(checkpoint['model_state_dict'])
             else:
@@ -104,7 +117,7 @@ class ModelEvaluator:
             if self.time_left_fn:
                 estimated_total_time = (elapsed_time / steps_done) * total_steps
                 time_left = estimated_total_time - elapsed_time
-                time_left_str = time.strftime('%H:%M:%S', time.gmtime(time_left))
+                time_left_str = self.format_time_left(time_left)
                 self.time_left_fn(time_left_str)
 
         h5_file.close()

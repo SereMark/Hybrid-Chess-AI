@@ -373,6 +373,19 @@ class DataProcessor:
         self.batch_policy_targets = []
         self.batch_value_targets = []
 
+    def _format_time_left(self, seconds):
+        days = seconds // 86400
+        remainder = seconds % 86400
+        hours = remainder // 3600
+        minutes = (remainder % 3600) // 60
+        secs = remainder % 60
+
+        if days >= 1:
+            day_str = f"{int(days)}d " if days > 1 else "1d "
+            return f"{day_str}{int(hours):02d}:{int(minutes):02d}:{int(secs):02d}"
+        else:
+            return f"{int(hours):02d}:{int(minutes):02d}:{int(secs):02d}"
+
     def _update_progress_and_time_left(self, total_estimated_games):
         if self.progress_callback:
             progress_percentage = int((self.total_games_processed / total_estimated_games) * 100)
@@ -384,7 +397,7 @@ class DataProcessor:
                 estimated_total_time = (elapsed_time / self.total_games_processed) * total_estimated_games
                 time_left = estimated_total_time - elapsed_time
                 time_left = max(0, time_left)
-                time_left_str = time.strftime('%H:%M:%S', time.gmtime(time_left))
+                time_left_str = self._format_time_left(time_left)
                 self.time_left_callback(time_left_str)
             else:
                 self.time_left_callback("Calculating...")
