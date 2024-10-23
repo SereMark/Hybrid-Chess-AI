@@ -1,13 +1,16 @@
-import torch
 import os
 import time
 import numpy as np
 from sklearn.metrics import confusion_matrix, classification_report
-import chess
-from src.neural_network.train import ChessModel, ChessTrainingDataset, TOTAL_MOVES
+import h5py
+import torch
+from torch.utils.data import DataLoader
+from src.neural_network.train import ChessModel, H5Dataset, TOTAL_MOVES, MOVE_MAPPING
+
 
 class ModelEvaluator:
-    def __init__(self, model_path, dataset_indices_path, log_fn=None, metrics_fn=None, progress_fn=None, time_left_fn=None, stop_fn=None):
+    def __init__(self, model_path, dataset_indices_path, log_fn=None, metrics_fn=None, progress_fn=None,
+                 time_left_fn=None, stop_fn=None, compare_baseline=False):
         self.model_path = model_path
         self.dataset_indices_path = dataset_indices_path
         self.log_fn = log_fn
@@ -15,6 +18,7 @@ class ModelEvaluator:
         self.progress_fn = progress_fn
         self.time_left_fn = time_left_fn
         self.stop_fn = stop_fn or (lambda: False)
+        self.compare_baseline = compare_baseline
 
     def evaluate_model(self):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -23,8 +27,11 @@ class ModelEvaluator:
 
         model = ChessModel(num_moves=TOTAL_MOVES)
         try:
-            checkpoint = torch.load(self.model_path, map_location=device, weights_only=True)
-            model.load_state_dict(checkpoint)
+            checkpoint = torch.load(self.model_path, map_location=device)
+            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['model_state_dict'])
+            else:
+                model.load_state_dict(checkpoint)
             if self.log_fn:
                 self.log_fn(f"Model loaded from {self.model_path}")
         except Exception as e:
@@ -47,16 +54,17 @@ class ModelEvaluator:
             return
 
         try:
-            test_indices = np.load(self.dataset_indices_path)
-            dataset = ChessTrainingDataset(h5_path, test_indices)
+            h5_file = h5py.File(h5_path, 'r')
+            dataset_indices = np.load(self.dataset_indices_path)
+            dataset = H5Dataset(h5_file, dataset_indices)
             if self.log_fn:
                 self.log_fn(f"Loaded dataset indices from {self.dataset_indices_path}")
         except Exception as e:
             if self.log_fn:
                 self.log_fn(f"Failed to load dataset: {e}")
-                return
+            return
 
-        loader = torch.utils.data.DataLoader(
+        loader = DataLoader(
             dataset, batch_size=1024, shuffle=False, num_workers=0
         )
 
@@ -73,18 +81,19 @@ class ModelEvaluator:
         if self.log_fn:
             self.log_fn("Starting evaluation...")
 
-        for batch_idx, (inputs, policy_targets, value_targets) in enumerate(loader, 1):
+        for batch_idx, (inputs, policy_targets, _) in enumerate(loader, 1):
             if self.stop_fn():
                 if self.log_fn:
                     self.log_fn("Evaluation stopped by user.")
                 return
 
             inputs = inputs.to(device)
+            policy_targets = policy_targets.to(device)
             with torch.no_grad():
                 policy_outputs, _ = model(inputs)
                 _, preds = torch.max(policy_outputs, 1)
                 all_predictions.extend(preds.cpu().numpy())
-                all_actuals.extend(policy_targets.numpy())
+                all_actuals.extend(policy_targets.cpu().numpy())
 
                 _, topk_preds = torch.topk(policy_outputs, k, dim=1)
                 topk_predictions.extend(topk_preds.cpu().numpy())
@@ -101,6 +110,8 @@ class ModelEvaluator:
                 time_left = estimated_total_time - elapsed_time
                 time_left_str = time.strftime('%H:%M:%S', time.gmtime(time_left))
                 self.time_left_fn(time_left_str)
+
+        h5_file.close()
 
         all_predictions = np.array(all_predictions)
         all_actuals = np.array(all_actuals)
@@ -132,8 +143,7 @@ class ModelEvaluator:
         macro_avg = report.get('macro avg', {})
         weighted_avg = report.get('weighted avg', {})
 
-        from src.neural_network.train import MOVE_MAPPING
-        class_labels = [chess.Move.from_uci(MOVE_MAPPING[cls].uci()).uci() for cls in most_common_classes]
+        class_labels = [MOVE_MAPPING[cls].uci() for cls in most_common_classes]
 
         if self.log_fn:
             self.log_fn(f"Macro Avg - Precision: {macro_avg.get('precision', 0.0):.4f}, "
@@ -144,7 +154,7 @@ class ModelEvaluator:
                         f"F1-Score: {weighted_avg.get('f1-score', 0.0):.4f}")
 
         if self.metrics_fn:
-            self.metrics_fn(accuracy, macro_avg, weighted_avg, confusion, topk_accuracy, class_labels)
+            self.metrics_fn(accuracy, topk_accuracy, macro_avg, weighted_avg, confusion, class_labels)
 
         if self.log_fn:
             self.log_fn("Evaluation process finished.")

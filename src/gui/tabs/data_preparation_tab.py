@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QProgressBar,
     QTextEdit, QLabel, QLineEdit, QFileDialog, QMessageBox, QGroupBox
 )
+from PyQt5.QtCore import Qt
 from src.gui.visualizations.data_preparation_visualization import DataPreparationVisualization
 from scripts.data_pipeline import DataPreparationWorker
 
@@ -20,6 +21,7 @@ class DataPreparationTab(QWidget):
         self.min_elo_input = QLineEdit("2000")
         self.raw_data_dir_input = QLineEdit("data/raw")
         self.processed_data_dir_input = QLineEdit("data/processed")
+
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Idle")
@@ -49,12 +51,16 @@ class DataPreparationTab(QWidget):
 
     def create_input_layout(self, label_text, input_widget, button_text=None, button_callback=None):
         layout = QHBoxLayout()
-        layout.addWidget(QLabel(label_text))
+        label = QLabel(label_text)
+        label.setFixedWidth(150)
+        input_widget.setFixedWidth(200)
+        layout.addWidget(label)
         layout.addWidget(input_widget)
         if button_text and button_callback:
             button = QPushButton(button_text)
             button.clicked.connect(button_callback)
             layout.addWidget(button)
+        layout.addStretch()
         return layout
 
     def create_control_buttons(self):
@@ -63,6 +69,7 @@ class DataPreparationTab(QWidget):
         self.stop_button = QPushButton("Stop")
         layout.addWidget(self.start_button)
         layout.addWidget(self.stop_button)
+        layout.addStretch()
 
         self.stop_button.setEnabled(False)
 
@@ -71,7 +78,7 @@ class DataPreparationTab(QWidget):
         return layout
 
     def create_visualization_group(self):
-        visualization_group = QGroupBox("Data Visualization")
+        visualization_group = QGroupBox("Data Preparation Visualization")
         vis_layout = QVBoxLayout()
         vis_layout.addWidget(self.visualization)
         visualization_group.setLayout(vis_layout)
