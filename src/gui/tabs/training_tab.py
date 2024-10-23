@@ -1,7 +1,7 @@
 import threading, queue, os
 from PyQt5.QtWidgets import (
     QMessageBox, QVBoxLayout, QProgressBar, QTextEdit, QWidget,
-    QLabel, QLineEdit, QHBoxLayout, QPushButton, QGroupBox, QCheckBox, QFileDialog
+    QLabel, QLineEdit, QHBoxLayout, QPushButton, QGroupBox, QCheckBox, QFileDialog, QFormLayout
 )
 from PyQt5 import QtCore
 from src.neural_network.train import ModelTrainer
@@ -110,61 +110,87 @@ class TrainingTab(QWidget):
         self.log_queue = queue.Queue()
         self.progress_queue = queue.Queue()
         self.stats_queue = queue.Queue()
-        self.init_specific_ui()
+        self.init_ui()
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_ui)
         self.timer.start(100)
 
-    def init_specific_ui(self):
-        layout = QVBoxLayout(self)
-        layout.addLayout(self.create_input_layout("Dataset Path:", "data/processed/dataset.h5", "dataset_input", "Browse", self.browse_dataset))
-        layout.addLayout(self.create_input_layout("Train Indices Path:", "data/processed/train_indices.npy", "train_indices_input", "Browse", self.browse_train_indices))
-        layout.addLayout(self.create_input_layout("Validation Indices Path:", "data/processed/val_indices.npy", "val_indices_input", "Browse", self.browse_val_indices))
-        layout.addLayout(self.create_input_layout("Epochs:", "10", "epochs_input"))
-        layout.addLayout(self.create_input_layout("Batch Size:", "256", "batch_size_input"))
-        layout.addLayout(self.create_input_layout("Learning Rate:", "0.001", "learning_rate_input"))
-        layout.addLayout(self.create_input_layout("Weight Decay:", "1e-4", "weight_decay_input"))
-        layout.addLayout(self.create_input_layout("Checkpoint Interval (epochs):", "1", "checkpoint_interval_input"))
-        layout.addLayout(self.create_input_layout("Checkpoint Path (Optional):", "", "checkpoint_path_input", "Browse", self.browse_checkpoint))
+    def init_ui(self):
+        main_layout = QVBoxLayout(self)
+
+        settings_group = QGroupBox("Training Settings")
+        settings_layout = QFormLayout()
+
+        self.dataset_input = QLineEdit("data/processed/dataset.h5")
+        self.train_indices_input = QLineEdit("data/processed/train_indices.npy")
+        self.val_indices_input = QLineEdit("data/processed/val_indices.npy")
+        self.epochs_input = QLineEdit("10")
+        self.batch_size_input = QLineEdit("256")
+        self.learning_rate_input = QLineEdit("0.001")
+        self.weight_decay_input = QLineEdit("1e-4")
+        self.checkpoint_interval_input = QLineEdit("1")
+        self.checkpoint_path_input = QLineEdit("")
+
+        dataset_browse_button = QPushButton("Browse")
+        dataset_browse_button.clicked.connect(self.browse_dataset)
+        train_indices_browse_button = QPushButton("Browse")
+        train_indices_browse_button.clicked.connect(self.browse_train_indices)
+        val_indices_browse_button = QPushButton("Browse")
+        val_indices_browse_button.clicked.connect(self.browse_val_indices)
+        checkpoint_browse_button = QPushButton("Browse")
+        checkpoint_browse_button.clicked.connect(self.browse_checkpoint)
+
+        dataset_layout = QHBoxLayout()
+        dataset_layout.addWidget(self.dataset_input)
+        dataset_layout.addWidget(dataset_browse_button)
+
+        train_indices_layout = QHBoxLayout()
+        train_indices_layout.addWidget(self.train_indices_input)
+        train_indices_layout.addWidget(train_indices_browse_button)
+
+        val_indices_layout = QHBoxLayout()
+        val_indices_layout.addWidget(self.val_indices_input)
+        val_indices_layout.addWidget(val_indices_browse_button)
+
+        checkpoint_layout = QHBoxLayout()
+        checkpoint_layout.addWidget(self.checkpoint_path_input)
+        checkpoint_layout.addWidget(checkpoint_browse_button)
+
+        settings_layout.addRow("Dataset Path:", dataset_layout)
+        settings_layout.addRow("Train Indices Path:", train_indices_layout)
+        settings_layout.addRow("Validation Indices Path:", val_indices_layout)
+        settings_layout.addRow("Epochs:", self.epochs_input)
+        settings_layout.addRow("Batch Size:", self.batch_size_input)
+        settings_layout.addRow("Learning Rate:", self.learning_rate_input)
+        settings_layout.addRow("Weight Decay:", self.weight_decay_input)
+        settings_layout.addRow("Checkpoint Interval:", self.checkpoint_interval_input)
+        settings_layout.addRow("Checkpoint Path (Optional):", checkpoint_layout)
+
+        settings_group.setLayout(settings_layout)
+
         self.save_checkpoints_checkbox = QCheckBox("Save Checkpoints")
         self.save_checkpoints_checkbox.setChecked(True)
-        layout.addWidget(self.save_checkpoints_checkbox)
         self.automatic_batch_size_checkbox = QCheckBox("Automatic Batch Size")
         self.automatic_batch_size_checkbox.setChecked(False)
         self.automatic_batch_size_checkbox.toggled.connect(self.toggle_batch_size_input)
-        layout.addWidget(self.automatic_batch_size_checkbox)
-        buttons_layout = self.create_buttons_layout()
-        layout.addLayout(buttons_layout)
+
+        control_buttons_layout = self.create_buttons_layout()
+
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Idle")
-        layout.addWidget(self.progress_bar)
         self.remaining_time_label = QLabel("Time Left: Calculating...")
-        layout.addWidget(self.remaining_time_label)
         self.log_text_edit = QTextEdit()
         self.log_text_edit.setReadOnly(True)
-        layout.addWidget(self.log_text_edit)
-        vis_group = QGroupBox("Training Visualization")
-        vis_layout = QVBoxLayout()
-        vis_layout.addWidget(self.visualization)
-        vis_group.setLayout(vis_layout)
-        layout.addWidget(vis_group)
 
-    def create_input_layout(self, label_text, default_value, input_attr_name, button_text=None, button_callback=None):
-        layout = QHBoxLayout()
-        label = QLabel(label_text)
-        label.setFixedWidth(200)
-        input_field = QLineEdit(default_value)
-        input_field.setFixedWidth(200)
-        setattr(self, input_attr_name, input_field)
-        layout.addWidget(label)
-        layout.addWidget(input_field)
-        if button_text and button_callback:
-            button = QPushButton(button_text)
-            button.clicked.connect(button_callback)
-            layout.addWidget(button)
-        layout.addStretch()
-        return layout
+        main_layout.addWidget(settings_group)
+        main_layout.addWidget(self.save_checkpoints_checkbox)
+        main_layout.addWidget(self.automatic_batch_size_checkbox)
+        main_layout.addLayout(control_buttons_layout)
+        main_layout.addWidget(self.progress_bar)
+        main_layout.addWidget(self.remaining_time_label)
+        main_layout.addWidget(self.log_text_edit)
+        main_layout.addWidget(self.create_visualization_group())
 
     def create_buttons_layout(self):
         layout = QHBoxLayout()
@@ -316,3 +342,10 @@ class TrainingTab(QWidget):
 
     def update_time_left(self, time_left_str):
         self.remaining_time_label.setText(f"Time Left: {time_left_str}")
+
+    def create_visualization_group(self):
+        visualization_group = QGroupBox("Training Visualization")
+        vis_layout = QVBoxLayout()
+        vis_layout.addWidget(self.visualization)
+        visualization_group.setLayout(vis_layout)
+        return visualization_group

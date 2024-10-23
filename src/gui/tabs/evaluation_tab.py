@@ -1,7 +1,7 @@
 import os, numpy as np
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QFileDialog, QProgressBar, QTextEdit,
-    QLabel, QLineEdit, QHBoxLayout, QPushButton, QGroupBox, QCheckBox, QMessageBox
+    QLabel, QLineEdit, QHBoxLayout, QPushButton, QGroupBox, QCheckBox, QMessageBox, QFormLayout
 )
 from PyQt5.QtCore import QThread, pyqtSignal
 from src.neural_network.evaluate import ModelEvaluator
@@ -55,14 +55,31 @@ class EvaluationTab(QWidget):
         self.init_ui()
 
     def init_ui(self):
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
 
-        model_layout = self.create_input_layout(
-            "Model Path:", "models/saved_models/final_model.pth", self.browse_model
-        )
-        dataset_layout = self.create_input_layout(
-            "Evaluation Dataset Indices:", "data/processed/test_indices.npy", self.browse_dataset
-        )
+        settings_group = QGroupBox("Evaluation Settings")
+        settings_layout = QFormLayout()
+
+        self.model_path_input = QLineEdit("models/saved_models/final_model.pth")
+        self.evaluation_dataset_indices_input = QLineEdit("data/processed/test_indices.npy")
+
+        model_browse_button = QPushButton("Browse")
+        model_browse_button.clicked.connect(lambda: self.browse_model(self.model_path_input))
+        dataset_browse_button = QPushButton("Browse")
+        dataset_browse_button.clicked.connect(lambda: self.browse_dataset(self.evaluation_dataset_indices_input))
+
+        model_layout = QHBoxLayout()
+        model_layout.addWidget(self.model_path_input)
+        model_layout.addWidget(model_browse_button)
+
+        dataset_layout = QHBoxLayout()
+        dataset_layout.addWidget(self.evaluation_dataset_indices_input)
+        dataset_layout.addWidget(dataset_browse_button)
+
+        settings_layout.addRow("Model Path:", model_layout)
+        settings_layout.addRow("Evaluation Dataset Indices:", dataset_layout)
+
+        settings_group.setLayout(settings_layout)
 
         self.compare_baseline_checkbox = QCheckBox("Compare with Baseline")
         self.compare_baseline_checkbox.setChecked(False)
@@ -72,32 +89,17 @@ class EvaluationTab(QWidget):
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Idle")
-
         self.remaining_time_label = QLabel("Time Left: Calculating...")
-
         self.log_text_edit = QTextEdit()
         self.log_text_edit.setReadOnly(True)
 
-        layout.addLayout(model_layout)
-        layout.addLayout(dataset_layout)
-        layout.addWidget(self.compare_baseline_checkbox)
-        layout.addLayout(control_buttons_layout)
-        layout.addWidget(self.progress_bar)
-        layout.addWidget(self.remaining_time_label)
-        layout.addWidget(self.log_text_edit)
-        layout.addWidget(self.create_visualization_group())
-
-    def create_input_layout(self, label_text, default_value, browse_callback):
-        layout = QHBoxLayout()
-        label = QLabel(label_text)
-        input_field = QLineEdit(default_value)
-        browse_button = QPushButton("Browse")
-        browse_button.clicked.connect(lambda: browse_callback(input_field))
-        layout.addWidget(label)
-        layout.addWidget(input_field)
-        layout.addWidget(browse_button)
-        setattr(self, label_text.strip(':').lower().replace(' ', '_') + '_input', input_field)
-        return layout
+        main_layout.addWidget(settings_group)
+        main_layout.addWidget(self.compare_baseline_checkbox)
+        main_layout.addLayout(control_buttons_layout)
+        main_layout.addWidget(self.progress_bar)
+        main_layout.addWidget(self.remaining_time_label)
+        main_layout.addWidget(self.log_text_edit)
+        main_layout.addWidget(self.create_visualization_group())
 
     def create_buttons_layout(self):
         layout = QHBoxLayout()
@@ -106,6 +108,7 @@ class EvaluationTab(QWidget):
         self.stop_button.setEnabled(False)
         layout.addWidget(self.start_button)
         layout.addWidget(self.stop_button)
+        layout.addStretch()
         self.start_button.clicked.connect(self.start_evaluation)
         self.stop_button.clicked.connect(self.stop_evaluation)
         return layout

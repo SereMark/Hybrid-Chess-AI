@@ -1,7 +1,7 @@
 import os
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QProgressBar,
-    QTextEdit, QLabel, QLineEdit, QFileDialog, QMessageBox, QGroupBox
+    QTextEdit, QLabel, QLineEdit, QFileDialog, QMessageBox, QGroupBox, QFormLayout
 )
 from src.gui.visualizations.data_preparation_visualization import DataPreparationVisualization
 from scripts.data_pipeline import DataPreparationWorker
@@ -14,12 +14,37 @@ class DataPreparationTab(QWidget):
         self.init_ui()
 
     def init_ui(self):
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+
+        settings_group = QGroupBox("Data Preparation Settings")
+        settings_layout = QFormLayout()
 
         self.max_games_input = QLineEdit("100000")
         self.min_elo_input = QLineEdit("2000")
         self.raw_data_dir_input = QLineEdit("data/raw")
         self.processed_data_dir_input = QLineEdit("data/processed")
+
+        raw_browse_button = QPushButton("Browse")
+        raw_browse_button.clicked.connect(self.browse_raw_dir)
+        processed_browse_button = QPushButton("Browse")
+        processed_browse_button.clicked.connect(self.browse_processed_dir)
+
+        raw_dir_layout = QHBoxLayout()
+        raw_dir_layout.addWidget(self.raw_data_dir_input)
+        raw_dir_layout.addWidget(raw_browse_button)
+
+        processed_dir_layout = QHBoxLayout()
+        processed_dir_layout.addWidget(self.processed_data_dir_input)
+        processed_dir_layout.addWidget(processed_browse_button)
+
+        settings_layout.addRow("Max Games:", self.max_games_input)
+        settings_layout.addRow("Minimum ELO:", self.min_elo_input)
+        settings_layout.addRow("Raw Data Directory:", raw_dir_layout)
+        settings_layout.addRow("Processed Data Directory:", processed_dir_layout)
+
+        settings_group.setLayout(settings_layout)
+
+        control_buttons_layout = self.create_control_buttons()
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
@@ -28,39 +53,12 @@ class DataPreparationTab(QWidget):
         self.log_text_edit = QTextEdit()
         self.log_text_edit.setReadOnly(True)
 
-        max_games_layout = self.create_input_layout("Max Games:", self.max_games_input)
-        min_elo_layout = self.create_input_layout("Minimum ELO:", self.min_elo_input)
-        raw_dir_layout = self.create_input_layout(
-            "Raw Data Directory:", self.raw_data_dir_input, "Browse", self.browse_raw_dir
-        )
-        processed_dir_layout = self.create_input_layout(
-            "Processed Data Directory:", self.processed_data_dir_input, "Browse", self.browse_processed_dir
-        )
-        control_buttons_layout = self.create_control_buttons()
-
-        layout.addLayout(max_games_layout)
-        layout.addLayout(min_elo_layout)
-        layout.addLayout(raw_dir_layout)
-        layout.addLayout(processed_dir_layout)
-        layout.addLayout(control_buttons_layout)
-        layout.addWidget(self.progress_bar)
-        layout.addWidget(self.remaining_time_label)
-        layout.addWidget(self.log_text_edit)
-        layout.addWidget(self.create_visualization_group())
-
-    def create_input_layout(self, label_text, input_widget, button_text=None, button_callback=None):
-        layout = QHBoxLayout()
-        label = QLabel(label_text)
-        label.setFixedWidth(150)
-        input_widget.setFixedWidth(200)
-        layout.addWidget(label)
-        layout.addWidget(input_widget)
-        if button_text and button_callback:
-            button = QPushButton(button_text)
-            button.clicked.connect(button_callback)
-            layout.addWidget(button)
-        layout.addStretch()
-        return layout
+        main_layout.addWidget(settings_group)
+        main_layout.addLayout(control_buttons_layout)
+        main_layout.addWidget(self.progress_bar)
+        main_layout.addWidget(self.remaining_time_label)
+        main_layout.addWidget(self.log_text_edit)
+        main_layout.addWidget(self.create_visualization_group())
 
     def create_control_buttons(self):
         layout = QHBoxLayout()
