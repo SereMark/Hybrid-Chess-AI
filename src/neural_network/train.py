@@ -1,14 +1,5 @@
-import os
-import time
-import h5py
-import numpy as np
-import chess
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
+import os, time, h5py, numpy as np, chess, torch, torch.nn as nn, torch.optim as optim, torch.nn.functional as F, threading
 from torch.utils.data import DataLoader, Dataset
-import threading
 
 MOVE_MAPPING = {}
 INDEX_MAPPING = {}

@@ -1,9 +1,5 @@
-import os
-import time
-import numpy as np
+import os, time, numpy as np, torch, h5py
 from sklearn.metrics import confusion_matrix, classification_report
-import h5py
-import torch
 from torch.utils.data import DataLoader
 from src.neural_network.train import ChessModel, H5Dataset, TOTAL_MOVES, MOVE_MAPPING
 

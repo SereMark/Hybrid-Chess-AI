@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import numpy as np
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTabWidget
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas

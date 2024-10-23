@@ -1,12 +1,4 @@
-import os
-import io
-import chess.pgn
-import chess
-import numpy as np
-import h5py
-import glob
-import time
-import concurrent.futures
+import os, chess.pgn, chess, numpy as np, h5py, glob, time
 from concurrent.futures import ThreadPoolExecutor
 from PyQt5.QtCore import QThread, pyqtSignal
 
@@ -241,9 +233,11 @@ class DataProcessor:
         self.player_rating_bins = np.arange(1000, 3000, 50)
         self.player_rating_histogram = np.zeros(len(self.player_rating_bins)-1, dtype=int)
         self.start_time = None
-        self.all_inputs = []
-        self.all_policy_targets = []
-        self.all_value_targets = []
+        self.batch_size = 10000
+        self.batch_inputs = []
+        self.batch_policy_targets = []
+        self.batch_value_targets = []
+        self.current_dataset_size = 0
 
     def estimate_game_count(self):
         pgn_files = glob.glob(os.path.join(self.raw_data_dir, '*.pgn'))
@@ -277,48 +271,63 @@ class DataProcessor:
         total_estimated_games = min(total_estimated_games, self.max_games)
 
         try:
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                for filename in pgn_files:
-                    if self.total_games_processed >= self.max_games or self.stop_event():
-                        break
-                    if self.log_callback:
-                        self.log_callback(f"Processing file: {filename}")
-                    with open(filename, 'r', errors='ignore') as f:
-                        game_iterator = iter(lambda: chess.pgn.read_game(f), None)
-                        for game in game_iterator:
-                            if self.total_games_processed >= self.max_games or self.stop_event():
-                                break
-                            future = executor.submit(process_game, game, self.min_elo)
-                            try:
-                                result = future.result()
-                                if result:
-                                    self._process_data_entry(result)
-                                    self.total_games_processed += 1
-                                    if self.total_games_processed % 100 == 0:
-                                        self._update_progress_and_time_left(total_estimated_games)
-                                        if self.stats_callback:
-                                            stats = {
-                                                'total_games_processed': self.total_games_processed,
-                                                'total_moves_processed': self.total_moves_processed,
-                                                'game_results_counter': self.game_results_counter.copy(),
-                                                'game_length_bins': self.game_length_bins,
-                                                'game_length_histogram': self.game_length_histogram.copy(),
-                                                'player_rating_bins': self.player_rating_bins,
-                                                'player_rating_histogram': self.player_rating_histogram.copy()
-                                            }
-                                            self.stats_callback(stats)
-                            except Exception as e:
-                                if self.log_callback:
-                                    self.log_callback(f"Error processing game: {e}")
+            with h5py.File(h5_file_path, 'w') as h5_file:
+                h5_inputs = h5_file.create_dataset(
+                    'inputs', shape=(0, 20, 8, 8), maxshape=(None, 20, 8, 8),
+                    dtype=np.float32, compression='gzip'
+                )
+                h5_policy_targets = h5_file.create_dataset(
+                    'policy_targets', shape=(0,), maxshape=(None,),
+                    dtype=np.int64, compression='gzip'
+                )
+                h5_value_targets = h5_file.create_dataset(
+                    'value_targets', shape=(0,), maxshape=(None,),
+                    dtype=np.float32, compression='gzip'
+                )
+
+                with ThreadPoolExecutor(max_workers=4) as executor:
+                    for filename in pgn_files:
+                        if self.total_games_processed >= self.max_games or self.stop_event():
+                            break
+                        if self.log_callback:
+                            self.log_callback(f"Processing file: {filename}")
+                        with open(filename, 'r', errors='ignore') as f:
+                            game_iterator = iter(lambda: chess.pgn.read_game(f), None)
+                            for game in game_iterator:
+                                if self.total_games_processed >= self.max_games or self.stop_event():
+                                    break
+                                future = executor.submit(process_game, game, self.min_elo)
+                                try:
+                                    result = future.result()
+                                    if result:
+                                        self._process_data_entry(result, h5_inputs, h5_policy_targets, h5_value_targets)
+                                        self.total_games_processed += 1
+                                        if self.total_games_processed % 100 == 0:
+                                            self._update_progress_and_time_left(total_estimated_games)
+                                            if self.stats_callback:
+                                                stats = {
+                                                    'total_games_processed': self.total_games_processed,
+                                                    'total_moves_processed': self.total_moves_processed,
+                                                    'game_results_counter': self.game_results_counter.copy(),
+                                                    'game_length_bins': self.game_length_bins,
+                                                    'game_length_histogram': self.game_length_histogram.copy(),
+                                                    'player_rating_bins': self.player_rating_bins,
+                                                    'player_rating_histogram': self.player_rating_histogram.copy()
+                                                }
+                                                self.stats_callback(stats)
+                                except Exception as e:
+                                    if self.log_callback:
+                                        self.log_callback(f"Error processing game: {e}")
+                if len(self.batch_inputs) > 0:
+                    self._write_batch(h5_inputs, h5_policy_targets, h5_value_targets)
         except Exception as e:
             if self.log_callback:
                 self.log_callback(f"Error during data processing: {e}")
         finally:
             if self.log_callback:
                 self.log_callback(f"Total samples collected: {self.total_samples}")
-            self._save_data(h5_file_path)
 
-    def _process_data_entry(self, data):
+    def _process_data_entry(self, data, h5_inputs, h5_policy_targets, h5_value_targets):
         inputs = data['inputs']
         policy_targets = data['policy_targets']
         value_targets = data['value_targets']
@@ -341,25 +350,28 @@ class DataProcessor:
                 if 0 <= idx < len(self.player_rating_histogram):
                     self.player_rating_histogram[idx] += 1
 
-            self.all_inputs.extend(inputs)
-            self.all_policy_targets.extend(policy_targets)
-            self.all_value_targets.extend(value_targets)
+            self.batch_inputs.extend(inputs)
+            self.batch_policy_targets.extend(policy_targets)
+            self.batch_value_targets.extend(value_targets)
 
-    def _save_data(self, h5_file_path):
-        if self.log_callback:
-            self.log_callback("Saving data to HDF5 file...")
-        with h5py.File(h5_file_path, 'w') as h5_file:
-            h5_file.create_dataset(
-                'inputs', data=np.array(self.all_inputs, dtype=np.float32), compression='gzip'
-            )
-            h5_file.create_dataset(
-                'policy_targets', data=np.array(self.all_policy_targets, dtype=np.int64), compression='gzip'
-            )
-            h5_file.create_dataset(
-                'value_targets', data=np.array(self.all_value_targets, dtype=np.float32), compression='gzip'
-            )
-        if self.log_callback:
-            self.log_callback("Data saved successfully.")
+            if len(self.batch_inputs) >= self.batch_size:
+                self._write_batch(h5_inputs, h5_policy_targets, h5_value_targets)
+
+    def _write_batch(self, h5_inputs, h5_policy_targets, h5_value_targets):
+        batch_size = len(self.batch_inputs)
+        h5_inputs.resize((self.current_dataset_size + batch_size, 20, 8, 8))
+        h5_policy_targets.resize((self.current_dataset_size + batch_size,))
+        h5_value_targets.resize((self.current_dataset_size + batch_size,))
+
+        h5_inputs[self.current_dataset_size:self.current_dataset_size + batch_size] = np.array(self.batch_inputs, dtype=np.float32)
+        h5_policy_targets[self.current_dataset_size:self.current_dataset_size + batch_size] = np.array(self.batch_policy_targets, dtype=np.int64)
+        h5_value_targets[self.current_dataset_size:self.current_dataset_size + batch_size] = np.array(self.batch_value_targets, dtype=np.float32)
+
+        self.current_dataset_size += batch_size
+
+        self.batch_inputs = []
+        self.batch_policy_targets = []
+        self.batch_value_targets = []
 
     def _update_progress_and_time_left(self, total_estimated_games):
         if self.progress_callback:

@@ -1,6 +1,4 @@
-import threading
-import queue
-import os
+import threading, queue, os
 from PyQt5.QtWidgets import (
     QMessageBox, QVBoxLayout, QProgressBar, QTextEdit, QWidget,
     QLabel, QLineEdit, QHBoxLayout, QPushButton, QGroupBox, QCheckBox, QFileDialog

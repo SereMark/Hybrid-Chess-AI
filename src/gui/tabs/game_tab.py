@@ -1,5 +1,4 @@
-import os
-import chess
+import os, chess
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QSplitter, QLabel, QPushButton,
     QDialog, QGridLayout, QSizePolicy, QComboBox, QMessageBox

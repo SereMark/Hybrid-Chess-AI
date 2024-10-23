@@ -3,7 +3,6 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QProgressBar,
     QTextEdit, QLabel, QLineEdit, QFileDialog, QMessageBox, QGroupBox
 )
-from PyQt5.QtCore import Qt
 from src.gui.visualizations.data_preparation_visualization import DataPreparationVisualization
 from scripts.data_pipeline import DataPreparationWorker
 

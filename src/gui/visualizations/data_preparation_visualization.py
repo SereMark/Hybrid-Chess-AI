@@ -1,5 +1,4 @@
-import numpy as np
-import time
+import numpy as np, time
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure

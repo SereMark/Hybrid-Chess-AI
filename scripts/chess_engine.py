@@ -1,8 +1,5 @@
 from PyQt5.QtCore import QObject, pyqtSignal
-import chess
-import random
-import torch
-import numpy as np
+import chess, random, torch, numpy as np
 from scripts.data_pipeline import MOVE_MAPPING, INDEX_MAPPING, TOTAL_MOVES, convert_board_to_tensor
 
 
