@@ -1,8 +1,5 @@
 from PyQt5.QtCore import QObject, pyqtSignal
-import chess
-import random
-import torch
-import numpy as np
+import chess, random, torch, numpy as np
 from scripts.data_pipeline import MOVE_MAPPING, INDEX_MAPPING, TOTAL_MOVES, convert_board_to_tensor
 
 class ChessEngine(QObject):
@@ -10,7 +7,6 @@ class ChessEngine(QObject):
     game_over_signal = pyqtSignal(str)
     value_evaluation_signal = pyqtSignal(list)
     policy_output_signal = pyqtSignal(dict)
-    mcts_statistics_signal = pyqtSignal(dict)
 
     def __init__(self, player_color=chess.WHITE, opponent_type='random'):
         super().__init__()
@@ -142,13 +138,6 @@ class ChessEngine(QObject):
             move_probs = {k: v / total_prob for k, v in move_probs.items()}
             self.value_evaluation_signal.emit([value_estimate])
             self.policy_output_signal.emit(move_probs)
-            
-            mcts_stats = {
-                'simulations': random.randint(100, 1000),
-                'nodes_explored': random.randint(50, 500),
-                'best_move': random.choice(list(self.board.legal_moves)).uci() if self.board.legal_moves else None
-            }
-            self.mcts_statistics_signal.emit(mcts_stats)
             return
 
         input_tensor = convert_board_to_tensor(self.board)
@@ -173,13 +162,6 @@ class ChessEngine(QObject):
             move_probs = {k: 1.0 / len(move_probs) for k in move_probs}
 
         self.policy_output_signal.emit(move_probs)
-
-        mcts_stats = {
-            'simulations': 500,
-            'nodes_explored': 300,
-            'best_move': 'e2e4'
-        }
-        self.mcts_statistics_signal.emit(mcts_stats)
 
     def _check_game_over(self):
         if self.board.is_game_over():

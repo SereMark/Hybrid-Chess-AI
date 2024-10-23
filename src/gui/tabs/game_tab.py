@@ -1,5 +1,4 @@
-import os
-import chess
+import os, chess
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QSplitter, QLabel, QPushButton,
     QDialog, QGridLayout, QSizePolicy, QComboBox, QMessageBox
@@ -251,7 +250,6 @@ class ChessGameTab(QWidget):
         self.engine.game_over_signal.connect(self.handle_game_over)
         self.engine.value_evaluation_signal.connect(self.visual.update_value_evaluation)
         self.engine.policy_output_signal.connect(self.visual.update_policy_output)
-        self.engine.mcts_statistics_signal.connect(self.visual.update_mcts_statistics)
         self.engine.move_made_signal.connect(self.status.setText)
         self.engine.policy_output_signal.connect(self.board_view.update_policy_output)
         self.ai_selection.currentIndexChanged.connect(self.change_opponent_type)
@@ -334,7 +332,6 @@ class ChessGameTab(QWidget):
         self.engine.game_over_signal.disconnect()
         self.engine.value_evaluation_signal.disconnect()
         self.engine.policy_output_signal.disconnect()
-        self.engine.mcts_statistics_signal.disconnect()
         self.engine = ChessEngine(player_color=chess.WHITE, opponent_type=self.opponent_type)
         self.board_view.engine = self.engine
         self.visual.engine = self.engine

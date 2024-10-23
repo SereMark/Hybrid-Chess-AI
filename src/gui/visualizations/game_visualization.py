@@ -1,5 +1,4 @@
-import matplotlib.pyplot as plt
-import numpy as np
+import matplotlib.pyplot as plt, numpy as np
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTabWidget
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -105,48 +104,6 @@ class PolicyOutputPlot(BasePlot):
 
         self.canvas.draw()
 
-class MCTSStatisticsPlot(BasePlot):
-    def __init__(self, parent=None):
-        super().__init__(title="MCTS Statistics",
-                         xlabel="Value",
-                         ylabel="Metric",
-                         parent=parent)
-
-    def plot_mcts_statistics(self, mcts_stats):
-        self.ax.clear()
-        self.ax.set_title("MCTS Statistics", fontsize=14, fontweight='bold', pad=15)
-        self.ax.set_xlabel("Value", fontsize=12, labelpad=10)
-        self.ax.set_ylabel("Metric", fontsize=12, labelpad=10)
-        self.ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-        
-        if mcts_stats:
-            metrics = ['Simulations', 'Nodes Explored']
-            values = [mcts_stats.get('simulations', 0), mcts_stats.get('nodes_explored', 0)]
-            y_pos = np.arange(len(metrics))
-            max_val = max(values) if max(values) > 0 else 1
-
-            cmap = plt.cm.Oranges
-            colors = cmap(np.linspace(0.5, 1, len(values)))
-            bars = self.ax.barh(y_pos, values, color=colors, edgecolor='black')
-            self.ax.set_yticks(y_pos)
-            self.ax.set_yticklabels(metrics, fontsize=11)
-            self.ax.set_xlim(0, max_val * 1.2)
-
-            for bar, val in zip(bars, values):
-                self.ax.text(bar.get_width() + max_val * 0.01, bar.get_y() + bar.get_height()/2,
-                             f'{val:,}', va='center', fontsize=10, fontweight='bold')
-
-            if 'best_move' in mcts_stats and mcts_stats['best_move']:
-                best_move = mcts_stats['best_move']
-                self.ax.annotate(f'Best Move: {best_move}', xy=(1, 1.05), xycoords='axes fraction',
-                                 ha='right', fontsize=12, fontweight='bold', color='#d62728')
-        else:
-            self.ax.text(0.5, 0.5, 'No Data Yet\nMake a move to start',
-                         horizontalalignment='center', verticalalignment='center',
-                         transform=self.ax.transAxes, fontsize=14, fontweight='bold', color='gray')
-
-        self.canvas.draw()
-
 class GameVisualization(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -159,11 +116,9 @@ class GameVisualization(QWidget):
 
         self.value_evaluation_plot = ValueEvaluationPlot()
         self.policy_output_plot = PolicyOutputPlot()
-        self.mcts_statistics_plot = MCTSStatisticsPlot()
 
         tabs.addTab(self.value_evaluation_plot, "Value Evaluation")
         tabs.addTab(self.policy_output_plot, "Policy Output")
-        tabs.addTab(self.mcts_statistics_plot, "MCTS Statistics")
 
         layout.addWidget(tabs)
         self.setLayout(layout)
@@ -175,11 +130,7 @@ class GameVisualization(QWidget):
     def update_policy_output(self, policy_output):
         self.policy_output_plot.plot_policy_output(policy_output)
 
-    def update_mcts_statistics(self, mcts_stats):
-        self.mcts_statistics_plot.plot_mcts_statistics(mcts_stats)
-
     def reset_visualizations(self):
         self.evaluations = []
         self.value_evaluation_plot.plot_evaluations(self.evaluations)
         self.policy_output_plot.plot_policy_output({})
-        self.mcts_statistics_plot.plot_mcts_statistics({})
