@@ -1,7 +1,7 @@
 import os, time, numpy as np, torch, h5py
 from sklearn.metrics import confusion_matrix, classification_report
 from torch.utils.data import DataLoader
-from src.neural_network.train import ChessModel, H5Dataset, TOTAL_MOVES, MOVE_MAPPING
+from src.scripts.train import ChessModel, H5Dataset, TOTAL_MOVES, MOVE_MAPPING
 
 
 class ModelEvaluator:

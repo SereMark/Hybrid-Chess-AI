@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QTextEdit, QLabel, QLineEdit, QFileDialog, QMessageBox, QGroupBox, QFormLayout
 )
 from src.gui.visualizations.data_preparation_visualization import DataPreparationVisualization
-from scripts.data_pipeline import DataPreparationWorker
+from src.scripts.data_pipeline import DataPreparationWorker
 
 class DataPreparationTab(QWidget):
     def __init__(self, parent=None):

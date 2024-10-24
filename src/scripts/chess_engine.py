@@ -1,6 +1,6 @@
 from PyQt5.QtCore import QObject, pyqtSignal
 import chess, random, torch, numpy as np
-from scripts.data_pipeline import MOVE_MAPPING, INDEX_MAPPING, TOTAL_MOVES, convert_board_to_tensor
+from src.scripts.data_pipeline import MOVE_MAPPING, INDEX_MAPPING, TOTAL_MOVES, convert_board_to_tensor
 
 
 class ChessEngine(QObject):
@@ -22,7 +22,7 @@ class ChessEngine(QObject):
             self._load_model()
 
     def _load_model(self):
-        from src.neural_network.train import ChessModel
+        from scripts.train import ChessModel
         import os
 
         self.MOVE_MAPPING = MOVE_MAPPING

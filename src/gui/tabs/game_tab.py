@@ -7,7 +7,7 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QRectF
 from PyQt5.QtGui import QPainter, QPixmap, QBrush, QColor, QFont
 from PyQt5.QtSvg import QSvgRenderer
 from src.gui.visualizations.game_visualization import GameVisualization
-from scripts.chess_engine import ChessEngine
+from src.scripts.chess_engine import ChessEngine
 
 
 class ChessBoardView(QWidget):

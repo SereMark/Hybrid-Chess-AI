@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QMessageBox, QVBoxLayout, QProgressBar, QTextEdit, QWidget,
     QLabel, QLineEdit, QHBoxLayout, QPushButton, QGroupBox, QCheckBox, QFileDialog, QFormLayout, QComboBox, QSizePolicy
 )
-from src.neural_network.train import ModelTrainer
+from src.scripts.train import ModelTrainer
 from src.gui.visualizations.training_visualization import TrainingVisualization
 
 class TrainingWorker(QObject):

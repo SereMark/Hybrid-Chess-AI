@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QLabel, QLineEdit, QHBoxLayout, QPushButton, QGroupBox, QCheckBox, QMessageBox, QFormLayout
 )
 from PyQt5.QtCore import QThread, pyqtSignal
-from src.neural_network.evaluate import ModelEvaluator
+from src.scripts.evaluate import ModelEvaluator
 from src.gui.visualizations.evaluation_visualization import EvaluationVisualization
 
 
