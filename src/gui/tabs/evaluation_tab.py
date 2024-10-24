@@ -3,7 +3,7 @@
 import os, numpy as np
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QFileDialog, QProgressBar, QTextEdit,
-    QLabel, QLineEdit, QHBoxLayout, QPushButton, QGroupBox, QCheckBox, QMessageBox, QFormLayout
+    QLabel, QLineEdit, QHBoxLayout, QPushButton, QGroupBox, QMessageBox, QFormLayout
 )
 from PyQt5.QtCore import QThread, pyqtSignal
 from src.scripts.evaluate import ModelEvaluator
