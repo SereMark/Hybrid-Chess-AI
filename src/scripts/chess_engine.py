@@ -1,3 +1,5 @@
+# src\scripts\chess_engine.py
+
 from PyQt5.QtCore import QObject, pyqtSignal
 import chess, random, torch, numpy as np
 from src.scripts.data_pipeline import MOVE_MAPPING, INDEX_MAPPING, TOTAL_MOVES, convert_board_to_tensor

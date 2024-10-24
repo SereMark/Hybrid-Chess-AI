@@ -1,3 +1,5 @@
+# src\gui\tabs\training_tab.py
+
 import os, threading
 from PyQt5.QtCore import QObject, pyqtSignal, QThread, Qt
 from PyQt5.QtWidgets import (

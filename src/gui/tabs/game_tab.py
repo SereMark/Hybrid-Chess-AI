@@ -1,3 +1,5 @@
+# src\gui\tabs\game_tab.py
+
 import os, chess
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QSplitter, QLabel, QPushButton,

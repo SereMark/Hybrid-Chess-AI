@@ -1,3 +1,5 @@
+# src\gui\visualizations\game_visualization.py
+
 import numpy as np
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTabWidget
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas

@@ -1,3 +1,5 @@
+# src\scripts\evaluate.py
+
 import os, time, numpy as np, torch, h5py
 from sklearn.metrics import confusion_matrix, classification_report
 from torch.utils.data import DataLoader

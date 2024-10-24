@@ -1,3 +1,5 @@
+# src\gui\visualizations\evaluation_visualization.py
+
 import numpy as np
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas

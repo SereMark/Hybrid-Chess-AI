@@ -1,3 +1,5 @@
+# src\scripts\train.py
+
 import os, time, h5py, numpy as np, chess, torch, torch.nn as nn, torch.optim as optim, torch.nn.functional as F, threading
 from torch.utils.data import DataLoader, Dataset
 
