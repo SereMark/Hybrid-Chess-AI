@@ -17,11 +17,10 @@ class EvaluationWorker(QThread):
     time_left_update = pyqtSignal(str)
     finished = pyqtSignal()
 
-    def __init__(self, model_path, dataset_indices_path, compare_baseline=False):
+    def __init__(self, model_path, dataset_indices_path):
         super().__init__()
         self.model_path = model_path
         self.dataset_indices_path = dataset_indices_path
-        self.compare_baseline = compare_baseline
         self._is_stopped = False
 
     def run(self):
@@ -33,8 +32,7 @@ class EvaluationWorker(QThread):
                 metrics_fn=self.metrics_update.emit,
                 progress_fn=self.progress_update.emit,
                 time_left_fn=self.time_left_update.emit,
-                stop_fn=lambda: self._is_stopped,
-                compare_baseline=self.compare_baseline
+                stop_fn=lambda: self._is_stopped
             )
             evaluator.evaluate_model()
             if not self._is_stopped:
@@ -83,9 +81,6 @@ class EvaluationTab(QWidget):
 
         settings_group.setLayout(settings_layout)
 
-        self.compare_baseline_checkbox = QCheckBox("Compare with Baseline")
-        self.compare_baseline_checkbox.setChecked(False)
-
         control_buttons_layout = self.create_buttons_layout()
 
         self.progress_bar = QProgressBar()
@@ -96,7 +91,6 @@ class EvaluationTab(QWidget):
         self.log_text_edit.setReadOnly(True)
 
         main_layout.addWidget(settings_group)
-        main_layout.addWidget(self.compare_baseline_checkbox)
         main_layout.addLayout(control_buttons_layout)
         main_layout.addWidget(self.progress_bar)
         main_layout.addWidget(self.remaining_time_label)
@@ -135,7 +129,6 @@ class EvaluationTab(QWidget):
     def start_evaluation(self):
         model_path = self.model_path_input.text()
         dataset_indices_path = self.evaluation_dataset_indices_input.text()
-        compare_baseline = self.compare_baseline_checkbox.isChecked()
 
         if not os.path.exists(model_path):
             QMessageBox.warning(self, "Error", "Model file does not exist.")
@@ -152,7 +145,7 @@ class EvaluationTab(QWidget):
         self.log_text_edit.clear()
         self.visualization.reset_visualization()
 
-        self.worker = EvaluationWorker(model_path, dataset_indices_path, compare_baseline)
+        self.worker = EvaluationWorker(model_path, dataset_indices_path)
         self.worker.log_update.connect(self.update_log)
         self.worker.metrics_update.connect(self.visualization.update_metrics_visualization)
         self.worker.progress_update.connect(self.update_progress)

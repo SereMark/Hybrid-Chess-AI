@@ -8,7 +8,7 @@ from src.scripts.train import ChessModel, H5Dataset, TOTAL_MOVES, MOVE_MAPPING
 
 class ModelEvaluator:
     def __init__(self, model_path, dataset_indices_path, log_fn=None, metrics_fn=None, progress_fn=None,
-                 time_left_fn=None, stop_fn=None, compare_baseline=False):
+                 time_left_fn=None, stop_fn=None):
         self.model_path = model_path
         self.dataset_indices_path = dataset_indices_path
         self.log_fn = log_fn
@@ -16,7 +16,6 @@ class ModelEvaluator:
         self.progress_fn = progress_fn
         self.time_left_fn = time_left_fn
         self.stop_fn = stop_fn or (lambda: False)
-        self.compare_baseline = compare_baseline
 
     def format_time_left(self, seconds):
             days = seconds // 86400
