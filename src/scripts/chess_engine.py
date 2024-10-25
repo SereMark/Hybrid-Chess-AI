@@ -24,7 +24,7 @@ class ChessEngine(QObject):
             self._load_model()
 
     def _load_model(self):
-        from scripts.train import ChessModel
+        from src.scripts.train import ChessModel
         import os
 
         self.MOVE_MAPPING = MOVE_MAPPING
