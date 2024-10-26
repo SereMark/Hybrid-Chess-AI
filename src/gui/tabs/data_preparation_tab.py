@@ -1,5 +1,3 @@
-# src\gui\tabs\data_preparation_tab.py
-
 import os
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QProgressBar,

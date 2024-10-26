@@ -1,5 +1,3 @@
-# src\scripts\data_pipeline.py
-
 import os, chess.pgn, chess, numpy as np, h5py, glob, time
 from concurrent.futures import ThreadPoolExecutor
 from PyQt5.QtCore import QThread, pyqtSignal

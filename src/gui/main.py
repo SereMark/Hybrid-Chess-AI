@@ -1,5 +1,3 @@
-# src\gui\main.py
-
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget
 from src.gui.tabs.game_tab import ChessGameTab

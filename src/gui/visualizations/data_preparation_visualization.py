@@ -1,5 +1,3 @@
-# src\gui\visualizations\data_preparation_visualization.py
-
 import numpy as np, time
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
