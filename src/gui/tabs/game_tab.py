@@ -1,7 +1,7 @@
 import os, chess
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QSplitter, QLabel, QPushButton,
-    QDialog, QGridLayout, QSizePolicy, QComboBox, QMessageBox
+    QDialog, QGridLayout, QSizePolicy
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QRectF
 from PyQt5.QtGui import QPainter, QPixmap, QBrush, QColor, QFont
@@ -198,34 +198,40 @@ class ChessGameTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.time_limit = self.white_timer = self.black_timer = 600
-        self.opponent_type = 'random'
+        
+        model_path = os.path.join('models', 'saved_models', 'final_model.pth')
+        if os.path.exists(model_path):
+            self.opponent_type = 'cnn'
+            mode_text = "Mode: CNN AI Opponent"
+        else:
+            self.opponent_type = 'random'
+            mode_text = "Mode: Random Move Opponent"
+
         self.engine = ChessEngine(player_color=chess.WHITE, opponent_type=self.opponent_type)
         self.board_view = ChessBoardView(self.engine, self)
         self.visual = GameVisualization()
-        self._setup_ui()
+        self._setup_ui(mode_text)
         self._connect_board_view_signals()
         self._connect_signals()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.decrement_timer)
         self.timer.start(1000)
 
-    def _setup_ui(self):
+    def _setup_ui(self, mode_text):
         main_layout = QHBoxLayout(self)
         splitter = QSplitter(Qt.Horizontal)
         timers_layout = self._create_timer_layout()
         self.status = QLabel("", alignment=Qt.AlignCenter)
-        self.ai_selection = QComboBox()
-        self.ai_selection.addItem("Random Move Opponent", userData='random')
-        self.ai_selection.addItem("CNN AI Opponent", userData='cnn')
-        self.ai_selection_label = QLabel("Select Opponent:")
-        ai_selection_layout = QHBoxLayout()
-        ai_selection_layout.addWidget(self.ai_selection_label)
-        ai_selection_layout.addWidget(self.ai_selection)
+        
+        self.mode_label = QLabel(mode_text, alignment=Qt.AlignCenter)
+        mode_font = QFont('Arial', 12, QFont.Bold)
+        self.mode_label.setFont(mode_font)
+
         left_layout = QVBoxLayout()
         left_layout.addLayout(timers_layout)
         left_layout.addWidget(self.board_view)
         left_layout.addWidget(self.status)
-        left_layout.addLayout(ai_selection_layout)
+        left_layout.addWidget(self.mode_label)  # Add the mode label
         left_widget = QWidget()
         left_widget.setLayout(left_layout)
         splitter.addWidget(left_widget)
@@ -254,7 +260,6 @@ class ChessGameTab(QWidget):
         self.engine.material_balance_signal.connect(self.visual.update_material_balance)
         self.engine.move_made_signal.connect(self.status.setText)
         self.engine.policy_output_signal.connect(self.board_view.update_policy_output)
-        self.ai_selection.currentIndexChanged.connect(self.change_opponent_type)
 
     def refresh_status(self, msg):
         if "Move made:" in msg or "AI moved:" in msg:
@@ -316,26 +321,12 @@ class ChessGameTab(QWidget):
         selected_piece['piece'] = piece
         dialog.accept()
 
-    def change_opponent_type(self):
-        new_opponent_type = self.ai_selection.currentData()
-        if new_opponent_type != self.opponent_type:
-            reply = QMessageBox.question(self, 'Restart Game',
-                                         "Changing opponent will restart the game. Do you want to continue?",
-                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if reply == QMessageBox.Yes:
-                self.opponent_type = new_opponent_type
-                self.restart_game()
-            else:
-                index = self.ai_selection.findData(self.opponent_type)
-                self.ai_selection.setCurrentIndex(index)
-
     def restart_game(self):
         self.engine.move_made_signal.disconnect()
         self.engine.game_over_signal.disconnect()
         self.engine.value_evaluation_signal.disconnect()
         self.engine.material_balance_signal.disconnect()
         self.engine.policy_output_signal.disconnect()
-        self.ai_selection.currentIndexChanged.disconnect()
         self.engine = ChessEngine(player_color=chess.WHITE, opponent_type=self.opponent_type)
         self.board_view.engine = self.engine
         self.visual.reset_visualizations()
