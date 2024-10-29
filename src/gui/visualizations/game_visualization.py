@@ -3,7 +3,6 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTabWidget
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-
 class BasePlot(QWidget):
     def __init__(self, title, xlabel, ylabel, invert_y=False, parent=None):
         super().__init__(parent)
@@ -25,7 +24,6 @@ class BasePlot(QWidget):
 
         if invert_y:
             self.ax.invert_yaxis()
-
 
 class ValueEvaluationPlot(BasePlot):
     def __init__(self, parent=None):
@@ -66,7 +64,6 @@ class ValueEvaluationPlot(BasePlot):
 
         self.canvas.draw()
 
-
 class MaterialBalancePlot(BasePlot):
     def __init__(self, parent=None):
         super().__init__(title="Material Balance",
@@ -91,7 +88,6 @@ class MaterialBalancePlot(BasePlot):
                          transform=self.ax.transAxes, fontsize=14, fontweight='bold', color='gray')
 
         self.canvas.draw()
-
 
 class GameVisualization(QWidget):
     def __init__(self, parent=None):

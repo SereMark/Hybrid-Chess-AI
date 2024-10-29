@@ -11,7 +11,7 @@ class BasePlot:
         self.ax.set_ylabel(ylabel, fontsize=10)
         self.ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
 
-class TrainingVisualization(QWidget):
+class SupervisedTrainingVisualization(QWidget):
     def __init__(self, parent=None, max_points=1000):
         super().__init__(parent)
         self.max_points = max_points

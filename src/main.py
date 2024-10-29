@@ -2,7 +2,8 @@ import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget
 from src.gui.tabs.game_tab import ChessGameTab
 from src.gui.tabs.data_preparation_tab import DataPreparationTab
-from src.gui.tabs.training_tab import TrainingTab
+from src.gui.tabs.supervised_training_tab import SupervisedTrainingTab
+from src.gui.tabs.self_play_tab import SelfPlayTab
 from src.gui.tabs.evaluation_tab import EvaluationTab
 
 class ChessMainWindow(QMainWindow):
@@ -15,7 +16,8 @@ class ChessMainWindow(QMainWindow):
         for widget, name in [
             (ChessGameTab, "Gameplay"),
             (DataPreparationTab, "Data Preparation"),
-            (TrainingTab, "Training"),
+            (SupervisedTrainingTab, "Supervised Training"),
+            (SelfPlayTab, "Self Play"),
             (EvaluationTab, "Evaluation")
         ]:
             self.tab_widget.addTab(widget(), name)
