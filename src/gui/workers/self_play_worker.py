@@ -98,24 +98,58 @@ class SelfPlayWorker(QObject):
                 memory_reserved = torch.cuda.memory_reserved() / 1024**2
                 self.log_update.emit(f"GPU Memory - Allocated: {memory_allocated:.1f}MB, Reserved: {memory_reserved:.1f}MB")
 
-        total_time = time.time() - self.start_time
-        self.log_update.emit(f"\n=== Training Complete ===")
-        self.log_update.emit(f"Total time: {self.format_time_left(total_time)}")
-        self.log_update.emit(f"Total games played: {self.total_games_played}")
+            total_time = time.time() - self.start_time
+            self.log_update.emit(f"\n=== Training Complete ===")
+            self.log_update.emit(f"Total time: {self.format_time_left(total_time)}")
+            self.log_update.emit(f"Total games played: {self.total_games_played}")
 
-        if self.game_lengths:
-            average_game_length = sum(self.game_lengths) / len(self.game_lengths)
-            self.log_update.emit(f"Average game length: {average_game_length:.1f} moves")
-        else:
-            self.log_update.emit("Average game length: N/A")
+            try:
+                final_model_path = os.path.join('models', 'saved_models', 'final_model.pth')
+                os.makedirs(os.path.dirname(final_model_path), exist_ok=True)
+                
+                checkpoint = {
+                    'model_state_dict': model.state_dict(),
+                    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+                    'training_stats': {
+                        'total_games_played': self.total_games_played,
+                        'total_training_time': total_time,
+                        'win_rate': self.results.count(1) / len(self.results) if self.results else 0,
+                        'draw_rate': self.results.count(0) / len(self.results) if self.results else 0,
+                        'average_game_length': sum(self.game_lengths) / len(self.game_lengths) if self.game_lengths else 0,
+                        'final_iteration': self.num_iterations
+                    }
+                }
+                
+                torch.save(checkpoint, final_model_path)
+                file_size_mb = os.path.getsize(final_model_path) / (1024**2)
+                self.log_update.emit("\n=== Final Model Saved ===")
+                self.log_update.emit(f"Path: {final_model_path}")
+                self.log_update.emit(f"File size: {file_size_mb:.1f}MB")
+                self.log_update.emit(f"Games played: {self.total_games_played}")
+                
+                if self.results:
+                    win_rate = self.results.count(1) / len(self.results)
+                    draw_rate = self.results.count(0) / len(self.results)
+                    loss_rate = self.results.count(-1) / len(self.results)
+                    self.log_update.emit("\n=== Final Statistics ===")
+                    self.log_update.emit(f"Win rate:  {win_rate:.1%}")
+                    self.log_update.emit(f"Draw rate: {draw_rate:.1%}")
+                    self.log_update.emit(f"Loss rate: {loss_rate:.1%}")
+                
+                if self.game_lengths:
+                    avg_length = sum(self.game_lengths) / len(self.game_lengths)
+                    min_length = min(self.game_lengths)
+                    max_length = max(self.game_lengths)
+                    self.log_update.emit(f"\nGame Lengths:")
+                    self.log_update.emit(f"Average: {avg_length:.1f} moves")
+                    self.log_update.emit(f"Minimum: {min_length} moves")
+                    self.log_update.emit(f"Maximum: {max_length} moves")
+                    
+            except Exception as e:
+                self.log_update.emit(f"\nError saving final model: {str(e)}")
 
-        if self.results:
-            win_rate = self.results.count(1) / len(self.results)
-            self.log_update.emit(f"Final win rate: {win_rate:.1%}")
-        else:
-            self.log_update.emit("Final win rate: N/A")
-
-        self.finished.emit()
+            self.log_update.emit("\n" + "="*50)
+            self.finished.emit()
 
     def estimate_batch_size(self, model):
         self.log_update.emit("\n=== Batch Size Estimation ===")
@@ -133,7 +167,7 @@ class SelfPlayWorker(QObject):
             model.eval()
             test_input = torch.randn(2, 20, 8, 8, device=self.device)
 
-            with autocast(enabled=(self.device == 'cuda')):
+            with autocast('cuda', enabled=(self.device == 'cuda')):
                 with torch.no_grad():
                     _ = model(test_input)
 
@@ -232,22 +266,15 @@ class SelfPlayWorker(QObject):
                         inputs_list.extend(states)
                         policy_targets_list.extend(mcts_probs)
                         value_targets_list.extend(winners)
+                        
                         self.total_games_played_iteration += 1
                         self.results_iteration.append(result)
                         self.game_lengths_iteration.append(game_length)
-
-                        if (game_num + 1) % max(1, games_per_thread // 10) == 0:
-                            self.emit_progress()
-
-                            if self.device == 'cuda':
-                                memory_allocated = torch.cuda.memory_allocated() / 1024**2
-                                memory_reserved = torch.cuda.memory_reserved() / 1024**2
-                                self.log_update.emit(
-                                    f"Thread {thread_id} Memory Status: "
-                                    f"Allocated: {memory_allocated:.1f}MB, "
-                                    f"Reserved: {memory_reserved:.1f}MB"
-                                )
-
+                        
+                        self.total_games_played += 1
+                        self.results.append(result)
+                        self.game_lengths.append(game_length)
+                
                 except Exception as game_error:
                     self.log_update.emit(f"Thread {thread_id}: Error in game {game_num + 1}: {str(game_error)}")
                     continue
@@ -258,6 +285,9 @@ class SelfPlayWorker(QObject):
                 f"{self.total_games_played_iteration} games in {thread_time:.1f}s "
                 f"({thread_time / max(1, self.total_games_played_iteration):.1f}s per game)"
             )
+            
+            self.emit_stats_update()
+            self.emit_progress()
 
         except Exception as thread_error:
             self.log_update.emit(f"Thread {thread_id}: Critical error: {str(thread_error)}")
@@ -269,8 +299,17 @@ class SelfPlayWorker(QObject):
             self.log_update.emit("No data to train on. Skipping training phase.")
             return
 
+        inputs = inputs.cpu()
+        policy_targets = policy_targets.cpu()
+        value_targets = value_targets.cpu()
+
         dataset = TensorDataset(inputs, policy_targets, value_targets)
-        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True if self.device == 'cuda' else False)
+        loader = DataLoader(
+            dataset, 
+            batch_size=self.batch_size, 
+            shuffle=True, 
+            pin_memory=(self.device == 'cuda')
+        )
 
         self.log_update.emit(f"\nTraining on {len(dataset)} positions")
         self.log_update.emit(f"Batch size: {self.batch_size}, Batches per epoch: {len(loader)}")
@@ -286,6 +325,7 @@ class SelfPlayWorker(QObject):
 
             for batch_idx, (batch_inputs, batch_policy_targets, batch_value_targets) in enumerate(loader):
                 optimizer.zero_grad()
+                
                 batch_inputs = batch_inputs.to(self.device, non_blocking=True)
                 batch_policy_targets = batch_policy_targets.to(self.device, non_blocking=True)
                 batch_value_targets = batch_value_targets.to(self.device, non_blocking=True)
@@ -311,6 +351,10 @@ class SelfPlayWorker(QObject):
                         f"Batch {batch_idx + 1}/{len(loader)} - "
                         f"Loss: {loss.item():.4f}"
                     )
+
+                if self.device == 'cuda':
+                    del batch_inputs, batch_policy_targets, batch_value_targets
+                    torch.cuda.empty_cache()
 
             avg_loss = total_loss / len(loader)
             avg_policy_loss = total_policy_loss / len(loader)
@@ -373,62 +417,57 @@ class SelfPlayWorker(QObject):
         except Exception as e:
             self.log_update.emit(f"\nError saving model: {str(e)}")
 
+    def emit_stats_update(self):
+        with self.lock:
+            if self.game_lengths:
+                avg_game_length = sum(self.game_lengths) / len(self.game_lengths)
+                min_game_length = min(self.game_lengths)
+                max_game_length = max(self.game_lengths)
+
+                wins = self.results.count(1)
+                losses = self.results.count(-1)
+                draws = self.results.count(0)
+                total_games = len(self.results)
+
+                elapsed_time = time.time() - self.start_time
+                games_per_second = self.total_games_played / elapsed_time if elapsed_time > 0 else 0
+
+                stats = {
+                    'games_played': self.total_games_played,
+                    'wins': wins,
+                    'losses': losses,
+                    'draws': draws,
+                    'win_rate': wins / total_games if total_games > 0 else 0,
+                    'draw_rate': draws / total_games if total_games > 0 else 0,
+                    'loss_rate': losses / total_games if total_games > 0 else 0,
+                    'average_game_length': avg_game_length,
+                    'min_game_length': min_game_length,
+                    'max_game_length': max_game_length,
+                    'games_per_second': games_per_second
+                }
+
+                self.stats_update.emit(stats)
+
     def emit_progress(self):
-        total_games = self.num_iterations * self.num_games_per_iteration
-        progress = min(int((self.total_games_played / total_games) * 100), 100)
-        self.progress_update.emit(progress)
+        with self.lock:
+            total_games = self.num_iterations * self.num_games_per_iteration
+            progress = min(int((self.total_games_played / total_games) * 100), 100)
+            self.progress_update.emit(progress)
 
-        elapsed_time = time.time() - self.start_time
-        games_per_second = self.total_games_played / elapsed_time if elapsed_time > 0 else 0
+            elapsed_time = time.time() - self.start_time
+            games_per_second = self.total_games_played / elapsed_time if elapsed_time > 0 else 0
 
-        if self.total_games_played > 0:
-            time_per_game = elapsed_time / self.total_games_played
-            estimated_total_time = time_per_game * total_games
-            time_left = estimated_total_time - elapsed_time
-            time_left_str = self.format_time_left(time_left)
-
-            self.time_left_update.emit(
-                f"Time left: {time_left_str} "
-                f"({games_per_second:.2f} games/sec)"
-            )
-        else:
-            self.time_left_update.emit("Time Left: Calculating...")
-
-        if self.game_lengths:
-            avg_game_length = sum(self.game_lengths) / len(self.game_lengths)
-            min_game_length = min(self.game_lengths)
-            max_game_length = max(self.game_lengths)
-
-            wins = self.results.count(1)
-            losses = self.results.count(-1)
-            draws = self.results.count(0)
-            total_games = len(self.results)
-
-            stats = {
-                'games_played': self.total_games_played,
-                'wins': wins,
-                'losses': losses,
-                'draws': draws,
-                'win_rate': wins / total_games if total_games > 0 else 0,
-                'draw_rate': draws / total_games if total_games > 0 else 0,
-                'average_game_length': avg_game_length,
-                'min_game_length': min_game_length,
-                'max_game_length': max_game_length,
-                'games_per_second': games_per_second
-            }
-            self.stats_update.emit(stats)
-
-            if self.total_games_played % max(1, self.num_games_per_iteration // 10) == 0:
-                self.log_update.emit(
-                    f"\nProgress Update:"
-                    f"\n  Games Played: {self.total_games_played}/{total_games}"
-                    f"\n  Win Rate: {wins / total_games:.1%}"
-                    f"\n  Draw Rate: {draws / total_games:.1%}"
-                    f"\n  Average Game Length: {avg_game_length:.1f} moves"
-                    f"\n  Speed: {games_per_second:.2f} games/sec"
-                    f"\n  Elapsed Time: {self.format_time_left(elapsed_time)}"
-                    f"\n  Estimated Time Left: {time_left_str}"
+            if self.total_games_played > 0:
+                time_per_game = elapsed_time / self.total_games_played
+                estimated_total_time = time_per_game * total_games
+                time_left = estimated_total_time - elapsed_time
+                time_left_str = self.format_time_left(time_left)
+                
+                self.time_left_update.emit(
+                    f"Time left: {time_left_str} ({games_per_second:.2f} games/sec)"
                 )
+            else:
+                self.time_left_update.emit("Time Left: Calculating...")
 
     @staticmethod
     def format_time_left(seconds):

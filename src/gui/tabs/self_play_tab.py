@@ -206,15 +206,18 @@ class SelfPlayTab(QWidget):
             self.stop_button.setEnabled(False)
 
     def on_self_play_finished(self):
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.progress_bar.setFormat("Self-Play Finished")
-        self.remaining_time_label.setText("Time Left: N/A")
-        self.log_text_edit_widget.append("Self-play process finished.")
-        self.thread.quit()
-        self.thread.wait()
-        self.worker = None
-        self.thread = None
+            if self.thread and self.thread.isRunning():
+                self.thread.quit()
+                self.thread.wait()
+                
+            self.start_button.setEnabled(True)
+            self.stop_button.setEnabled(False)
+            self.progress_bar.setFormat("Self-Play Finished")
+            self.remaining_time_label.setText("Time Left: N/A")
+            self.log_text_edit_widget.append("Self-play process finished.")
+            
+            self.worker = None
+            self.thread = None
 
     def update_progress(self, value):
         self.progress_bar.setValue(value)
