@@ -16,8 +16,8 @@ class EvaluationTab(QWidget):
     def init_ui(self):
         main_layout = QVBoxLayout(self)
 
-        settings_group = QGroupBox("Evaluation Settings")
-        settings_layout = QFormLayout()
+        paths_group = QGroupBox("Paths")
+        paths_layout = QFormLayout()
 
         self.model_path_input = QLineEdit("models/saved_models/final_model.pth")
         self.evaluation_dataset_indices_input = QLineEdit("data/processed/test_indices.npy")
@@ -35,25 +35,26 @@ class EvaluationTab(QWidget):
         dataset_layout.addWidget(self.evaluation_dataset_indices_input)
         dataset_layout.addWidget(dataset_browse_button)
 
-        settings_layout.addRow("Model Path:", model_layout)
-        settings_layout.addRow("Evaluation Dataset Indices:", dataset_layout)
+        paths_layout.addRow("Model Path:", model_layout)
+        paths_layout.addRow("Evaluation Dataset Indices:", dataset_layout)
 
-        settings_group.setLayout(settings_layout)
+        paths_group.setLayout(paths_layout)
 
         control_buttons_layout = self.create_buttons_layout()
 
+        progress_layout = QVBoxLayout()
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Idle")
         self.remaining_time_label = QLabel("Time Left: Calculating...")
-        self.log_text_edit = QTextEdit()
-        self.log_text_edit.setReadOnly(True)
 
-        main_layout.addWidget(settings_group)
+        progress_layout.addWidget(self.progress_bar)
+        progress_layout.addWidget(self.remaining_time_label)
+
+        main_layout.addWidget(paths_group)
         main_layout.addLayout(control_buttons_layout)
-        main_layout.addWidget(self.progress_bar)
-        main_layout.addWidget(self.remaining_time_label)
-        main_layout.addWidget(self.log_text_edit)
+        main_layout.addLayout(progress_layout)
+        main_layout.addWidget(self.log_text_edit())
         main_layout.addWidget(self.create_visualization_group())
 
     def create_buttons_layout(self):
@@ -74,6 +75,11 @@ class EvaluationTab(QWidget):
         vis_layout.addWidget(self.visualization)
         visualization_group.setLayout(vis_layout)
         return visualization_group
+
+    def log_text_edit(self):
+        self.log_text_edit = QTextEdit()
+        self.log_text_edit.setReadOnly(True)
+        return self.log_text_edit
 
     def browse_model(self, input_field):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Model File", input_field.text(), "PyTorch Model (*.pth *.pt)")

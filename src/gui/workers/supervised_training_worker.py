@@ -1,8 +1,6 @@
 from PyQt5.QtCore import QObject, pyqtSignal
-import threading
-import traceback
-
-from src.models.train import ModelTrainer
+import threading, traceback
+from src.models.supervised_train import SupervisedTrainer
 
 
 class SupervisedTrainingWorker(QObject):
@@ -10,7 +8,6 @@ class SupervisedTrainingWorker(QObject):
     progress_update = pyqtSignal(int)
     batch_loss_update = pyqtSignal(int, dict)
     batch_accuracy_update = pyqtSignal(int, float)
-    learning_rate_update = pyqtSignal(int, float)
     epoch_loss_update = pyqtSignal(int, dict)
     epoch_accuracy_update = pyqtSignal(int, float, float)
     initial_batches_processed = pyqtSignal(int)
@@ -18,11 +15,25 @@ class SupervisedTrainingWorker(QObject):
     training_finished = pyqtSignal()
     time_left_update = pyqtSignal(str)
 
-    def __init__(self, epochs, batch_size, learning_rate, weight_decay, save_checkpoints,
-                 checkpoint_interval, dataset_path, train_indices_path, val_indices_path, checkpoint_path=None,
-                 automatic_batch_size=False, checkpoint_type='epoch',
-                 checkpoint_interval_minutes=60,
-                 checkpoint_batch_interval=1000):
+    def __init__(
+        self,
+        epochs,
+        batch_size,
+        learning_rate,
+        weight_decay,
+        save_checkpoints,
+        checkpoint_interval,
+        dataset_path,
+        train_indices_path,
+        val_indices_path,
+        checkpoint_path=None,
+        automatic_batch_size=False,
+        checkpoint_type='epoch',
+        checkpoint_interval_minutes=60,
+        checkpoint_batch_interval=1000,
+        optimizer_type='adamw',
+        scheduler_type='cosineannealingwarmrestarts'
+    ):
         super().__init__()
         self.epochs = epochs
         self.batch_size = batch_size
@@ -38,6 +49,8 @@ class SupervisedTrainingWorker(QObject):
         self.checkpoint_type = checkpoint_type
         self.checkpoint_interval_minutes = checkpoint_interval_minutes
         self.checkpoint_batch_interval = checkpoint_batch_interval
+        self.optimizer_type = optimizer_type
+        self.scheduler_type = scheduler_type
         self._pause_event = threading.Event()
         self._pause_event.set()
         self._stop_event = threading.Event()
@@ -45,7 +58,7 @@ class SupervisedTrainingWorker(QObject):
     def run(self):
         try:
             self.log_update.emit("Initializing training...")
-            trainer = ModelTrainer(
+            trainer = SupervisedTrainer(
                 epochs=self.epochs,
                 batch_size=self.batch_size,
                 lr=self.learning_rate,
@@ -70,8 +83,9 @@ class SupervisedTrainingWorker(QObject):
                 automatic_batch_size=self.automatic_batch_size,
                 batch_loss_fn=self.batch_loss_update.emit,
                 batch_accuracy_fn=self.batch_accuracy_update.emit,
-                lr_fn=self.learning_rate_update.emit,
-                initial_batches_processed_callback=self.initial_batches_processed.emit
+                initial_batches_processed_callback=self.initial_batches_processed.emit,
+                optimizer_type=self.optimizer_type,
+                scheduler_type=self.scheduler_type
             )
             self.log_update.emit("Starting training...")
             trainer.train_model()

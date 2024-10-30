@@ -4,7 +4,6 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 import os
-
 from src.gui.visualizations.data_preparation_visualization import DataPreparationVisualization
 from src.gui.workers.data_preparation_worker import DataPreparationWorker
 
@@ -19,11 +18,20 @@ class DataPreparationTab(QWidget):
     def init_ui(self):
         main_layout = QVBoxLayout(self)
 
-        settings_group = QGroupBox("Data Preparation Settings")
-        settings_layout = QFormLayout()
+        parameters_group = QGroupBox("Parameters")
+        parameters_layout = QFormLayout()
 
         self.max_games_input = QLineEdit("100000")
         self.min_elo_input = QLineEdit("2000")
+
+        parameters_layout.addRow("Max Games:", self.max_games_input)
+        parameters_layout.addRow("Minimum ELO:", self.min_elo_input)
+
+        parameters_group.setLayout(parameters_layout)
+
+        directories_group = QGroupBox("Data Directories")
+        directories_layout = QFormLayout()
+
         self.raw_data_dir_input = QLineEdit("data/raw")
         self.processed_data_dir_input = QLineEdit("data/processed")
 
@@ -40,28 +48,28 @@ class DataPreparationTab(QWidget):
         processed_dir_layout.addWidget(self.processed_data_dir_input)
         processed_dir_layout.addWidget(processed_browse_button)
 
-        settings_layout.addRow("Max Games:", self.max_games_input)
-        settings_layout.addRow("Minimum ELO:", self.min_elo_input)
-        settings_layout.addRow("Raw Data Directory:", raw_dir_layout)
-        settings_layout.addRow("Processed Data Directory:", processed_dir_layout)
+        directories_layout.addRow("Raw Data Directory:", raw_dir_layout)
+        directories_layout.addRow("Processed Data Directory:", processed_dir_layout)
 
-        settings_group.setLayout(settings_layout)
+        directories_group.setLayout(directories_layout)
 
         control_buttons_layout = self.create_control_buttons()
 
+        progress_layout = QVBoxLayout()
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Idle")
         self.remaining_time_label = QLabel("Time Left: Calculating...")
-        self.log_text_edit = QTextEdit()
-        self.log_text_edit.setReadOnly(True)
-
-        main_layout.addWidget(settings_group)
-        main_layout.addLayout(control_buttons_layout)
-        main_layout.addWidget(self.progress_bar)
         self.remaining_time_label.setAlignment(Qt.AlignCenter)
-        main_layout.addWidget(self.remaining_time_label)
-        main_layout.addWidget(self.log_text_edit)
+
+        progress_layout.addWidget(self.progress_bar)
+        progress_layout.addWidget(self.remaining_time_label)
+
+        main_layout.addWidget(parameters_group)
+        main_layout.addWidget(directories_group)
+        main_layout.addLayout(control_buttons_layout)
+        main_layout.addLayout(progress_layout)
+        main_layout.addWidget(self.log_text_edit())
         main_layout.addWidget(self.create_visualization_group())
 
     def create_control_buttons(self):
@@ -84,6 +92,11 @@ class DataPreparationTab(QWidget):
         vis_layout.addWidget(self.visualization)
         visualization_group.setLayout(vis_layout)
         return visualization_group
+
+    def log_text_edit(self):
+        self.log_text_edit = QTextEdit()
+        self.log_text_edit.setReadOnly(True)
+        return self.log_text_edit
 
     def browse_raw_dir(self):
         self.browse_dir(self.raw_data_dir_input, "Raw Data")

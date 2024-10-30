@@ -11,17 +11,17 @@ class BasePlot:
         self.ax.set_ylabel(ylabel, fontsize=10)
         self.ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
 
+
 class SupervisedTrainingVisualization(QWidget):
     def __init__(self, parent=None, max_points=1000):
         super().__init__(parent)
         self.max_points = max_points
         self.loss_batches = []
         self.accuracy_batches = []
-        self.lr_batches = []
-        self.train_policy_losses = []
-        self.train_value_losses = []
-        self.training_accuracies = []
-        self.learning_rates = []
+        self.policy_losses = []
+        self.value_losses = []
+        self.accuracies = []
+        self.total_losses = []
         self.init_ui()
 
     def init_ui(self):
@@ -36,16 +36,21 @@ class SupervisedTrainingVisualization(QWidget):
 
     def init_visualization(self):
         self.figure.clf()
-        gs = self.figure.add_gridspec(2, 2, hspace=0.4, wspace=0.3)
+        gs = self.figure.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
+        
         self.ax_policy_loss = self.figure.add_subplot(gs[0, 0])
-        BasePlot(self.ax_policy_loss, title='Policy Loss over Batches', xlabel='Batch', ylabel='Loss')
+        BasePlot(self.ax_policy_loss, title='Policy Loss', xlabel='Batch', ylabel='Loss')
+        
         self.ax_value_loss = self.figure.add_subplot(gs[0, 1])
-        BasePlot(self.ax_value_loss, title='Value Loss over Batches', xlabel='Batch', ylabel='Loss')
-        self.ax_accuracy = self.figure.add_subplot(gs[1, 0])
-        BasePlot(self.ax_accuracy, title='Training Accuracy over Batches', xlabel='Batch', ylabel='Accuracy (%)')
-        self.ax_lr = self.figure.add_subplot(gs[1, 1])
-        BasePlot(self.ax_lr, title='Learning Rate over Batches', xlabel='Batch', ylabel='Learning Rate')
-        self.canvas.draw()
+        BasePlot(self.ax_value_loss, title='Value Loss', xlabel='Batch', ylabel='Loss')
+        
+        self.ax_total_loss = self.figure.add_subplot(gs[1, 0])
+        BasePlot(self.ax_total_loss, title='Total Loss', xlabel='Batch', ylabel='Loss')
+        
+        self.ax_accuracy = self.figure.add_subplot(gs[1, 1])
+        BasePlot(self.ax_accuracy, title='Accuracy', xlabel='Batch', ylabel='Accuracy (%)')
+        
+        self.figure.canvas.draw()
 
     def set_total_batches(self, total_batches):
         pass
@@ -54,89 +59,98 @@ class SupervisedTrainingVisualization(QWidget):
         if not all(math.isfinite(v) for v in losses.values()):
             print(f"Non-finite loss values detected at batch {batch_idx}. Skipping plot update.")
             return
+            
         self.loss_batches.append(batch_idx)
-        self.train_policy_losses.append(losses['policy'])
-        self.train_value_losses.append(losses['value'])
+        self.policy_losses.append(losses['policy'])
+        self.value_losses.append(losses['value'])
+        self.total_losses.append(losses['policy'] + losses['value'])
+
         if len(self.loss_batches) > self.max_points:
             self.loss_batches = self.loss_batches[-self.max_points:]
-            self.train_policy_losses = self.train_policy_losses[-self.max_points:]
-            self.train_value_losses = self.train_value_losses[-self.max_points:]
-        self.plot_losses()
+            self.policy_losses = self.policy_losses[-self.max_points:]
+            self.value_losses = self.value_losses[-self.max_points:]
+            self.total_losses = self.total_losses[-self.max_points:]
+
+        self.plot_all_losses()
 
     def update_accuracy_plot(self, batch_idx, accuracy):
         if not math.isfinite(accuracy):
             print(f"Non-finite accuracy value detected at batch {batch_idx}. Skipping plot update.")
             return
+
         self.accuracy_batches.append(batch_idx)
-        self.training_accuracies.append(accuracy * 100)
+        self.accuracies.append(accuracy * 100)
+
         if len(self.accuracy_batches) > self.max_points:
             self.accuracy_batches = self.accuracy_batches[-self.max_points:]
-            self.training_accuracies = self.training_accuracies[-self.max_points:]
-        self.plot_accuracies()
+            self.accuracies = self.accuracies[-self.max_points:]
 
-    def update_learning_rate(self, batch_idx, lr):
-        if not math.isfinite(lr):
-            print(f"Non-finite learning rate detected at batch {batch_idx}. Skipping plot update.")
-            return
-        self.lr_batches.append(batch_idx)
-        self.learning_rates.append(lr)
-        if len(self.lr_batches) > self.max_points:
-            self.lr_batches = self.lr_batches[-self.max_points:]
-            self.learning_rates = self.learning_rates[-self.max_points:]
-        self.plot_learning_rate()
+        self.plot_accuracy()
 
-    def plot_losses(self):
+    def plot_all_losses(self):
         try:
             self.ax_policy_loss.clear()
-            BasePlot(self.ax_policy_loss, title='Policy Loss over Batches', xlabel='Batch', ylabel='Loss')
+            BasePlot(self.ax_policy_loss, title='Policy Loss', xlabel='Batch', ylabel='Loss')
             self.ax_policy_loss.plot(
-                self.loss_batches, 
-                self.train_policy_losses, 
-                color='#1f77b4', marker='o', markersize=3, linestyle='-'
+                self.loss_batches,
+                self.policy_losses,
+                color='#1f77b4',
+                marker='o',
+                markersize=2,
+                linestyle='-',
+                linewidth=1
             )
+
             self.ax_value_loss.clear()
-            BasePlot(self.ax_value_loss, title='Value Loss over Batches', xlabel='Batch', ylabel='Loss')
+            BasePlot(self.ax_value_loss, title='Value Loss', xlabel='Batch', ylabel='Loss')
             self.ax_value_loss.plot(
-                self.loss_batches, 
-                self.train_value_losses, 
-                color='#ff7f0e', marker='o', markersize=3, linestyle='-'
+                self.loss_batches,
+                self.value_losses,
+                color='#ff7f0e',
+                marker='o',
+                markersize=2,
+                linestyle='-',
+                linewidth=1
             )
+
+            self.ax_total_loss.clear()
+            BasePlot(self.ax_total_loss, title='Total Loss', xlabel='Batch', ylabel='Loss')
+            self.ax_total_loss.plot(
+                self.loss_batches,
+                self.total_losses,
+                color='#2ca02c',
+                marker='o',
+                markersize=2,
+                linestyle='-',
+                linewidth=1
+            )
+
             self.figure.canvas.draw_idle()
         except Exception as e:
-            print(f"Error in plot_losses: {e}")
+            print(f"Error in plot_all_losses: {e}")
 
-    def plot_accuracies(self):
+    def plot_accuracy(self):
         try:
             self.ax_accuracy.clear()
-            BasePlot(self.ax_accuracy, title='Training Accuracy over Batches', xlabel='Batch', ylabel='Accuracy (%)')
+            BasePlot(self.ax_accuracy, title='Accuracy', xlabel='Batch', ylabel='Accuracy (%)')
             self.ax_accuracy.plot(
-                self.accuracy_batches, 
-                self.training_accuracies, 
-                color='#9467bd', marker='o', markersize=3, linestyle='-'
+                self.accuracy_batches,
+                self.accuracies,
+                color='#9467bd',
+                marker='o',
+                markersize=2,
+                linestyle='-',
+                linewidth=1
             )
             self.figure.canvas.draw_idle()
         except Exception as e:
-            print(f"Error in plot_accuracies: {e}")
-
-    def plot_learning_rate(self):
-        try:
-            self.ax_lr.clear()
-            BasePlot(self.ax_lr, title='Learning Rate over Batches', xlabel='Batch', ylabel='Learning Rate')
-            self.ax_lr.plot(
-                self.lr_batches, 
-                self.learning_rates, 
-                color='#2ca02c', marker='o', markersize=3, linestyle='-'
-            )
-            self.figure.canvas.draw_idle()
-        except Exception as e:
-            print(f"Error in plot_learning_rate: {e}")
+            print(f"Error in plot_accuracy: {e}")
 
     def reset_visualization(self):
         self.loss_batches = []
         self.accuracy_batches = []
-        self.lr_batches = []
-        self.train_policy_losses = []
-        self.train_value_losses = []
-        self.training_accuracies = []
-        self.learning_rates = []
+        self.policy_losses = []
+        self.value_losses = []
+        self.accuracies = []
+        self.total_losses = []
         self.init_visualization()

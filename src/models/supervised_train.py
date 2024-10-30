@@ -1,31 +1,42 @@
-import os
-import threading
-import time
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-import h5py
+import os, threading, time, numpy as np, torch, torch.nn as nn, torch.optim as optim, torch.nn.functional as F, h5py
 from torch.utils.data import DataLoader
-
 from src.models.model import ChessModel
 from src.data.datasets import H5Dataset
 from src.utils.chess_utils import TOTAL_MOVES
 
 
-class ModelTrainer:
-    def __init__(self, epochs=3, batch_size=256, lr=0.001, weight_decay=1e-4,
-                 log_fn=None, progress_fn=None, loss_fn=None, val_loss_fn=None,
-                 accuracy_fn=None, stop_event=None, pause_event=None,
-                 time_left_fn=None, save_checkpoints=True, checkpoint_interval=1,
-                 checkpoint_type='epoch', checkpoint_interval_minutes=60,
-                 checkpoint_batch_interval=1000, dataset_path='data/processed/dataset.h5',
-                 train_indices_path='data/processed/train_indices.npy',
-                 val_indices_path='data/processed/val_indices.npy',
-                 checkpoint_path=None, automatic_batch_size=False,
-                 batch_loss_fn=None, batch_accuracy_fn=None, lr_fn=None,
-                 initial_batches_processed_callback=None):
+class SupervisedTrainer:
+    def __init__(
+        self,
+        epochs=3,
+        batch_size=256,
+        lr=0.001,
+        weight_decay=1e-4,
+        log_fn=None,
+        progress_fn=None,
+        loss_fn=None,
+        val_loss_fn=None,
+        accuracy_fn=None,
+        stop_event=None,
+        pause_event=None,
+        time_left_fn=None,
+        save_checkpoints=True,
+        checkpoint_interval=1,
+        checkpoint_type='epoch',
+        checkpoint_interval_minutes=60,
+        checkpoint_batch_interval=1000,
+        dataset_path='data/processed/dataset.h5',
+        train_indices_path='data/processed/train_indices.npy',
+        val_indices_path='data/processed/val_indices.npy',
+        checkpoint_path=None,
+        automatic_batch_size=False,
+        batch_loss_fn=None,
+        batch_accuracy_fn=None,
+        lr_fn=None,
+        initial_batches_processed_callback=None,
+        optimizer_type='adamw',
+        scheduler_type='cosineannealingwarmrestarts'
+    ):
         super().__init__()
         self._lock = threading.Lock()
         self.epochs = epochs
@@ -56,6 +67,8 @@ class ModelTrainer:
         self.checkpoint_batch_interval = checkpoint_batch_interval
         self.last_checkpoint_time = time.time()
         self.initial_batches_processed_callback = initial_batches_processed_callback
+        self.optimizer_type = optimizer_type
+        self.scheduler_type = scheduler_type
         with self._lock:
             self.total_batches_processed = 0
 
@@ -191,10 +204,27 @@ class ModelTrainer:
                     self.log_fn(f"Automatic batch size estimation: Using batch size {self.batch_size}")
             torch.manual_seed(42)
             np.random.seed(42)
-            train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0)
-            val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=0)
-            optimizer = optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
-            scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+            train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0, pin_memory=True if torch.cuda.is_available() else False)
+            val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=0, pin_memory=True if torch.cuda.is_available() else False)
+
+            if self.optimizer_type == 'adamw':
+                optimizer = optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+            elif self.optimizer_type == 'sgd':
+                optimizer = optim.SGD(model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay, momentum=0.9)
+            else:
+                if self.log_fn:
+                    self.log_fn(f"Unsupported optimizer type: {self.optimizer_type}. Using AdamW by default.")
+                optimizer = optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+
+            if self.scheduler_type == 'cosineannealingwarmrestarts':
+                scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+            elif self.scheduler_type == 'steplr':
+                scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+            else:
+                if self.log_fn:
+                    self.log_fn(f"Unsupported scheduler type: {self.scheduler_type}. Using CosineAnnealingWarmRestarts by default.")
+                scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+
             if self.checkpoint_path and os.path.exists(self.checkpoint_path):
                 checkpoint = torch.load(self.checkpoint_path, map_location=device)
                 model.load_state_dict(checkpoint['model_state_dict'])
@@ -221,6 +251,7 @@ class ModelTrainer:
                 remaining_epochs = self.epochs
                 total_steps = self.epochs * len(train_loader)
                 skip_batches = 0
+
             if self.initial_batches_processed_callback:
                 self.initial_batches_processed_callback(self.total_batches_processed)
             best_val_loss = float('inf')
@@ -241,7 +272,7 @@ class ModelTrainer:
                             next(train_iterator)
                         except StopIteration:
                             break
-                train_metrics = self._train_epoch(model, train_iterator, optimizer, scheduler, epoch, device, total_steps)
+                train_metrics = self._train_epoch(model, train_iterator, optimizer, scheduler, epoch, device, total_steps, train_loader)
                 if self.stop_event.is_set():
                     break
                 model.eval()
@@ -250,48 +281,37 @@ class ModelTrainer:
                 total_val_loss = val_metrics['policy_loss'] + val_metrics['value_loss']
                 epoch_duration = time.time() - epoch_start_time
                 if self.log_fn:
-                    self.log_fn(f"Epoch {epoch}/{self.epochs} completed in {self.format_time_left(epoch_duration)} - "
-                                f"Training Loss: {total_train_loss:.4f}, "
-                                f"Validation Loss: {total_val_loss:.4f}, "
-                                f"Training Accuracy: {train_metrics['accuracy']*100:.2f}%, "
-                                f"Validation Accuracy: {val_metrics['accuracy']*100:.2f}%")
+                    self.log_fn(
+                        f"Epoch {epoch}/{self.epochs} completed in {self.format_time_left(epoch_duration)} - "
+                        f"Training Loss: {total_train_loss:.4f}, "
+                        f"Validation Loss: {total_val_loss:.4f}, "
+                        f"Training Accuracy: {train_metrics['accuracy']*100:.2f}%, "
+                        f"Validation Accuracy: {val_metrics['accuracy']*100:.2f}%"
+                    )
                 if total_val_loss < best_val_loss:
                     best_val_loss = total_val_loss
                     best_model_path = os.path.join('models', 'saved_models', 'best_model.pth')
                     os.makedirs(os.path.dirname(best_model_path), exist_ok=True)
                     torch.save({'model_state_dict': model.state_dict()}, best_model_path)
                     if self.log_fn:
-                        self.log_fn(f"Best model updated at epoch {epoch} - "
-                                    f"Validation Loss: {total_val_loss:.4f}, "
-                                    f"Training Loss: {total_train_loss:.4f}")
+                        self.log_fn(
+                            f"Best model updated at epoch {epoch} - "
+                            f"Validation Loss: {total_val_loss:.4f}, "
+                            f"Training Loss: {total_train_loss:.4f}"
+                        )
                 if self.should_save_checkpoint(epoch, None, len(train_loader)):
                     self.save_checkpoint(model, optimizer, scheduler, epoch)
             if not self.stop_event.is_set():
-                model_dir = os.path.join('models', 'saved_models')
-                os.makedirs(model_dir, exist_ok=True)
-                final_model_path = os.path.join(model_dir, 'final_model.pth')
-                torch.save({
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'scheduler_state_dict': scheduler.state_dict(),
-                    'epoch': self.epochs,
-                    'timestamp': time.strftime('%Y%m%d_%H%M%S'),
-                    'total_batches_processed': self.total_batches_processed
-                }, final_model_path)
                 if self.log_fn:
-                    self.log_fn("Training completed and final model saved.")
+                    self.log_fn("Training completed successfully.")
             else:
                 if self.log_fn:
                     self.log_fn("Training stopped by user.")
         except Exception as e:
             if self.log_fn:
                 self.log_fn(f"Error during training: {str(e)}")
-            return
-        finally:
-            if h5_file:
-                h5_file.close()
 
-    def _train_epoch(self, model, train_iterator, optimizer, scheduler, epoch, device, total_steps):
+    def _train_epoch(self, model, train_iterator, optimizer, scheduler, epoch, device, total_steps, train_loader):
         total_policy_loss = 0.0
         total_value_loss = 0.0
         correct_predictions = 0
@@ -355,7 +375,7 @@ class ModelTrainer:
                         self.time_left_fn(self.format_time_left(time_left))
                     else:
                         self.time_left_fn("Calculating...")
-                if self.should_save_checkpoint(epoch, self.total_batches_processed, len(train_iterator)):
+                if self.should_save_checkpoint(epoch, self.total_batches_processed, len(train_loader)):
                     self.save_checkpoint(model, optimizer, scheduler, epoch, batch_idx=self.total_batches_processed)
                 del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
                 torch.cuda.empty_cache()
@@ -430,10 +450,12 @@ class ModelTrainer:
             if self.accuracy_fn:
                 self.accuracy_fn(epoch, training_accuracy, metrics['accuracy'])
             if self.log_fn:
-                self.log_fn(f"Epoch {epoch}/{self.epochs}, "
-                            f"Validation Policy Loss: {metrics['policy_loss']:.4f}, "
-                            f"Validation Value Loss: {metrics['value_loss']:.4f}, "
-                            f"Validation Accuracy: {metrics['accuracy'] * 100:.2f}%")
+                self.log_fn(
+                    f"Epoch {epoch}/{self.epochs}, "
+                    f"Validation Policy Loss: {metrics['policy_loss']:.4f}, "
+                    f"Validation Value Loss: {metrics['value_loss']:.4f}, "
+                    f"Validation Accuracy: {metrics['accuracy'] * 100:.2f}%"
+                )
             return metrics
         except Exception as e:
             if self.log_fn:
