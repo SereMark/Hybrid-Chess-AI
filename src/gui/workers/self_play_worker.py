@@ -1,9 +1,9 @@
-import os, torch, threading, time, torch.nn.functional as F, torch.optim as optim
+import os, torch, threading, time, torch.nn.functional as F, torch.optim as optim, numpy as np
 from torch.utils.data import DataLoader, TensorDataset
 from PyQt5.QtCore import QObject, pyqtSignal
 from src.self_play.self_play import SelfPlay
 from src.models.model import ChessModel
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 
 
 class SelfPlayWorker(QObject):
@@ -49,8 +49,11 @@ class SelfPlayWorker(QObject):
         self.log_update.emit(f"\nLoading model from {self.model_path}")
         try:
             model = ChessModel()
-            checkpoint = torch.load(self.model_path, map_location=self.device)
-            model.load_state_dict(checkpoint['model_state_dict'])
+            checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=True)
+            if 'model_state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['model_state_dict'])
+            else:
+                model.load_state_dict(checkpoint)
             model.to(self.device)
             self.log_update.emit("Model loaded successfully")
         except Exception as e:
@@ -98,58 +101,61 @@ class SelfPlayWorker(QObject):
                 memory_reserved = torch.cuda.memory_reserved() / 1024**2
                 self.log_update.emit(f"GPU Memory - Allocated: {memory_allocated:.1f}MB, Reserved: {memory_reserved:.1f}MB")
 
-            total_time = time.time() - self.start_time
-            self.log_update.emit(f"\n=== Training Complete ===")
-            self.log_update.emit(f"Total time: {self.format_time_left(total_time)}")
-            self.log_update.emit(f"Total games played: {self.total_games_played}")
+        self.save_final_model(model)
 
-            try:
-                final_model_path = os.path.join('models', 'saved_models', 'final_model.pth')
-                os.makedirs(os.path.dirname(final_model_path), exist_ok=True)
-                
-                checkpoint = {
-                    'model_state_dict': model.state_dict(),
-                    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
-                    'training_stats': {
-                        'total_games_played': self.total_games_played,
-                        'total_training_time': total_time,
-                        'win_rate': self.results.count(1) / len(self.results) if self.results else 0,
-                        'draw_rate': self.results.count(0) / len(self.results) if self.results else 0,
-                        'average_game_length': sum(self.game_lengths) / len(self.game_lengths) if self.game_lengths else 0,
-                        'final_iteration': self.num_iterations
-                    }
+        total_time = time.time() - self.start_time
+        self.log_update.emit(f"\n=== Training Complete ===")
+        self.log_update.emit(f"Total time: {self.format_time_left(total_time)}")
+        self.log_update.emit(f"Total games played: {self.total_games_played}")
+
+        self.finished.emit()
+
+    def save_final_model(self, model):
+        try:
+            final_model_dir = os.path.join('models', 'saved_models')
+            final_model_path = os.path.join(final_model_dir, 'final_model.pth')
+            os.makedirs(final_model_dir, exist_ok=True)
+            
+            checkpoint = {
+                'model_state_dict': model.state_dict(),
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+                'training_stats': {
+                    'total_games_played': self.total_games_played,
+                    'total_training_time': time.time() - self.start_time,
+                    'win_rate': self.results.count(1) / len(self.results) if self.results else 0,
+                    'draw_rate': self.results.count(0) / len(self.results) if self.results else 0,
+                    'average_game_length': sum(self.game_lengths) / len(self.game_lengths) if self.game_lengths else 0,
+                    'final_iteration': self.num_iterations
                 }
+            }
+            
+            torch.save(checkpoint, final_model_path)
+            file_size_mb = os.path.getsize(final_model_path) / (1024**2)
+            self.log_update.emit("\n=== Final Model Saved ===")
+            self.log_update.emit(f"Path: {final_model_path}")
+            self.log_update.emit(f"File size: {file_size_mb:.1f}MB")
+            self.log_update.emit(f"Games played: {self.total_games_played}")
+            
+            if self.results:
+                win_rate = self.results.count(1) / len(self.results)
+                draw_rate = self.results.count(0) / len(self.results)
+                loss_rate = self.results.count(-1) / len(self.results)
+                self.log_update.emit("\n=== Final Statistics ===")
+                self.log_update.emit(f"Win rate:  {win_rate:.1%}")
+                self.log_update.emit(f"Draw rate: {draw_rate:.1%}")
+                self.log_update.emit(f"Loss rate: {loss_rate:.1%}")
+            
+            if self.game_lengths:
+                avg_length = sum(self.game_lengths) / len(self.game_lengths)
+                min_length = min(self.game_lengths)
+                max_length = max(self.game_lengths)
+                self.log_update.emit(f"\nGame Lengths:")
+                self.log_update.emit(f"Average: {avg_length:.1f} moves")
+                self.log_update.emit(f"Minimum: {min_length} moves")
+                self.log_update.emit(f"Maximum: {max_length} moves")
                 
-                torch.save(checkpoint, final_model_path)
-                file_size_mb = os.path.getsize(final_model_path) / (1024**2)
-                self.log_update.emit("\n=== Final Model Saved ===")
-                self.log_update.emit(f"Path: {final_model_path}")
-                self.log_update.emit(f"File size: {file_size_mb:.1f}MB")
-                self.log_update.emit(f"Games played: {self.total_games_played}")
-                
-                if self.results:
-                    win_rate = self.results.count(1) / len(self.results)
-                    draw_rate = self.results.count(0) / len(self.results)
-                    loss_rate = self.results.count(-1) / len(self.results)
-                    self.log_update.emit("\n=== Final Statistics ===")
-                    self.log_update.emit(f"Win rate:  {win_rate:.1%}")
-                    self.log_update.emit(f"Draw rate: {draw_rate:.1%}")
-                    self.log_update.emit(f"Loss rate: {loss_rate:.1%}")
-                
-                if self.game_lengths:
-                    avg_length = sum(self.game_lengths) / len(self.game_lengths)
-                    min_length = min(self.game_lengths)
-                    max_length = max(self.game_lengths)
-                    self.log_update.emit(f"\nGame Lengths:")
-                    self.log_update.emit(f"Average: {avg_length:.1f} moves")
-                    self.log_update.emit(f"Minimum: {min_length} moves")
-                    self.log_update.emit(f"Maximum: {max_length} moves")
-                    
-            except Exception as e:
-                self.log_update.emit(f"\nError saving final model: {str(e)}")
-
-            self.log_update.emit("\n" + "="*50)
-            self.finished.emit()
+        except Exception as e:
+            self.log_update.emit(f"\nError saving final model: {str(e)}")
 
     def estimate_batch_size(self, model):
         self.log_update.emit("\n=== Batch Size Estimation ===")
@@ -166,8 +172,7 @@ class SelfPlayWorker(QObject):
 
             model.eval()
             test_input = torch.randn(2, 20, 8, 8, device=self.device)
-
-            with autocast('cuda', enabled=(self.device == 'cuda')):
+            with autocast(device_type=self.device, enabled=(self.device == 'cuda')):
                 with torch.no_grad():
                     _ = model(test_input)
 
@@ -218,8 +223,8 @@ class SelfPlayWorker(QObject):
             self.log_update.emit("No data collected from self-play.")
             return torch.empty(0, device=self.device), torch.empty(0, device=self.device), torch.empty(0, device=self.device)
 
-        inputs = torch.tensor(inputs_list, dtype=torch.float32, device=self.device)
-        policy_targets = torch.tensor(policy_targets_list, dtype=torch.float32, device=self.device)
+        inputs = torch.from_numpy(np.array(inputs_list, dtype=np.float32)).to(self.device)
+        policy_targets = torch.from_numpy(np.array(policy_targets_list, dtype=np.float32)).to(self.device)
         value_targets = torch.tensor(value_targets_list, dtype=torch.float32, device=self.device)
         self.log_update.emit(f"Collected {total_positions} positions")
 
@@ -330,7 +335,7 @@ class SelfPlayWorker(QObject):
                 batch_policy_targets = batch_policy_targets.to(self.device, non_blocking=True)
                 batch_value_targets = batch_value_targets.to(self.device, non_blocking=True)
 
-                with autocast(enabled=(self.device == 'cuda')):
+                with autocast(device_type=self.device, enabled=(self.device == 'cuda')):
                     policy_preds, value_preds = model(batch_inputs)
 
                     policy_loss = -torch.mean(torch.sum(batch_policy_targets * F.log_softmax(policy_preds, dim=1), dim=1))

@@ -1,6 +1,6 @@
 from PyQt5.QtCore import QObject, pyqtSignal
 import threading, traceback
-from src.models.supervised_train import SupervisedTrainer
+from src.supervised.supervised_train import SupervisedTrainer
 
 
 class SupervisedTrainingWorker(QObject):
