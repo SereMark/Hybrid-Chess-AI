@@ -36,7 +36,6 @@ class ChessEngine(QObject):
             return
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"TOTAL_MOVES before model instantiation: {chess_utils.TOTAL_MOVES}")
         self.model = ChessModel(num_moves=chess_utils.TOTAL_MOVES)
         try:
             checkpoint = torch.load(model_path, map_location=device)

@@ -5,8 +5,9 @@ class SELayer(nn.Module):
     def __init__(self, channel: int, reduction: int = 16) -> None:
         super().__init__()
         bottleneck_size = max(channel // reduction, 1)
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
             nn.Linear(channel, bottleneck_size, bias=False),
             nn.ReLU(inplace=True),
             nn.Linear(bottleneck_size, channel, bias=False),
@@ -14,105 +15,94 @@ class SELayer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        batch_size, channels, _, _ = x.size()
-        y = self.avg_pool(x).view(batch_size, channels)
-        y = self.fc(y).view(batch_size, channels, 1, 1)
-        if self.training:
-            return x.mul_(y.expand_as(x))
-        return x * y.expand_as(x)
+        scale = self.fc(x).view(x.size(0), x.size(1), 1, 1)
+        return x * scale.expand_as(x)
 
 class SEResidualUnit(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        stride: int = 1,
-        reduction: int = 16
-    ) -> None:
+    def __init__(self, in_channels: int, out_channels: int, stride: int = 1, reduction: int = 16) -> None:
         super().__init__()
-        self.conv_block = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels // 4, kernel_size=1, stride=stride, bias=False),
-            nn.BatchNorm2d(out_channels // 4),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels // 4, out_channels // 4, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_channels // 4),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels // 4, out_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(out_channels)
-        )
+        mid_channels = out_channels // 4
+        self.conv_block = self._make_conv_block(in_channels, mid_channels, out_channels, stride)
         self.se = SELayer(out_channels, reduction)
         self.relu = nn.ReLU(inplace=True)
-        self.downsample = None
+        self.downsample = self._make_downsample(in_channels, out_channels, stride)
+
+    def _make_conv_block(self, in_channels, mid_channels, out_channels, stride):
+        return nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, kernel_size=1, stride=stride, bias=False),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(mid_channels, mid_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(mid_channels, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels)
+        )
+
+    def _make_downsample(self, in_channels, out_channels, stride):
         if stride != 1 or in_channels != out_channels:
-            self.downsample = nn.Sequential(
+            return nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(out_channels)
             )
+        return None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        identity = x
+        identity = self.downsample(x) if self.downsample else x
         out = self.conv_block(x)
         out = self.se(out)
-        if self.downsample is not None:
-            identity = self.downsample(x)
-        out += identity
-        return self.relu(out)
+        return self.relu(out + identity)
 
 class ChessModel(nn.Module):
-    def __init__(
-        self,
-        filters: int = 64,
-        res_blocks: int = 10,
-        num_moves: Optional[int] = None
-    ) -> None:
+    def __init__(self, filters: int = 64, res_blocks: int = 10, num_moves: Optional[int] = None) -> None:
         super().__init__()
-        self.num_moves = num_moves if num_moves is not None else chess_utils.TOTAL_MOVES
-        self.initial_block = nn.Sequential(
+        self.num_moves = num_moves or chess_utils.TOTAL_MOVES
+        self.initial_block = self._make_initial_block(filters)
+        self.residual_layers = nn.Sequential(*[SEResidualUnit(filters, filters) for _ in range(res_blocks)])
+        self.policy_head = self._make_policy_head(filters)
+        self.value_head = self._make_value_head(filters)
+        self._initialize_weights()
+
+    def _make_initial_block(self, filters):
+        return nn.Sequential(
             nn.Conv2d(20, filters, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(filters),
             nn.ReLU(inplace=True)
         )
-        self.residual_layers = nn.Sequential(
-            *[SEResidualUnit(filters, filters) for _ in range(res_blocks)]
-        )
-        self.policy_head = nn.Sequential(
+
+    def _make_policy_head(self, filters):
+        return nn.Sequential(
             nn.Conv2d(filters, 2, kernel_size=1, bias=False),
             nn.BatchNorm2d(2),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
+            nn.Flatten(),
+            nn.Linear(2 * 8 * 8, self.num_moves)
         )
-        self.policy_fc = nn.Linear(2 * 8 * 8, self.num_moves)
-        self.value_head = nn.Sequential(
+
+    def _make_value_head(self, filters):
+        return nn.Sequential(
             nn.Conv2d(filters, 1, kernel_size=1, bias=False),
             nn.BatchNorm2d(1),
-            nn.ReLU(inplace=True)
-        )
-        self.value_fc = nn.Sequential(
+            nn.ReLU(inplace=True),
+            nn.Flatten(),
             nn.Linear(1 * 8 * 8, 128),
             nn.BatchNorm1d(128),
             nn.ReLU(inplace=True),
-            nn.Linear(128, 1)
+            nn.Linear(128, 1),
+            nn.Tanh()
         )
-        self._initialize_weights()
 
-    def _initialize_weights(self) -> None:
+    def _initialize_weights(self):
         for module in self.modules():
-            if isinstance(module, nn.Conv2d):
+            if isinstance(module, (nn.Conv2d, nn.Linear)):
                 nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(module, nn.BatchNorm2d):
+            elif isinstance(module, (nn.BatchNorm2d, nn.BatchNorm1d)):
                 nn.init.constant_(module.weight, 1)
                 nn.init.constant_(module.bias, 0)
-            elif isinstance(module, nn.Linear):
-                nn.init.normal_(module.weight, 0, 0.01)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         x = self.initial_block(x)
         x = self.residual_layers(x)
-        p = self.policy_head(x)
-        p = p.view(p.size(0), -1)
-        policy_output = self.policy_fc(p)
-        v = self.value_head(x)
-        v = v.view(v.size(0), -1)
-        value_output = torch.tanh(self.value_fc(v))
+        policy_output = self.policy_head(x)
+        value_output = self.value_head(x)
         return policy_output, value_output
