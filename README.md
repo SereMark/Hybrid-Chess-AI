@@ -32,6 +32,14 @@ After activating the environment, run the main script:
 python -m src.gui.main
 ```
 
+Run the following script to preprocess the raw opening files:
+
+```bash
+python preprocess_opening_book.py
+```
+
+Note: cd into src/utils before running the script
+
 ## Usage
 
 - You can play against the AI through the interactive chess interface.
