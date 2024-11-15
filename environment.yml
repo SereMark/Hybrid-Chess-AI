@@ -22,3 +22,5 @@ dependencies:
   - pytest
   - sphinx
   - h5py
+  - pydot
+  - graphviz

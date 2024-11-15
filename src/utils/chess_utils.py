@@ -1,5 +1,4 @@
-import chess
-import numpy as np
+import chess, numpy as np, torch
 
 MOVE_MAPPING = {}
 INDEX_MAPPING = {}
@@ -82,3 +81,30 @@ def convert_board_to_tensor(board):
     planes[19, :, :] = 1.0 if board.turn == chess.WHITE else 0.0
 
     return planes
+
+
+def estimate_batch_size(model, device, desired_effective_batch_size=256, max_batch_size=1024, min_batch_size=32):
+    try:
+        if device.type == 'cuda':
+            batch_size = min_batch_size
+            while batch_size <= max_batch_size:
+                try:
+                    torch.cuda.empty_cache()
+                    inputs = torch.randn(batch_size, 20, 8, 8).to(device)
+                    with torch.no_grad():
+                        _ = model(inputs)
+                    batch_size *= 2
+                except RuntimeError as e:
+                    if 'out of memory' in str(e).lower():
+                        torch.cuda.empty_cache()
+                        batch_size = max(batch_size // 2, min_batch_size)
+                        break
+                    else:
+                        raise e
+            batch_size = max(min(batch_size, max_batch_size), min_batch_size)
+            return batch_size
+        else:
+            return desired_effective_batch_size
+    except Exception as e:
+        print(f"Failed to estimate batch size: {e}. Using default batch size of 128.")
+        return 128

@@ -6,7 +6,7 @@ __pycache__/
 # C extensions
 *.so
 
-# Packages
+# Distribution / Packaging
 *.egg
 *.egg-info/
 dist/
@@ -17,38 +17,34 @@ bin/
 var/
 sdist/
 wheels/
-*.egg-info/
 .installed.cfg
-*.egg
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
 
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Virtualenv
+# Virtual Environments
 venv/
 .env
 ENV/
 env/
 
-# Pytest cache
+# PyInstaller
+*.manifest
+*.spec
+
+# Testing
 .cache/
 
-# Python notebooks checkpoints
-.ipynb_checkpoints
+# Jupyter Notebooks
+.ipynb_checkpoints/
 
-# IDE configurations
+# IDE / Editor configurations
 .idea/
 .vscode/
 *.iml
 
-# Data
+# Data files
 *.csv
 *.h5
 *.db
@@ -56,12 +52,15 @@ env/
 *.npy
 *.pgn
 
-# Jupyter notebook checkpoints
-.ipynb_checkpoints/
-
 # PyTorch model files
 *.pth
 *.pt
 
-# Other files
+# Logs
 *.log
+
+# Other
+*.bak
+*.swp
+*.tmp
+*.bin

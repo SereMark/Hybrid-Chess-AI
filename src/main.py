@@ -1,10 +1,10 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget
-from src.gui.tabs.game_tab import ChessGameTab
-from src.gui.tabs.data_preparation_tab import DataPreparationTab
-from src.gui.tabs.supervised_training_tab import SupervisedTrainingTab
-from src.gui.tabs.self_play_tab import SelfPlayTab
-from src.gui.tabs.evaluation_tab import EvaluationTab
+from src.game.game_tab import ChessGameTab
+from src.data_preparation.data_preparation_tab import DataPreparationTab
+from src.supervised_training.supervised_training_tab import SupervisedTrainingTab
+from src.self_play.self_play_tab import SelfPlayTab
+from src.evaluation.evaluation_tab import EvaluationTab
 
 class ChessMainWindow(QMainWindow):
     def __init__(self):
