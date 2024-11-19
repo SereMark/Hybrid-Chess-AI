@@ -1,8 +1,9 @@
 from PyQt5.QtWidgets import (
     QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
-    QHBoxLayout, QFileDialog, QMessageBox, QCheckBox
+    QHBoxLayout, QFileDialog, QMessageBox, QCheckBox, QLabel, QComboBox, QWidget
 )
 import os
+from PyQt5.QtCore import Qt
 from src.self_play.self_play_visualization import SelfPlayVisualization
 from src.self_play.self_play_worker import SelfPlayWorker
 from src.base.base_tab import BaseTab
@@ -18,6 +19,7 @@ class SelfPlayTab(BaseTab):
 
         self.model_output_group = self.create_model_output_group()
         self.parameters_group = self.create_parameters_group()
+        self.checkpoint_group = self.create_checkpoint_group()
         control_buttons_layout = self.create_control_buttons()
         progress_layout = self.create_progress_layout()
         self.log_text_edit = self.create_log_text_edit()
@@ -25,6 +27,7 @@ class SelfPlayTab(BaseTab):
 
         main_layout.addWidget(self.model_output_group)
         main_layout.addWidget(self.parameters_group)
+        main_layout.addWidget(self.checkpoint_group)
         main_layout.addLayout(control_buttons_layout)
         main_layout.addLayout(progress_layout)
         main_layout.addWidget(self.log_text_edit)
@@ -32,6 +35,8 @@ class SelfPlayTab(BaseTab):
 
         self.log_text_edit.setVisible(False)
         self.visualization_group.setVisible(False)
+        self.toggle_batch_size_input(self.automatic_batch_size_checkbox.isChecked())
+        self.on_checkpoint_enabled_changed(self.save_checkpoints_checkbox.isChecked())
 
     def create_model_output_group(self):
         model_output_group = QGroupBox("Model and Output Settings")
@@ -97,6 +102,82 @@ class SelfPlayTab(BaseTab):
 
         parameters_group.setLayout(parameters_layout)
         return parameters_group
+
+    def create_checkpoint_group(self):
+        checkpoint_group = QGroupBox("Checkpoint Settings")
+        checkpoint_layout = QFormLayout()
+
+        self.save_checkpoints_checkbox = QCheckBox("Enable Checkpoints")
+        self.save_checkpoints_checkbox.setChecked(True)
+        self.save_checkpoints_checkbox.stateChanged.connect(self.on_checkpoint_enabled_changed)
+
+        self.checkpoint_type_combo = QComboBox()
+        self.checkpoint_type_combo.addItems(['Iteration', 'Epoch', 'Time', 'Batch'])
+        self.checkpoint_type_combo.currentTextChanged.connect(self.on_checkpoint_type_changed)
+
+        checkpoint_type_layout = QHBoxLayout()
+        checkpoint_type_layout.addWidget(QLabel("Save checkpoint by:"))
+        checkpoint_type_layout.addWidget(self.checkpoint_type_combo)
+        checkpoint_type_layout.addStretch()
+
+        self.checkpoint_interval_input = QLineEdit("1")
+        self.checkpoint_interval_minutes_input = QLineEdit("30")
+        self.checkpoint_batch_interval_input = QLineEdit("2000")
+
+        self.iteration_interval_widget = self.create_interval_widget(
+            "Every", self.checkpoint_interval_input, "iterations"
+        )
+        self.epoch_interval_widget = self.create_interval_widget(
+            "Every", self.checkpoint_interval_input, "epochs"
+        )
+        self.time_interval_widget = self.create_interval_widget(
+            "Every", self.checkpoint_interval_minutes_input, "minutes"
+        )
+        self.batch_interval_widget = self.create_interval_widget(
+            "Every", self.checkpoint_batch_interval_input, "batches"
+        )
+
+        self.on_checkpoint_type_changed(self.checkpoint_type_combo.currentText())
+
+        checkpoint_layout.addRow(self.save_checkpoints_checkbox)
+        checkpoint_layout.addRow(checkpoint_type_layout)
+        checkpoint_layout.addRow(self.iteration_interval_widget)
+        checkpoint_layout.addRow(self.epoch_interval_widget)
+        checkpoint_layout.addRow(self.time_interval_widget)
+        checkpoint_layout.addRow(self.batch_interval_widget)
+
+        checkpoint_group.setLayout(checkpoint_layout)
+        return checkpoint_group
+
+    def create_interval_widget(self, prefix, input_field, suffix):
+        layout = QHBoxLayout()
+        layout.addWidget(QLabel(prefix))
+        layout.addWidget(input_field)
+        layout.addWidget(QLabel(suffix))
+        layout.addStretch()
+        widget = QWidget()
+        widget.setLayout(layout)
+        return widget
+
+    def on_checkpoint_enabled_changed(self, state):
+        is_enabled = state == Qt.Checked
+        self.checkpoint_type_combo.setEnabled(is_enabled)
+        self.checkpoint_interval_input.setEnabled(is_enabled)
+        self.checkpoint_interval_minutes_input.setEnabled(is_enabled)
+        self.checkpoint_batch_interval_input.setEnabled(is_enabled)
+        self.on_checkpoint_type_changed(self.checkpoint_type_combo.currentText())
+
+    def on_checkpoint_type_changed(self, text):
+        text = text.lower()
+        self.iteration_interval_widget.setVisible(text == 'iteration')
+        self.epoch_interval_widget.setVisible(text == 'epoch')
+        self.time_interval_widget.setVisible(text == 'time')
+        self.batch_interval_widget.setVisible(text == 'batch')
+        is_enabled = self.save_checkpoints_checkbox.isChecked()
+        self.iteration_interval_widget.setEnabled(is_enabled)
+        self.epoch_interval_widget.setEnabled(is_enabled)
+        self.time_interval_widget.setEnabled(is_enabled)
+        self.batch_interval_widget.setEnabled(is_enabled)
 
     def create_control_buttons(self):
         layout = QHBoxLayout()
@@ -186,6 +267,38 @@ class SelfPlayTab(BaseTab):
             return
         os.makedirs(output_dir, exist_ok=True)
 
+        save_checkpoints = self.save_checkpoints_checkbox.isChecked()
+        checkpoint_type = self.checkpoint_type_combo.currentText().lower()
+        checkpoint_interval = None
+        checkpoint_interval_minutes = None
+        checkpoint_batch_interval = None
+
+        if save_checkpoints:
+            if checkpoint_type == 'iteration' or checkpoint_type == 'epoch':
+                try:
+                    checkpoint_interval = int(self.checkpoint_interval_input.text())
+                    if checkpoint_interval <= 0:
+                        raise ValueError("Interval must be positive.")
+                except ValueError as e:
+                    QMessageBox.warning(self, "Input Error", str(e))
+                    return
+            elif checkpoint_type == 'time':
+                try:
+                    checkpoint_interval_minutes = int(self.checkpoint_interval_minutes_input.text())
+                    if checkpoint_interval_minutes <= 0:
+                        raise ValueError("Time interval must be positive.")
+                except ValueError as e:
+                    QMessageBox.warning(self, "Input Error", str(e))
+                    return
+            elif checkpoint_type == 'batch':
+                try:
+                    checkpoint_batch_interval = int(self.checkpoint_batch_interval_input.text())
+                    if checkpoint_batch_interval <= 0:
+                        raise ValueError("Batch interval must be positive.")
+                except ValueError as e:
+                    QMessageBox.warning(self, "Input Error", str(e))
+                    return
+
         self.start_button.setEnabled(False)
         self.pause_button.setEnabled(True)
         self.stop_button.setEnabled(True)
@@ -199,6 +312,7 @@ class SelfPlayTab(BaseTab):
 
         self.model_output_group.setVisible(False)
         self.parameters_group.setVisible(False)
+        self.checkpoint_group.setVisible(False)
         self.log_text_edit.setVisible(True)
         self.visualization_group.setVisible(True)
 
@@ -216,7 +330,12 @@ class SelfPlayTab(BaseTab):
             automatic_batch_size=self.automatic_batch_size_checkbox.isChecked(),
             num_threads=num_threads,
             checkpoint_path=checkpoint_path,
-            random_seed=random_seed
+            random_seed=random_seed,
+            save_checkpoints=save_checkpoints,
+            checkpoint_interval=checkpoint_interval,
+            checkpoint_type=checkpoint_type,
+            checkpoint_interval_minutes=checkpoint_interval_minutes,
+            checkpoint_batch_interval=checkpoint_batch_interval
         )
         if started:
             self.worker.stats_update.connect(self.visualization.update_stats)
@@ -229,6 +348,7 @@ class SelfPlayTab(BaseTab):
             self.resume_button.setEnabled(False)
             self.model_output_group.setVisible(True)
             self.parameters_group.setVisible(True)
+            self.checkpoint_group.setVisible(True)
             self.log_text_edit.setVisible(False)
             self.visualization_group.setVisible(False)
 
@@ -248,6 +368,7 @@ class SelfPlayTab(BaseTab):
         self.stop_button.setEnabled(False)
         self.model_output_group.setVisible(True)
         self.parameters_group.setVisible(True)
+        self.checkpoint_group.setVisible(True)
 
     def on_worker_paused(self, is_paused):
         self.pause_button.setEnabled(not is_paused)
@@ -263,3 +384,4 @@ class SelfPlayTab(BaseTab):
         self.remaining_time_label.setText("Time Left: N/A")
         self.model_output_group.setVisible(True)
         self.parameters_group.setVisible(True)
+        self.checkpoint_group.setVisible(True)

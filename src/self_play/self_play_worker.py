@@ -20,6 +20,11 @@ class SelfPlayWorker(BaseWorker):
         batch_size: int,
         automatic_batch_size: bool,
         num_threads: int,
+        save_checkpoints: bool,
+        checkpoint_interval: int,
+        checkpoint_type: str,
+        checkpoint_interval_minutes: int,
+        checkpoint_batch_interval: int,
         checkpoint_path: str = None,
         random_seed: int = 42
     ):
@@ -35,6 +40,11 @@ class SelfPlayWorker(BaseWorker):
         self.batch_size = batch_size
         self.automatic_batch_size = automatic_batch_size
         self.num_threads = num_threads
+        self.save_checkpoints = save_checkpoints
+        self.checkpoint_interval = checkpoint_interval
+        self.checkpoint_type = checkpoint_type
+        self.checkpoint_interval_minutes = checkpoint_interval_minutes
+        self.checkpoint_batch_interval = checkpoint_batch_interval
         self.checkpoint_path = checkpoint_path
         self.random_seed = random_seed
 
@@ -55,6 +65,11 @@ class SelfPlayWorker(BaseWorker):
                 num_threads=self.num_threads,
                 checkpoint_path=self.checkpoint_path,
                 random_seed=self.random_seed,
+                save_checkpoints=self.save_checkpoints,
+                checkpoint_interval=self.checkpoint_interval,
+                checkpoint_type=self.checkpoint_type,
+                checkpoint_interval_minutes=self.checkpoint_interval_minutes,
+                checkpoint_batch_interval=self.checkpoint_batch_interval,
                 log_fn=self.log_update.emit,
                 progress_fn=self.progress_update.emit,
                 stats_fn=self.stats_update.emit,

@@ -6,7 +6,6 @@ from torch.cuda.amp import autocast, GradScaler
 from multiprocessing import Pool, cpu_count, Event, Manager
 from src.utils.chess_utils import estimate_batch_size
 
-
 def _play_and_collect_wrapper(args):
     (
         model_state_dict,
@@ -64,7 +63,6 @@ def _play_and_collect_wrapper(args):
         game_lengths_list,
     )
 
-
 class SelfPlayTrainer:
     def __init__(
         self,
@@ -81,12 +79,17 @@ class SelfPlayTrainer:
         num_threads,
         stop_event,
         pause_event,
+        save_checkpoints=True,
+        checkpoint_interval=1,
+        checkpoint_type='iteration',
+        checkpoint_interval_minutes=60,
+        checkpoint_batch_interval=1000,
+        checkpoint_path=None,
+        random_seed=42,
         log_fn=None,
         progress_fn=None,
         time_left_fn=None,
         stats_fn=None,
-        checkpoint_path=None,
-        random_seed=42
     ):
         self.model_path = model_path
         self.output_dir = output_dir
@@ -116,6 +119,77 @@ class SelfPlayTrainer:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.scaler = GradScaler(enabled=(self.device == 'cuda'))
 
+        self.save_checkpoints = save_checkpoints
+        self.checkpoint_interval = checkpoint_interval
+        self.checkpoint_type = checkpoint_type
+        self.checkpoint_interval_minutes = checkpoint_interval_minutes
+        self.checkpoint_batch_interval = checkpoint_batch_interval
+        self.last_checkpoint_time = time.time()
+        self.total_batches_processed = 0
+        self.current_epoch = 1
+        self.batch_idx = None
+        self.start_iteration = 0
+
+    def should_save_checkpoint(self, iteration, epoch, batch_idx):
+        if not self.save_checkpoints:
+            return False
+        if self.checkpoint_type == 'iteration':
+            return iteration % self.checkpoint_interval == 0 and batch_idx is None
+        elif self.checkpoint_type == 'epoch':
+            return epoch % self.checkpoint_interval == 0 and batch_idx is None
+        elif self.checkpoint_type == 'batch':
+            return self.total_batches_processed % self.checkpoint_batch_interval == 0
+        elif self.checkpoint_type == 'time':
+            current_time = time.time()
+            elapsed_minutes = (current_time - self.last_checkpoint_time) / 60
+            if elapsed_minutes >= self.checkpoint_interval_minutes:
+                self.last_checkpoint_time = current_time
+                return True
+            return False
+        return False
+
+    def save_checkpoint(self, iteration, epoch, batch_idx):
+        checkpoint_dir = os.path.join('models', 'checkpoints')
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        timestamp = time.strftime('%Y%m%d_%H%M%S')
+        if self.checkpoint_type == 'iteration':
+            checkpoint_name = f'checkpoint_iteration_{iteration}_{timestamp}.pth'
+        elif self.checkpoint_type == 'epoch':
+            checkpoint_name = f'checkpoint_iteration_{iteration}_epoch_{epoch}_{timestamp}.pth'
+        elif self.checkpoint_type == 'batch':
+            checkpoint_name = f'checkpoint_iteration_{iteration}_epoch_{epoch}_batch_{batch_idx}_{timestamp}.pth'
+        elif self.checkpoint_type == 'time':
+            checkpoint_name = f'checkpoint_time_{timestamp}.pth'
+        temp_path = os.path.join(checkpoint_dir, f'.temp_{checkpoint_name}')
+        final_path = os.path.join(checkpoint_dir, checkpoint_name)
+        try:
+            checkpoint_data = {
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'iteration': iteration,
+                'epoch': epoch,
+                'batch_idx': batch_idx,
+                'total_batches_processed': self.total_batches_processed,
+                'training_stats': {
+                    'total_games_played': self.total_games_played,
+                    'results': self.results,
+                    'game_lengths': self.game_lengths,
+                },
+            }
+            torch.save(checkpoint_data, temp_path)
+            os.replace(temp_path, final_path)
+            if self.log_fn:
+                self.log_fn(f"Checkpoint saved: {checkpoint_name}")
+        except Exception as e:
+            if self.log_fn:
+                self.log_fn(f"Error saving checkpoint: {str(e)}")
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except:
+                    pass
+            raise
+
     def train(self):
         self._initialize()
         for iteration in range(self.start_iteration, self.num_iterations):
@@ -127,8 +201,10 @@ class SelfPlayTrainer:
             self.model.eval()
             self_play_data = self._generate_self_play_data()
             self.model.train()
-            self._train_on_self_play_data(self_play_data)
-            self._save_model(iteration)
+            self._train_on_self_play_data(self_play_data, iteration)
+            self.batch_idx = None
+            if self.should_save_checkpoint(iteration + 1, self.current_epoch, None):
+                self.save_checkpoint(iteration + 1, self.current_epoch, None)
             iteration_time = time.time() - iteration_start_time
             if self.log_fn:
                 self.log_fn(f"Iteration {iteration + 1} completed in {self._format_time(iteration_time)}")
@@ -152,10 +228,19 @@ class SelfPlayTrainer:
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.start_iteration = checkpoint.get('iteration', 0)
+            self.total_batches_processed = checkpoint.get('total_batches_processed', 0)
+            self.current_epoch = checkpoint.get('epoch', 1)
+            self.batch_idx = checkpoint.get('batch_idx', None)
+            self.total_games_played = checkpoint['training_stats'].get('total_games_played', 0)
+            self.results = checkpoint['training_stats'].get('results', [])
+            self.game_lengths = checkpoint['training_stats'].get('game_lengths', [])
             if self.log_fn:
                 self.log_fn(f"Resuming from checkpoint at iteration {self.start_iteration}.")
         else:
+            if self.log_fn:
+                self.log_fn("No checkpoint found. Starting training from scratch.")
             self.start_iteration = 0
+            self.current_epoch = 1
         if self.automatic_batch_size:
             self.batch_size = estimate_batch_size(self.model, self.device)
             if self.log_fn:
@@ -233,7 +318,7 @@ class SelfPlayTrainer:
         self.total_games_played += self.num_games_per_iteration
         return inputs, policy_targets, value_targets
 
-    def _train_on_self_play_data(self, self_play_data):
+    def _train_on_self_play_data(self, self_play_data, iteration):
         inputs, policy_targets, value_targets = self_play_data
         if inputs.numel() == 0:
             return
@@ -245,13 +330,34 @@ class SelfPlayTrainer:
             pin_memory=(self.device == 'cuda'),
             num_workers=min(os.cpu_count(), 8),
         )
-        for epoch in range(self.num_epochs):
+        start_epoch = self.current_epoch
+        for epoch in range(start_epoch, self.num_epochs + 1):
             if self.stop_event.is_set():
                 break
-            while not self.pause_event.is_set():
-                time.sleep(0.1)
+            if self.log_fn:
+                self.log_fn(f"Epoch {epoch}/{self.num_epochs} started.")
+            self.current_epoch = epoch
+            train_iterator = iter(loader)
+            if epoch == start_epoch and self.batch_idx is not None:
+                skip_batches = self.batch_idx
+                if skip_batches >= len(loader):
+                    if self.log_fn:
+                        self.log_fn(f"Skip batches ({skip_batches}) exceed total batches ({len(loader)}). Skipping entire epoch.")
+                    continue
+                for _ in range(skip_batches):
+                    try:
+                        next(train_iterator)
+                    except StopIteration:
+                        break
+            else:
+                self.batch_idx = None
             total_loss = 0
-            for batch_inputs, batch_policy_targets, batch_value_targets in loader:
+            for batch_idx, (batch_inputs, batch_policy_targets, batch_value_targets) in enumerate(train_iterator, 1):
+                self.total_batches_processed += 1
+                if self.stop_event.is_set():
+                    break
+                while not self.pause_event.is_set():
+                    time.sleep(0.1)
                 batch_inputs = batch_inputs.to(self.device, non_blocking=True)
                 batch_policy_targets = batch_policy_targets.to(self.device, non_blocking=True)
                 batch_value_targets = batch_value_targets.to(self.device, non_blocking=True)
@@ -267,9 +373,12 @@ class SelfPlayTrainer:
                 total_loss += loss.item()
                 del batch_inputs, batch_policy_targets, batch_value_targets
                 torch.cuda.empty_cache()
+                self.batch_idx = batch_idx
+                if self.should_save_checkpoint(iteration + 1, self.current_epoch, self.total_batches_processed):
+                    self.save_checkpoint(iteration + 1, self.current_epoch, self.total_batches_processed)
             avg_loss = total_loss / len(loader)
             if self.log_fn:
-                self.log_fn(f"Epoch {epoch + 1}/{self.num_epochs}, Loss: {avg_loss:.4f}")
+                self.log_fn(f"Epoch {epoch}/{self.num_epochs}, Loss: {avg_loss:.4f}")
 
     def _save_model(self, iteration):
         os.makedirs(self.output_dir, exist_ok=True)
@@ -278,6 +387,8 @@ class SelfPlayTrainer:
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'iteration': iteration + 1,
+            'epoch': self.current_epoch,
+            'total_batches_processed': self.total_batches_processed,
             'training_stats': {
                 'total_games_played': self.total_games_played,
                 'results': self.results,

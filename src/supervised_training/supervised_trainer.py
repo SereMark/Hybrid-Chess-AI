@@ -205,6 +205,8 @@ class SupervisedTrainer:
                     self.log_fn(f"Unsupported scheduler type: {self.scheduler_type}. Using CosineAnnealingWarmRestarts by default.")
                 scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
 
+            start_epoch = 1
+            skip_batches = 0
             if self.checkpoint_path and os.path.exists(self.checkpoint_path):
                 checkpoint = torch.load(self.checkpoint_path, map_location=device)
                 model.load_state_dict(checkpoint['model_state_dict'])
@@ -213,27 +215,19 @@ class SupervisedTrainer:
                 if 'total_batches_processed' in checkpoint:
                     self.total_batches_processed = checkpoint['total_batches_processed']
                 if 'epoch' in checkpoint:
-                    if 'batch_idx' in checkpoint and checkpoint['batch_idx'] is not None:
-                        start_epoch = checkpoint['epoch']
-                        if self.log_fn:
-                            self.log_fn(f"Resumed training from epoch {checkpoint['epoch']}, batch {checkpoint['batch_idx']}")
-                        skip_batches = checkpoint['batch_idx']
-                    else:
-                        start_epoch = checkpoint['epoch'] + 1
-                        if self.log_fn:
-                            self.log_fn(f"Resumed training from epoch {checkpoint['epoch']}")
-                        skip_batches = 0
+                    start_epoch = checkpoint['epoch']
+                    skip_batches = checkpoint.get('batch_idx', 0)
+                    if self.log_fn:
+                        self.log_fn(f"Resumed training from epoch {start_epoch}, batch {skip_batches}")
                 else:
-                    start_epoch = 1
-                    skip_batches = 0
-                remaining_epochs = self.epochs - (start_epoch - 1)
-                total_steps = remaining_epochs * len(train_loader)
+                    if self.log_fn:
+                        self.log_fn("No epoch information found in checkpoint. Starting from epoch 1.")
             else:
-                start_epoch = 1
-                remaining_epochs = self.epochs
-                total_steps = self.epochs * len(train_loader)
-                skip_batches = 0
+                if self.log_fn:
+                    self.log_fn("No checkpoint found. Starting training from scratch.")
 
+            remaining_epochs = self.epochs - (start_epoch - 1)
+            total_steps = remaining_epochs * len(train_loader)
             if self.initial_batches_processed_callback:
                 self.initial_batches_processed_callback(self.total_batches_processed)
             best_val_loss = float('inf')
@@ -257,7 +251,7 @@ class SupervisedTrainer:
                     if skip_batches >= len(train_loader):
                         if self.log_fn:
                             self.log_fn(f"Skip batches ({skip_batches}) exceed total batches ({len(train_loader)}). Skipping entire epoch.")
-                        skip_batches = 0
+                        continue
                     for _ in range(skip_batches):
                         try:
                             next(train_iterator)
