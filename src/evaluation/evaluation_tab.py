@@ -1,11 +1,11 @@
 from PyQt5.QtWidgets import (
-    QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
-    QFileDialog, QHBoxLayout, QMessageBox
+    QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QMessageBox
 )
-import os
 from src.evaluation.evaluation_visualization import EvaluationVisualization
 from src.evaluation.evaluation_worker import EvaluationWorker
 from src.base.base_tab import BaseTab
+import os
+
 
 class EvaluationTab(BaseTab):
     def __init__(self, parent=None):
@@ -17,10 +17,15 @@ class EvaluationTab(BaseTab):
         main_layout = QVBoxLayout(self)
 
         self.paths_group = self.create_paths_group()
-        control_buttons_layout = self.create_control_buttons()
+        control_buttons_layout = self.create_control_buttons(
+            "Start Evaluation",
+            "Stop Evaluation",
+            self.start_evaluation,
+            self.stop_evaluation
+        )
         progress_layout = self.create_progress_layout()
         self.log_text_edit = self.create_log_text_edit()
-        self.visualization_group = self.create_visualization_group()
+        self.visualization_group = self.create_visualization_group("Evaluation Visualization")
 
         main_layout.addWidget(self.paths_group)
         main_layout.addLayout(control_buttons_layout)
@@ -52,50 +57,12 @@ class EvaluationTab(BaseTab):
             self.h5_file_input, "Select H5 Dataset File", "HDF5 Files (*.h5 *.hdf5)"
         ))
 
-        model_layout = QHBoxLayout()
-        model_layout.addWidget(self.model_path_input)
-        model_layout.addWidget(model_browse_button)
-
-        dataset_layout = QHBoxLayout()
-        dataset_layout.addWidget(self.dataset_indices_input)
-        dataset_layout.addWidget(dataset_browse_button)
-
-        h5_file_layout = QHBoxLayout()
-        h5_file_layout.addWidget(self.h5_file_input)
-        h5_file_layout.addWidget(h5_file_browse_button)
-
-        paths_layout.addRow("Model Path:", model_layout)
-        paths_layout.addRow("Dataset Indices:", dataset_layout)
-        paths_layout.addRow("H5 Dataset File:", h5_file_layout)
+        paths_layout.addRow("Model Path:", self.create_browse_layout(self.model_path_input, model_browse_button))
+        paths_layout.addRow("Dataset Indices:", self.create_browse_layout(self.dataset_indices_input, dataset_browse_button))
+        paths_layout.addRow("H5 Dataset File:", self.create_browse_layout(self.h5_file_input, h5_file_browse_button))
 
         paths_group.setLayout(paths_layout)
         return paths_group
-
-    def create_control_buttons(self) -> QHBoxLayout:
-        layout = QHBoxLayout()
-        self.start_button = QPushButton("Start Evaluation")
-        self.stop_button = QPushButton("Stop Evaluation")
-        layout.addWidget(self.start_button)
-        layout.addWidget(self.stop_button)
-        layout.addStretch()
-
-        self.stop_button.setEnabled(False)
-
-        self.start_button.clicked.connect(self.start_evaluation)
-        self.stop_button.clicked.connect(self.stop_evaluation)
-        return layout
-
-    def create_visualization_group(self) -> QGroupBox:
-        visualization_group = QGroupBox("Evaluation Visualization")
-        vis_layout = QVBoxLayout()
-        vis_layout.addWidget(self.visualization)
-        visualization_group.setLayout(vis_layout)
-        return visualization_group
-
-    def browse_file(self, input_field: QLineEdit, title: str, file_filter: str):
-        file_path, _ = QFileDialog.getOpenFileName(self, title, input_field.text(), file_filter)
-        if file_path:
-            input_field.setText(file_path)
 
     def start_evaluation(self):
         model_path = self.model_path_input.text()
@@ -130,7 +97,7 @@ class EvaluationTab(BaseTab):
         )
         if started:
             self.worker.metrics_update.connect(self.visualization.update_metrics_visualization)
-            self.worker.evaluation_finished.connect(self.on_evaluation_finished)
+            self.worker.task_finished.connect(self.on_evaluation_finished)
         else:
             self.start_button.setEnabled(True)
             self.stop_button.setEnabled(False)

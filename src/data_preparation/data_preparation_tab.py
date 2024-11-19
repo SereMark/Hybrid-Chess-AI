@@ -1,11 +1,9 @@
-from PyQt5.QtWidgets import (
-    QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
-    QHBoxLayout, QFileDialog, QMessageBox
-)
-import os
+from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QMessageBox
 from src.data_preparation.data_preparation_visualization import DataPreparationVisualization
 from src.data_preparation.data_preparation_worker import DataPreparationWorker
 from src.base.base_tab import BaseTab
+import os
+
 
 class DataPreparationTab(BaseTab):
     def __init__(self, parent=None):
@@ -18,10 +16,15 @@ class DataPreparationTab(BaseTab):
 
         self.parameters_group = self.create_parameters_group()
         self.directories_group = self.create_directories_group()
-        control_buttons_layout = self.create_control_buttons()
+        control_buttons_layout = self.create_control_buttons(
+            "Start Data Preparation",
+            "Stop",
+            self.start_data_preparation,
+            self.stop_data_preparation
+        )
         progress_layout = self.create_progress_layout()
         self.log_text_edit = self.create_log_text_edit()
-        self.visualization_group = self.create_visualization_group()
+        self.visualization_group = self.create_visualization_group("Data Preparation Visualization")
 
         main_layout.addWidget(self.parameters_group)
         main_layout.addWidget(self.directories_group)
@@ -56,55 +59,15 @@ class DataPreparationTab(BaseTab):
         self.processed_data_dir_input = QLineEdit("data/processed")
 
         raw_browse_button = QPushButton("Browse")
-        raw_browse_button.clicked.connect(self.browse_raw_dir)
+        raw_browse_button.clicked.connect(lambda: self.browse_dir(self.raw_data_dir_input, "Select Raw Data Directory"))
         processed_browse_button = QPushButton("Browse")
-        processed_browse_button.clicked.connect(self.browse_processed_dir)
+        processed_browse_button.clicked.connect(lambda: self.browse_dir(self.processed_data_dir_input, "Select Processed Data Directory"))
 
-        raw_dir_layout = QHBoxLayout()
-        raw_dir_layout.addWidget(self.raw_data_dir_input)
-        raw_dir_layout.addWidget(raw_browse_button)
-
-        processed_dir_layout = QHBoxLayout()
-        processed_dir_layout.addWidget(self.processed_data_dir_input)
-        processed_dir_layout.addWidget(processed_browse_button)
-
-        directories_layout.addRow("Raw Data Directory:", raw_dir_layout)
-        directories_layout.addRow("Processed Data Directory:", processed_dir_layout)
+        directories_layout.addRow("Raw Data Directory:", self.create_browse_layout(self.raw_data_dir_input, raw_browse_button))
+        directories_layout.addRow("Processed Data Directory:", self.create_browse_layout(self.processed_data_dir_input, processed_browse_button))
 
         directories_group.setLayout(directories_layout)
         return directories_group
-
-    def create_control_buttons(self):
-        layout = QHBoxLayout()
-        self.start_button = QPushButton("Start Data Preparation")
-        self.stop_button = QPushButton("Stop")
-        layout.addWidget(self.start_button)
-        layout.addWidget(self.stop_button)
-        layout.addStretch()
-
-        self.stop_button.setEnabled(False)
-
-        self.start_button.clicked.connect(self.start_data_preparation)
-        self.stop_button.clicked.connect(self.stop_data_preparation)
-        return layout
-
-    def create_visualization_group(self) -> QGroupBox:
-        visualization_group = QGroupBox("Data Preparation Visualization")
-        vis_layout = QVBoxLayout()
-        vis_layout.addWidget(self.visualization)
-        visualization_group.setLayout(vis_layout)
-        return visualization_group
-
-    def browse_raw_dir(self):
-        self.browse_dir(self.raw_data_dir_input, "Raw Data")
-
-    def browse_processed_dir(self):
-        self.browse_dir(self.processed_data_dir_input, "Processed Data")
-
-    def browse_dir(self, line_edit, title):
-        dir_path = QFileDialog.getExistingDirectory(self, f"Select {title} Directory", line_edit.text())
-        if dir_path:
-            line_edit.setText(dir_path)
 
     def start_data_preparation(self):
         try:
@@ -149,7 +112,7 @@ class DataPreparationTab(BaseTab):
         )
         if started:
             self.worker.stats_update.connect(self.visualization.update_data_visualization)
-            self.worker.data_preparation_finished.connect(self.on_data_preparation_finished)
+            self.worker.task_finished.connect(self.on_data_preparation_finished)
         else:
             self.start_button.setEnabled(True)
             self.stop_button.setEnabled(False)

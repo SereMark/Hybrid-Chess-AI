@@ -1,10 +1,17 @@
-import os, threading, time, numpy as np, torch, torch.nn.functional as F, torch.optim as optim, random
+import os, threading, time, numpy as np, torch, torch.nn.functional as F, torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from src.self_play.self_play import SelfPlay
 from src.models.model import ChessModel
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from multiprocessing import Pool, cpu_count, Event, Manager
-from src.utils.chess_utils import estimate_batch_size
+from src.utils.chess_utils import TOTAL_MOVES, initialize_move_mappings, estimate_batch_size
+from src.utils.common_utils import (
+    initialize_random_seeds,
+    format_time_left,
+    log_message,
+    should_stop,
+    wait_if_paused,
+)
 
 def _play_and_collect_wrapper(args):
     (
@@ -20,9 +27,8 @@ def _play_and_collect_wrapper(args):
         stats_queue
     ) = args
 
-    np.random.seed(seed)
-    random.seed(seed)
-    torch.manual_seed(seed)
+    initialize_move_mappings()
+    initialize_random_seeds(seed)
 
     inputs_list = []
     policy_targets_list = []
@@ -41,8 +47,7 @@ def _play_and_collect_wrapper(args):
     for _ in range(games_per_process):
         if stop_event.is_set():
             break
-        while not pause_event.is_set():
-            time.sleep(0.1)
+        wait_if_paused(pause_event)
         (
             states,
             mcts_probs,
@@ -117,7 +122,7 @@ class SelfPlayTrainer:
         self.game_lengths = []
         self.lock = threading.Lock()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.scaler = GradScaler(enabled=(self.device == 'cuda'))
+        self.scaler = GradScaler(enabled=(self.device.type == 'cuda'))
 
         self.save_checkpoints = save_checkpoints
         self.checkpoint_interval = checkpoint_interval
@@ -178,11 +183,9 @@ class SelfPlayTrainer:
             }
             torch.save(checkpoint_data, temp_path)
             os.replace(temp_path, final_path)
-            if self.log_fn:
-                self.log_fn(f"Checkpoint saved: {checkpoint_name}")
+            log_message(f"Checkpoint saved: {checkpoint_name}", self.log_fn)
         except Exception as e:
-            if self.log_fn:
-                self.log_fn(f"Error saving checkpoint: {str(e)}")
+            log_message(f"Error saving checkpoint: {str(e)}", self.log_fn)
             if os.path.exists(temp_path):
                 try:
                     os.remove(temp_path)
@@ -193,11 +196,10 @@ class SelfPlayTrainer:
     def train(self):
         self._initialize()
         for iteration in range(self.start_iteration, self.num_iterations):
-            if self.stop_event.is_set():
+            if should_stop(self.stop_event):
                 break
             iteration_start_time = time.time()
-            if self.log_fn:
-                self.log_fn(f"\n=== Iteration {iteration + 1}/{self.num_iterations} ===")
+            log_message(f"\n=== Iteration {iteration + 1}/{self.num_iterations} ===", self.log_fn)
             self.model.eval()
             self_play_data = self._generate_self_play_data()
             self.model.train()
@@ -206,22 +208,20 @@ class SelfPlayTrainer:
             if self.should_save_checkpoint(iteration + 1, self.current_epoch, None):
                 self.save_checkpoint(iteration + 1, self.current_epoch, None)
             iteration_time = time.time() - iteration_start_time
-            if self.log_fn:
-                self.log_fn(f"Iteration {iteration + 1} completed in {self._format_time(iteration_time)}")
+            log_message(f"Iteration {iteration + 1} completed in {format_time_left(iteration_time)}", self.log_fn)
         self._save_final_model()
 
     def _initialize(self):
-        if self.log_fn:
-            self.log_fn("Initializing model and optimizer...")
-        self.model = ChessModel().to(self.device)
+        initialize_move_mappings()
+
+        log_message("Initializing model and optimizer...", self.log_fn)
+        self.model = ChessModel(num_moves=TOTAL_MOVES).to(self.device)
         if os.path.exists(self.model_path):
             checkpoint = torch.load(self.model_path, map_location=self.device)
             self.model.load_state_dict(checkpoint['model_state_dict'])
-            if self.log_fn:
-                self.log_fn("Model loaded successfully.")
+            log_message("Model loaded successfully.", self.log_fn)
         else:
-            if self.log_fn:
-                self.log_fn("Model file not found. Starting from scratch.")
+            log_message("Model file not found. Starting from scratch.", self.log_fn)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=0.0005, weight_decay=2e-4)
         if self.checkpoint_path and os.path.exists(self.checkpoint_path):
             checkpoint = torch.load(self.checkpoint_path, map_location=self.device)
@@ -234,29 +234,21 @@ class SelfPlayTrainer:
             self.total_games_played = checkpoint['training_stats'].get('total_games_played', 0)
             self.results = checkpoint['training_stats'].get('results', [])
             self.game_lengths = checkpoint['training_stats'].get('game_lengths', [])
-            if self.log_fn:
-                self.log_fn(f"Resuming from checkpoint at iteration {self.start_iteration}.")
+            log_message(f"Resuming from checkpoint at iteration {self.start_iteration}.", self.log_fn)
         else:
-            if self.log_fn:
-                self.log_fn("No checkpoint found. Starting training from scratch.")
+            log_message("No checkpoint found. Starting training from scratch.", self.log_fn)
             self.start_iteration = 0
             self.current_epoch = 1
         if self.automatic_batch_size:
             self.batch_size = estimate_batch_size(self.model, self.device)
-            if self.log_fn:
-                self.log_fn(f"Automatic batch size estimation: Using batch size {self.batch_size}")
+            log_message(f"Automatic batch size estimation: Using batch size {self.batch_size}", self.log_fn)
         else:
-            if self.log_fn:
-                self.log_fn(f"Using manual batch size: {self.batch_size}")
+            log_message(f"Using manual batch size: {self.batch_size}", self.log_fn)
         self.start_time = time.time()
 
-        np.random.seed(self.random_seed)
-        random.seed(self.random_seed)
-        torch.manual_seed(self.random_seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(self.random_seed)
+        initialize_random_seeds(self.random_seed)
 
-        self.model_state_dict = self.model.state_dict()
+        self.model_state_dict = {k: v.cpu() for k, v in self.model.state_dict().items()}
 
     def _generate_self_play_data(self):
         num_processes = min(self.num_threads, cpu_count())
@@ -265,7 +257,7 @@ class SelfPlayTrainer:
         stop_event = manager.Event()
         pause_event = manager.Event()
         stats_queue = manager.Queue()
-        if self.stop_event.is_set():
+        if should_stop(self.stop_event):
             stop_event.set()
         if self.pause_event.is_set():
             pause_event.set()
@@ -275,7 +267,7 @@ class SelfPlayTrainer:
         args = [
             (
                 self.model_state_dict,
-                self.device,
+                self.device.type,
                 self.simulations,
                 self.c_puct,
                 self.temperature,
@@ -327,22 +319,20 @@ class SelfPlayTrainer:
             dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            pin_memory=(self.device == 'cuda'),
+            pin_memory=(self.device.type == 'cuda'),
             num_workers=min(os.cpu_count(), 8),
         )
         start_epoch = self.current_epoch
         for epoch in range(start_epoch, self.num_epochs + 1):
-            if self.stop_event.is_set():
+            if should_stop(self.stop_event):
                 break
-            if self.log_fn:
-                self.log_fn(f"Epoch {epoch}/{self.num_epochs} started.")
+            log_message(f"Epoch {epoch}/{self.num_epochs} started.", self.log_fn)
             self.current_epoch = epoch
             train_iterator = iter(loader)
             if epoch == start_epoch and self.batch_idx is not None:
                 skip_batches = self.batch_idx
                 if skip_batches >= len(loader):
-                    if self.log_fn:
-                        self.log_fn(f"Skip batches ({skip_batches}) exceed total batches ({len(loader)}). Skipping entire epoch.")
+                    log_message(f"Skip batches ({skip_batches}) exceed total batches ({len(loader)}). Skipping entire epoch.", self.log_fn)
                     continue
                 for _ in range(skip_batches):
                     try:
@@ -354,15 +344,14 @@ class SelfPlayTrainer:
             total_loss = 0
             for batch_idx, (batch_inputs, batch_policy_targets, batch_value_targets) in enumerate(train_iterator, 1):
                 self.total_batches_processed += 1
-                if self.stop_event.is_set():
+                if should_stop(self.stop_event):
                     break
-                while not self.pause_event.is_set():
-                    time.sleep(0.1)
+                wait_if_paused(self.pause_event)
                 batch_inputs = batch_inputs.to(self.device, non_blocking=True)
                 batch_policy_targets = batch_policy_targets.to(self.device, non_blocking=True)
                 batch_value_targets = batch_value_targets.to(self.device, non_blocking=True)
                 self.optimizer.zero_grad()
-                with autocast():
+                with autocast(device_type=self.device.type, enabled=(self.device.type == 'cuda')):
                     policy_preds, value_preds = self.model(batch_inputs)
                     policy_loss = -(batch_policy_targets * torch.log_softmax(policy_preds, dim=1)).mean()
                     value_loss = F.mse_loss(value_preds.view(-1), batch_value_targets)
@@ -377,8 +366,7 @@ class SelfPlayTrainer:
                 if self.should_save_checkpoint(iteration + 1, self.current_epoch, self.total_batches_processed):
                     self.save_checkpoint(iteration + 1, self.current_epoch, self.total_batches_processed)
             avg_loss = total_loss / len(loader)
-            if self.log_fn:
-                self.log_fn(f"Epoch {epoch}/{self.num_epochs}, Loss: {avg_loss:.4f}")
+            log_message(f"Epoch {epoch}/{self.num_epochs}, Loss: {avg_loss:.4f}", self.log_fn)
 
     def _save_model(self, iteration):
         os.makedirs(self.output_dir, exist_ok=True)
@@ -396,8 +384,7 @@ class SelfPlayTrainer:
             },
         }
         torch.save(checkpoint, model_save_path)
-        if self.log_fn:
-            self.log_fn(f"Model saved at iteration {iteration + 1}.")
+        log_message(f"Model saved at iteration {iteration + 1}.", self.log_fn)
         self.model_path = model_save_path
 
     def _save_final_model(self):
@@ -413,16 +400,4 @@ class SelfPlayTrainer:
             },
         }
         torch.save(checkpoint, final_model_path)
-        if self.log_fn:
-            self.log_fn("Final model saved.")
-
-    @staticmethod
-    def _format_time(seconds):
-        hours, remainder = divmod(int(seconds), 3600)
-        minutes, secs = divmod(remainder, 60)
-        if hours > 0:
-            return f"{hours}h {minutes}m {secs}s"
-        elif minutes > 0:
-            return f"{minutes}m {secs}s"
-        else:
-            return f"{secs}s"
+        log_message("Final model saved.", self.log_fn)

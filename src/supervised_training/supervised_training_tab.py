@@ -1,12 +1,13 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QWidget, QTextEdit,
-    QHBoxLayout, QLabel, QCheckBox, QComboBox, QFileDialog, QMessageBox, QSizePolicy
+    QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
+    QLabel, QCheckBox, QComboBox, QMessageBox, QHBoxLayout
 )
-import os
 from src.supervised_training.supervised_training_visualization import SupervisedTrainingVisualization
 from src.supervised_training.supervised_training_worker import SupervisedTrainingWorker
 from src.base.base_tab import BaseTab
+import os
+
 
 class SupervisedTrainingTab(BaseTab):
     def __init__(self, parent=None):
@@ -20,10 +21,19 @@ class SupervisedTrainingTab(BaseTab):
         self.dataset_group = self.create_dataset_group()
         self.training_group = self.create_training_group()
         self.checkpoint_group = self.create_checkpoint_group()
-        control_buttons_layout = self.create_buttons_layout()
+        control_buttons_layout = self.create_control_buttons(
+            "Start Training",
+            "Stop Training",
+            self.start_training,
+            self.stop_training,
+            pause_text="Pause Training",
+            resume_text="Resume Training",
+            pause_callback=self.pause_worker,
+            resume_callback=self.resume_worker
+        )
         progress_layout = self.create_progress_layout()
         self.log_text_edit = self.create_log_text_edit()
-        self.visualization_group = self.create_visualization_group()
+        self.visualization_group = self.create_visualization_group("Training Visualization")
 
         main_layout.addWidget(self.dataset_group)
         main_layout.addWidget(self.training_group)
@@ -47,11 +57,11 @@ class SupervisedTrainingTab(BaseTab):
         self.val_indices_input = QLineEdit("data/processed/val_indices.npy")
 
         dataset_browse_button = QPushButton("Browse")
-        dataset_browse_button.clicked.connect(self.browse_dataset)
+        dataset_browse_button.clicked.connect(lambda: self.browse_file(self.dataset_input, "Select Dataset File", "HDF5 Files (*.h5 *.hdf5)"))
         train_indices_browse_button = QPushButton("Browse")
-        train_indices_browse_button.clicked.connect(self.browse_train_indices)
+        train_indices_browse_button.clicked.connect(lambda: self.browse_file(self.train_indices_input, "Select Train Indices File", "NumPy Files (*.npy)"))
         val_indices_browse_button = QPushButton("Browse")
-        val_indices_browse_button.clicked.connect(self.browse_val_indices)
+        val_indices_browse_button.clicked.connect(lambda: self.browse_file(self.val_indices_input, "Select Validation Indices File", "NumPy Files (*.npy)"))
 
         dataset_layout.addRow("Dataset Path:", self.create_browse_layout(self.dataset_input, dataset_browse_button))
         dataset_layout.addRow("Train Indices Path:", self.create_browse_layout(self.train_indices_input, train_indices_browse_button))
@@ -81,7 +91,9 @@ class SupervisedTrainingTab(BaseTab):
 
         self.output_model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
         output_model_browse_button = QPushButton("Browse")
-        output_model_browse_button.clicked.connect(self.browse_output_model)
+        output_model_browse_button.clicked.connect(lambda: self.browse_file(
+            self.output_model_path_input, "Select Output Model File", "PyTorch Files (*.pth *.pt)"
+        ))
 
         training_layout.addRow("Epochs:", self.epochs_input)
         training_layout.addRow("Batch Size:", self.batch_size_input)
@@ -131,7 +143,9 @@ class SupervisedTrainingTab(BaseTab):
 
         self.checkpoint_path_input = QLineEdit("")
         checkpoint_browse_button = QPushButton("Browse")
-        checkpoint_browse_button.clicked.connect(self.browse_checkpoint)
+        checkpoint_browse_button.clicked.connect(lambda: self.browse_file(
+            self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"
+        ))
 
         checkpoint_layout.addRow(self.save_checkpoints_checkbox)
         checkpoint_layout.addRow(checkpoint_type_layout)
@@ -145,59 +159,6 @@ class SupervisedTrainingTab(BaseTab):
 
         checkpoint_group.setLayout(checkpoint_layout)
         return checkpoint_group
-
-    def create_buttons_layout(self):
-        layout = QHBoxLayout()
-        self.start_button = QPushButton("Start Training")
-        self.pause_button = QPushButton("Pause Training")
-        self.resume_button = QPushButton("Resume Training")
-        self.stop_button = QPushButton("Stop Training")
-        layout.addWidget(self.start_button)
-        layout.addWidget(self.pause_button)
-        layout.addWidget(self.resume_button)
-        layout.addWidget(self.stop_button)
-        layout.addStretch()
-        self.pause_button.setEnabled(False)
-        self.resume_button.setEnabled(False)
-        self.stop_button.setEnabled(False)
-        self.start_button.clicked.connect(self.start_training)
-        self.pause_button.clicked.connect(self.pause_training)
-        self.resume_button.clicked.connect(self.resume_training)
-        self.stop_button.clicked.connect(self.stop_training)
-        return layout
-
-    def toggle_batch_size_input(self, checked):
-        self.batch_size_input.setEnabled(not checked)
-
-    def create_visualization_group(self):
-        visualization_group = QGroupBox("Training Visualization")
-        vis_layout = QVBoxLayout()
-        self.visualization.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        vis_layout.addWidget(self.visualization)
-        visualization_group.setLayout(vis_layout)
-        return visualization_group
-
-    def create_log_text_edit(self):
-        log_text_edit = QTextEdit()
-        log_text_edit.setReadOnly(True)
-        self.log_text_edit = log_text_edit
-        return log_text_edit
-
-    def create_browse_layout(self, line_edit, browse_button):
-        layout = QHBoxLayout()
-        layout.addWidget(line_edit)
-        layout.addWidget(browse_button)
-        return layout
-
-    def create_interval_widget(self, prefix, input_field, suffix):
-        layout = QHBoxLayout()
-        layout.addWidget(QLabel(prefix))
-        layout.addWidget(input_field)
-        layout.addWidget(QLabel(suffix))
-        layout.addStretch()
-        widget = QWidget()
-        widget.setLayout(layout)
-        return widget
 
     def on_checkpoint_enabled_changed(self, state):
         is_enabled = state == Qt.Checked
@@ -214,30 +175,6 @@ class SupervisedTrainingTab(BaseTab):
         self.epoch_interval_widget.setEnabled(is_enabled)
         self.time_interval_widget.setEnabled(is_enabled)
         self.batch_interval_widget.setEnabled(is_enabled)
-
-    def browse_file(self, line_edit, title, file_filter):
-        file_path, _ = QFileDialog.getOpenFileName(self, title, line_edit.text(), file_filter)
-        if file_path:
-            line_edit.setText(file_path)
-
-    def browse_dataset(self):
-        self.browse_file(self.dataset_input, "Select Dataset File", "HDF5 Files (*.h5 *.hdf5)")
-
-    def browse_train_indices(self):
-        self.browse_file(self.train_indices_input, "Select Train Indices File", "NumPy Files (*.npy)")
-
-    def browse_val_indices(self):
-        self.browse_file(self.val_indices_input, "Select Validation Indices File", "NumPy Files (*.npy)")
-
-    def browse_checkpoint(self):
-        self.browse_file(self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)")
-
-    def browse_output_model(self):
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Select Output Model File", self.output_model_path_input.text(), "PyTorch Files (*.pth *.pt)"
-        )
-        if file_path:
-            self.output_model_path_input.setText(file_path)
 
     def start_training(self):
         try:
@@ -356,7 +293,7 @@ class SupervisedTrainingTab(BaseTab):
             self.worker.batch_accuracy_update.connect(self.visualization.update_accuracy_plot)
             self.worker.val_loss_update.connect(self.visualization.update_validation_loss_plots)
             self.worker.epoch_accuracy_update.connect(self.visualization.update_validation_accuracy_plot)
-            self.worker.training_finished.connect(self.on_training_finished)
+            self.worker.task_finished.connect(self.on_training_finished)
             self.worker.paused.connect(self.on_worker_paused)
         else:
             self.start_button.setEnabled(True)
@@ -371,18 +308,6 @@ class SupervisedTrainingTab(BaseTab):
 
         if not self.checkpoint_path_input.text():
             self.visualization.reset_visualization()
-
-    def on_worker_paused(self, is_paused):
-        self.pause_button.setEnabled(not is_paused)
-        self.resume_button.setEnabled(is_paused)
-
-    def pause_training(self):
-        if self.worker:
-            self.worker.pause()
-
-    def resume_training(self):
-        if self.worker:
-            self.worker.resume()
 
     def stop_training(self):
         self.stop_worker()

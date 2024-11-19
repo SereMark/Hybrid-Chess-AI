@@ -1,6 +1,10 @@
-from PyQt5.QtWidgets import QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout
+from PyQt5.QtWidgets import (
+    QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout,
+    QHBoxLayout, QGroupBox, QLineEdit, QPushButton, QFileDialog, QHBoxLayout, QVBoxLayout, QSizePolicy
+)
 from PyQt5.QtCore import Qt, QThread
 import traceback
+
 
 class BaseTab(QWidget):
     def __init__(self, parent=None):
@@ -73,3 +77,76 @@ class BaseTab(QWidget):
     def on_worker_finished(self):
         self.worker = None
         self.thread = None
+
+    def create_browse_layout(self, line_edit, browse_button):
+        layout = QHBoxLayout()
+        layout.addWidget(line_edit)
+        layout.addWidget(browse_button)
+        return layout
+
+    def create_interval_widget(self, prefix, input_field, suffix):
+        layout = QHBoxLayout()
+        layout.addWidget(QLabel(prefix))
+        layout.addWidget(input_field)
+        layout.addWidget(QLabel(suffix))
+        layout.addStretch()
+        widget = QWidget()
+        widget.setLayout(layout)
+        return widget
+
+    def create_visualization_group(self, title: str):
+        visualization_group = QGroupBox(title)
+        vis_layout = QVBoxLayout()
+        self.visualization.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        vis_layout.addWidget(self.visualization)
+        visualization_group.setLayout(vis_layout)
+        return visualization_group
+
+    def create_control_buttons(self, start_text, stop_text, start_callback, stop_callback, pause_text=None, resume_text=None, pause_callback=None, resume_callback=None):
+        layout = QHBoxLayout()
+        self.start_button = QPushButton(start_text)
+        layout.addWidget(self.start_button)
+        self.stop_button = QPushButton(stop_text)
+        layout.addWidget(self.stop_button)
+        self.stop_button.setEnabled(False)
+        self.start_button.clicked.connect(start_callback)
+        self.stop_button.clicked.connect(stop_callback)
+
+        if pause_text and resume_text and pause_callback and resume_callback:
+            self.pause_button = QPushButton(pause_text)
+            self.resume_button = QPushButton(resume_text)
+            self.pause_button.setEnabled(False)
+            self.resume_button.setEnabled(False)
+            layout.addWidget(self.pause_button)
+            layout.addWidget(self.resume_button)
+            self.pause_button.clicked.connect(pause_callback)
+            self.resume_button.clicked.connect(resume_callback)
+        layout.addStretch()
+        return layout
+
+    def browse_file(self, input_field: QLineEdit, title: str, file_filter: str):
+        file_path, _ = QFileDialog.getOpenFileName(self, title, input_field.text(), file_filter)
+        if file_path:
+            input_field.setText(file_path)
+
+    def browse_dir(self, input_field: QLineEdit, title: str):
+        dir_path = QFileDialog.getExistingDirectory(self, title, input_field.text())
+        if dir_path:
+            input_field.setText(dir_path)
+
+    def toggle_batch_size_input(self, checked):
+        if hasattr(self, 'batch_size_input'):
+            self.batch_size_input.setEnabled(not checked)
+
+    def pause_worker(self):
+        if self.worker:
+            self.worker.pause()
+
+    def resume_worker(self):
+        if self.worker:
+            self.worker.resume()
+
+    def on_worker_paused(self, is_paused):
+        if hasattr(self, 'pause_button') and hasattr(self, 'resume_button'):
+            self.pause_button.setEnabled(not is_paused)
+            self.resume_button.setEnabled(is_paused)

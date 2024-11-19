@@ -2,6 +2,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 
+
 class BasePlot:
     def __init__(self, ax, title='', xlabel='', ylabel='', invert_y=False,
                  title_fontsize=14, label_fontsize=12, tick_labelsize=10, grid_alpha=0.7):
@@ -25,6 +26,7 @@ class BasePlot:
         if self.invert_y:
             self.ax.invert_yaxis()
 
+
 class BasePlotWidget(QWidget):
     def __init__(self, title='', xlabel='', ylabel='', invert_y=False, parent=None):
         super().__init__(parent)
@@ -42,3 +44,27 @@ class BasePlotWidget(QWidget):
     def reset_axis(self):
         self.ax.clear()
         self.base_plot.apply_settings()
+
+
+class BaseVisualizationWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.figure = Figure(figsize=(10, 8), constrained_layout=True)
+        self.canvas = FigureCanvas(self.figure)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.canvas)
+        self.setLayout(layout)
+        self.plots = {}
+        self.init_visualization()
+
+    def init_visualization(self):
+        pass
+
+    def update_visualization(self):
+        self.canvas.draw_idle()
+
+    def reset_visualization(self):
+        self.figure.clear()
+        self.plots = {}
+        self.init_visualization()
+        self.canvas.draw_idle()

@@ -1,46 +1,67 @@
-# Hibrid Chess AI using CNN, MCTS and Opening Book
+# **Hybrid Chess AI using CNN, MCTS, and Opening Book**
 
-## Introduction
+## **Overview**
 
-This project aims to develop a hybrid chess artificial intelligence that integrates a convolutional neural network (CNN), Monte Carlo Tree Search algorithm (MCTS), opening book, and graphical user interface (GUI). This AI is capable of evaluating and solving chess games by leveraging the advantages of deep learning techniques and search algorithms.
+This project is the implementation of a **hybrid chess artificial intelligence** designed to combine advanced deep learning methods and classical search algorithms. The AI utilizes a **Convolutional Neural Network (CNN)** for board evaluation, **Monte Carlo Tree Search (MCTS)** for move selection, and an **opening book** for optimized early-game play. It also features a **Graphical User Interface (GUI)** for interactive gameplay.
 
-### Important Note
+### **Purpose**
+This project is developed as part of a thesis and serves as an educational and research tool to explore the intersection of neural networks and traditional chess AI techniques.
 
-This project is part of a thesis, so the code found here is only for educational and research purposes. Commercial use is not permitted.
+### **Disclaimer**
+The code in this repository is for **non-commercial use only**. It may not be used, reproduced, or distributed for any commercial purposes. Please refer to the [LICENSE](LICENSE) file for details.
 
-## Requirements
+---
 
-The software and libraries required to run the project are installed in the following steps:
+## **Features**
+- **AI Gameplay**: Play against the hybrid chess AI and test its strategic capabilities.
+- **Visualization Tools**: Observe the MCTS search process and the probabilities of candidate moves.
+- **User-Friendly GUI**: Intuitive interface for playing, analyzing, and interacting with the AI.
 
-- Python 3.12
-- Anaconda
+---
 
-## Installation
+## **System Requirements**
+To run this project, you need:
+- **Python 3.12**
+- **Anaconda** (for dependency management)
+- A modern GPU (recommended for optimal performance with neural networks)
 
-First, clone the project and then create the environment using conda.
+---
 
-```bash
-git clone <project-repo-url>
-cd <project-location>
-conda env create -f environment.yml
-conda activate hybrid_chess_ai
-```
+## **Installation**
 
-After activating the environment, run the main script:
+Follow these steps to set up the environment and run the project:
 
-```bash
-python -m src.gui.main
-```
+1. **Clone the Repository**:
+   ```bash
+   git clone <project-repo-url>
+   cd <project-location>
+   ```
 
-Run the following script to preprocess the raw opening files:
+2. **Create and Activate the Environment**:
+   ```bash
+   conda env create -f environment.yml
+   conda activate hybrid_chess_ai
+   ```
 
-```bash
-python preprocess_opening_book.py
-```
+3. **Run the Application**:
+   Launch the main script to start the GUI:
+   ```bash
+   python -m src.gui.main
+   ```
 
-Note: cd into src/utils before running the script
+---
 
-## Usage
+## **Usage**
 
-- You can play against the AI through the interactive chess interface.
-- It is possible to observe the internal workings of the AI by visualizing the MCTS search and displaying the probabilities of moves.
+### **Playing Chess**
+- Launch the GUI to play chess against the AI. The interface supports interactive gameplay, showing move suggestions and AI thinking processes.
+
+### **Visualizing AI Behavior**
+- View the internal operations of the AI, such as:
+  - **MCTS Search Tree**: Explore how the AI evaluates potential moves.
+  - **Move Probabilities**: See how the CNN assigns probabilities to possible moves.
+
+---
+
+## **License**
+This project is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International Public License](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode). See the [LICENSE](LICENSE) file for details.

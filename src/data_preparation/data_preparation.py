@@ -1,8 +1,8 @@
 import os, glob, time, numpy as np, h5py, chess.pgn, io, threading
 from src.utils.chess_utils import initialize_move_mappings, INDEX_MAPPING, convert_board_to_tensor, flip_board, flip_move
+from src.utils.common_utils import format_time_left, log_message, should_stop, wait_if_paused
 
 initialize_move_mappings()
-
 
 class DataProcessor:
     def __init__(self, raw_data_dir, processed_data_dir, max_games, min_elo,
@@ -39,95 +39,65 @@ class DataProcessor:
     def process_pgn_files(self):
         pgn_files = glob.glob(os.path.join(self.raw_data_dir, '*.pgn'))
         if not pgn_files:
-            self._log(f"No PGN files found in {self.raw_data_dir}")
+            log_message(f"No PGN files found in {self.raw_data_dir}", self.log_callback)
             return
-            
-        self._log(f"Found {len(pgn_files)} PGN files to process")
+
+        log_message(f"Found {len(pgn_files)} PGN files to process", self.log_callback)
         os.makedirs(self.processed_data_dir, exist_ok=True)
         h5_file_path = os.path.join(self.processed_data_dir, 'dataset.h5')
-        
+
         self.start_time = time.time()
         total_estimated_games = self._estimate_game_count(pgn_files)
         total_estimated_games = min(total_estimated_games, self.max_games)
-        
+
         try:
             with h5py.File(h5_file_path, 'w') as h5_file:
                 self._initialize_h5_datasets(h5_file)
-                self._log("Initialized H5 datasets successfully")
-                
+                log_message("Initialized H5 datasets successfully", self.log_callback)
+
                 for filename in pgn_files:
-                    if self._should_stop():
-                        self._log("Stopping processing due to stop event")
+                    if should_stop(self.stop_event):
+                        log_message("Stopping processing due to stop event", self.log_callback)
                         break
-                        
-                    self._wait_if_paused()
-                    self._log(f"Processing file: {filename}")
-                    
+
+                    wait_if_paused(self.pause_event)
+                    log_message(f"Processing file: {filename}", self.log_callback)
+
                     with open(filename, 'r', errors='ignore') as f:
                         while True:
-                            if self._should_stop():
-                                self._log("Stopping processing due to stop event")
+                            if should_stop(self.stop_event):
+                                log_message("Stopping processing due to stop event", self.log_callback)
                                 break
-                                
-                            self._wait_if_paused()
-                            
+
+                            wait_if_paused(self.pause_event)
+
                             game = chess.pgn.read_game(f)
                             if game is None:
                                 break
-                            
+
                             game_str = str(game)
-                            result = process_game(game_str, self.min_elo, self._log)
+                            result = process_game(game_str, self.min_elo, self.log_callback)
                             if result is None:
                                 continue
-                                
+
                             self._process_data_entry(result)
                             self.total_games_processed += 1
-                            
+
                             if self.total_games_processed % 100 == 0:
                                 self._update_progress_and_time_left(total_estimated_games)
                                 self._emit_stats()
-                                
+
                             if self.total_games_processed >= self.max_games:
-                                self._log("Reached maximum number of games")
+                                log_message("Reached maximum number of games", self.log_callback)
                                 break
-                                
+
                 if self.batch_inputs:
-                    self._log(f"Writing final batch of {len(self.batch_inputs)} samples")
+                    log_message(f"Writing final batch of {len(self.batch_inputs)} samples", self.log_callback)
                     self._write_batch_to_h5()
-                    
+
         except Exception as e:
-            self._log(f"Critical error during data processing: {str(e)}")
+            log_message(f"Critical error during data processing: {str(e)}", self.log_callback)
             raise
-            
-    def _process_single_file(self, filename):
-        with open(filename, 'r', errors='ignore') as f:
-            while True:
-                if self._should_stop():
-                    break
-                    
-                self._wait_if_paused()
-                game_str = self._read_game_as_string(f)
-                if game_str is None:
-                    break
-                    
-                try:
-                    result = process_game(game_str, self.min_elo, self._log)
-                    if result is None:
-                        continue
-                        
-                    self._process_data_entry(result)
-                    self.total_games_processed += 1
-                    
-                    if self.total_games_processed % 100 == 0:
-                        self._update_progress_and_time_left(self.max_games)
-                        self._emit_stats()
-                        
-                    if self.total_games_processed >= self.max_games:
-                        self._log("Reached maximum number of games")
-                        return
-                        
-                except Exception as e:
-                    self._log(f"Error processing game: {str(e)}")
 
     def _initialize_h5_datasets(self, h5_file):
         self.h5_inputs = h5_file.create_dataset(
@@ -166,34 +136,31 @@ class DataProcessor:
             if len(self.batch_inputs) >= self.batch_size:
                 self._write_batch_to_h5()
 
-    def _write_batch(self):
-        batch_size = len(self.batch_inputs)
-        start_idx = self.current_dataset_size
-        end_idx = self.current_dataset_size + batch_size
-
-        self.h5_inputs.resize((end_idx, 20, 8, 8))
-        self.h5_policy_targets.resize((end_idx,))
-        self.h5_value_targets.resize((end_idx,))
-
-        self.h5_inputs[start_idx:end_idx] = np.array(self.batch_inputs, dtype=np.float32)
-        self.h5_policy_targets[start_idx:end_idx] = np.array(self.batch_policy_targets, dtype=np.int64)
-        self.h5_value_targets[start_idx:end_idx] = np.array(self.batch_value_targets, dtype=np.float32)
-
-        self.current_dataset_size += batch_size
-
-        self.batch_inputs.clear()
-        self.batch_policy_targets.clear()
-        self.batch_value_targets.clear()
-
     def _write_batch_to_h5(self):
         try:
             if not self.batch_inputs:
-                self._log("Warning: Attempted to write empty batch")
+                log_message("Warning: Attempted to write empty batch", self.log_callback)
                 return
-                
-            self._write_batch()
+
+            batch_size = len(self.batch_inputs)
+            start_idx = self.current_dataset_size
+            end_idx = self.current_dataset_size + batch_size
+
+            self.h5_inputs.resize((end_idx, 20, 8, 8))
+            self.h5_policy_targets.resize((end_idx,))
+            self.h5_value_targets.resize((end_idx,))
+
+            self.h5_inputs[start_idx:end_idx] = np.array(self.batch_inputs, dtype=np.float32)
+            self.h5_policy_targets[start_idx:end_idx] = np.array(self.batch_policy_targets, dtype=np.int64)
+            self.h5_value_targets[start_idx:end_idx] = np.array(self.batch_value_targets, dtype=np.float32)
+
+            self.current_dataset_size += batch_size
+
+            self.batch_inputs.clear()
+            self.batch_policy_targets.clear()
+            self.batch_value_targets.clear()
         except Exception as e:
-            self._log(f"Error writing batch to H5: {str(e)}")
+            log_message(f"Error writing batch to H5: {str(e)}", self.log_callback)
             raise
 
     def _update_histograms(self, game_length, avg_rating):
@@ -226,7 +193,7 @@ class DataProcessor:
                 estimated_total_time = (elapsed_time / self.total_games_processed) * total_estimated_games
                 time_left = estimated_total_time - elapsed_time
                 time_left = max(0, time_left)
-                time_left_str = self._format_time_left(time_left)
+                time_left_str = format_time_left(time_left)
                 self.time_left_callback(time_left_str)
             else:
                 self.time_left_callback("Calculating...")
@@ -243,30 +210,6 @@ class DataProcessor:
                 'player_rating_histogram': self.player_rating_histogram.copy()
             }
             self.stats_callback(stats)
-
-    def _format_time_left(self, seconds):
-        days = seconds // 86400
-        remainder = seconds % 86400
-        hours = remainder // 3600
-        minutes = (remainder % 3600) // 60
-        secs = remainder % 60
-
-        if days >= 1:
-            day_str = f"{int(days)}d "
-            return f"{day_str}{int(hours):02d}:{int(minutes):02d}:{int(secs):02d}"
-        else:
-            return f"{int(hours):02d}:{int(minutes):02d}:{int(secs):02d}"
-
-    def _log(self, message):
-        if self.log_callback:
-            self.log_callback(message)
-
-    def _should_stop(self):
-        return self.total_games_processed >= self.max_games or self.stop_event.is_set()
-
-    def _wait_if_paused(self):
-        while not self.pause_event.is_set():
-            time.sleep(0.1)
 
 def split_dataset(processed_data_dir, log_callback=None):
     output_dir = processed_data_dir
@@ -292,42 +235,38 @@ def split_dataset(processed_data_dir, log_callback=None):
             np.save(test_indices_path, test_indices)
 
         if log_callback:
-            log_callback("Dataset split into training, validation, and test sets.")
+            log_message("Dataset split into training, validation, and test sets.", log_callback)
     except Exception as e:
         if log_callback:
-            log_callback(f"Error during dataset splitting: {e}")
-
+            log_message(f"Error during dataset splitting: {e}", log_callback)
 
 def process_game(game_str, min_elo, log_callback=None):
     try:
         game = chess.pgn.read_game(io.StringIO(game_str))
         if game is None:
-            if log_callback:
-                log_callback("Skipped a game: Unable to parse game.")
+            log_message("Skipped a game: Unable to parse game.", log_callback)
             return None
-            
+
         headers = game.headers
         white_elo_str = headers.get('WhiteElo')
         black_elo_str = headers.get('BlackElo')
-        
+
         if white_elo_str is None or black_elo_str is None:
-            if log_callback:
-                log_callback("Skipped a game: Missing WhiteElo or BlackElo.")
+            log_message("Skipped a game: Missing WhiteElo or BlackElo.", log_callback)
             return None
-        
+
         try:
             white_elo = int(white_elo_str)
             black_elo = int(black_elo_str)
         except ValueError:
-            if log_callback:
-                log_callback("Skipped a game: Non-integer ELO value.")
+            log_message("Skipped a game: Non-integer ELO value.", log_callback)
             return None
-        
+
         if white_elo < min_elo or black_elo < min_elo:
             return None
-            
+
         avg_rating = (white_elo + black_elo) / 2
-        
+
         result = headers.get('Result', '*')
         if result == '1-0':
             game_result = 1.0
@@ -336,39 +275,37 @@ def process_game(game_str, min_elo, log_callback=None):
         elif result == '1/2-1/2':
             game_result = 0.0
         else:
-            if log_callback:
-                log_callback("Skipped a game: Unrecognized result format.")
+            log_message("Skipped a game: Unrecognized result format.", log_callback)
             return None
-                
+
         inputs = []
         policy_targets = []
         value_targets = []
         game_length = 0
-        
+
         board = game.board()
         moves = list(game.mainline_moves())
         game_length = len(moves)
-        
+
         for move in moves:
             current_tensor = convert_board_to_tensor(board)
-            
+
             if move in INDEX_MAPPING:
                 move_idx = INDEX_MAPPING[move]
             else:
-                if log_callback:
-                    log_callback(f"Skipped a move: Move '{move}' not in INDEX_MAPPING.")
+                log_message(f"Skipped a move: Move '{move}' not in INDEX_MAPPING.", log_callback)
                 board.push(move)
                 continue
-                
+
             inputs.append(current_tensor)
             policy_targets.append(move_idx)
             value_target = game_result if board.turn == chess.WHITE else -game_result
             value_targets.append(value_target)
-            
+
             flipped_board = flip_board(board)
             flipped_tensor = convert_board_to_tensor(flipped_board)
             flipped_move = flip_move(move)
-            
+
             if flipped_move in INDEX_MAPPING:
                 flipped_move_idx = INDEX_MAPPING[flipped_move]
                 inputs.append(flipped_tensor)
@@ -376,16 +313,14 @@ def process_game(game_str, min_elo, log_callback=None):
                 flipped_value_target = -value_target
                 value_targets.append(flipped_value_target)
             else:
-                if log_callback:
-                    log_callback(f"Skipped a flipped move: Move '{flipped_move}' not in INDEX_MAPPING.")
-                
+                log_message(f"Skipped a flipped move: Move '{flipped_move}' not in INDEX_MAPPING.", log_callback)
+
             board.push(move)
-        
+
         if not inputs:
-            if log_callback:
-                log_callback("Skipped a game: No valid moves found.")
+            log_message("Skipped a game: No valid moves found.", log_callback)
             return None
-        
+
         return {
             'inputs': inputs,
             'policy_targets': policy_targets,
@@ -394,8 +329,7 @@ def process_game(game_str, min_elo, log_callback=None):
             'avg_rating': avg_rating,
             'game_result': game_result
         }
-        
+
     except Exception as e:
-        if log_callback:
-            log_callback(f"Error processing game: {str(e)}")
+        log_message(f"Error processing game: {str(e)}", log_callback)
         return None

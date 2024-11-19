@@ -1,5 +1,5 @@
-import torch, torch.nn as nn, src.utils.chess_utils as chess_utils
-from typing import Tuple, Optional
+import torch, torch.nn as nn
+from src.utils.chess_utils import TOTAL_MOVES
 
 class ResidualUnit(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, stride: int = 1) -> None:
@@ -41,9 +41,9 @@ class ResidualUnit(nn.Module):
         return out
 
 class ChessModel(nn.Module):
-    def __init__(self, filters: int = 64, res_blocks: int = 5, num_moves: Optional[int] = None) -> None:
+    def __init__(self, filters: int = 64, res_blocks: int = 5, num_moves: int = TOTAL_MOVES) -> None:
         super().__init__()
-        self.num_moves = num_moves or chess_utils.TOTAL_MOVES
+        self.num_moves = num_moves
         self.initial_block = nn.Sequential(
             nn.Conv2d(20, filters, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(filters),
@@ -87,7 +87,7 @@ class ChessModel(nn.Module):
                 nn.init.ones_(module.weight)
                 nn.init.zeros_(module.bias)
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor):
         x = self.initial_block(x)
         x = self.residual_layers(x)
         policy_output = self.policy_head(x)

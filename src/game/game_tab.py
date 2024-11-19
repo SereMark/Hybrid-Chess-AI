@@ -4,10 +4,8 @@ from PyQt5.QtGui import QFont, QPainter, QColor, QPixmap, QBrush
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QSplitter, QDialog,
-    QGridLayout, QPushButton, QSizePolicy, QMessageBox, QComboBox, QSpinBox,
-    QGroupBox, QFormLayout
+    QGridLayout, QPushButton, QSizePolicy, QMessageBox
 )
-
 from src.game.game_engine import GameEngine
 from src.game.game_visualization import GameVisualization
 from src.base.base_tab import BaseTab
@@ -61,9 +59,7 @@ class ChessBoardView(QWidget):
         self.move_made_signal.emit(msg)
         self.selected_square = None
         self.highlighted_squares = []
-        if ("Move made:" in msg or
-                "AI moved:" in msg or
-                "AI selected opening book move:" in msg):
+        if "Move made:" in msg or "AI moved:" in msg:
             move_str = msg.split(":")[-1].strip()
             move = chess.Move.from_uci(move_str)
             self.last_move = move
@@ -96,7 +92,7 @@ class ChessBoardView(QWidget):
         return x, y
 
     def _draw_pieces_and_highlights(self, painter, size):
-        if hasattr(self, 'last_move') and self.last_move:
+        if self.last_move:
             from_sq = self.last_move.from_square
             to_sq = self.last_move.to_square
             x_from, y_from = self._get_square_coordinates(from_sq, size)
@@ -137,8 +133,16 @@ class ChessBoardView(QWidget):
             chess.QUEEN: 'queen',
             chess.KING: 'king'
         }
-        piece_group = f"{piece_name[piece.piece_type]}_{'white' if piece.color == chess.WHITE else 'black'}"
-        self.svg_renderer.render(svg_painter, piece_group, QRectF(0, 0, ps, ps))
+        color_name = 'white' if piece.color == chess.WHITE else 'black'
+        piece_type_name = piece_name[piece.piece_type]
+        element_id = f"{piece_type_name}_{color_name}"
+
+        if not self.svg_renderer.elementExists(element_id):
+            element_id = f"{color_name}_{piece_type_name}"
+            if not self.svg_renderer.elementExists(element_id):
+                element_id = f"{piece_type_name}_{color_name}".capitalize()
+
+        self.svg_renderer.render(svg_painter, element_id, QRectF(0, 0, ps, ps))
         svg_painter.end()
         painter.drawPixmap(int(x + pad), int(y + pad), pixmap)
 
@@ -200,8 +204,6 @@ class ChessBoardView(QWidget):
                 )
                 if is_pawn_promotion_move:
                     self.promotion_requested.emit(self.selected_square, sq)
-                    self.selected_square = None
-                    self.highlighted_squares = []
                     self.update()
                     return
                 else:
@@ -238,7 +240,7 @@ class ChessGameTab(BaseTab):
         self._setup_ui()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.decrement_timer)
-        self.show_welcome_screen()
+        self.initialize_game(chess.WHITE, 'cnn', self.time_limit)
 
     def _setup_ui(self):
         main_layout = QHBoxLayout(self)
@@ -252,14 +254,10 @@ class ChessGameTab(BaseTab):
         game_layout.addWidget(self.board_container)
 
         control_layout = QHBoxLayout()
-        self.new_game_button = QPushButton("New Game")
         self.restart_button = QPushButton("Restart Game")
-        self.new_game_button.setToolTip("Start a new game with customized settings")
         self.restart_button.setToolTip("Restart the game with the same settings")
-        self.restart_button.setEnabled(False)
-        self.new_game_button.clicked.connect(self.open_settings_dialog)
+        self.restart_button.setEnabled(True)
         self.restart_button.clicked.connect(self.restart_game)
-        control_layout.addWidget(self.new_game_button)
         control_layout.addWidget(self.restart_button)
         control_layout.addStretch()
 
@@ -267,23 +265,19 @@ class ChessGameTab(BaseTab):
         control_layout.addLayout(timers_layout)
         game_layout.addLayout(control_layout)
 
-        self.status = QLabel("Welcome! Click 'New Game' to begin.", alignment=Qt.AlignCenter)
+        self.status = QLabel("Game started!", alignment=Qt.AlignCenter)
         self.mode_label = QLabel("", alignment=Qt.AlignCenter)
         mode_font = QFont('Arial', 12, QFont.Bold)
         self.mode_label.setFont(mode_font)
-        self.opening_label = QLabel("", alignment=Qt.AlignCenter)
-        self.opening_label.setWordWrap(True)
-        self.opening_label.setMaximumHeight(50)
-        self.opening_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 
         info_layout = QVBoxLayout()
         info_layout.addWidget(self.status)
-        info_layout.addWidget(self.opening_label)
         info_layout.addWidget(self.mode_label)
         game_layout.addLayout(info_layout)
 
         self.splitter.addWidget(self.game_container)
         self.splitter.addWidget(self.visual)
+        self.splitter.setSizes([int(self.width() * 0.5), int(self.width() * 0.5)])
         main_layout.addWidget(self.splitter)
 
     def _create_timer_layout(self):
@@ -298,24 +292,9 @@ class ChessGameTab(BaseTab):
         timers_layout.addWidget(self.black_label)
         return timers_layout
 
-    def show_welcome_screen(self):
-        self.status.setText("Welcome! Click 'New Game' to begin.")
-        self.mode_label.setText("")
-        self.opening_label.setText("")
-        self.restart_button.setEnabled(False)
-        self.new_game_button.setEnabled(True)
-        self._clear_board_view()
-
-    def _clear_board_view(self):
-        if hasattr(self, 'board_view'):
-            if self.board_view.parent():
-                self.board_view.setParent(None)
-            self.board_view.deleteLater()
-            self.board_view = None
-
     def initialize_game(self, player_color, opponent_type, time_limit):
         self.timer.stop()
-        if hasattr(self, 'engine'):
+        if hasattr(self, 'engine') and self.engine:
             self._disconnect_signals()
         self._clear_board_view()
 
@@ -329,18 +308,22 @@ class ChessGameTab(BaseTab):
         self._connect_board_view_signals()
         self._connect_engine_signals()
 
-        self.engine.initialize_opening_book()
         self.game_active = True
         self.restart_button.setEnabled(True)
-        self.new_game_button.setEnabled(False)
         self.refresh_labels()
         self.visual.reset_visualizations()
-        self.opening_label.setText("")
         self.timer.start(1000)
         self.status.setText("Game started!")
-        self.mode_label.setText(f"{opponent_type.capitalize()} AI Opponent")
+        self.mode_label.setText(f"{'CNN AI' if self.engine.opponent_type == 'cnn' else 'Random'} AI Opponent")
         if self.engine.board.turn != self.engine.player_color:
             QTimer.singleShot(500, self.engine.make_ai_move)
+
+    def _clear_board_view(self):
+        if hasattr(self, 'board_view') and self.board_view:
+            if self.board_view.parent():
+                self.board_view.setParent(None)
+            self.board_view.deleteLater()
+            self.board_view = None
 
     def _connect_board_view_signals(self):
         self.board_view.move_made_signal.connect(self.refresh_status)
@@ -352,33 +335,25 @@ class ChessGameTab(BaseTab):
         self.engine.value_evaluation_signal.connect(self.visual.update_value_evaluation)
         self.engine.material_balance_signal.connect(self.visual.update_material_balance)
         self.engine.move_made_signal.connect(self.status.setText)
+        self.engine.move_made_signal.connect(self.board_view.on_move_made)
         self.engine.policy_output_signal.connect(self.board_view.update_policy_output)
-        self.engine.opening_name_signal.connect(self.update_opening_label)
 
     def _disconnect_signals(self):
         try:
-            self.engine.move_made_signal.disconnect()
-            self.engine.game_over_signal.disconnect()
-            self.engine.value_evaluation_signal.disconnect()
-            self.engine.material_balance_signal.disconnect()
-            self.engine.policy_output_signal.disconnect()
-            self.engine.opening_name_signal.disconnect()
-            self.board_view.move_made_signal.disconnect()
-            self.board_view.status_message.disconnect()
-            self.board_view.promotion_requested.disconnect()
+            self.engine.move_made_signal.disconnect(self.status.setText)
+            self.engine.move_made_signal.disconnect(self.board_view.on_move_made)
+            self.engine.game_over_signal.disconnect(self.handle_game_over)
+            self.engine.value_evaluation_signal.disconnect(self.visual.update_value_evaluation)
+            self.engine.material_balance_signal.disconnect(self.visual.update_material_balance)
+            self.engine.policy_output_signal.disconnect(self.board_view.update_policy_output)
+            self.board_view.move_made_signal.disconnect(self.refresh_status)
+            self.board_view.status_message.disconnect(self.status.setText)
+            self.board_view.promotion_requested.disconnect(self.handle_promotion)
         except Exception:
             pass
 
-    def update_opening_label(self, opening_name):
-        if len(opening_name) > 50:
-            opening_name = opening_name[:47] + '...'
-        self.opening_label.setText(f"Opening: {opening_name}" if opening_name else "")
-
     def refresh_status(self, msg):
-        if "AI selected opening book move:" in msg:
-            move = msg.split(":")[-1].strip()
-            self.status.setText(f"AI played opening book move {move}")
-        elif "Move made:" in msg or "AI moved:" in msg:
+        if "Move made:" in msg or "AI moved:" in msg:
             self.refresh_labels()
         elif "Game over" in msg:
             self.timer.stop()
@@ -418,8 +393,7 @@ class ChessGameTab(BaseTab):
         self.status.setText(msg)
         self.timer.stop()
         self.game_active = False
-        self.new_game_button.setEnabled(True)
-        self.restart_button.setEnabled(False)
+        self.restart_button.setEnabled(True)
 
     def handle_promotion(self, from_sq, to_sq):
         dialog = QDialog(self)
@@ -429,95 +403,36 @@ class ChessGameTab(BaseTab):
         piece_types = ['Queen', 'Rook', 'Bishop', 'Knight']
         for i, piece in enumerate(piece_types):
             btn = QPushButton(piece)
-            btn.clicked.connect(
-                lambda _, p=piece: self._handle_promotion_selection(p, dialog, selected_piece)
-            )
+            btn.clicked.connect(self.create_promotion_handler(piece, dialog, selected_piece))
             layout.addWidget(btn, 0, i)
         dialog.setLayout(layout)
         dialog.exec_()
-        if selected_piece['piece'] and self.engine.make_move(
-            from_sq, to_sq, promotion=selected_piece['piece']
-        ):
-            self.board_view.highlighted_squares = []
-            self.board_view.selected_square = None
-            self.board_view.update()
+        if selected_piece['piece']:
+            if not self.engine.make_move(
+                from_sq, to_sq, promotion=selected_piece['piece']
+            ):
+                self.status.setText("Invalid Move.")
+            else:
+                self.board_view.highlighted_squares = []
+                self.board_view.selected_square = None
+                self.board_view.update()
         else:
-            self.status.setText("Invalid Move.")
+            self.status.setText("Promotion cancelled.")
 
-    def _handle_promotion_selection(self, piece, dialog, selected_piece):
-        selected_piece['piece'] = piece
-        dialog.accept()
+    def create_promotion_handler(self, piece, dialog, selected_piece):
+        def handler():
+            selected_piece['piece'] = piece
+            dialog.accept()
+        return handler
 
     def restart_game(self):
-        if not self.game_active:
-            return
-        color_text = "White" if self.engine.player_color == chess.WHITE else "Black"
-        opponent_text = "CNN AI" if self.engine.opponent_type == "cnn" else "Random"
-        time_minutes = self.time_limit // 60
-        self._apply_settings(None, time_minutes, color_text, opponent_text)
-
-    def open_settings_dialog(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Game Settings")
-        layout = QVBoxLayout(dialog)
-
-        settings_group = QGroupBox("Game Settings")
-        settings_layout = QFormLayout()
-
-        time_spinbox = QSpinBox()
-        time_spinbox.setMinimum(1)
-        time_spinbox.setMaximum(180)
-        time_spinbox.setValue(self.time_limit // 60)
-
-        color_combo = QComboBox()
-        color_combo.addItems(["White", "Black"])
-        if hasattr(self, 'engine'):
-            color_combo.setCurrentIndex(0 if self.engine.player_color == chess.WHITE else 1)
-
-        opponent_combo = QComboBox()
-        opponent_combo.addItems(["Random", "CNN AI"])
-        if hasattr(self, 'engine'):
-            opponent_display_text = "CNN AI" if self.engine.opponent_type == "cnn" else "Random"
-            opponent_combo.setCurrentText(opponent_display_text)
-
-        settings_layout.addRow("Time Limit (minutes):", time_spinbox)
-        settings_layout.addRow("Your Color:", color_combo)
-        settings_layout.addRow("Opponent:", opponent_combo)
-        settings_group.setLayout(settings_layout)
-
-        buttons_layout = QHBoxLayout()
-        ok_button = QPushButton("Start Game")
-        cancel_button = QPushButton("Cancel")
-        buttons_layout.addStretch()
-        buttons_layout.addWidget(ok_button)
-        buttons_layout.addWidget(cancel_button)
-
-        ok_button.clicked.connect(
-            lambda: self._apply_settings(
-                dialog,
-                time_spinbox.value(),
-                color_combo.currentText(),
-                opponent_combo.currentText()
-            )
-        )
-        cancel_button.clicked.connect(dialog.reject)
-
-        layout.addWidget(settings_group)
-        layout.addLayout(buttons_layout)
-        dialog.setLayout(layout)
-        dialog.exec_()
-
-    def _apply_settings(self, dialog, time_minutes, color_text, opponent_text):
-        if dialog:
-            dialog.accept()
-        player_color = chess.WHITE if color_text == "White" else chess.BLACK
-        opponent_type = 'cnn' if opponent_text == "CNN AI" else 'random'
-        time_limit = time_minutes * 60
-        self.initialize_game(player_color, opponent_type, time_limit)
+        self.initialize_game(chess.WHITE, 'cnn', self.time_limit)
 
     def closeEvent(self, event):
         try:
             self.timer.stop()
+            if hasattr(self, 'engine') and self.engine:
+                self.engine.close()
             if self.visual:
                 self.visual.close()
         except Exception as e:

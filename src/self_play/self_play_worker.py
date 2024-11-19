@@ -1,11 +1,10 @@
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 from src.self_play.self_play_trainer import SelfPlayTrainer
-import traceback
+
 
 class SelfPlayWorker(BaseWorker):
     stats_update = pyqtSignal(dict)
-    training_finished = pyqtSignal()
 
     def __init__(
         self,
@@ -48,43 +47,34 @@ class SelfPlayWorker(BaseWorker):
         self.checkpoint_path = checkpoint_path
         self.random_seed = random_seed
 
-    def run(self):
-        try:
-            self.log_update.emit("Starting self-play training...")
-            trainer = SelfPlayTrainer(
-                model_path=self.model_path,
-                output_dir=self.output_dir,
-                num_iterations=self.num_iterations,
-                num_games_per_iteration=self.num_games_per_iteration,
-                simulations=self.simulations,
-                c_puct=self.c_puct,
-                temperature=self.temperature,
-                num_epochs=self.num_epochs,
-                batch_size=self.batch_size,
-                automatic_batch_size=self.automatic_batch_size,
-                num_threads=self.num_threads,
-                checkpoint_path=self.checkpoint_path,
-                random_seed=self.random_seed,
-                save_checkpoints=self.save_checkpoints,
-                checkpoint_interval=self.checkpoint_interval,
-                checkpoint_type=self.checkpoint_type,
-                checkpoint_interval_minutes=self.checkpoint_interval_minutes,
-                checkpoint_batch_interval=self.checkpoint_batch_interval,
-                log_fn=self.log_update.emit,
-                progress_fn=self.progress_update.emit,
-                stats_fn=self.stats_update.emit,
-                time_left_fn=self.time_left_update.emit,
-                stop_event=self._is_stopped,
-                pause_event=self._is_paused
-            )
-            trainer.train()
-            if not self._is_stopped.is_set():
-                self.log_update.emit("Self-play training completed successfully.")
-                self.training_finished.emit()
-            else:
-                self.log_update.emit("Self-play training stopped by user request.")
-        except Exception as e:
-            error_msg = f"Error during self-play training: {str(e)}\n{traceback.format_exc()}"
-            self.log_update.emit(error_msg)
-        finally:
-            self.finished.emit()
+    def run_task(self):
+        self.log_update.emit("Starting self-play training...")
+        trainer = SelfPlayTrainer(
+            model_path=self.model_path,
+            output_dir=self.output_dir,
+            num_iterations=self.num_iterations,
+            num_games_per_iteration=self.num_games_per_iteration,
+            simulations=self.simulations,
+            c_puct=self.c_puct,
+            temperature=self.temperature,
+            num_epochs=self.num_epochs,
+            batch_size=self.batch_size,
+            automatic_batch_size=self.automatic_batch_size,
+            num_threads=self.num_threads,
+            checkpoint_path=self.checkpoint_path,
+            random_seed=self.random_seed,
+            save_checkpoints=self.save_checkpoints,
+            checkpoint_interval=self.checkpoint_interval,
+            checkpoint_type=self.checkpoint_type,
+            checkpoint_interval_minutes=self.checkpoint_interval_minutes,
+            checkpoint_batch_interval=self.checkpoint_batch_interval,
+            log_fn=self.log_update.emit,
+            progress_fn=self.progress_update.emit,
+            stats_fn=self.stats_update.emit,
+            time_left_fn=self.time_left_update.emit,
+            stop_event=self._is_stopped,
+            pause_event=self._is_paused
+        )
+        trainer.train()
+        if self._is_stopped.is_set():
+            self.log_update.emit("Self-play training stopped by user request.")

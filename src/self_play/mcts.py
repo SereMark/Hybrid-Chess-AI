@@ -3,7 +3,6 @@ from src.utils.chess_utils import initialize_move_mappings
 
 initialize_move_mappings()
 
-
 class TreeNode:
     def __init__(self, parent, prior_p, board, move):
         self.parent = parent
@@ -49,7 +48,6 @@ class TreeNode:
     def get_value(self, c_puct):
         self.u = c_puct * self.P * math.sqrt(self.parent.n_visits) / (1 + self.n_visits)
         return self.Q + self.u
-
 
 class MCTS:
     def __init__(self, policy_value_fn, c_puct=1.4, n_simulations=800):

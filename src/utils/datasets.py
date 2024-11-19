@@ -1,7 +1,6 @@
 import torch, h5py
 from torch.utils.data import Dataset
 
-
 class H5Dataset(Dataset):
     def __init__(self, h5_file_path, indices):
         self.h5_file_path = h5_file_path

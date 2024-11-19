@@ -1,5 +1,6 @@
-import threading
+import threading, traceback
 from PyQt5.QtCore import QObject, pyqtSignal
+
 
 class BaseWorker(QObject):
     log_update = pyqtSignal(str)
@@ -7,6 +8,7 @@ class BaseWorker(QObject):
     time_left_update = pyqtSignal(str)
     finished = pyqtSignal()
     paused = pyqtSignal(bool)
+    task_finished = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -15,6 +17,21 @@ class BaseWorker(QObject):
         self._is_paused.set()
 
     def run(self):
+        try:
+            self.log_update.emit(f"Starting {self.__class__.__name__}...")
+            self.run_task()
+            if not self._is_stopped.is_set():
+                self.log_update.emit(f"{self.__class__.__name__} completed successfully.")
+                self.task_finished.emit()
+            else:
+                self.log_update.emit(f"{self.__class__.__name__} stopped by user request.")
+        except Exception as e:
+            error_msg = f"Error during {self.__class__.__name__}: {str(e)}\n{traceback.format_exc()}"
+            self.log_update.emit(error_msg)
+        finally:
+            self.finished.emit()
+
+    def run_task(self):
         pass
 
     def pause(self):

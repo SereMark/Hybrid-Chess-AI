@@ -1,6 +1,7 @@
 import numpy as np
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTabWidget
+from PyQt5.QtWidgets import QVBoxLayout, QTabWidget, QWidget
 from src.base.base_visualization import BasePlotWidget
+
 
 class ValueEvaluationPlot(BasePlotWidget):
     def __init__(self, parent=None):
@@ -25,6 +26,7 @@ class ValueEvaluationPlot(BasePlotWidget):
                          transform=self.ax.transAxes, fontsize=14, fontweight='bold', color='gray')
         self.update_plot()
 
+
 class MaterialBalancePlot(BasePlotWidget):
     def __init__(self, parent=None):
         super().__init__(title="Material Balance", xlabel="Move Number",
@@ -43,6 +45,7 @@ class MaterialBalancePlot(BasePlotWidget):
             self.ax.text(0.5, 0.5, 'No Data Yet\nMake a move to start', ha='center', va='center',
                          transform=self.ax.transAxes, fontsize=14, fontweight='bold', color='gray')
         self.update_plot()
+
 
 class GameVisualization(QWidget):
     def __init__(self, parent=None):

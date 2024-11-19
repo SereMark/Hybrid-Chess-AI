@@ -1,9 +1,10 @@
-import os, threading, time, numpy as np, torch, torch.optim as optim, torch.nn.functional as F, random
-from torch.cuda.amp import autocast, GradScaler
+import os, threading, time, numpy as np, torch, torch.optim as optim, torch.nn.functional as F
+from torch.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 from src.models.model import ChessModel
 from src.utils.datasets import H5Dataset
 from src.utils.chess_utils import TOTAL_MOVES, estimate_batch_size
+from src.utils.common_utils import format_time_left, log_message, should_stop, wait_if_paused, initialize_random_seeds
 
 class SupervisedTrainer:
     def __init__(
@@ -37,7 +38,8 @@ class SupervisedTrainer:
         optimizer_type='adamw',
         scheduler_type='cosineannealingwarmrestarts',
         output_model_path='models/saved_models/pre_trained_model.pth',
-        num_workers=4
+        num_workers=4,
+        random_seed=42
     ):
         self._lock = threading.Lock()
         self.epochs = epochs
@@ -72,6 +74,7 @@ class SupervisedTrainer:
         self.scheduler_type = scheduler_type
         self.output_model_path = output_model_path
         self.num_workers = num_workers
+        self.random_seed = random_seed
         with self._lock:
             self.total_batches_processed = 0
 
@@ -119,11 +122,9 @@ class SupervisedTrainer:
             }
             torch.save(checkpoint_data, temp_path)
             os.replace(temp_path, final_path)
-            if self.log_fn:
-                self.log_fn(f"Checkpoint saved: {checkpoint_name}")
+            log_message(f"Checkpoint saved: {checkpoint_name}", self.log_fn)
         except Exception as e:
-            if self.log_fn:
-                self.log_fn(f"Error saving checkpoint: {str(e)}")
+            log_message(f"Error saving checkpoint: {str(e)}", self.log_fn)
             if os.path.exists(temp_path):
                 try:
                     os.remove(temp_path)
@@ -131,22 +132,9 @@ class SupervisedTrainer:
                     pass
             raise
 
-    def format_time_left(self, seconds):
-        days = seconds // 86400
-        remainder = seconds % 86400
-        hours = remainder // 3600
-        minutes = (remainder % 3600) // 60
-        secs = remainder % 60
-        if days >= 1:
-            day_str = f"{int(days)}d " if days > 1 else "1d "
-            return f"{day_str}{int(hours):02d}:{int(minutes):02d}:{int(secs):02d}"
-        else:
-            return f"{int(hours):02d}:{int(minutes):02d}:{int(secs):02d}"
-
     def train_model(self):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        if self.log_fn:
-            self.log_fn(f"Using device: {device}")
+        log_message(f"Using device: {device}", self.log_fn)
         required_files = [
             (self.dataset_path, "Dataset file"),
             (self.train_indices_path, "Training indices"),
@@ -154,34 +142,23 @@ class SupervisedTrainer:
         ]
         for file_path, description in required_files:
             if not os.path.exists(file_path):
-                if self.log_fn:
-                    self.log_fn(f"{description} not found at {file_path}.")
+                log_message(f"{description} not found at {file_path}.", self.log_fn)
                 return
 
         try:
-            if self.log_fn:
-                self.log_fn("Preparing dataset...")
+            log_message("Preparing dataset...", self.log_fn)
             train_indices = np.load(self.train_indices_path)
             val_indices = np.load(self.val_indices_path)
             train_dataset = H5Dataset(self.dataset_path, train_indices)
             val_dataset = H5Dataset(self.dataset_path, val_indices)
-            if self.log_fn:
-                self.log_fn(f"Train dataset size: {len(train_dataset)}, Validation dataset size: {len(val_dataset)}")
+            log_message(f"Train dataset size: {len(train_dataset)}, Validation dataset size: {len(val_dataset)}", self.log_fn)
             model = ChessModel(num_moves=TOTAL_MOVES)
             model.to(device)
             if self.automatic_batch_size:
                 self.batch_size = estimate_batch_size(model, device)
-                if self.log_fn:
-                    self.log_fn(f"Automatic batch size estimation: Using batch size {self.batch_size}")
+                log_message(f"Automatic batch size estimation: Using batch size {self.batch_size}", self.log_fn)
 
-            torch.manual_seed(42)
-            np.random.seed(42)
-            random.seed(42)
-            if torch.cuda.is_available():
-                torch.cuda.manual_seed(42)
-                torch.cuda.manual_seed_all(42)
-            torch.backends.cudnn.deterministic = True
-            torch.backends.cudnn.benchmark = False
+            initialize_random_seeds(self.random_seed)
 
             num_workers = self.num_workers
             train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
@@ -192,17 +169,18 @@ class SupervisedTrainer:
             elif self.optimizer_type == 'sgd':
                 optimizer = optim.SGD(model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay, momentum=0.9)
             else:
-                if self.log_fn:
-                    self.log_fn(f"Unsupported optimizer type: {self.optimizer_type}. Using AdamW by default.")
+                log_message(f"Unsupported optimizer type: {self.optimizer_type}. Using AdamW by default.", self.log_fn)
                 optimizer = optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
+            total_steps = self.epochs * len(train_loader)
             if self.scheduler_type == 'cosineannealingwarmrestarts':
                 scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
             elif self.scheduler_type == 'steplr':
                 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+            elif self.scheduler_type == 'onecyclelr':
+                scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.learning_rate, total_steps=total_steps)
             else:
-                if self.log_fn:
-                    self.log_fn(f"Unsupported scheduler type: {self.scheduler_type}. Using CosineAnnealingWarmRestarts by default.")
+                log_message(f"Unsupported scheduler type: {self.scheduler_type}. Using CosineAnnealingWarmRestarts by default.", self.log_fn)
                 scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
 
             start_epoch = 1
@@ -217,14 +195,11 @@ class SupervisedTrainer:
                 if 'epoch' in checkpoint:
                     start_epoch = checkpoint['epoch']
                     skip_batches = checkpoint.get('batch_idx', 0)
-                    if self.log_fn:
-                        self.log_fn(f"Resumed training from epoch {start_epoch}, batch {skip_batches}")
+                    log_message(f"Resumed training from epoch {start_epoch}, batch {skip_batches}", self.log_fn)
                 else:
-                    if self.log_fn:
-                        self.log_fn("No epoch information found in checkpoint. Starting from epoch 1.")
+                    log_message("No epoch information found in checkpoint. Starting from epoch 1.", self.log_fn)
             else:
-                if self.log_fn:
-                    self.log_fn("No checkpoint found. Starting training from scratch.")
+                log_message("No checkpoint found. Starting training from scratch.", self.log_fn)
 
             remaining_epochs = self.epochs - (start_epoch - 1)
             total_steps = remaining_epochs * len(train_loader)
@@ -240,17 +215,15 @@ class SupervisedTrainer:
 
             for epoch in range(start_epoch, self.epochs + 1):
                 epoch_start_time = time.time()
-                if self.stop_event.is_set():
+                if should_stop(self.stop_event):
                     break
-                if self.log_fn:
-                    self.log_fn(f"Epoch {epoch}/{self.epochs} started.")
+                log_message(f"Epoch {epoch}/{self.epochs} started.", self.log_fn)
                 model.train()
                 optimizer.zero_grad()
                 train_iterator = iter(train_loader)
                 if epoch == start_epoch and skip_batches > 0:
                     if skip_batches >= len(train_loader):
-                        if self.log_fn:
-                            self.log_fn(f"Skip batches ({skip_batches}) exceed total batches ({len(train_loader)}). Skipping entire epoch.")
+                        log_message(f"Skip batches ({skip_batches}) exceed total batches ({len(train_loader)}). Skipping entire epoch.", self.log_fn)
                         continue
                     for _ in range(skip_batches):
                         try:
@@ -258,21 +231,21 @@ class SupervisedTrainer:
                         except StopIteration:
                             break
                 train_metrics = self._train_epoch(model, train_iterator, optimizer, scheduler, epoch, device, total_steps, train_loader, scaler, accumulation_steps)
-                if self.stop_event.is_set():
+                if should_stop(self.stop_event):
                     break
                 model.eval()
                 val_metrics = self._validate_epoch(model, val_loader, epoch, device, train_metrics['accuracy'])
                 total_train_loss = train_metrics['policy_loss'] + train_metrics['value_loss']
                 total_val_loss = val_metrics['policy_loss'] + val_metrics['value_loss']
                 epoch_duration = time.time() - epoch_start_time
-                if self.log_fn:
-                    self.log_fn(
-                        f"Epoch {epoch}/{self.epochs} completed in {self.format_time_left(epoch_duration)} - "
-                        f"Training Loss: {total_train_loss:.4f}, "
-                        f"Validation Loss: {total_val_loss:.4f}, "
-                        f"Training Accuracy: {train_metrics['accuracy']*100:.2f}%, "
-                        f"Validation Accuracy: {val_metrics['accuracy']*100:.2f}%"
-                    )
+                log_message(
+                    f"Epoch {epoch}/{self.epochs} completed in {format_time_left(epoch_duration)} - "
+                    f"Training Loss: {total_train_loss:.4f}, "
+                    f"Validation Loss: {total_val_loss:.4f}, "
+                    f"Training Accuracy: {train_metrics['accuracy']*100:.2f}%, "
+                    f"Validation Accuracy: {val_metrics['accuracy']*100:.2f}%",
+                    self.log_fn
+                )
                 if total_val_loss < best_val_loss:
                     best_val_loss = total_val_loss
                     no_improvement_epochs = 0
@@ -283,30 +256,27 @@ class SupervisedTrainer:
                         'epoch': epoch,
                     }
                     torch.save(best_model_checkpoint, self.output_model_path)
-                    if self.log_fn:
-                        self.log_fn(
-                            f"Best model updated at epoch {epoch} - "
-                            f"Validation Loss: {total_val_loss:.4f}, "
-                            f"Training Loss: {total_train_loss:.4f}"
-                        )
+                    log_message(
+                        f"Best model updated at epoch {epoch} - "
+                        f"Validation Loss: {total_val_loss:.4f}, "
+                        f"Training Loss: {total_train_loss:.4f}",
+                        self.log_fn
+                    )
                 else:
                     no_improvement_epochs += 1
                     if no_improvement_epochs >= early_stopping_patience:
-                        if self.log_fn:
-                            self.log_fn("Early stopping triggered.")
+                        log_message("Early stopping triggered.", self.log_fn)
                         break
                 if self.should_save_checkpoint(epoch, None, len(train_loader)):
                     self.save_checkpoint(model, optimizer, scheduler, epoch)
-                scheduler.step()
-            if not self.stop_event.is_set():
-                if self.log_fn:
-                    self.log_fn("Training completed successfully.")
+                if isinstance(scheduler, optim.lr_scheduler.StepLR):
+                    scheduler.step()
+            if not should_stop(self.stop_event):
+                log_message("Training completed successfully.", self.log_fn)
             else:
-                if self.log_fn:
-                    self.log_fn("Training stopped by user.")
+                log_message("Training stopped by user.", self.log_fn)
         except Exception as e:
-            if self.log_fn:
-                self.log_fn(f"Error during training: {str(e)}")
+            log_message(f"Error during training: {str(e)}", self.log_fn)
             raise e
 
     def _train_epoch(self, model, train_iterator, optimizer, scheduler, epoch, device, total_steps, train_loader, scaler, accumulation_steps):
@@ -319,13 +289,13 @@ class SupervisedTrainer:
             start_time = time.time()
             optimizer.zero_grad()
             for batch_idx, (inputs, policy_targets, value_targets) in enumerate(train_iterator, 1):
-                if self.stop_event.is_set():
+                if should_stop(self.stop_event):
                     break
-                self.pause_event.wait()
+                wait_if_paused(self.pause_event)
                 inputs = inputs.to(device, non_blocking=True)
                 policy_targets = policy_targets.to(device, non_blocking=True)
                 value_targets = value_targets.to(device, non_blocking=True)
-                with autocast():
+                with autocast(device_type=device.type, enabled=(device.type == 'cuda')):
                     policy_preds, value_preds = model(inputs)
                     smoothing = 0.1
                     confidence = 1.0 - smoothing
@@ -343,8 +313,10 @@ class SupervisedTrainer:
                     scaler.step(optimizer)
                     scaler.update()
                     optimizer.zero_grad()
-                    if isinstance(scheduler, optim.lr_scheduler.OneCycleLR):
-                        scheduler.step()
+                if isinstance(scheduler, (optim.lr_scheduler.CosineAnnealingWarmRestarts, optim.lr_scheduler.OneCycleLR)):
+                    scheduler.step(epoch - 1 + batch_idx / len(train_loader))
+                elif isinstance(scheduler, optim.lr_scheduler.StepLR):
+                    pass
 
                 total_policy_loss += policy_loss.item() * inputs.size(0)
                 total_value_loss += value_loss.item() * inputs.size(0)
@@ -374,20 +346,18 @@ class SupervisedTrainer:
                     if local_steps > 0:
                         estimated_total_time = (elapsed_time / local_steps) * (total_steps - self.total_batches_processed)
                         time_left = estimated_total_time
-                        self.time_left_fn(self.format_time_left(time_left))
+                        self.time_left_fn(format_time_left(time_left))
                     else:
                         self.time_left_fn("Calculating...")
                 if self.should_save_checkpoint(epoch, self.total_batches_processed, len(train_loader)):
                     self.save_checkpoint(model, optimizer, scheduler, epoch, batch_idx=self.total_batches_processed)
                 del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
-                torch.cuda.empty_cache()
             metrics = {
                 'policy_loss': total_policy_loss / total_predictions,
                 'value_loss': total_value_loss / total_predictions,
                 'accuracy': correct_predictions / total_predictions if total_predictions > 0 else 0.0
             }
-            if self.log_fn:
-                self.log_fn(f"Epoch {epoch}/{self.epochs}, Training Accuracy: {metrics['accuracy'] * 100:.2f}%")
+            log_message(f"Epoch {epoch}/{self.epochs}, Training Accuracy: {metrics['accuracy'] * 100:.2f}%", self.log_fn)
             if self.loss_fn:
                 self.loss_fn(epoch, {
                     'policy': metrics['policy_loss'],
@@ -395,8 +365,7 @@ class SupervisedTrainer:
                 })
             return metrics
         except Exception as e:
-            if self.log_fn:
-                self.log_fn(f"Error during training epoch: {str(e)}")
+            log_message(f"Error during training epoch: {str(e)}", self.log_fn)
             return {
                 'policy_loss': float('inf'),
                 'value_loss': float('inf'),
@@ -417,9 +386,9 @@ class SupervisedTrainer:
         try:
             with torch.no_grad():
                 for inputs, policy_targets, value_targets in val_loader:
-                    if self.stop_event.is_set():
+                    if should_stop(self.stop_event):
                         break
-                    self.pause_event.wait()
+                    wait_if_paused(self.pause_event)
                     inputs = inputs.to(device)
                     policy_targets = policy_targets.to(device)
                     value_targets = value_targets.to(device)
@@ -451,17 +420,16 @@ class SupervisedTrainer:
                 })
             if self.accuracy_fn:
                 self.accuracy_fn(epoch, training_accuracy, metrics['accuracy'])
-            if self.log_fn:
-                self.log_fn(
-                    f"Epoch {epoch}/{self.epochs}, "
-                    f"Validation Policy Loss: {metrics['policy_loss']:.4f}, "
-                    f"Validation Value Loss: {metrics['value_loss']:.4f}, "
-                    f"Validation Accuracy: {metrics['accuracy'] * 100:.2f}%"
-                )
+            log_message(
+                f"Epoch {epoch}/{self.epochs}, "
+                f"Validation Policy Loss: {metrics['policy_loss']:.4f}, "
+                f"Validation Value Loss: {metrics['value_loss']:.4f}, "
+                f"Validation Accuracy: {metrics['accuracy'] * 100:.2f}%",
+                self.log_fn
+            )
             return metrics
         except Exception as e:
-            if self.log_fn:
-                self.log_fn(f"Error during validation: {str(e)}")
+            log_message(f"Error during validation: {str(e)}", self.log_fn)
             return {
                 'policy_loss': float('inf'),
                 'value_loss': float('inf'),

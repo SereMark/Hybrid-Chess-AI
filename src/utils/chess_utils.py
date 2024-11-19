@@ -1,9 +1,8 @@
-import chess, numpy as np, torch
+import chess, numpy as np
 
 MOVE_MAPPING = {}
 INDEX_MAPPING = {}
 TOTAL_MOVES = 0
-
 
 def initialize_move_mappings():
     global MOVE_MAPPING, INDEX_MAPPING, TOTAL_MOVES
@@ -13,31 +12,27 @@ def initialize_move_mappings():
             if from_sq == to_sq:
                 continue
             move = chess.Move(from_sq, to_sq)
-            MOVE_MAPPING[index] = move
-            INDEX_MAPPING[move] = index
-            index += 1
-            if chess.square_rank(to_sq) in [0, 7]:
-                for promo in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]:
-                    move = chess.Move(from_sq, to_sq, promotion=promo)
-                    MOVE_MAPPING[index] = move
-                    INDEX_MAPPING[move] = index
-                    index += 1
+            if chess.Move.null() != move:
+                MOVE_MAPPING[index] = move
+                INDEX_MAPPING[move] = index
+                index += 1
+                if chess.square_rank(to_sq) in [0, 7]:
+                    for promo in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]:
+                        move = chess.Move(from_sq, to_sq, promotion=promo)
+                        MOVE_MAPPING[index] = move
+                        INDEX_MAPPING[move] = index
+                        index += 1
     TOTAL_MOVES = index
 
-
 def flip_board(board):
-    flipped_board = board.mirror()
-    return flipped_board
-
+    return board.mirror()
 
 def flip_move(move):
-    flipped_move = chess.Move(
+    return chess.Move(
         chess.square_mirror(move.from_square),
         chess.square_mirror(move.to_square),
         promotion=move.promotion
     )
-    return flipped_move
-
 
 def convert_board_to_tensor(board):
     planes = np.zeros((20, 8, 8), dtype=np.float32)
@@ -82,8 +77,8 @@ def convert_board_to_tensor(board):
 
     return planes
 
-
 def estimate_batch_size(model, device, desired_effective_batch_size=256, max_batch_size=1024, min_batch_size=32):
+    import torch
     try:
         if device.type == 'cuda':
             batch_size = min_batch_size

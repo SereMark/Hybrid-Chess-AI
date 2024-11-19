@@ -5,6 +5,12 @@ from typing import Callable, Optional
 from src.utils.chess_utils import TOTAL_MOVES, MOVE_MAPPING, initialize_move_mappings
 from src.models.model import ChessModel
 from src.utils.datasets import H5Dataset
+from src.utils.common_utils import (
+    format_time_left,
+    log_message,
+    should_stop,
+    initialize_random_seeds,
+)
 
 class ModelEvaluator:
     def __init__(
@@ -17,6 +23,7 @@ class ModelEvaluator:
         progress_fn: Optional[Callable[[int], None]] = None,
         time_left_fn: Optional[Callable[[str], None]] = None,
         stop_fn: Optional[Callable[[], bool]] = None,
+        random_seed: int = 42
     ):
         self.model_path = model_path
         self.dataset_indices_path = dataset_indices_path
@@ -27,10 +34,12 @@ class ModelEvaluator:
         self.time_left_fn = time_left_fn
         self.stop_fn = stop_fn or (lambda: False)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.random_seed = random_seed
 
     def evaluate_model(self):
-        self._log(f"Using device: {self.device}")
+        log_message(f"Using device: {self.device}", self.log_fn)
         initialize_move_mappings()
+        initialize_random_seeds(self.random_seed)
 
         model = self._load_model()
         if model is None:
@@ -52,26 +61,26 @@ class ModelEvaluator:
                 model.load_state_dict(checkpoint)
             model.to(self.device)
             model.eval()
-            self._log(f"Model loaded from {self.model_path}")
+            log_message(f"Model loaded from {self.model_path}", self.log_fn)
             return model
         except Exception as e:
-            self._log(f"Failed to load model: {e}")
+            log_message(f"Failed to load model: {e}", self.log_fn)
             return None
 
     def _load_dataset(self) -> Optional[H5Dataset]:
         if not os.path.exists(self.h5_file_path):
-            self._log(f"Dataset file not found at {self.h5_file_path}.")
+            log_message(f"Dataset file not found at {self.h5_file_path}.", self.log_fn)
             return None
         if not os.path.exists(self.dataset_indices_path):
-            self._log(f"Dataset indices file not found at {self.dataset_indices_path}.")
+            log_message(f"Dataset indices file not found at {self.dataset_indices_path}.", self.log_fn)
             return None
         try:
             dataset_indices = np.load(self.dataset_indices_path)
             dataset = H5Dataset(self.h5_file_path, dataset_indices)
-            self._log(f"Loaded dataset indices from {self.dataset_indices_path}")
+            log_message(f"Loaded dataset indices from {self.dataset_indices_path}", self.log_fn)
             return dataset
         except Exception as e:
-            self._log(f"Failed to load dataset: {e}")
+            log_message(f"Failed to load dataset: {e}", self.log_fn)
             return None
 
     def _evaluate(self, model: ChessModel, dataset: H5Dataset):
@@ -89,11 +98,11 @@ class ModelEvaluator:
         total_steps = total_batches
 
         start_time = time.time()
-        self._log("Starting evaluation...")
+        log_message("Starting evaluation...", self.log_fn)
 
         for batch_idx, (inputs, policy_targets, _) in enumerate(loader, 1):
-            if self.stop_fn():
-                self._log("Evaluation stopped by user.")
+            if should_stop(self.stop_fn):
+                log_message("Evaluation stopped by user.", self.log_fn)
                 return
 
             inputs = inputs.to(self.device, non_blocking=True)
@@ -124,11 +133,11 @@ class ModelEvaluator:
         topk_predictions = np.array(topk_predictions)
 
         accuracy = np.mean(all_predictions == all_actuals)
-        self._log(f"Accuracy: {accuracy * 100:.2f}%")
+        log_message(f"Accuracy: {accuracy * 100:.2f}%", self.log_fn)
 
         topk_correct = sum(1 for actual, preds in zip(all_actuals, topk_predictions) if actual in preds)
         topk_accuracy = topk_correct / len(all_actuals)
-        self._log(f"Top-{topk_predictions.shape[1]} Accuracy: {topk_accuracy * 100:.2f}%")
+        log_message(f"Top-{topk_predictions.shape[1]} Accuracy: {topk_accuracy * 100:.2f}%", self.log_fn)
 
         N = 10
         from collections import Counter
@@ -139,7 +148,7 @@ class ModelEvaluator:
         filtered_predictions = all_predictions[indices]
 
         confusion = confusion_matrix(filtered_actuals, filtered_predictions, labels=most_common_classes)
-        self._log("Confusion Matrix computed.")
+        log_message("Confusion Matrix computed.", self.log_fn)
 
         report = classification_report(
             filtered_actuals,
@@ -153,12 +162,12 @@ class ModelEvaluator:
 
         class_labels = [MOVE_MAPPING[cls].uci() for cls in most_common_classes]
 
-        self._log(f"Macro Avg - Precision: {macro_avg.get('precision', 0.0):.4f}, "
-                  f"Recall: {macro_avg.get('recall', 0.0):.4f}, "
-                  f"F1-Score: {macro_avg.get('f1-score', 0.0):.4f}")
-        self._log(f"Weighted Avg - Precision: {weighted_avg.get('precision', 0.0):.4f}, "
-                  f"Recall: {weighted_avg.get('recall', 0.0):.4f}, "
-                  f"F1-Score: {weighted_avg.get('f1-score', 0.0):.4f}")
+        log_message(f"Macro Avg - Precision: {macro_avg.get('precision', 0.0):.4f}, "
+                    f"Recall: {macro_avg.get('recall', 0.0):.4f}, "
+                    f"F1-Score: {macro_avg.get('f1-score', 0.0):.4f}", self.log_fn)
+        log_message(f"Weighted Avg - Precision: {weighted_avg.get('precision', 0.0):.4f}, "
+                    f"Recall: {weighted_avg.get('recall', 0.0):.4f}, "
+                    f"F1-Score: {weighted_avg.get('f1-score', 0.0):.4f}", self.log_fn)
 
         if self.metrics_fn:
             self.metrics_fn(
@@ -170,11 +179,7 @@ class ModelEvaluator:
                 class_labels
             )
 
-        self._log("Evaluation process finished.")
-
-    def _log(self, message: str):
-        if self.log_fn:
-            self.log_fn(message)
+        log_message("Evaluation process finished.", self.log_fn)
 
     def _update_progress(self, progress: int):
         if self.progress_fn:
@@ -185,20 +190,7 @@ class ModelEvaluator:
             if steps_done > 0:
                 estimated_total_time = (elapsed_time / steps_done) * total_steps
                 time_left = estimated_total_time - elapsed_time
-                time_left_str = self._format_time_left(time_left)
+                time_left_str = format_time_left(time_left)
                 self.time_left_fn(time_left_str)
             else:
                 self.time_left_fn("Calculating...")
-
-    def _format_time_left(self, seconds: float) -> str:
-        days = int(seconds) // 86400
-        remainder = int(seconds) % 86400
-        hours = remainder // 3600
-        minutes = (remainder % 3600) // 60
-        secs = remainder % 60
-
-        if days >= 1:
-            day_str = f"{days}d "
-            return f"{day_str}{hours:02d}:{minutes:02d}:{secs:02d}"
-        else:
-            return f"{hours:02d}:{minutes:02d}:{secs:02d}"

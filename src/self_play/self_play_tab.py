@@ -1,12 +1,13 @@
 from PyQt5.QtWidgets import (
     QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
-    QHBoxLayout, QFileDialog, QMessageBox, QCheckBox, QLabel, QComboBox, QWidget
+    QHBoxLayout, QMessageBox, QCheckBox, QLabel, QComboBox
 )
 import os
 from PyQt5.QtCore import Qt
 from src.self_play.self_play_visualization import SelfPlayVisualization
 from src.self_play.self_play_worker import SelfPlayWorker
 from src.base.base_tab import BaseTab
+
 
 class SelfPlayTab(BaseTab):
     def __init__(self, parent=None):
@@ -20,10 +21,19 @@ class SelfPlayTab(BaseTab):
         self.model_output_group = self.create_model_output_group()
         self.parameters_group = self.create_parameters_group()
         self.checkpoint_group = self.create_checkpoint_group()
-        control_buttons_layout = self.create_control_buttons()
+        control_buttons_layout = self.create_control_buttons(
+            "Start Self-Play",
+            "Stop Self-Play",
+            self.start_self_play,
+            self.stop_self_play,
+            pause_text="Pause Training",
+            resume_text="Resume Training",
+            pause_callback=self.pause_worker,
+            resume_callback=self.resume_worker
+        )
         progress_layout = self.create_progress_layout()
         self.log_text_edit = self.create_log_text_edit()
-        self.visualization_group = self.create_visualization_group()
+        self.visualization_group = self.create_visualization_group("Self-Play Visualization")
 
         main_layout.addWidget(self.model_output_group)
         main_layout.addWidget(self.parameters_group)
@@ -47,27 +57,15 @@ class SelfPlayTab(BaseTab):
         self.checkpoint_path_input = QLineEdit("")
 
         model_browse_button = QPushButton("Browse")
-        model_browse_button.clicked.connect(self.browse_model)
+        model_browse_button.clicked.connect(lambda: self.browse_file(self.model_path_input, "Select Model File", "PyTorch Files (*.pth *.pt)"))
         output_dir_browse_button = QPushButton("Browse")
-        output_dir_browse_button.clicked.connect(self.browse_output_dir)
+        output_dir_browse_button.clicked.connect(lambda: self.browse_dir(self.output_dir_input, "Select Output Directory"))
         checkpoint_browse_button = QPushButton("Browse")
-        checkpoint_browse_button.clicked.connect(self.browse_checkpoint)
+        checkpoint_browse_button.clicked.connect(lambda: self.browse_file(self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"))
 
-        model_layout = QHBoxLayout()
-        model_layout.addWidget(self.model_path_input)
-        model_layout.addWidget(model_browse_button)
-
-        output_dir_layout = QHBoxLayout()
-        output_dir_layout.addWidget(self.output_dir_input)
-        output_dir_layout.addWidget(output_dir_browse_button)
-
-        checkpoint_layout = QHBoxLayout()
-        checkpoint_layout.addWidget(self.checkpoint_path_input)
-        checkpoint_layout.addWidget(checkpoint_browse_button)
-
-        model_output_layout.addRow("Model Path:", model_layout)
-        model_output_layout.addRow("Output Directory:", output_dir_layout)
-        model_output_layout.addRow("Resume from Checkpoint:", checkpoint_layout)
+        model_output_layout.addRow("Model Path:", self.create_browse_layout(self.model_path_input, model_browse_button))
+        model_output_layout.addRow("Output Directory:", self.create_browse_layout(self.output_dir_input, output_dir_browse_button))
+        model_output_layout.addRow("Resume from Checkpoint:", self.create_browse_layout(self.checkpoint_path_input, checkpoint_browse_button))
 
         model_output_group.setLayout(model_output_layout)
         return model_output_group
@@ -149,22 +147,9 @@ class SelfPlayTab(BaseTab):
         checkpoint_group.setLayout(checkpoint_layout)
         return checkpoint_group
 
-    def create_interval_widget(self, prefix, input_field, suffix):
-        layout = QHBoxLayout()
-        layout.addWidget(QLabel(prefix))
-        layout.addWidget(input_field)
-        layout.addWidget(QLabel(suffix))
-        layout.addStretch()
-        widget = QWidget()
-        widget.setLayout(layout)
-        return widget
-
     def on_checkpoint_enabled_changed(self, state):
         is_enabled = state == Qt.Checked
         self.checkpoint_type_combo.setEnabled(is_enabled)
-        self.checkpoint_interval_input.setEnabled(is_enabled)
-        self.checkpoint_interval_minutes_input.setEnabled(is_enabled)
-        self.checkpoint_batch_interval_input.setEnabled(is_enabled)
         self.on_checkpoint_type_changed(self.checkpoint_type_combo.currentText())
 
     def on_checkpoint_type_changed(self, text):
@@ -178,57 +163,6 @@ class SelfPlayTab(BaseTab):
         self.epoch_interval_widget.setEnabled(is_enabled)
         self.time_interval_widget.setEnabled(is_enabled)
         self.batch_interval_widget.setEnabled(is_enabled)
-
-    def create_control_buttons(self):
-        layout = QHBoxLayout()
-        self.start_button = QPushButton("Start Self-Play")
-        self.pause_button = QPushButton("Pause Training")
-        self.resume_button = QPushButton("Resume Training")
-        self.stop_button = QPushButton("Stop Self-Play")
-        layout.addWidget(self.start_button)
-        layout.addWidget(self.pause_button)
-        layout.addWidget(self.resume_button)
-        layout.addWidget(self.stop_button)
-        layout.addStretch()
-        self.pause_button.setEnabled(False)
-        self.resume_button.setEnabled(False)
-        self.stop_button.setEnabled(False)
-        self.start_button.clicked.connect(self.start_self_play)
-        self.pause_button.clicked.connect(self.pause_training)
-        self.resume_button.clicked.connect(self.resume_training)
-        self.stop_button.clicked.connect(self.stop_self_play)
-        return layout
-
-    def create_visualization_group(self):
-        visualization_group = QGroupBox("Self-Play Visualization")
-        vis_layout = QVBoxLayout()
-        vis_layout.addWidget(self.visualization)
-        visualization_group.setLayout(vis_layout)
-        return visualization_group
-
-    def browse_model(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Model File", self.model_path_input.text(), "PyTorch Files (*.pth *.pt)"
-        )
-        if file_path:
-            self.model_path_input.setText(file_path)
-
-    def browse_output_dir(self):
-        dir_path = QFileDialog.getExistingDirectory(
-            self, "Select Output Directory", self.output_dir_input.text()
-        )
-        if dir_path:
-            self.output_dir_input.setText(dir_path)
-
-    def browse_checkpoint(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Checkpoint File", self.checkpoint_path_input.text(), "PyTorch Files (*.pth *.pt)"
-        )
-        if file_path:
-            self.checkpoint_path_input.setText(file_path)
-
-    def toggle_batch_size_input(self, checked):
-        self.batch_size_input.setEnabled(not checked)
 
     def start_self_play(self):
         try:
@@ -339,7 +273,7 @@ class SelfPlayTab(BaseTab):
         )
         if started:
             self.worker.stats_update.connect(self.visualization.update_stats)
-            self.worker.training_finished.connect(self.on_self_play_finished)
+            self.worker.task_finished.connect(self.on_self_play_finished)
             self.worker.paused.connect(self.on_worker_paused)
         else:
             self.start_button.setEnabled(True)
@@ -352,14 +286,6 @@ class SelfPlayTab(BaseTab):
             self.log_text_edit.setVisible(False)
             self.visualization_group.setVisible(False)
 
-    def pause_training(self):
-        if self.worker:
-            self.worker.pause()
-
-    def resume_training(self):
-        if self.worker:
-            self.worker.resume()
-
     def stop_self_play(self):
         self.stop_worker()
         self.log_message("Stopping self-play...")
@@ -369,10 +295,6 @@ class SelfPlayTab(BaseTab):
         self.model_output_group.setVisible(True)
         self.parameters_group.setVisible(True)
         self.checkpoint_group.setVisible(True)
-
-    def on_worker_paused(self, is_paused):
-        self.pause_button.setEnabled(not is_paused)
-        self.resume_button.setEnabled(is_paused)
 
     def on_self_play_finished(self):
         self.log_message("Self-play process has been completed.")

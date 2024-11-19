@@ -1,18 +1,19 @@
 import numpy as np, chess, torch
 from src.self_play.mcts import MCTS
-from src.utils.chess_utils import INDEX_MAPPING, convert_board_to_tensor, TOTAL_MOVES
+from src.utils.chess_utils import INDEX_MAPPING, convert_board_to_tensor, TOTAL_MOVES, initialize_move_mappings
 from src.models.model import ChessModel
-
 
 class SelfPlay:
     def __init__(self, model_state_dict, device, n_simulations=800, c_puct=1.4, temperature=1.0, stats_fn=None):
-        self.device = device
+        self.device = torch.device(device) if isinstance(device, str) else device
         self.n_simulations = n_simulations
         self.c_puct = c_puct
         self.temperature = temperature
         self.stats_fn = stats_fn
-        self.model = ChessModel().to(self.device)
+        initialize_move_mappings()
+        self.model = ChessModel(num_moves=TOTAL_MOVES)
         self.model.load_state_dict(model_state_dict)
+        self.model.to(self.device)
         self.model.eval()
 
     @torch.no_grad()

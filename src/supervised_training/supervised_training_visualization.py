@@ -1,24 +1,12 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
-from src.base.base_visualization import BasePlot
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
 import numpy as np
+from src.base.base_visualization import BasePlot, BaseVisualizationWidget
 
-class SupervisedTrainingVisualization(QWidget):
+
+class SupervisedTrainingVisualization(BaseVisualizationWidget):
     def __init__(self, parent=None, max_points=1000):
-        super().__init__(parent)
         self.max_points = max_points
-        self.init_ui()
+        super().__init__(parent)
         self.reset_visualization()
-
-    def init_ui(self):
-        self.figure = Figure(figsize=(12, 8), constrained_layout=True)
-        self.canvas = FigureCanvas(self.figure)
-        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout = QVBoxLayout()
-        layout.addWidget(self.canvas)
-        self.setLayout(layout)
-        self.init_visualization()
 
     def init_visualization(self):
         self.figure.clf()
@@ -28,14 +16,10 @@ class SupervisedTrainingVisualization(QWidget):
         self.ax_total_loss = self.figure.add_subplot(gs[1, 0])
         self.ax_accuracy = self.figure.add_subplot(gs[1, 1])
 
-        self.base_plot_policy_loss = BasePlot(self.ax_policy_loss, title='Policy Loss',
-                                              xlabel='Batch/Epoch', ylabel='Loss')
-        self.base_plot_value_loss = BasePlot(self.ax_value_loss, title='Value Loss',
-                                             xlabel='Batch/Epoch', ylabel='Loss')
-        self.base_plot_total_loss = BasePlot(self.ax_total_loss, title='Total Loss',
-                                             xlabel='Batch/Epoch', ylabel='Loss')
-        self.base_plot_accuracy = BasePlot(self.ax_accuracy, title='Accuracy',
-                                           xlabel='Batch/Epoch', ylabel='Accuracy (%)')
+        self.plots['policy_loss'] = BasePlot(self.ax_policy_loss, title='Policy Loss', xlabel='Batch/Epoch', ylabel='Loss')
+        self.plots['value_loss'] = BasePlot(self.ax_value_loss, title='Value Loss', xlabel='Batch/Epoch', ylabel='Loss')
+        self.plots['total_loss'] = BasePlot(self.ax_total_loss, title='Total Loss', xlabel='Batch/Epoch', ylabel='Loss')
+        self.plots['accuracy'] = BasePlot(self.ax_accuracy, title='Accuracy', xlabel='Batch/Epoch', ylabel='Accuracy (%)')
 
         self.line_policy_loss_train, = self.ax_policy_loss.plot([], [], label='Training Policy Loss', color='blue')
         self.line_policy_loss_val, = self.ax_policy_loss.plot([], [], label='Validation Policy Loss', color='orange')
@@ -52,8 +36,6 @@ class SupervisedTrainingVisualization(QWidget):
         self.line_accuracy_train, = self.ax_accuracy.plot([], [], label='Training Accuracy', color='blue')
         self.line_accuracy_val, = self.ax_accuracy.plot([], [], label='Validation Accuracy', color='orange')
         self.ax_accuracy.legend()
-
-        self.canvas.draw_idle()
 
     def update_loss_plots(self, batch_idx, losses):
         if not all(isinstance(v, (float, int)) and not np.isnan(v) and np.isfinite(v) for v in losses.values()):
@@ -111,7 +93,7 @@ class SupervisedTrainingVisualization(QWidget):
         line.set_data(x_data, y_data)
         ax.relim()
         ax.autoscale_view()
-        self.canvas.draw_idle()
+        self.update_visualization()
 
     def reset_visualization(self):
         self.loss_batches = []
@@ -128,4 +110,4 @@ class SupervisedTrainingVisualization(QWidget):
         self.total_losses_val = []
         self.accuracies_val = []
 
-        self.init_visualization()
+        super().reset_visualization()
