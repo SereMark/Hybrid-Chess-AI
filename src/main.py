@@ -14,11 +14,11 @@ class ChessMainWindow(QMainWindow):
         self.tab_widget = QTabWidget(self)
         self.setCentralWidget(self.tab_widget)
         for widget, name in [
-            (ChessGameTab, "Gameplay"),
             (DataPreparationTab, "Data Preparation"),
             (SupervisedTrainingTab, "Supervised Training"),
             (SelfPlayTab, "Self Play"),
-            (EvaluationTab, "Evaluation")
+            (EvaluationTab, "Evaluation"),
+            (ChessGameTab, "Gameplay")
         ]:
             self.tab_widget.addTab(widget(), name)
 
