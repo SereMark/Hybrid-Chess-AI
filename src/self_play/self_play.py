@@ -1,6 +1,6 @@
 import numpy as np, chess, torch
 from src.self_play.mcts import MCTS
-from src.utils.chess_utils import INDEX_MAPPING, convert_board_to_tensor, TOTAL_MOVES, initialize_move_mappings
+from src.utils.chess_utils import get_move_mapping, convert_board_to_tensor, get_total_moves
 from src.models.model import ChessModel
 
 class SelfPlay:
@@ -10,8 +10,9 @@ class SelfPlay:
         self.c_puct = c_puct
         self.temperature = temperature
         self.stats_fn = stats_fn
-        initialize_move_mappings()
-        self.model = ChessModel(num_moves=TOTAL_MOVES)
+        self.move_mapping = get_move_mapping()
+        self.total_moves = get_total_moves()
+        self.model = ChessModel(num_moves=self.total_moves)
         self.model.load_state_dict(model_state_dict)
         self.model.to(self.device)
         self.model.eval()
@@ -27,7 +28,7 @@ class SelfPlay:
         action_probs = {}
         total_legal_prob = 0
         for move in legal_moves:
-            move_index = INDEX_MAPPING.get(move)
+            move_index = self.move_mapping.get_index_by_move(move)
             if move_index is not None and move_index < len(policy):
                 prob = max(policy[move_index], 1e-8)
                 action_probs[move] = prob
@@ -55,10 +56,10 @@ class SelfPlay:
             move = np.random.choice(moves, p=probs)
             board_tensor = convert_board_to_tensor(board)
             states.append(board_tensor)
-            prob_array = np.zeros(TOTAL_MOVES, dtype=np.float32)
+            prob_array = np.zeros(self.total_moves, dtype=np.float32)
             for m, p in action_probs.items():
-                move_index = INDEX_MAPPING.get(m)
-                if move_index is not None and 0 <= move_index < TOTAL_MOVES:
+                move_index = self.move_mapping.get_index_by_move(m)
+                if move_index is not None and 0 <= move_index < self.total_moves:
                     prob_array[move_index] = p
             mcts_probs.append(prob_array)
             current_players.append(board.turn)

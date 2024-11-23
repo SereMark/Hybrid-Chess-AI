@@ -1,28 +1,45 @@
-import chess, numpy as np
+import chess
+import numpy as np
 
-MOVE_MAPPING = {}
-INDEX_MAPPING = {}
-TOTAL_MOVES = 0
+class MoveMapping:
+    def __init__(self):
+        self.MOVE_MAPPING = {}
+        self.INDEX_MAPPING = {}
+        self.TOTAL_MOVES = 0
+        self._initialize_move_mappings()
 
-def initialize_move_mappings():
-    global MOVE_MAPPING, INDEX_MAPPING, TOTAL_MOVES
-    index = 0
-    for from_sq in range(64):
-        for to_sq in range(64):
-            if from_sq == to_sq:
-                continue
-            move = chess.Move(from_sq, to_sq)
-            if chess.Move.null() != move:
-                MOVE_MAPPING[index] = move
-                INDEX_MAPPING[move] = index
-                index += 1
-                if chess.square_rank(to_sq) in [0, 7]:
-                    for promo in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]:
-                        move = chess.Move(from_sq, to_sq, promotion=promo)
-                        MOVE_MAPPING[index] = move
-                        INDEX_MAPPING[move] = index
-                        index += 1
-    TOTAL_MOVES = index
+    def _initialize_move_mappings(self):
+        index = 0
+        for from_sq in range(64):
+            for to_sq in range(64):
+                if from_sq == to_sq:
+                    continue
+                move = chess.Move(from_sq, to_sq)
+                if chess.Move.null() != move:
+                    self.MOVE_MAPPING[index] = move
+                    self.INDEX_MAPPING[move] = index
+                    index += 1
+                    if chess.square_rank(to_sq) in [0, 7]:
+                        for promo in [chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]:
+                            promo_move = chess.Move(from_sq, to_sq, promotion=promo)
+                            self.MOVE_MAPPING[index] = promo_move
+                            self.INDEX_MAPPING[promo_move] = index
+                            index += 1
+        self.TOTAL_MOVES = index
+
+    def get_move_by_index(self, index):
+        return self.MOVE_MAPPING.get(index)
+
+    def get_index_by_move(self, move):
+        return self.INDEX_MAPPING.get(move)
+
+move_mapping = MoveMapping()
+
+def get_total_moves():
+    return move_mapping.TOTAL_MOVES
+
+def get_move_mapping():
+    return move_mapping
 
 def flip_board(board):
     return board.mirror()
@@ -51,10 +68,11 @@ def convert_board_to_tensor(board):
         (chess.KING, chess.BLACK): 11,
     }
     for square, piece in board.piece_map().items():
-        plane_idx = piece_type_indices[(piece.piece_type, piece.color)]
-        row = square // 8
-        col = square % 8
-        planes[plane_idx, row, col] = 1
+        plane_idx = piece_type_indices.get((piece.piece_type, piece.color))
+        if plane_idx is not None:
+            row = square // 8
+            col = square % 8
+            planes[plane_idx, row, col] = 1
 
     castling = [
         board.has_kingside_castling_rights(chess.WHITE),
@@ -76,30 +94,3 @@ def convert_board_to_tensor(board):
     planes[19, :, :] = 1.0 if board.turn == chess.WHITE else 0.0
 
     return planes
-
-def estimate_batch_size(model, device, desired_effective_batch_size=256, max_batch_size=1024, min_batch_size=32):
-    import torch
-    try:
-        if device.type == 'cuda':
-            batch_size = min_batch_size
-            while batch_size <= max_batch_size:
-                try:
-                    torch.cuda.empty_cache()
-                    inputs = torch.randn(batch_size, 20, 8, 8).to(device)
-                    with torch.no_grad():
-                        _ = model(inputs)
-                    batch_size *= 2
-                except RuntimeError as e:
-                    if 'out of memory' in str(e).lower():
-                        torch.cuda.empty_cache()
-                        batch_size = max(batch_size // 2, min_batch_size)
-                        break
-                    else:
-                        raise e
-            batch_size = max(min(batch_size, max_batch_size), min_batch_size)
-            return batch_size
-        else:
-            return desired_effective_batch_size
-    except Exception as e:
-        print(f"Failed to estimate batch size: {e}. Using default batch size of 128.")
-        return 128

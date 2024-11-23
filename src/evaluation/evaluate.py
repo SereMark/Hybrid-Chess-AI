@@ -2,7 +2,7 @@ import os, time, numpy as np, torch
 from sklearn.metrics import confusion_matrix, classification_report
 from torch.utils.data import DataLoader
 from typing import Callable, Optional
-from src.utils.chess_utils import TOTAL_MOVES, MOVE_MAPPING, initialize_move_mappings
+from src.utils.chess_utils import get_total_moves, get_move_mapping
 from src.models.model import ChessModel
 from src.utils.datasets import H5Dataset
 from src.utils.common_utils import (
@@ -38,7 +38,6 @@ class ModelEvaluator:
 
     def evaluate_model(self):
         log_message(f"Using device: {self.device}", self.log_fn)
-        initialize_move_mappings()
         initialize_random_seeds(self.random_seed)
 
         model = self._load_model()
@@ -52,7 +51,8 @@ class ModelEvaluator:
         self._evaluate(model, dataset)
 
     def _load_model(self) -> Optional[ChessModel]:
-        model = ChessModel(num_moves=TOTAL_MOVES)
+        num_moves = get_total_moves()
+        model = ChessModel(num_moves=num_moves)
         try:
             checkpoint = torch.load(self.model_path, map_location=self.device)
             if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
@@ -123,7 +123,8 @@ class ModelEvaluator:
             self._update_progress(progress)
             self._update_time_left(elapsed_time, steps_done, total_steps)
 
-        dataset.__del__()
+        del dataset
+        torch.cuda.empty_cache()
 
         self._compute_metrics(all_predictions, all_actuals, topk_predictions)
 
@@ -160,14 +161,27 @@ class ModelEvaluator:
         macro_avg = report.get('macro avg', {})
         weighted_avg = report.get('weighted avg', {})
 
-        class_labels = [MOVE_MAPPING[cls].uci() for cls in most_common_classes]
+        move_mapping = get_move_mapping()
+        class_labels = []
+        for cls in most_common_classes:
+            move = move_mapping.get_move_by_index(cls)
+            if move:
+                class_labels.append(move.uci())
+            else:
+                class_labels.append(f"Unknown({cls})")
 
-        log_message(f"Macro Avg - Precision: {macro_avg.get('precision', 0.0):.4f}, "
-                    f"Recall: {macro_avg.get('recall', 0.0):.4f}, "
-                    f"F1-Score: {macro_avg.get('f1-score', 0.0):.4f}", self.log_fn)
-        log_message(f"Weighted Avg - Precision: {weighted_avg.get('precision', 0.0):.4f}, "
-                    f"Recall: {weighted_avg.get('recall', 0.0):.4f}, "
-                    f"F1-Score: {weighted_avg.get('f1-score', 0.0):.4f}", self.log_fn)
+        log_message(
+            f"Macro Avg - Precision: {macro_avg.get('precision', 0.0):.4f}, "
+            f"Recall: {macro_avg.get('recall', 0.0):.4f}, "
+            f"F1-Score: {macro_avg.get('f1-score', 0.0):.4f}",
+            self.log_fn
+        )
+        log_message(
+            f"Weighted Avg - Precision: {weighted_avg.get('precision', 0.0):.4f}, "
+            f"Recall: {weighted_avg.get('recall', 0.0):.4f}, "
+            f"F1-Score: {weighted_avg.get('f1-score', 0.0):.4f}",
+            self.log_fn
+        )
 
         if self.metrics_fn:
             self.metrics_fn(

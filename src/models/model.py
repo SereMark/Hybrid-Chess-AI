@@ -1,5 +1,4 @@
 import torch, torch.nn as nn
-from src.utils.chess_utils import TOTAL_MOVES
 
 class ResidualUnit(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, stride: int = 1) -> None:
@@ -41,7 +40,7 @@ class ResidualUnit(nn.Module):
         return out
 
 class ChessModel(nn.Module):
-    def __init__(self, filters: int = 64, res_blocks: int = 5, num_moves: int = TOTAL_MOVES) -> None:
+    def __init__(self, num_moves: int, filters: int = 64, res_blocks: int = 5) -> None:
         super().__init__()
         self.num_moves = num_moves
         self.initial_block = nn.Sequential(

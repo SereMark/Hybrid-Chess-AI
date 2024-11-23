@@ -57,7 +57,7 @@ class SupervisedTrainingWorker(BaseWorker):
         trainer = SupervisedTrainer(
             epochs=self.epochs,
             batch_size=self.batch_size,
-            lr=self.learning_rate,
+            learning_rate=self.learning_rate,
             weight_decay=self.weight_decay,
             log_fn=self.log_update.emit,
             progress_fn=self.progress_update.emit,

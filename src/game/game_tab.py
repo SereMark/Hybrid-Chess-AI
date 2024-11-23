@@ -9,7 +9,6 @@ from PyQt5.QtWidgets import (
 from src.game.game_engine import GameEngine
 from src.game.game_visualization import GameVisualization
 from src.base.base_tab import BaseTab
-from src.utils.chess_utils import initialize_move_mappings
 
 
 class ChessBoardView(QWidget):
@@ -235,7 +234,6 @@ class ChessGameTab(BaseTab):
         self.white_timer = self.time_limit
         self.black_timer = self.time_limit
         self.game_active = False
-        initialize_move_mappings()
         self.visual = GameVisualization()
         self._setup_ui()
         self.timer = QTimer(self)

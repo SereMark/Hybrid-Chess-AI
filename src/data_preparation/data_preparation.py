@@ -1,14 +1,22 @@
 import os, glob, time, numpy as np, h5py, chess.pgn, io, threading
-from src.utils.chess_utils import initialize_move_mappings, INDEX_MAPPING, convert_board_to_tensor, flip_board, flip_move
+from src.utils.chess_utils import get_move_mapping, convert_board_to_tensor, flip_board, flip_move
 from src.utils.common_utils import format_time_left, log_message, should_stop, wait_if_paused
 
-initialize_move_mappings()
-
 class DataProcessor:
-    def __init__(self, raw_data_dir, processed_data_dir, max_games, min_elo,
-                 batch_size=10000,
-                 progress_callback=None, log_callback=None, stats_callback=None,
-                 time_left_callback=None, stop_event=None, pause_event=None):
+    def __init__(
+        self,
+        raw_data_dir,
+        processed_data_dir,
+        max_games,
+        min_elo,
+        batch_size=10000,
+        progress_callback=None,
+        log_callback=None,
+        stats_callback=None,
+        time_left_callback=None,
+        stop_event=None,
+        pause_event=None
+    ):
         self.raw_data_dir = raw_data_dir
         self.processed_data_dir = processed_data_dir
         self.max_games = max_games
@@ -35,6 +43,8 @@ class DataProcessor:
         self.batch_policy_targets = []
         self.batch_value_targets = []
         self.current_dataset_size = 0
+
+        self.move_mapping = get_move_mapping()
 
     def process_pgn_files(self):
         pgn_files = glob.glob(os.path.join(self.raw_data_dir, '*.pgn'))
@@ -76,7 +86,7 @@ class DataProcessor:
                                 break
 
                             game_str = str(game)
-                            result = process_game(game_str, self.min_elo, self.log_callback)
+                            result = process_game(game_str, self.min_elo, self.log_callback, self.move_mapping)
                             if result is None:
                                 continue
 
@@ -240,7 +250,7 @@ def split_dataset(processed_data_dir, log_callback=None):
         if log_callback:
             log_message(f"Error during dataset splitting: {e}", log_callback)
 
-def process_game(game_str, min_elo, log_callback=None):
+def process_game(game_str, min_elo, log_callback=None, move_mapping=None):
     try:
         game = chess.pgn.read_game(io.StringIO(game_str))
         if game is None:
@@ -290,10 +300,9 @@ def process_game(game_str, min_elo, log_callback=None):
         for move in moves:
             current_tensor = convert_board_to_tensor(board)
 
-            if move in INDEX_MAPPING:
-                move_idx = INDEX_MAPPING[move]
-            else:
-                log_message(f"Skipped a move: Move '{move}' not in INDEX_MAPPING.", log_callback)
+            move_idx = move_mapping.get_index_by_move(move)
+            if move_idx is None:
+                log_message(f"Skipped a move: Move '{move}' not in MOVE_MAPPING.", log_callback)
                 board.push(move)
                 continue
 
@@ -303,17 +312,17 @@ def process_game(game_str, min_elo, log_callback=None):
             value_targets.append(value_target)
 
             flipped_board = flip_board(board)
-            flipped_tensor = convert_board_to_tensor(flipped_board)
             flipped_move = flip_move(move)
 
-            if flipped_move in INDEX_MAPPING:
-                flipped_move_idx = INDEX_MAPPING[flipped_move]
+            flipped_move_idx = move_mapping.get_index_by_move(flipped_move)
+            if flipped_move_idx is not None:
+                flipped_tensor = convert_board_to_tensor(flipped_board)
                 inputs.append(flipped_tensor)
                 policy_targets.append(flipped_move_idx)
                 flipped_value_target = -value_target
                 value_targets.append(flipped_value_target)
             else:
-                log_message(f"Skipped a flipped move: Move '{flipped_move}' not in INDEX_MAPPING.", log_callback)
+                log_message(f"Skipped a flipped move: Move '{flipped_move}' not in MOVE_MAPPING.", log_callback)
 
             board.push(move)
 

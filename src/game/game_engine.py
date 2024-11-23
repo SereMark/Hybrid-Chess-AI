@@ -20,7 +20,6 @@ class GameEngine(QObject):
         self.is_game_over = False
         self.move_history = []
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        chess_utils.initialize_move_mappings()
         self.model = None
 
         if self.opponent_type == 'cnn':
@@ -162,7 +161,7 @@ class GameEngine(QObject):
             policy_probs = torch.softmax(policy_output, dim=1).cpu().numpy()[0]
         move_probs = {}
         for move in board.legal_moves:
-            idx = chess_utils.INDEX_MAPPING.get(move)
+            idx = chess_utils.move_mapping.INDEX_MAPPING.get(move)
             if idx is not None:
                 move_probs[move.uci()] = policy_probs[idx]
         total_prob = sum(move_probs.values())

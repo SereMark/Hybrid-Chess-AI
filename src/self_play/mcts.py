@@ -1,7 +1,4 @@
 import math, chess, numpy as np, threading
-from src.utils.chess_utils import initialize_move_mappings
-
-initialize_move_mappings()
 
 class TreeNode:
     def __init__(self, parent, prior_p, board, move):
@@ -79,6 +76,8 @@ class MCTS:
         for _ in range(self.n_simulations):
             self.simulate()
         move_visits = [(move, child.n_visits) for move, child in self.root.children.items()]
+        if not move_visits:
+            return {}
         moves, visits = zip(*move_visits)
         visits = np.array(visits, dtype=np.float32)
         if temperature == 0:
@@ -86,7 +85,11 @@ class MCTS:
             probs[np.argmax(visits)] = 1.0
         else:
             visits = visits ** (1.0 / temperature)
-            probs = visits / np.sum(visits)
+            total = np.sum(visits)
+            if total > 0:
+                probs = visits / total
+            else:
+                probs = np.ones_like(visits) / len(visits)
         return dict(zip(moves, probs))
 
     def update_with_move(self, last_move):
@@ -121,7 +124,8 @@ class MCTS:
                 recurse(child, depth + 1)
 
         with self.tree_lock:
-            recurse(self.root)
+            if self.root:
+                recurse(self.root)
         return nodes, edges
 
     @staticmethod
