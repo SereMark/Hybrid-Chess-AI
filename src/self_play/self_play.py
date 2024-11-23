@@ -67,10 +67,6 @@ class SelfPlay:
             mcts.update_with_move(move)
             move_count += 1
 
-            if self.stats_fn:
-                nodes, edges = mcts.get_tree_data()
-                self.stats_fn({'tree_nodes': nodes, 'tree_edges': edges})
-
         result = self.get_game_result(board)
         if board.is_checkmate():
             last_player = not board.turn
