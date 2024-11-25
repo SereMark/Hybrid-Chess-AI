@@ -1,11 +1,9 @@
 name: hybrid_chess_ai
-channels:
-  - conda-forge
 dependencies:
   - python=3.12
   - numpy
   - pytorch
   - matplotlib
   - pyqt
-  - python-chess
+  - chess
   - h5py

@@ -1,5 +1,5 @@
 import os, time, numpy as np, torch
-from sklearn.metrics import confusion_matrix, classification_report
+from collections import Counter
 from torch.utils.data import DataLoader
 from typing import Callable, Optional
 from src.utils.chess_utils import get_total_moves, get_move_mapping
@@ -141,23 +141,16 @@ class ModelEvaluator:
         log_message(f"Top-{topk_predictions.shape[1]} Accuracy: {topk_accuracy * 100:.2f}%", self.log_fn)
 
         N = 10
-        from collections import Counter
         class_counts = Counter(all_actuals)
         most_common_classes = [item[0] for item in class_counts.most_common(N)]
         indices = np.isin(all_actuals, most_common_classes)
         filtered_actuals = all_actuals[indices]
         filtered_predictions = all_predictions[indices]
 
-        confusion = confusion_matrix(filtered_actuals, filtered_predictions, labels=most_common_classes)
+        confusion = self._compute_confusion_matrix(filtered_actuals, filtered_predictions, most_common_classes)
         log_message("Confusion Matrix computed.", self.log_fn)
 
-        report = classification_report(
-            filtered_actuals,
-            filtered_predictions,
-            labels=most_common_classes,
-            output_dict=True,
-            zero_division=0
-        )
+        report = self._compute_classification_report(filtered_actuals, filtered_predictions, most_common_classes)
         macro_avg = report.get('macro avg', {})
         weighted_avg = report.get('weighted avg', {})
 
@@ -194,6 +187,75 @@ class ModelEvaluator:
             )
 
         log_message("Evaluation process finished.", self.log_fn)
+
+    def _compute_confusion_matrix(self, actuals, predictions, labels):
+        label_to_index = {label: idx for idx, label in enumerate(labels)}
+        matrix = np.zeros((len(labels), len(labels)), dtype=int)
+        for actual, pred in zip(actuals, predictions):
+            if actual in label_to_index and pred in label_to_index:
+                matrix[label_to_index[actual], label_to_index[pred]] += 1
+        return matrix
+
+    def _compute_classification_report(self, actuals, predictions, labels):
+        report = {}
+        support = Counter(actuals)
+
+        tp = {label: 0 for label in labels}
+        fp = {label: 0 for label in labels}
+        fn = {label: 0 for label in labels}
+
+        for actual, pred in zip(actuals, predictions):
+            if actual == pred:
+                tp[actual] += 1
+            else:
+                if pred in fp:
+                    fp[pred] += 1
+                fn[actual] += 1
+
+        precision = {}
+        recall = {}
+        f1_score = {}
+
+        for label in labels:
+            precision[label] = tp[label] / (tp[label] + fp[label]) if (tp[label] + fp[label]) > 0 else 0.0
+            recall[label] = tp[label] / (tp[label] + fn[label]) if (tp[label] + fn[label]) > 0 else 0.0
+            if precision[label] + recall[label] > 0:
+                f1_score[label] = 2 * precision[label] * recall[label] / (precision[label] + recall[label])
+            else:
+                f1_score[label] = 0.0
+
+        macro_precision = np.mean(list(precision.values()))
+        macro_recall = np.mean(list(recall.values()))
+        macro_f1 = np.mean(list(f1_score.values()))
+
+        total_support = sum(support[label] for label in labels)
+        weighted_precision = sum(precision[label] * support[label] for label in labels) / total_support if total_support > 0 else 0.0
+        weighted_recall = sum(recall[label] * support[label] for label in labels) / total_support if total_support > 0 else 0.0
+        weighted_f1 = sum(f1_score[label] * support[label] for label in labels) / total_support if total_support > 0 else 0.0
+
+        for label in labels:
+            report[label] = {
+                'precision': precision[label],
+                'recall': recall[label],
+                'f1-score': f1_score[label],
+                'support': support[label]
+            }
+
+        report['macro avg'] = {
+            'precision': macro_precision,
+            'recall': macro_recall,
+            'f1-score': macro_f1,
+            'support': total_support
+        }
+
+        report['weighted avg'] = {
+            'precision': weighted_precision,
+            'recall': weighted_recall,
+            'f1-score': weighted_f1,
+            'support': total_support
+        }
+
+        return report
 
     def _update_progress(self, progress: int):
         if self.progress_fn:
