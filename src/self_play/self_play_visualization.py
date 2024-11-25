@@ -1,4 +1,4 @@
-import time, networkx as nx
+import time
 from src.base.base_visualization import BasePlot, BaseVisualizationWidget
 
 
