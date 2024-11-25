@@ -16,8 +16,7 @@ It **may not be used, reproduced, or distributed for any commercial purposes**, 
 ## **System Requirements**
 To run this project, you need:
 - **Python 3.12**
-- **Anaconda** (for dependency management)
-- A modern GPU (recommended for optimal performance with neural networks)
+- **Anaconda**
 
 ---
 
@@ -42,13 +41,3 @@ Follow these steps to set up the environment and run the project:
    ```bash
    python -m src.gui.main
    ```
-
----
-
-## **License**
-This project is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International Public License](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode), with the following **Additional Terms**:
-
-1. **Academic Integrity**: This code may not be used, presented, or published in any academic work, including theses or research papers, without prior written consent from the author.
-2. **No Warranty or Liability**: The code is provided "as is," with no guarantees of functionality or reliability.
-
-For more details, see the [LICENSE](LICENSE) file.
