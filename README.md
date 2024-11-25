@@ -8,7 +8,8 @@ This project is the implementation of a **hybrid chess artificial intelligence**
 This project is developed as part of a thesis and serves as an educational and research tool to explore the intersection of neural networks and traditional chess AI techniques.
 
 ### **Disclaimer**
-The code in this repository is for **non-commercial use only**. It may not be used, reproduced, or distributed for any commercial purposes. Please refer to the [LICENSE](LICENSE) file for details.
+The code in this repository is for **non-commercial use only**.  
+It **may not be used, reproduced, or distributed for any commercial purposes**, and it **may not be used in academic works, such as theses or research papers, without prior written consent from the author**. Please refer to the [LICENSE](LICENSE) file for details.
 
 ---
 
@@ -64,4 +65,9 @@ Follow these steps to set up the environment and run the project:
 ---
 
 ## **License**
-This project is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International Public License](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode). See the [LICENSE](LICENSE) file for details.
+This project is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International Public License](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode), with the following **Additional Terms**:
+
+1. **Academic Integrity**: This code may not be used, presented, or published in any academic work, including theses or research papers, without prior written consent from the author.
+2. **No Warranty or Liability**: The code is provided "as is," with no guarantees of functionality or reliability.
+
+For more details, see the [LICENSE](LICENSE) file.
