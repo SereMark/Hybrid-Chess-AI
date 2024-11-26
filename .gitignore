@@ -51,6 +51,7 @@ env/
 *.sqlite
 *.npy
 *.pgn
+opening_book.json
 
 # PyTorch model files
 *.pth

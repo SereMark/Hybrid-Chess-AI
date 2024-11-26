@@ -265,12 +265,15 @@ class ChessGameTab(BaseTab):
 
         self.status = QLabel("Game started!", alignment=Qt.AlignCenter)
         self.mode_label = QLabel("", alignment=Qt.AlignCenter)
+        self.opening_label = QLabel("", alignment=Qt.AlignCenter)
         mode_font = QFont('Arial', 12, QFont.Bold)
         self.mode_label.setFont(mode_font)
+        self.opening_label.setFont(mode_font)
 
         info_layout = QVBoxLayout()
         info_layout.addWidget(self.status)
         info_layout.addWidget(self.mode_label)
+        info_layout.addWidget(self.opening_label)
         game_layout.addLayout(info_layout)
 
         self.splitter.addWidget(self.game_container)
@@ -335,6 +338,7 @@ class ChessGameTab(BaseTab):
         self.engine.move_made_signal.connect(self.status.setText)
         self.engine.move_made_signal.connect(self.board_view.on_move_made)
         self.engine.policy_output_signal.connect(self.board_view.update_policy_output)
+        self.engine.opening_info_signal.connect(self.update_opening_info)
 
     def _disconnect_signals(self):
         try:
@@ -349,6 +353,12 @@ class ChessGameTab(BaseTab):
             self.board_view.promotion_requested.disconnect(self.handle_promotion)
         except Exception:
             pass
+
+    def update_opening_info(self, name, eco):
+        if name or eco:
+            self.opening_label.setText(f"{eco} {name}")
+        else:
+            self.opening_label.setText("")
 
     def refresh_status(self, msg):
         if "Move made:" in msg or "AI moved:" in msg:

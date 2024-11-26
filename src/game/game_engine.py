@@ -11,6 +11,7 @@ class GameEngine(QObject):
     value_evaluation_signal = pyqtSignal(list)
     policy_output_signal = pyqtSignal(dict)
     material_balance_signal = pyqtSignal(list)
+    opening_info_signal = pyqtSignal(str, str)
 
     def __init__(self, player_color=chess.WHITE, opponent_type='random'):
         super().__init__()
@@ -21,6 +22,7 @@ class GameEngine(QObject):
         self.move_history = []
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = None
+        self.opening_book = self.load_opening_book()
 
         if self.opponent_type == 'cnn':
             self._load_model()
@@ -47,6 +49,7 @@ class GameEngine(QObject):
         if move in self.board.legal_moves:
             self.board.push(move)
             self.move_history.append(move)
+            self.update_opening_info()
             self.move_made_signal.emit(f"Move made: {move.uci()}")
             self._check_game_over()
             balance = self.compute_material_balance(self.board)
@@ -68,19 +71,38 @@ class GameEngine(QObject):
             return
 
         move = None
-        if self.opponent_type == 'random':
-            move = random.choice(list(self.board.legal_moves))
-        elif self.opponent_type == 'cnn' and self.model:
-            move = self._select_move_with_cnn()
-            if move is None:
-                self.move_made_signal.emit("AI could not select a move. Reverting to random move.")
+        move_source = None
+        if self.opening_book:
+            fen = ' '.join(self.board.fen().split(' ')[:4])
+            if fen in self.opening_book:
+                move_uci_counts = self.opening_book[fen]
+                best_move_uci = max(move_uci_counts.items(), key=lambda item: item[1]['win'] + item[1]['draw'] + item[1]['loss'])[0]
+                move = chess.Move.from_uci(best_move_uci)
+                move_source = 'opening_book'
+
+        if move is None:
+            if self.opponent_type == 'random':
                 move = random.choice(list(self.board.legal_moves))
-        else:
-            move = random.choice(list(self.board.legal_moves))
+                move_source = 'random'
+            elif self.opponent_type == 'cnn' and self.model:
+                move = self._select_move_with_cnn()
+                if move is None:
+                    self.move_made_signal.emit("AI could not select a move. Reverting to random move.")
+                    move = random.choice(list(self.board.legal_moves))
+                    move_source = 'random'
+                else:
+                    move_source = 'cnn'
+            else:
+                move = random.choice(list(self.board.legal_moves))
+                move_source = 'random'
 
         self.board.push(move)
         self.move_history.append(move)
-        self.move_made_signal.emit(f"AI moved: {move.uci()}")
+        self.update_opening_info()
+        if move_source == 'opening_book':
+            self.move_made_signal.emit(f"AI opening book move: {move.uci()}")
+        else:
+            self.move_made_signal.emit(f"AI moved: {move.uci()}")
         self._check_game_over()
         balance = self.compute_material_balance(self.board)
         self.material_balance_signal.emit([balance])
@@ -178,5 +200,30 @@ class GameEngine(QObject):
             move = random.choice(list(board.legal_moves))
             return move, {}, value_output.item()
 
+    def load_opening_book(self):
+        opening_book_file = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'processed', 'opening_book.json')
+        opening_book_file = os.path.abspath(opening_book_file)
+        if os.path.exists(opening_book_file):
+            import json
+            with open(opening_book_file, 'r') as f:
+                positions = json.load(f)
+            return positions
+        else:
+            return None
+    
+    def update_opening_info(self):
+        fen = ' '.join(self.board.fen().split(' ')[:4])
+        if self.opening_book and fen in self.opening_book:
+            moves = self.opening_book[fen]
+            for move_data in moves.values():
+                name = move_data.get('name', '')
+                eco = move_data.get('eco', '')
+                if name or eco:
+                    self.opening_info_signal.emit(name, eco)
+                    return
+            self.opening_info_signal.emit('', '')
+        else:
+            self.opening_info_signal.emit('', '')
+            
     def close(self):
         pass

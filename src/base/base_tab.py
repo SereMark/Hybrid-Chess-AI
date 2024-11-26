@@ -61,6 +61,7 @@ class BaseTab(QWidget):
             self.worker.log_update.connect(self.log_message)
             self.worker.progress_update.connect(self.update_progress)
             self.worker.time_left_update.connect(self.update_time_left)
+            self.worker.paused.connect(self.on_worker_paused)
             self.thread.start()
             return True
         except Exception as e:
@@ -71,12 +72,20 @@ class BaseTab(QWidget):
         if self.worker:
             self.worker.stop()
             self.log_message("Worker stop requested.")
+            if hasattr(self, 'pause_button'):
+                self.pause_button.setEnabled(False)
+            if hasattr(self, 'resume_button'):
+                self.resume_button.setEnabled(False)
         else:
             self.log_message("No worker to stop.")
 
     def on_worker_finished(self):
         self.worker = None
         self.thread = None
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
 
     def create_browse_layout(self, line_edit, browse_button):
         layout = QHBoxLayout()
@@ -141,10 +150,14 @@ class BaseTab(QWidget):
     def pause_worker(self):
         if self.worker:
             self.worker.pause()
+        else:
+            self.log_message("No worker to pause.")
 
     def resume_worker(self):
         if self.worker:
             self.worker.resume()
+        else:
+            self.log_message("No worker to resume.")
 
     def on_worker_paused(self, is_paused):
         if hasattr(self, 'pause_button') and hasattr(self, 'resume_button'):
