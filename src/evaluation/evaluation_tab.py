@@ -25,7 +25,7 @@ class EvaluationTab(BaseTab):
         )
         progress_layout = self.create_progress_layout()
         self.log_text_edit = self.create_log_text_edit()
-        self.visualization_group = self.create_visualization_group("Evaluation Visualization")
+        self.visualization_group = self.create_visualization_group(self.visualization, "Evaluation Visualization")
 
         main_layout.addWidget(self.paths_group)
         main_layout.addLayout(control_buttons_layout)

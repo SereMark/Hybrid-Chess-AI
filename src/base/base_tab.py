@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout,
-    QHBoxLayout, QGroupBox, QLineEdit, QPushButton, QFileDialog, QHBoxLayout, QVBoxLayout, QSizePolicy
+    QHBoxLayout, QGroupBox, QLineEdit, QPushButton, QFileDialog, QSizePolicy, QLabel
 )
 from PyQt5.QtCore import Qt, QThread
 import traceback
@@ -103,11 +103,11 @@ class BaseTab(QWidget):
         widget.setLayout(layout)
         return widget
 
-    def create_visualization_group(self, title: str):
+    def create_visualization_group(self, visualization_widget, title: str):
         visualization_group = QGroupBox(title)
         vis_layout = QVBoxLayout()
-        self.visualization.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        vis_layout.addWidget(self.visualization)
+        visualization_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        vis_layout.addWidget(visualization_widget)
         visualization_group.setLayout(vis_layout)
         return visualization_group
 

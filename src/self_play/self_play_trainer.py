@@ -45,7 +45,6 @@ def _play_and_collect_wrapper(args):
         n_simulations=simulations,
         c_puct=c_puct,
         temperature=temperature,
-        stats_fn=stats_queue.put,
     )
     for _ in range(games_per_process):
         if stop_event.is_set():
@@ -63,6 +62,21 @@ def _play_and_collect_wrapper(args):
         value_targets_list.extend(winners)
         results_list.append(result)
         game_lengths_list.append(game_length)
+
+    total_games = len(results_list)
+    wins = results_list.count(1.0)
+    losses = results_list.count(-1.0)
+    draws = results_list.count(0.0)
+    avg_game_length = sum(game_lengths_list) / len(game_lengths_list) if game_lengths_list else 0
+    stats = {
+        'total_games': total_games,
+        'wins': wins,
+        'losses': losses,
+        'draws': draws,
+        'avg_game_length': avg_game_length,
+    }
+    stats_queue.put(stats)
+
     return (
         inputs_list,
         policy_targets_list,
@@ -93,12 +107,17 @@ class SelfPlayTrainer(TrainerBase):
         checkpoint_batch_interval=1000,
         checkpoint_path=None,
         random_seed=42,
+        optimizer_type='adamw',
+        learning_rate=0.0005,
+        weight_decay=2e-4,
+        scheduler_type='cosineannealingwarmrestarts',
+        num_workers=4,
         log_fn=None,
         progress_fn=None,
         time_left_fn=None,
         stats_fn=None,
         stop_event=None,
-        pause_event=None,
+        pause_event=None
     ):
         super().__init__(
             save_checkpoints=save_checkpoints,
@@ -106,6 +125,7 @@ class SelfPlayTrainer(TrainerBase):
             checkpoint_type=checkpoint_type,
             checkpoint_interval_minutes=checkpoint_interval_minutes,
             checkpoint_batch_interval=checkpoint_batch_interval,
+            checkpoint_dir=os.path.join(output_dir, 'checkpoints'),
             log_fn=log_fn,
             progress_fn=progress_fn,
             time_left_fn=time_left_fn,
@@ -115,11 +135,11 @@ class SelfPlayTrainer(TrainerBase):
             automatic_batch_size=automatic_batch_size,
             batch_size=batch_size,
             model_class=ChessModel,
-            optimizer_type='adamw',
-            learning_rate=0.0005,
-            weight_decay=2e-4,
-            scheduler_type='cosineannealingwarmrestarts',
-            num_workers=4
+            optimizer_type=optimizer_type,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            scheduler_type=scheduler_type,
+            num_workers=num_workers
         )
         self.model_path = model_path
         self.output_dir = output_dir
@@ -166,8 +186,6 @@ class SelfPlayTrainer(TrainerBase):
         log_message("Initializing model and optimizer...", self.log_fn)
         num_moves = get_total_moves()
         self.initialize_model(num_moves=num_moves)
-        self.model = self.model
-
         if os.path.exists(self.model_path):
             checkpoint = torch.load(self.model_path, map_location=self.device)
             self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -176,7 +194,13 @@ class SelfPlayTrainer(TrainerBase):
             log_message("Model file not found. Starting from scratch.", self.log_fn)
 
         self.initialize_optimizer()
-        self.optimizer = self.optimizer
+
+        if self.scheduler_type.lower() != 'none':
+            if self.scheduler_type.lower() == 'onecyclelr':
+                total_steps = self.num_iterations * self.num_epochs * (self.num_games_per_iteration // self.batch_size)
+            else:
+                total_steps = None
+            self.initialize_scheduler(total_steps=total_steps)
 
         if self.checkpoint_path and os.path.exists(self.checkpoint_path):
             checkpoint = self.load_checkpoint(self.checkpoint_path, map_location=self.device)
@@ -246,9 +270,8 @@ class SelfPlayTrainer(TrainerBase):
             inputs_list.extend(res[0])
             policy_targets_list.extend(res[1])
             value_targets_list.extend(res[2])
-
-        self.results.extend([res[3] for res in results])
-        self.game_lengths.extend([res[4] for res in results])
+            self.results.extend(res[3])
+            self.game_lengths.extend(res[4])
 
         total_positions = len(inputs_list)
         if total_positions == 0:
@@ -329,7 +352,7 @@ class SelfPlayTrainer(TrainerBase):
         checkpoint_data = {
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict() if hasattr(self, 'scheduler') else None,
+            'scheduler_state_dict': self.scheduler.state_dict() if hasattr(self, 'scheduler') and self.scheduler else None,
             'iteration': iteration + 1,
             'epoch': self.current_epoch,
             'total_batches_processed': self.total_batches_processed,
@@ -339,7 +362,7 @@ class SelfPlayTrainer(TrainerBase):
                 'game_lengths': self.game_lengths,
             },
         }
-        self.save_checkpoint(epoch=self.current_epoch, iteration=iteration + 1, additional_info=checkpoint_data)
+        torch.save(checkpoint_data, model_save_path)
         log_message(f"Model saved at iteration {iteration + 1}.", self.log_fn)
         self.model_state_dict = {k: v.cpu() for k, v in self.model.state_dict().items()}
 
@@ -350,12 +373,12 @@ class SelfPlayTrainer(TrainerBase):
         checkpoint = {
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict() if hasattr(self, 'scheduler') else None,
+            'scheduler_state_dict': self.scheduler.state_dict() if hasattr(self, 'scheduler') and self.scheduler else None,
             'training_stats': {
                 'total_games_played': self.total_games_played,
                 'results': self.results,
                 'game_lengths': self.game_lengths,
             },
         }
-        self.save_checkpoint(epoch=self.current_epoch, additional_info=checkpoint)
+        torch.save(checkpoint, final_model_path)
         log_message("Final model saved.", self.log_fn)

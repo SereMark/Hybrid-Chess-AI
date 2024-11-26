@@ -235,13 +235,13 @@ class ChessGameTab(BaseTab):
         self.black_timer = self.time_limit
         self.game_active = False
         self.visual = GameVisualization()
-        self._setup_ui()
+        self.init_ui()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.decrement_timer)
         self.initialize_game(chess.WHITE, 'cnn', self.time_limit)
 
-    def _setup_ui(self):
-        main_layout = QHBoxLayout(self)
+    def init_ui(self):
+        main_layout = QVBoxLayout(self)
         self.splitter = QSplitter(Qt.Horizontal)
 
         self.game_container = QWidget()

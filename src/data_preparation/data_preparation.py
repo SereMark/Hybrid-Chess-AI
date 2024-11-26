@@ -221,6 +221,12 @@ class DataProcessor:
             }
             self.stats_callback(stats)
 
+    def stop(self):
+        self.stop_event.set()
+        self.pause_event.set()
+        if self.log_callback:
+            self.log_callback("DataProcessor stop requested.")
+
 def split_dataset(processed_data_dir, log_callback=None):
     output_dir = processed_data_dir
     h5_file_path = os.path.join(output_dir, 'dataset.h5')

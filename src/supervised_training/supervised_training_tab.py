@@ -33,7 +33,7 @@ class SupervisedTrainingTab(BaseTab):
         )
         progress_layout = self.create_progress_layout()
         self.log_text_edit = self.create_log_text_edit()
-        self.visualization_group = self.create_visualization_group("Training Visualization")
+        self.visualization_group = self.create_visualization_group(self.visualization, "Training Visualization")
 
         main_layout.addWidget(self.dataset_group)
         main_layout.addWidget(self.training_group)
@@ -250,8 +250,8 @@ class SupervisedTrainingTab(BaseTab):
                     return
 
         self.start_button.setEnabled(False)
-        self.pause_button.setEnabled(True)
         self.stop_button.setEnabled(True)
+        self.pause_button.setEnabled(True)
         self.resume_button.setEnabled(False)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
@@ -312,6 +312,7 @@ class SupervisedTrainingTab(BaseTab):
     def stop_training(self):
         self.stop_worker()
         self.log_message("Stopping training...")
+        self.start_button.setEnabled(True)
         self.pause_button.setEnabled(False)
         self.resume_button.setEnabled(False)
         self.stop_button.setEnabled(False)

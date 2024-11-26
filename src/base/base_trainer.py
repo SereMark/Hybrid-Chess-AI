@@ -43,7 +43,7 @@ class TrainerBase:
         except ValueError:
             log_message(
                 f"Unsupported checkpoint type: {checkpoint_type}. Using 'epoch' by default.",
-                self.log_fn
+                log_fn
             )
             self.checkpoint_type = CheckpointType.EPOCH
         self.checkpoint_interval_minutes = checkpoint_interval_minutes
@@ -81,16 +81,21 @@ class TrainerBase:
             log_message(f"Using manual batch size: {self.batch_size}", self.log_fn)
 
     def initialize_optimizer(self):
-        if self.optimizer_type.lower() == 'adamw':
+        optimizer_type_lower = self.optimizer_type.lower()
+        if optimizer_type_lower == 'adamw':
             self.optimizer = torch.optim.AdamW(
                 self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
             )
-        elif self.optimizer_type.lower() == 'sgd':
+        elif optimizer_type_lower == 'sgd':
             self.optimizer = torch.optim.SGD(
                 self.model.parameters(),
                 lr=self.learning_rate,
                 weight_decay=self.weight_decay,
                 momentum=0.9,
+            )
+        elif optimizer_type_lower == 'adam':
+            self.optimizer = torch.optim.Adam(
+                self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
             )
         else:
             log_message(
@@ -102,16 +107,23 @@ class TrainerBase:
             )
 
     def initialize_scheduler(self, total_steps):
-        if self.scheduler_type.lower() == 'cosineannealingwarmrestarts':
+        scheduler_type_lower = self.scheduler_type.lower()
+        if scheduler_type_lower == 'cosineannealingwarmrestarts':
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
                 self.optimizer, T_0=10, T_mult=2
             )
-        elif self.scheduler_type.lower() == 'steplr':
+        elif scheduler_type_lower == 'steplr':
             self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=30, gamma=0.1)
-        elif self.scheduler_type.lower() == 'onecyclelr':
+        elif scheduler_type_lower == 'onecyclelr':
             self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
                 self.optimizer, max_lr=self.learning_rate, total_steps=total_steps
             )
+        elif scheduler_type_lower == 'cosineannealing':
+            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer, T_max=10
+            )
+        elif scheduler_type_lower == 'none':
+            self.scheduler = None
         else:
             log_message(
                 f"Unsupported scheduler type: {self.scheduler_type}. Using CosineAnnealingWarmRestarts by default.",
@@ -150,7 +162,7 @@ class TrainerBase:
             checkpoint_data = {
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
-                'scheduler_state_dict': self.scheduler.state_dict() if hasattr(self, 'scheduler') else None,
+                'scheduler_state_dict': self.scheduler.state_dict() if hasattr(self, 'scheduler') and self.scheduler else None,
                 'epoch': epoch,
                 'batch_idx': batch_idx,
                 'iteration': iteration,
@@ -178,7 +190,7 @@ class TrainerBase:
             checkpoint = torch.load(checkpoint_path, map_location=map_location or self.device)
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            if checkpoint.get('scheduler_state_dict') and hasattr(self, 'scheduler'):
+            if checkpoint.get('scheduler_state_dict') and hasattr(self, 'scheduler') and self.scheduler:
                 self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
             self.total_batches_processed = checkpoint.get('total_batches_processed', 0)
             return checkpoint

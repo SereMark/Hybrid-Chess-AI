@@ -33,7 +33,7 @@ class SelfPlayTab(BaseTab):
         )
         progress_layout = self.create_progress_layout()
         self.log_text_edit = self.create_log_text_edit()
-        self.visualization_group = self.create_visualization_group("Self-Play Visualization")
+        self.visualization_group = self.create_visualization_group(self.visualization, "Self-Play Visualization")
 
         main_layout.addWidget(self.model_output_group)
         main_layout.addWidget(self.parameters_group)
@@ -87,6 +87,14 @@ class SelfPlayTab(BaseTab):
         self.num_threads_input = QLineEdit("4")
         self.random_seed_input = QLineEdit("42")
 
+        self.optimizer_type_combo = QComboBox()
+        self.optimizer_type_combo.addItems(['Adam', 'AdamW', 'SGD'])
+        self.learning_rate_input = QLineEdit("0.0005")
+        self.weight_decay_input = QLineEdit("0.0001")
+        self.scheduler_type_combo = QComboBox()
+        self.scheduler_type_combo.addItems(['None', 'StepLR', 'CosineAnnealing', 'CosineAnnealingWarmRestarts'])
+        self.scheduler_type_combo.setCurrentText('CosineAnnealing')
+
         parameters_layout.addRow("Number of Iterations:", self.num_iterations_input)
         parameters_layout.addRow("Games per Iteration:", self.num_games_per_iteration_input)
         parameters_layout.addRow("Simulations per Move:", self.simulations_input)
@@ -97,6 +105,10 @@ class SelfPlayTab(BaseTab):
         parameters_layout.addRow(self.automatic_batch_size_checkbox)
         parameters_layout.addRow("Number of Threads:", self.num_threads_input)
         parameters_layout.addRow("Random Seed:", self.random_seed_input)
+        parameters_layout.addRow("Optimizer Type:", self.optimizer_type_combo)
+        parameters_layout.addRow("Learning Rate:", self.learning_rate_input)
+        parameters_layout.addRow("Weight Decay:", self.weight_decay_input)
+        parameters_layout.addRow("Scheduler Type:", self.scheduler_type_combo)
 
         parameters_group.setLayout(parameters_layout)
         return parameters_group
@@ -187,6 +199,12 @@ class SelfPlayTab(BaseTab):
                 c_puct, temperature, num_epochs, num_threads
             ]):
                 raise ValueError("All numerical parameters must be positive.")
+
+            optimizer_type = self.optimizer_type_combo.currentText().lower()
+            learning_rate = float(self.learning_rate_input.text())
+            weight_decay = float(self.weight_decay_input.text())
+            scheduler_type = self.scheduler_type_combo.currentText().lower()
+
         except ValueError as e:
             QMessageBox.warning(
                 self, "Input Error", f"Please enter valid and positive parameters.\n{str(e)}"
@@ -269,7 +287,11 @@ class SelfPlayTab(BaseTab):
             checkpoint_interval=checkpoint_interval,
             checkpoint_type=checkpoint_type,
             checkpoint_interval_minutes=checkpoint_interval_minutes,
-            checkpoint_batch_interval=checkpoint_batch_interval
+            checkpoint_batch_interval=checkpoint_batch_interval,
+            optimizer_type=optimizer_type,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            scheduler_type=scheduler_type,
         )
         if started:
             self.worker.stats_update.connect(self.visualization.update_stats)
@@ -289,6 +311,7 @@ class SelfPlayTab(BaseTab):
     def stop_self_play(self):
         self.stop_worker()
         self.log_message("Stopping self-play...")
+        self.start_button.setEnabled(True)
         self.pause_button.setEnabled(False)
         self.resume_button.setEnabled(False)
         self.stop_button.setEnabled(False)
