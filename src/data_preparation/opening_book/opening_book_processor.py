@@ -143,7 +143,7 @@ class OpeningBookProcessor:
         for k in positions:
             positions[k] = {m: dict(stats) for m, stats in positions[k].items()}
         import json
-        opening_book_file = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'processed', 'opening_book.json')
+        opening_book_file = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data', 'processed', 'opening_book.json')
         opening_book_file = os.path.abspath(opening_book_file)
         os.makedirs(os.path.dirname(opening_book_file), exist_ok=True)
         with open(opening_book_file, 'w') as f:
