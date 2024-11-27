@@ -12,12 +12,10 @@ class ChessMainWindow(QMainWindow):
         self.setGeometry(100, 100, 1600, 800)
         self.tab_widget = QTabWidget(self)
         self.setCentralWidget(self.tab_widget)
-        for widget, name in [
-            (DataPreparationTab, "Data Preparation"),
-            (SupervisedTrainingTab, "Supervised Training"),
-            (SelfPlayTab, "Self Play"),
-            (EvaluationTab, "Evaluation")]:
-            self.tab_widget.addTab(widget(), name)
+        self.tab_widget.addTab(DataPreparationTab(), "Data Preparation")
+        self.tab_widget.addTab(SupervisedTrainingTab(), "Supervised Training")
+        self.tab_widget.addTab(SelfPlayTab(), "Self Play")
+        self.tab_widget.addTab(EvaluationTab(), "Evaluation")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
