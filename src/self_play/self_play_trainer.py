@@ -95,7 +95,6 @@ class SelfPlayTrainer(TrainerBase):
     def __init__(
         self,
         model_path,
-        output_dir,
         num_iterations,
         num_games_per_iteration,
         simulations,
@@ -146,7 +145,6 @@ class SelfPlayTrainer(TrainerBase):
             num_workers=num_threads
         )
         self.model_path = model_path
-        self.output_dir = output_dir
         self.num_iterations = num_iterations
         self.num_games_per_iteration = num_games_per_iteration
         self.simulations = simulations
@@ -183,7 +181,6 @@ class SelfPlayTrainer(TrainerBase):
                 self.save_checkpoint(epoch=self.current_epoch, iteration=iteration + 1)
             iteration_time = time.time() - iteration_start_time
             log_message(f"Iteration {iteration + 1} completed in {format_time_left(iteration_time)}", self.log_fn)
-            self._save_model(iteration)
         self._save_final_model()
 
     def _initialize(self):
@@ -349,26 +346,6 @@ class SelfPlayTrainer(TrainerBase):
                     self.save_checkpoint(epoch=self.current_epoch, batch_idx=self.total_batches_processed, iteration=iteration + 1)
             avg_loss = total_loss / len(loader)
             log_message(f"Epoch {epoch}/{self.num_epochs}, Loss: {avg_loss:.4f}", self.log_fn)
-
-    def _save_model(self, iteration):
-        os.makedirs(self.output_dir, exist_ok=True)
-        model_save_path = os.path.join('models', 'saved_models', f'model_iteration_{iteration + 1}.pth')
-        checkpoint_data = {
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict() if hasattr(self, 'scheduler') and self.scheduler else None,
-            'iteration': iteration + 1,
-            'epoch': self.current_epoch,
-            'total_batches_processed': self.total_batches_processed,
-            'training_stats': {
-                'total_games_played': self.total_games_played,
-                'results': self.results,
-                'game_lengths': self.game_lengths,
-            },
-        }
-        torch.save(checkpoint_data, model_save_path)
-        log_message(f"Model saved at iteration {iteration + 1}.", self.log_fn)
-        self.model_state_dict = {k: v.cpu() for k, v in self.model.state_dict().items()}
 
     def _save_final_model(self):
         final_model_dir = os.path.join('models', 'saved_models')

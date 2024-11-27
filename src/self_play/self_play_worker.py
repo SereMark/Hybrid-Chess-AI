@@ -9,7 +9,6 @@ class SelfPlayWorker(BaseWorker):
     def __init__(
         self,
         model_path: str,
-        output_dir: str,
         num_iterations: int,
         num_games_per_iteration: int,
         simulations: int,
@@ -33,7 +32,6 @@ class SelfPlayWorker(BaseWorker):
     ):
         super().__init__()
         self.model_path = model_path
-        self.output_dir = output_dir
         self.num_iterations = num_iterations
         self.num_games_per_iteration = num_games_per_iteration
         self.simulations = simulations
@@ -59,7 +57,6 @@ class SelfPlayWorker(BaseWorker):
         self.log_update.emit("Starting self-play training...")
         trainer = SelfPlayTrainer(
             model_path=self.model_path,
-            output_dir=self.output_dir,
             num_iterations=self.num_iterations,
             num_games_per_iteration=self.num_games_per_iteration,
             simulations=self.simulations,

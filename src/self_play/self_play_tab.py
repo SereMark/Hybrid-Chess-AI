@@ -53,18 +53,14 @@ class SelfPlayTab(BaseTab):
         model_output_layout = QFormLayout()
 
         self.model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
-        self.output_dir_input = QLineEdit("data/generated")
         self.checkpoint_path_input = QLineEdit("")
 
         model_browse_button = QPushButton("Browse")
         model_browse_button.clicked.connect(lambda: self.browse_file(self.model_path_input, "Select Model File", "PyTorch Files (*.pth *.pt)"))
-        output_dir_browse_button = QPushButton("Browse")
-        output_dir_browse_button.clicked.connect(lambda: self.browse_dir(self.output_dir_input, "Select Output Directory"))
         checkpoint_browse_button = QPushButton("Browse")
         checkpoint_browse_button.clicked.connect(lambda: self.browse_file(self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"))
 
         model_output_layout.addRow("Model Path:", self.create_browse_layout(self.model_path_input, model_browse_button))
-        model_output_layout.addRow("Output Directory:", self.create_browse_layout(self.output_dir_input, output_dir_browse_button))
         model_output_layout.addRow("Resume from Checkpoint:", self.create_browse_layout(self.checkpoint_path_input, checkpoint_browse_button))
 
         model_output_group.setLayout(model_output_layout)
@@ -212,12 +208,10 @@ class SelfPlayTab(BaseTab):
             return
 
         model_path = self.model_path_input.text()
-        output_dir = self.output_dir_input.text()
         checkpoint_path = self.checkpoint_path_input.text() if self.checkpoint_path_input.text() else None
         if not os.path.exists(model_path):
             QMessageBox.warning(self, "Error", "Model file does not exist.")
             return
-        os.makedirs(output_dir, exist_ok=True)
 
         save_checkpoints = self.save_checkpoints_checkbox.isChecked()
         checkpoint_type = self.checkpoint_type_combo.currentText().lower()
@@ -271,7 +265,6 @@ class SelfPlayTab(BaseTab):
         started = self.start_worker(
             SelfPlayWorker,
             model_path=model_path,
-            output_dir=output_dir,
             num_iterations=num_iterations,
             num_games_per_iteration=num_games_per_iteration,
             simulations=simulations,
