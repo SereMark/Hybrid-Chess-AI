@@ -11,7 +11,7 @@ class SelfPlayVisualization(BaseVisualizationWidget):
 
     def init_visualization(self):
         self.figure.clear()
-        gs = self.figure.add_gridspec(4, 2)
+        gs = self.figure.add_gridspec(5, 2)
 
         self.ax1 = self.figure.add_subplot(gs[0, :])
         self.plots['game_outcomes'] = BasePlot(
@@ -52,12 +52,23 @@ class SelfPlayVisualization(BaseVisualizationWidget):
             self.ax4,
             title='Training Progress Metrics',
             xlabel='Games Played',
-            ylabel='Value',
+            ylabel='Percentage',
             title_fontsize=10,
             label_fontsize=9,
             tick_labelsize=8
         )
         self.ax4.set_ylim(0, 100)
+
+        self.ax5 = self.figure.add_subplot(gs[3, :])
+        self.plots['avg_mcts_visits'] = BasePlot(
+            self.ax5,
+            title='Average MCTS Visits per Game',
+            xlabel='Iterations',
+            ylabel='Average Visits',
+            title_fontsize=10,
+            label_fontsize=9,
+            tick_labelsize=8
+        )
 
         self.canvas.draw()
 
@@ -72,6 +83,7 @@ class SelfPlayVisualization(BaseVisualizationWidget):
         self.avg_game_lengths = []
         self.game_lengths_all = []
         self.games_per_second = []
+        self.avg_mcts_visits = []
         self.start_time = time.time()
 
     def reset_visualization(self):
@@ -89,17 +101,20 @@ class SelfPlayVisualization(BaseVisualizationWidget):
         losses = stats['losses']
         draws = stats['draws']
         avg_game_length = stats['avg_game_length']
+        avg_mcts_visits = stats.get('avg_mcts_visits', 0)
 
         if self.games_played:
             total_games_so_far = self.games_played[-1] + total_games
             total_wins = self.wins[-1] + wins
             total_losses = self.losses[-1] + losses
             total_draws = self.draws[-1] + draws
+            total_avg_mcts_visits = (self.avg_mcts_visits[-1] + avg_mcts_visits) / 2
         else:
             total_games_so_far = total_games
             total_wins = wins
             total_losses = losses
             total_draws = draws
+            total_avg_mcts_visits = avg_mcts_visits
 
         self.games_played.append(total_games_so_far)
         self.wins.append(total_wins)
@@ -116,6 +131,8 @@ class SelfPlayVisualization(BaseVisualizationWidget):
         elapsed_time = current_time - self.start_time
         games_per_second = total_games_so_far / elapsed_time if elapsed_time > 0 else 0
         self.games_per_second.append(games_per_second)
+
+        self.avg_mcts_visits.append(total_avg_mcts_visits)
 
         self.update_visualization()
         self.last_update_time = current_time
@@ -180,5 +197,19 @@ class SelfPlayVisualization(BaseVisualizationWidget):
         self.ax4.plot(self.games_played, self.loss_rates, label='Loss Rate', color='red')
         self.ax4.legend()
         self.ax4.set_ylim(0, 100)
+
+        self.ax5.clear()
+        self.plots['avg_mcts_visits'] = BasePlot(
+            self.ax5,
+            title='Average MCTS Visits per Game',
+            xlabel='Iterations',
+            ylabel='Average Visits',
+            title_fontsize=10,
+            label_fontsize=9,
+            tick_labelsize=8
+        )
+        self.ax5.plot(self.games_played, self.avg_mcts_visits, label='Avg MCTS Visits', color='magenta')
+        self.ax5.legend()
+        self.ax5.set_ylim(bottom=0)
 
         self.canvas.draw_idle()

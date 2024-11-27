@@ -238,7 +238,7 @@ class ChessGameTab(BaseTab):
         self.init_ui()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.decrement_timer)
-        self.initialize_game(chess.WHITE, 'cnn', self.time_limit)
+        self.initialize_game(chess.WHITE, 'ai', self.time_limit)
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -315,7 +315,11 @@ class ChessGameTab(BaseTab):
         self.visual.reset_visualizations()
         self.timer.start(1000)
         self.status.setText("Game started!")
-        self.mode_label.setText(f"{'CNN AI' if self.engine.opponent_type == 'cnn' else 'Random'} AI Opponent")
+        if self.engine.opponent_type == 'ai':
+            self.mode_label.setText("AI Opponent")
+        else:
+            self.mode_label.setText("Random Opponent")
+
         if self.engine.board.turn != self.engine.player_color:
             QTimer.singleShot(500, self.engine.make_ai_move)
 
@@ -339,6 +343,7 @@ class ChessGameTab(BaseTab):
         self.engine.move_made_signal.connect(self.board_view.on_move_made)
         self.engine.policy_output_signal.connect(self.board_view.update_policy_output)
         self.engine.opening_info_signal.connect(self.update_opening_info)
+        self.engine.mcts_tree_signal.connect(self.visual.update_mcts_tree)
 
     def _disconnect_signals(self):
         try:
@@ -351,6 +356,7 @@ class ChessGameTab(BaseTab):
             self.board_view.move_made_signal.disconnect(self.refresh_status)
             self.board_view.status_message.disconnect(self.status.setText)
             self.board_view.promotion_requested.disconnect(self.handle_promotion)
+            self.engine.mcts_tree_signal.disconnect(self.visual.update_mcts_tree)
         except Exception:
             pass
 
@@ -434,7 +440,7 @@ class ChessGameTab(BaseTab):
         return handler
 
     def restart_game(self):
-        self.initialize_game(chess.WHITE, 'cnn', self.time_limit)
+        self.initialize_game(self.engine.player_color, self.engine.opponent_type, self.time_limit)
 
     def closeEvent(self, event):
         try:

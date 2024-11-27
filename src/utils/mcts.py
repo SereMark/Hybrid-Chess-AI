@@ -80,16 +80,21 @@ class MCTS:
             return {}
         moves, visits = zip(*move_visits)
         visits = np.array(visits, dtype=np.float32)
-        if temperature == 0:
+        
+        if temperature <= 1e-3:
             probs = np.zeros_like(visits)
             probs[np.argmax(visits)] = 1.0
         else:
-            visits = visits ** (1.0 / temperature)
-            total = np.sum(visits)
+            exponent = visits / temperature
+            max_exponent = np.max(exponent)
+            exponent = exponent - max_exponent
+            visits_exp = np.exp(exponent)
+            total = np.sum(visits_exp)
             if total > 0:
-                probs = visits / total
+                probs = visits_exp / total
             else:
                 probs = np.ones_like(visits) / len(visits)
+        
         return dict(zip(moves, probs))
 
     def update_with_move(self, last_move):

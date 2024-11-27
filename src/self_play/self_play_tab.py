@@ -53,7 +53,7 @@ class SelfPlayTab(BaseTab):
         model_output_layout = QFormLayout()
 
         self.model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
-        self.output_dir_input = QLineEdit("data/self_play")
+        self.output_dir_input = QLineEdit("data/generated")
         self.checkpoint_path_input = QLineEdit("")
 
         model_browse_button = QPushButton("Browse")

@@ -1,5 +1,5 @@
 import numpy as np, chess, torch
-from src.self_play.mcts import MCTS
+from src.utils.mcts import MCTS
 from src.utils.chess_utils import get_move_mapping, convert_board_to_tensor, get_total_moves
 from src.models.model import ChessModel
 
@@ -48,6 +48,8 @@ class SelfPlay:
         states, mcts_probs, current_players = [], [], []
         move_count = 0
         max_moves = 200
+        total_visits = 0
+        num_moves = 0
         while not board.is_game_over() and move_count < max_moves:
             action_probs = mcts.get_move_probs(self.temperature)
             moves = list(action_probs.keys())
@@ -65,6 +67,9 @@ class SelfPlay:
             current_players.append(board.turn)
             board.push(move)
             mcts.update_with_move(move)
+            if mcts.root:
+                total_visits += mcts.root.n_visits
+                num_moves += 1
             move_count += 1
 
         result = self.get_game_result(board)
@@ -74,7 +79,8 @@ class SelfPlay:
         else:
             winners = [0.0 for _ in current_players]
         game_length = len(states)
-        return states, mcts_probs, winners, game_length, result
+        avg_mcts_visits = (total_visits / num_moves) if num_moves > 0 else 0
+        return states, mcts_probs, winners, game_length, result, avg_mcts_visits
 
     @staticmethod
     def get_game_result(board):

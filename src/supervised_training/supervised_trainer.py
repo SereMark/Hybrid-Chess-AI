@@ -49,6 +49,7 @@ class SupervisedTrainer(TrainerBase):
             checkpoint_type=checkpoint_type,
             checkpoint_interval_minutes=checkpoint_interval_minutes,
             checkpoint_batch_interval=checkpoint_batch_interval,
+            checkpoint_dir=os.path.join('models', 'checkpoints', 'supervised'),
             log_fn=log_fn,
             progress_fn=progress_fn,
             time_left_fn=time_left_fn,
@@ -121,7 +122,7 @@ class SupervisedTrainer(TrainerBase):
                 if checkpoint:
                     if 'epoch' in checkpoint:
                         start_epoch = checkpoint['epoch'] + 1
-                        skip_batches = checkpoint.get('batch_idx', 0)
+                        skip_batches = checkpoint.get('batch_idx', 0) or 0
                         log_message(f"Resumed training from epoch {start_epoch - 1}, batch {skip_batches}", self.log_fn)
                     else:
                         log_message("No epoch information found in checkpoint. Starting from epoch 1.", self.log_fn)

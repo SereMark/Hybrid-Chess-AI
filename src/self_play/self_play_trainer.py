@@ -36,6 +36,7 @@ def _play_and_collect_wrapper(args):
     value_targets_list = []
     results_list = []
     game_lengths_list = []
+    avg_mcts_visits_list = []
 
     device = torch.device(device_type)
 
@@ -56,24 +57,28 @@ def _play_and_collect_wrapper(args):
             winners,
             game_length,
             result,
+            avg_mcts_visits
         ) = self_play.play_game()
         inputs_list.extend(states)
         policy_targets_list.extend(mcts_probs)
         value_targets_list.extend(winners)
         results_list.append(result)
         game_lengths_list.append(game_length)
+        avg_mcts_visits_list.append(avg_mcts_visits)
 
     total_games = len(results_list)
     wins = results_list.count(1.0)
     losses = results_list.count(-1.0)
     draws = results_list.count(0.0)
     avg_game_length = sum(game_lengths_list) / len(game_lengths_list) if game_lengths_list else 0
+    avg_mcts_visits = sum(avg_mcts_visits_list) / len(avg_mcts_visits_list) if avg_mcts_visits_list else 0
     stats = {
         'total_games': total_games,
         'wins': wins,
         'losses': losses,
         'draws': draws,
         'avg_game_length': avg_game_length,
+        'avg_mcts_visits': avg_mcts_visits,
     }
     stats_queue.put(stats)
 
@@ -111,11 +116,10 @@ class SelfPlayTrainer(TrainerBase):
         learning_rate=0.0005,
         weight_decay=2e-4,
         scheduler_type='cosineannealingwarmrestarts',
-        num_workers=4,
         log_fn=None,
         progress_fn=None,
-        time_left_fn=None,
         stats_fn=None,
+        time_left_fn=None,
         stop_event=None,
         pause_event=None
     ):
@@ -125,7 +129,7 @@ class SelfPlayTrainer(TrainerBase):
             checkpoint_type=checkpoint_type,
             checkpoint_interval_minutes=checkpoint_interval_minutes,
             checkpoint_batch_interval=checkpoint_batch_interval,
-            checkpoint_dir=os.path.join(output_dir, 'checkpoints'),
+            checkpoint_dir=os.path.join('models', 'checkpoints', 'self_play'),
             log_fn=log_fn,
             progress_fn=progress_fn,
             time_left_fn=time_left_fn,
@@ -139,7 +143,7 @@ class SelfPlayTrainer(TrainerBase):
             learning_rate=learning_rate,
             weight_decay=weight_decay,
             scheduler_type=scheduler_type,
-            num_workers=num_workers
+            num_workers=num_threads
         )
         self.model_path = model_path
         self.output_dir = output_dir
@@ -348,7 +352,7 @@ class SelfPlayTrainer(TrainerBase):
 
     def _save_model(self, iteration):
         os.makedirs(self.output_dir, exist_ok=True)
-        model_save_path = os.path.join(self.output_dir, f'model_iteration_{iteration + 1}.pth')
+        model_save_path = os.path.join('models', 'saved_models', f'model_iteration_{iteration + 1}.pth')
         checkpoint_data = {
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),

@@ -1,12 +1,16 @@
 name: hybrid_chess_ai
 channels:
+  - nvidia
+  - pytorch
   - conda-forge
-  - defaults
 dependencies:
   - python=3.12
+  - pytorch=2.5.1
+  - pytorch-cuda=12.4
   - numpy
-  - pytorch
   - matplotlib
   - pyqt
   - chess
   - h5py
+  - networkx
+  - scipy
