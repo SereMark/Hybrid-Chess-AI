@@ -1,6 +1,6 @@
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.self_play.self_play_trainer import SelfPlayTrainer
+from src.self_play.self_play_training import SelfPlayTrainer
 
 
 class SelfPlayWorker(BaseWorker):

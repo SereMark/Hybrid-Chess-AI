@@ -1,7 +1,7 @@
 import numpy as np
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.evaluation.evaluate import ModelEvaluator
+from src.evaluation.evaluation import ModelEvaluator
 
 
 class EvaluationWorker(BaseWorker):
