@@ -1,8 +1,8 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget
 from src.data_preparation.data_preparation_tab import DataPreparationTab
-from src.supervised_training.supervised_training_tab import SupervisedTrainingTab
-from src.self_play.self_play_tab import SelfPlayTab
+from src.training.supervised_training_tab import SupervisedTrainingTab
+from src.training.self_play_tab import SelfPlayTab
 from src.evaluation.evaluation_tab import EvaluationTab
 
 class ChessMainWindow(QMainWindow):

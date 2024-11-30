@@ -4,8 +4,8 @@ from PyQt5.QtWidgets import (
 )
 import os
 from PyQt5.QtCore import Qt
-from src.self_play.self_play_visualization import SelfPlayVisualization
-from src.self_play.self_play_worker import SelfPlayWorker
+from src.training.self_play_visualization import SelfPlayVisualization
+from src.training.self_play_worker import SelfPlayWorker
 from src.base.base_tab import BaseTab
 
 

@@ -1,6 +1,6 @@
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.supervised_training.supervised_training import SupervisedTrainer
+from src.training.supervised_training import SupervisedTrainer
 
 
 class SupervisedTrainingWorker(BaseWorker):

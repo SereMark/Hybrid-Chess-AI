@@ -3,8 +3,8 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
     QLabel, QCheckBox, QComboBox, QMessageBox, QHBoxLayout
 )
-from src.supervised_training.supervised_training_visualization import SupervisedTrainingVisualization
-from src.supervised_training.supervised_training_worker import SupervisedTrainingWorker
+from src.training.supervised_training_visualization import SupervisedTrainingVisualization
+from src.training.supervised_training_worker import SupervisedTrainingWorker
 from src.base.base_tab import BaseTab
 import os
 
