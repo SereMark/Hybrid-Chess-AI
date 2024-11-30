@@ -1,8 +1,8 @@
 from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QMessageBox, QWidget, QTabWidget
-from src.data_preparation.train.data_preparation_visualization import DataPreparationVisualization
-from src.data_preparation.train.data_preparation_worker import DataPreparationWorker
-from src.data_preparation.opening_book.opening_book_worker import OpeningBookWorker
-from src.data_preparation.opening_book.opening_book_visualization import OpeningBookVisualization
+from src.data_preparation.data_preparation_visualization import DataPreparationVisualization
+from src.data_preparation.data_preparation_worker import DataPreparationWorker
+from src.data_preparation.opening_book_worker import OpeningBookWorker
+from src.data_preparation.opening_book_visualization import OpeningBookVisualization
 from src.base.base_tab import BaseTab
 import os
 

@@ -1,6 +1,6 @@
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.data_preparation.opening_book.opening_book_processor import OpeningBookProcessor
+from src.data_preparation.opening_book_processor import OpeningBookProcessor
 
 class OpeningBookWorker(BaseWorker):
     positions_update = pyqtSignal(dict)

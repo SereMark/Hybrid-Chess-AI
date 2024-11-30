@@ -1,6 +1,6 @@
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.data_preparation.train.data_preparation import DataProcessor, split_dataset
+from src.data_preparation.data_preparation import DataProcessor, split_dataset
 
 
 class DataPreparationWorker(BaseWorker):
