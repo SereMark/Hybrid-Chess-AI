@@ -12,6 +12,7 @@ class OpeningBookProcessor:
         max_games,
         min_elo,
         max_opening_moves,
+        processed_data_dir,
         progress_callback=None,
         log_callback=None,
         positions_callback=None,
@@ -23,6 +24,7 @@ class OpeningBookProcessor:
         self.max_games = max_games
         self.min_elo = min_elo
         self.max_opening_moves = max_opening_moves
+        self.processed_data_dir = processed_data_dir
         self.progress_callback = progress_callback
         self.log_callback = log_callback
         self.positions_callback = positions_callback
@@ -141,11 +143,12 @@ class OpeningBookProcessor:
         for k in positions:
             positions[k] = {m: dict(stats) for m, stats in positions[k].items()}
         import json
-        opening_book_file = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data', 'processed', 'opening_book.json')
+        opening_book_file = os.path.join(self.processed_data_dir, 'opening_book.json')
         opening_book_file = os.path.abspath(opening_book_file)
         os.makedirs(os.path.dirname(opening_book_file), exist_ok=True)
         with open(opening_book_file, 'w') as f:
-            json.dump(positions, f)
+            json.dump(positions, f, indent=4)
+        log_message(f"Opening book saved to {opening_book_file}", self.log_callback)
 
     def stop(self):
         if self.stop_event:

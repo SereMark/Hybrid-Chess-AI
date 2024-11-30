@@ -153,8 +153,9 @@ class DataProcessingTab(BaseTab):
         self.directories_group.setVisible(True)
 
 class OpeningBookTab(BaseTab):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, processed_data_dir_default="data/processed"):
         super().__init__(parent)
+        self.processed_data_dir_default = processed_data_dir_default
         self.init_ui()
 
     def init_ui(self):
@@ -198,10 +199,15 @@ class OpeningBookTab(BaseTab):
         self.ob_min_elo_input = QLineEdit("1500")
         self.ob_max_opening_moves_input = QLineEdit("20")
 
+        self.ob_processed_data_dir_input = QLineEdit(self.processed_data_dir_default)
+        ob_processed_browse_button = QPushButton("Browse")
+        ob_processed_browse_button.clicked.connect(lambda: self.browse_dir(self.ob_processed_data_dir_input, "Select Processed Data Directory"))
+
         opening_book_layout.addRow("PGN File:", self.create_browse_layout(self.pgn_file_input, pgn_browse_button))
         opening_book_layout.addRow("Max Games:", self.ob_max_games_input)
         opening_book_layout.addRow("Minimum ELO:", self.ob_min_elo_input)
         opening_book_layout.addRow("Max Opening Moves:", self.ob_max_opening_moves_input)
+        opening_book_layout.addRow("Processed Data Directory:", self.create_browse_layout(self.ob_processed_data_dir_input, ob_processed_browse_button))
 
         opening_book_group.setLayout(opening_book_layout)
         return opening_book_group
@@ -224,6 +230,14 @@ class OpeningBookTab(BaseTab):
             QMessageBox.warning(self, "Input Error", "Please ensure all inputs are valid positive integers.")
             return
 
+        processed_data_dir = self.ob_processed_data_dir_input.text()
+        if not os.path.exists(processed_data_dir):
+            try:
+                os.makedirs(processed_data_dir, exist_ok=True)
+            except Exception as e:
+                QMessageBox.critical(self, "Directory Error", f"Failed to create processed data directory: {str(e)}")
+                return
+
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.pause_button.setEnabled(True)
@@ -244,7 +258,8 @@ class OpeningBookTab(BaseTab):
             pgn_file_path,
             max_games,
             min_elo,
-            max_opening_moves
+            max_opening_moves,
+            processed_data_dir
         )
         if started:
             self.worker.positions_update.connect(self.opening_visualization.update_opening_book)
