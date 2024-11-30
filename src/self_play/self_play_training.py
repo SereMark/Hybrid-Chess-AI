@@ -253,6 +253,7 @@ class SelfPlayTrainer(TrainerBase):
                 break
             iteration_start_time = time.time()
             log_message(f"\n=== Iteration {iteration + 1}/{self.num_iterations} ===", self.log_fn)
+            self.current_epoch = 1
             self.model.eval()
             self_play_data = self._generate_self_play_data()
             self.model.train()
