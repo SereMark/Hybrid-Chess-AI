@@ -241,7 +241,7 @@ class SelfPlayTrainer(TrainerBase):
         self.results = []
         self.game_lengths = []
         self.lock = threading.Lock()
-        self.scaler = GradScaler(enabled=(self.device.type == 'cuda'))
+        self.scaler = GradScaler(enabled=(self.device.type == 'cuda')) # TODO: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
         self.current_epoch = 1
         self.batch_idx = None
         self.start_iteration = 0
@@ -269,7 +269,7 @@ class SelfPlayTrainer(TrainerBase):
         num_moves = get_total_moves()
         self.initialize_model(num_moves=num_moves)
         if os.path.exists(self.model_path):
-            checkpoint = torch.load(self.model_path, map_location=self.device)
+            checkpoint = torch.load(self.model_path, map_location=self.device) # TODO: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling.
             self.model.load_state_dict(checkpoint['model_state_dict'])
             log_message("Model loaded successfully.", self.log_fn)
         else:
@@ -411,7 +411,7 @@ class SelfPlayTrainer(TrainerBase):
                 batch_policy_targets = batch_policy_targets.to(self.device, non_blocking=True)
                 batch_value_targets = batch_value_targets.to(self.device, non_blocking=True)
                 self.optimizer.zero_grad()
-                with autocast(enabled=(self.device.type == 'cuda')):
+                with autocast(enabled=(self.device.type == 'cuda')):  # TODO: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
                     policy_preds, value_preds = self.model(batch_inputs)
                     policy_loss = -(batch_policy_targets * torch.log_softmax(policy_preds, dim=1)).mean()
                     value_loss = F.mse_loss(value_preds.view(-1), batch_value_targets)

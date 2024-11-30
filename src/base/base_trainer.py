@@ -187,7 +187,7 @@ class TrainerBase:
             log_message(f"Checkpoint not found at {checkpoint_path}.", self.log_fn)
             return
         try:
-            checkpoint = torch.load(checkpoint_path, map_location=map_location or self.device)
+            checkpoint = torch.load(checkpoint_path, map_location=map_location or self.device)  # TODO: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling.
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             if checkpoint.get('scheduler_state_dict') and hasattr(self, 'scheduler') and self.scheduler:

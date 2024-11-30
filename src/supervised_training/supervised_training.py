@@ -137,7 +137,7 @@ class SupervisedTrainer(TrainerBase):
             early_stopping_patience = 5
             no_improvement_epochs = 0
 
-            scaler = GradScaler()
+            scaler = GradScaler() # TODO: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
             desired_effective_batch_size = 256
             accumulation_steps = max(desired_effective_batch_size // self.batch_size, 1)
 
@@ -225,7 +225,7 @@ class SupervisedTrainer(TrainerBase):
                 inputs = inputs.to(device, non_blocking=True)
                 policy_targets = policy_targets.to(device, non_blocking=True)
                 value_targets = value_targets.to(device, non_blocking=True)
-                with autocast(enabled=(device.type == 'cuda')):
+                with autocast(enabled=(device.type == 'cuda')): # TODO: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
                     policy_preds, value_preds = model(inputs)
                     smoothing = 0.1
                     confidence = 1.0 - smoothing
