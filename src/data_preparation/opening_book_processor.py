@@ -101,9 +101,7 @@ class OpeningBookProcessor:
             wait_if_paused(self.pause_event)
             if move_counter >= self.max_opening_moves:
                 break
-            fen = ' '.join(board.fen().split(' ')[:4])
-            san = board.san(move)
-            move_data = self.positions[fen][san]
+            move_data = self.positions[board.fen()][move.uci()]
             if outcome:
                 move_data[outcome] += 1
             if not move_data['eco']:
