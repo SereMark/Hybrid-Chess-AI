@@ -54,7 +54,7 @@ class ModelEvaluator:
         num_moves = get_total_moves()
         model = ChessModel(num_moves=num_moves)
         try:
-            checkpoint = torch.load(self.model_path, map_location=self.device)  # TODO: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling.
+            checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
             if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
                 model.load_state_dict(checkpoint['model_state_dict'])
             else:

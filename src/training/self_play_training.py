@@ -1,6 +1,6 @@
 import os, threading, time, numpy as np, torch, chess, torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from multiprocessing import Pool, cpu_count, Manager
 from src.models.model import ChessModel
 from src.utils.chess_utils import get_total_moves, get_move_mapping, convert_board_to_tensor
@@ -241,7 +241,7 @@ class SelfPlayTrainer(TrainerBase):
         self.results = []
         self.game_lengths = []
         self.lock = threading.Lock()
-        self.scaler = GradScaler(enabled=(self.device.type == 'cuda')) # TODO: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+        self.scaler = GradScaler(device='cuda') if self.device.type == 'cuda' else GradScaler() 
         self.current_epoch = 1
         self.batch_idx = None
         self.start_iteration = 0
@@ -270,7 +270,7 @@ class SelfPlayTrainer(TrainerBase):
         num_moves = get_total_moves()
         self.initialize_model(num_moves=num_moves)
         if os.path.exists(self.model_path):
-            checkpoint = torch.load(self.model_path, map_location=self.device) # TODO: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling.
+            checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
             self.model.load_state_dict(checkpoint['model_state_dict'])
             log_message("Model loaded successfully.", self.log_fn)
         else:
@@ -412,7 +412,7 @@ class SelfPlayTrainer(TrainerBase):
                 batch_policy_targets = batch_policy_targets.to(self.device, non_blocking=True)
                 batch_value_targets = batch_value_targets.to(self.device, non_blocking=True)
                 self.optimizer.zero_grad()
-                with autocast(enabled=(self.device.type == 'cuda')):  # TODO: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+                with autocast(device_type=self.device.type):
                     policy_preds, value_preds = self.model(batch_inputs)
                     policy_loss = -(batch_policy_targets * torch.log_softmax(policy_preds, dim=1)).mean()
                     value_loss = F.mse_loss(value_preds.view(-1), batch_value_targets)

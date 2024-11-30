@@ -1,5 +1,5 @@
 import os, time, numpy as np, torch, torch.optim as optim, torch.nn.functional as F
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 from src.utils.datasets import H5Dataset
 from src.utils.common_utils import format_time_left, log_message, should_stop, wait_if_paused
@@ -137,7 +137,7 @@ class SupervisedTrainer(TrainerBase):
             early_stopping_patience = 5
             no_improvement_epochs = 0
 
-            scaler = GradScaler() # TODO: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+            scaler = GradScaler(device='cuda') if self.device.type == 'cuda' else GradScaler()
             desired_effective_batch_size = 256
             accumulation_steps = max(desired_effective_batch_size // self.batch_size, 1)
 
@@ -225,7 +225,7 @@ class SupervisedTrainer(TrainerBase):
                 inputs = inputs.to(device, non_blocking=True)
                 policy_targets = policy_targets.to(device, non_blocking=True)
                 value_targets = value_targets.to(device, non_blocking=True)
-                with autocast(enabled=(device.type == 'cuda')): # TODO: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+                with autocast(device_type=self.device.type):
                     policy_preds, value_preds = model(inputs)
                     smoothing = 0.1
                     confidence = 1.0 - smoothing
