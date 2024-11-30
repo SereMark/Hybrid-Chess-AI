@@ -4,15 +4,15 @@ from PyQt5.QtWidgets import (
 )
 import os
 from PyQt5.QtCore import Qt
-from src.training.self_play_visualization import SelfPlayVisualization
-from src.training.self_play_worker import SelfPlayWorker
+from src.reinforcement.reinforcement_training_visualization import ReinforcementVisualization
+from src.reinforcement.reinforcement_training_worker import ReinforcementWorker
 from src.base.base_tab import BaseTab
 
 
-class SelfPlayTab(BaseTab):
+class ReinforcementTab(BaseTab):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.visualization = SelfPlayVisualization()
+        self.visualization = ReinforcementVisualization()
         self.init_ui()
 
     def init_ui(self):
@@ -263,7 +263,7 @@ class SelfPlayTab(BaseTab):
         self.visualization_group.setVisible(True)
 
         started = self.start_worker(
-            SelfPlayWorker,
+            ReinforcementWorker,
             model_path=model_path,
             num_iterations=num_iterations,
             num_games_per_iteration=num_games_per_iteration,

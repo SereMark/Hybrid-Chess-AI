@@ -2,7 +2,7 @@ import time
 from src.base.base_visualization import BasePlot, BaseVisualizationWidget
 
 
-class SelfPlayVisualization(BaseVisualizationWidget):
+class ReinforcementVisualization(BaseVisualizationWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.initialize_data_storage()

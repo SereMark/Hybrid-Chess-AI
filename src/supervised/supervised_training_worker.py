@@ -1,9 +1,9 @@
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.training.supervised_training import SupervisedTrainer
+from src.supervised.supervised_training import SupervisedTrainer
 
 
-class SupervisedTrainingWorker(BaseWorker):
+class SupervisedWorker(BaseWorker):
     batch_loss_update = pyqtSignal(int, dict)
     batch_accuracy_update = pyqtSignal(int, float)
     epoch_loss_update = pyqtSignal(int, dict)

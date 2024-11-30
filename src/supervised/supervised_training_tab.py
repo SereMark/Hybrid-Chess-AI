@@ -3,16 +3,16 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
     QLabel, QCheckBox, QComboBox, QMessageBox, QHBoxLayout
 )
-from src.training.supervised_training_visualization import SupervisedTrainingVisualization
-from src.training.supervised_training_worker import SupervisedTrainingWorker
+from src.supervised.supervised_training_worker import SupervisedWorker
+from src.supervised.supervised_training_visualization import SupervisedVisualization
 from src.base.base_tab import BaseTab
 import os
 
 
-class SupervisedTrainingTab(BaseTab):
+class SupervisedTab(BaseTab):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.visualization = SupervisedTrainingVisualization()
+        self.visualization = SupervisedVisualization()
         self.init_ui()
 
     def init_ui(self):
@@ -268,7 +268,7 @@ class SupervisedTrainingTab(BaseTab):
         self.visualization_group.setVisible(True)
 
         started = self.start_worker(
-            SupervisedTrainingWorker,
+            SupervisedVisualization,
             epochs=epochs,
             batch_size=batch_size,
             learning_rate=learning_rate,

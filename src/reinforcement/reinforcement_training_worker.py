@@ -1,9 +1,9 @@
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.training.self_play_training import SelfPlayTrainer
+from src.reinforcement.reinforcement_training import ReinforcementTrainer
 
 
-class SelfPlayWorker(BaseWorker):
+class ReinforcementWorker(BaseWorker):
     stats_update = pyqtSignal(dict)
 
     def __init__(
@@ -55,7 +55,7 @@ class SelfPlayWorker(BaseWorker):
 
     def run_task(self):
         self.log_update.emit("Starting self-play training...")
-        trainer = SelfPlayTrainer(
+        trainer = ReinforcementTrainer(
             model_path=self.model_path,
             num_iterations=self.num_iterations,
             num_games_per_iteration=self.num_games_per_iteration,

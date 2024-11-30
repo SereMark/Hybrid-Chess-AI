@@ -2,7 +2,7 @@ import numpy as np
 from src.base.base_visualization import BasePlot, BaseVisualizationWidget
 
 
-class SupervisedTrainingVisualization(BaseVisualizationWidget):
+class SupervisedVisualization(BaseVisualizationWidget):
     def __init__(self, parent=None, max_points=1000):
         self.max_points = max_points
         super().__init__(parent)

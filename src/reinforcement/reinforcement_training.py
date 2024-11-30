@@ -172,7 +172,7 @@ class SelfPlay:
         else:
             return 0.0
 
-class SelfPlayTrainer(TrainerBase):
+class ReinforcementTrainer(TrainerBase):
     def __init__(
         self,
         model_path,
