@@ -127,18 +127,10 @@ class ReinforcementTab(BaseTab):
         self.checkpoint_interval_minutes_input = QLineEdit("30")
         self.checkpoint_batch_interval_input = QLineEdit("2000")
 
-        self.iteration_interval_widget = self.create_interval_widget(
-            "Every", self.checkpoint_interval_input, "iterations"
-        )
-        self.epoch_interval_widget = self.create_interval_widget(
-            "Every", self.checkpoint_interval_input, "epochs"
-        )
-        self.time_interval_widget = self.create_interval_widget(
-            "Every", self.checkpoint_interval_minutes_input, "minutes"
-        )
-        self.batch_interval_widget = self.create_interval_widget(
-            "Every", self.checkpoint_batch_interval_input, "batches"
-        )
+        self.iteration_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_input, "iterations")
+        self.epoch_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_input, "epochs")
+        self.time_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_minutes_input, "minutes")
+        self.batch_interval_widget = self.create_interval_widget("Every", self.checkpoint_batch_interval_input, "batches")
 
         self.on_checkpoint_type_changed(self.checkpoint_type_combo.currentText())
 
@@ -168,11 +160,7 @@ class ReinforcementTab(BaseTab):
         self.toggle_widget_state([self.time_interval_widget], state=(text == 'time'), attribute="visible")
         self.toggle_widget_state([self.batch_interval_widget], state=(text == 'batch'), attribute="visible")
         is_enabled = self.save_checkpoints_checkbox.isChecked()
-        self.toggle_widget_state(
-            [self.iteration_interval_widget, self.epoch_interval_widget, self.time_interval_widget, self.batch_interval_widget],
-            state=is_enabled,
-            attribute="enabled"
-        )
+        self.toggle_widget_state([self.iteration_interval_widget, self.epoch_interval_widget, self.time_interval_widget, self.batch_interval_widget], state=is_enabled, attribute="enabled")
 
     def start_self_play(self):
         try:
@@ -192,10 +180,7 @@ class ReinforcementTab(BaseTab):
                 if batch_size <= 0:
                     raise ValueError("Batch Size must be a positive integer.")
 
-            if any(v <= 0 for v in [
-                num_iterations, num_games_per_iteration, simulations,
-                c_puct, temperature, num_epochs, num_threads
-            ]):
+            if any(v <= 0 for v in [num_iterations, num_games_per_iteration, simulations, c_puct, temperature, num_epochs, num_threads]):
                 raise ValueError("All numerical parameters must be positive.")
 
             optimizer_type = self.optimizer_type_combo.currentText().lower()
@@ -204,9 +189,7 @@ class ReinforcementTab(BaseTab):
             scheduler_type = self.scheduler_type_combo.currentText().lower()
 
         except ValueError as e:
-            QMessageBox.warning(
-                self, "Input Error", f"Please enter valid and positive parameters.\n{str(e)}"
-            )
+            QMessageBox.warning(self, "Input Error", f"Please enter valid and positive parameters.\n{str(e)}")
             return
 
         model_path = self.model_path_input.text()

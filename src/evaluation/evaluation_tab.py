@@ -43,17 +43,11 @@ class EvaluationTab(BaseTab):
         self.h5_file_input = QLineEdit("data/processed/dataset.h5")
 
         model_browse_button = QPushButton("Browse")
-        model_browse_button.clicked.connect(lambda: self.browse_file(
-            self.model_path_input, "Select Model File", "PyTorch Model (*.pth *.pt)"
-        ))
+        model_browse_button.clicked.connect(lambda: self.browse_file(self.model_path_input, "Select Model File", "PyTorch Model (*.pth *.pt)"))
         dataset_browse_button = QPushButton("Browse")
-        dataset_browse_button.clicked.connect(lambda: self.browse_file(
-            self.dataset_indices_input, "Select Evaluation Dataset Indices File", "NumPy Array (*.npy)"
-        ))
+        dataset_browse_button.clicked.connect(lambda: self.browse_file(self.dataset_indices_input, "Select Evaluation Dataset Indices File", "NumPy Array (*.npy)"))
         h5_file_browse_button = QPushButton("Browse")
-        h5_file_browse_button.clicked.connect(lambda: self.browse_file(
-            self.h5_file_input, "Select H5 Dataset File", "HDF5 Files (*.h5 *.hdf5)"
-        ))
+        h5_file_browse_button.clicked.connect(lambda: self.browse_file(self.h5_file_input, "Select H5 Dataset File", "HDF5 Files (*.h5 *.hdf5)"))
 
         paths_layout.addRow("Model Path:", self.create_browse_layout(self.model_path_input, model_browse_button))
         paths_layout.addRow("Dataset Indices:", self.create_browse_layout(self.dataset_indices_input, dataset_browse_button))
@@ -90,7 +84,10 @@ class EvaluationTab(BaseTab):
         self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=True, attribute="visible")
 
         started = self.start_worker(
-            EvaluationWorker, model_path, dataset_indices_path, h5_file_path
+            EvaluationWorker,
+            model_path,
+            dataset_indices_path,
+            h5_file_path
         )
         if started:
             self.worker.metrics_update.connect(self.visualization.update_metrics_visualization)

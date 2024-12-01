@@ -88,9 +88,7 @@ class SupervisedTab(BaseTab):
 
         self.output_model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
         output_model_browse_button = QPushButton("Browse")
-        output_model_browse_button.clicked.connect(lambda: self.browse_file(
-            self.output_model_path_input, "Select Output Model File", "PyTorch Files (*.pth *.pt)"
-        ))
+        output_model_browse_button.clicked.connect(lambda: self.browse_file(self.output_model_path_input, "Select Output Model File", "PyTorch Files (*.pth *.pt)"))
 
         training_layout.addRow("Epochs:", self.epochs_input)
         training_layout.addRow("Batch Size:", self.batch_size_input)
@@ -126,33 +124,22 @@ class SupervisedTab(BaseTab):
         self.checkpoint_interval_minutes_input = QLineEdit("30")
         self.checkpoint_batch_interval_input = QLineEdit("2000")
 
-        self.epoch_interval_widget = self.create_interval_widget(
-            "Every", self.checkpoint_interval_input, "epochs"
-        )
-        self.time_interval_widget = self.create_interval_widget(
-            "Every", self.checkpoint_interval_minutes_input, "minutes"
-        )
-        self.batch_interval_widget = self.create_interval_widget(
-            "Every", self.checkpoint_batch_interval_input, "batches"
-        )
+        self.epoch_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_input, "epochs")
+        self.time_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_minutes_input, "minutes")
+        self.batch_interval_widget = self.create_interval_widget("Every", self.checkpoint_batch_interval_input, "batches")
 
         self.on_checkpoint_type_changed(self.checkpoint_type_combo.currentText())
 
         self.checkpoint_path_input = QLineEdit("")
         checkpoint_browse_button = QPushButton("Browse")
-        checkpoint_browse_button.clicked.connect(lambda: self.browse_file(
-            self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"
-        ))
+        checkpoint_browse_button.clicked.connect(lambda: self.browse_file(self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"))
 
         checkpoint_layout.addRow(self.save_checkpoints_checkbox)
         checkpoint_layout.addRow(checkpoint_type_layout)
         checkpoint_layout.addRow(self.epoch_interval_widget)
         checkpoint_layout.addRow(self.time_interval_widget)
         checkpoint_layout.addRow(self.batch_interval_widget)
-        checkpoint_layout.addRow(
-            "Resume from checkpoint:",
-            self.create_browse_layout(self.checkpoint_path_input, checkpoint_browse_button)
-        )
+        checkpoint_layout.addRow("Resume from checkpoint:", self.create_browse_layout(self.checkpoint_path_input, checkpoint_browse_button))
 
         checkpoint_group.setLayout(checkpoint_layout)
         return checkpoint_group
@@ -172,11 +159,7 @@ class SupervisedTab(BaseTab):
         self.toggle_widget_state([self.time_interval_widget], state=(text == 'time'), attribute="visible")
         self.toggle_widget_state([self.batch_interval_widget], state=(text == 'batch'), attribute="visible")
         is_enabled = self.save_checkpoints_checkbox.isChecked()
-        self.toggle_widget_state(
-            [self.epoch_interval_widget, self.time_interval_widget, self.batch_interval_widget],
-            state=is_enabled,
-            attribute="enabled"
-        )
+        self.toggle_widget_state([self.epoch_interval_widget, self.time_interval_widget, self.batch_interval_widget], state=is_enabled, attribute="enabled")
 
     def start_training(self):
         try:
@@ -187,9 +170,7 @@ class SupervisedTab(BaseTab):
             if any(v <= 0 for v in [epochs, learning_rate, weight_decay, num_workers]):
                 raise ValueError("Epochs, Learning Rate, Weight Decay, and Number of Workers must be positive.")
         except ValueError as e:
-            QMessageBox.warning(
-                self, "Input Error", f"Please enter valid and positive parameters.\n{str(e)}"
-            )
+            QMessageBox.warning(self, "Input Error", f"Please enter valid and positive parameters.\n{str(e)}")
             return
 
         automatic_batch_size = self.automatic_batch_size_checkbox.isChecked()
@@ -201,9 +182,7 @@ class SupervisedTab(BaseTab):
                 if batch_size <= 0:
                     raise ValueError("Batch Size must be a positive integer.")
             except ValueError as e:
-                QMessageBox.warning(
-                    self, "Input Error", f"Batch Size must be a positive integer.\n{str(e)}"
-                )
+                QMessageBox.warning(self, "Input Error", f"Batch Size must be a positive integer.\n{str(e)}")
                 return
 
         optimizer_type = self.optimizer_type_combo.currentText().lower()
