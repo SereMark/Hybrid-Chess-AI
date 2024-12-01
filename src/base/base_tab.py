@@ -12,35 +12,6 @@ class BaseTab(QWidget):
         self.progress_bar = None
         self.remaining_time_label = None
 
-    def create_log_text_edit(self):
-        self.log_text_edit = QTextEdit()
-        self.log_text_edit.setReadOnly(True)
-        return self.log_text_edit
-
-    def create_progress_layout(self):
-        layout = QVBoxLayout()
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Idle")
-        self.remaining_time_label = QLabel("Time Left: N/A")
-        self.remaining_time_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.progress_bar)
-        layout.addWidget(self.remaining_time_label)
-        return layout
-
-    def update_progress(self, value):
-        self.progress_bar.setValue(value)
-        self.progress_bar.setFormat(f"Progress: {value}%")
-
-    def update_time_left(self, time_left_str):
-        self.remaining_time_label.setText(f"Time Left: {time_left_str}")
-
-    def log_message(self, message):
-        if self.log_text_edit:
-            self.log_text_edit.append(message)
-        else:
-            print(message)
-
     def start_worker(self, worker_class, *args, **kwargs):
         if self.thread is not None and self.thread.isRunning():
             self.log_message("A worker is already running.")
@@ -65,6 +36,18 @@ class BaseTab(QWidget):
             self.log_message(f"Error starting worker: {str(e)}\n{traceback.format_exc()}")
             return False
 
+    def pause_worker(self):
+        if self.worker:
+            self.worker.pause()
+        else:
+            self.log_message("No worker to pause.")
+
+    def resume_worker(self):
+        if self.worker:
+            self.worker.resume()
+        else:
+            self.log_message("No worker to resume.")
+
     def stop_worker(self):
         if self.worker:
             self.worker.stop()
@@ -76,6 +59,11 @@ class BaseTab(QWidget):
         else:
             self.log_message("No worker to stop.")
 
+    def on_worker_paused(self, is_paused):
+        if hasattr(self, 'pause_button') and hasattr(self, 'resume_button'):
+            self.pause_button.setEnabled(not is_paused)
+            self.resume_button.setEnabled(is_paused)
+
     def on_worker_finished(self):
         self.worker = None
         self.thread = None
@@ -83,6 +71,35 @@ class BaseTab(QWidget):
             self.pause_button.setEnabled(False)
         if hasattr(self, 'resume_button'):
             self.resume_button.setEnabled(False)
+
+    def update_progress(self, value):
+        self.progress_bar.setValue(value)
+        self.progress_bar.setFormat(f"Progress: {value}%")
+
+    def update_time_left(self, time_left_str):
+        self.remaining_time_label.setText(f"Time Left: {time_left_str}")
+
+    def log_message(self, message):
+        if self.log_text_edit:
+            self.log_text_edit.append(message)
+        else:
+            print(message)
+
+    def create_log_text_edit(self):
+        self.log_text_edit = QTextEdit()
+        self.log_text_edit.setReadOnly(True)
+        return self.log_text_edit
+
+    def create_progress_layout(self):
+        layout = QVBoxLayout()
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Idle")
+        self.remaining_time_label = QLabel("Time Left: N/A")
+        self.remaining_time_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.progress_bar)
+        layout.addWidget(self.remaining_time_label)
+        return layout
 
     def create_browse_layout(self, line_edit, browse_button):
         layout = QHBoxLayout()
@@ -143,23 +160,6 @@ class BaseTab(QWidget):
     def toggle_batch_size_input(self, checked):
         if hasattr(self, 'batch_size_input'):
             self.batch_size_input.setEnabled(not checked)
-
-    def pause_worker(self):
-        if self.worker:
-            self.worker.pause()
-        else:
-            self.log_message("No worker to pause.")
-
-    def resume_worker(self):
-        if self.worker:
-            self.worker.resume()
-        else:
-            self.log_message("No worker to resume.")
-
-    def on_worker_paused(self, is_paused):
-        if hasattr(self, 'pause_button') and hasattr(self, 'resume_button'):
-            self.pause_button.setEnabled(not is_paused)
-            self.resume_button.setEnabled(is_paused)
 
     def toggle_widget_state(self, widgets, state=None, attribute="enabled"):
         if not isinstance(widgets, list):
