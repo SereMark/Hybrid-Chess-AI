@@ -12,5 +12,3 @@ dependencies:
   - pyqt
   - chess
   - h5py
-  - networkx
-  - scipy
