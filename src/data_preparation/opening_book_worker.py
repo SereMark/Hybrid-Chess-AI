@@ -3,7 +3,7 @@ from src.base.base_worker import BaseWorker
 import chess.pgn
 from collections import defaultdict
 from src.utils.common_utils import should_stop, wait_if_paused, log_message, format_time_left
-import time, os, json, threading
+import time, os, json
 
 class OpeningBookWorker(BaseWorker):
     positions_update = pyqtSignal(dict)
@@ -20,9 +20,6 @@ class OpeningBookWorker(BaseWorker):
         )
         self.game_counter = 0
         self.start_time = None
-        self.stop_event = threading.Event()
-        self.pause_event = threading.Event()
-        self.pause_event.set()
 
     def run_task(self):
         self.start_time = time.time()
@@ -30,10 +27,10 @@ class OpeningBookWorker(BaseWorker):
             total_estimated_games = self._estimate_total_games()
             with open(self.pgn_file_path, 'r', encoding='utf-8', errors='ignore') as pgn_file:
                 while True:
-                    if should_stop(self.stop_event):
+                    if should_stop(self._is_stopped):
                         log_message("Stopping opening book generation due to stop event.", self.log_update)
                         break
-                    wait_if_paused(self.pause_event)
+                    wait_if_paused(self._is_paused)
                     
                     if self.game_counter >= self.max_games:
                         log_message("Reached maximum number of games.", self.log_update)
@@ -49,10 +46,10 @@ class OpeningBookWorker(BaseWorker):
                     if self.game_counter % 1000 == 0:
                         self._update_progress_and_time_left(total_estimated_games)
                         log_message(f"Processed {self.game_counter} games so far...", self.log_update)
-            
+        
             self._update_progress_and_time_left(total_estimated_games)
             log_message(f"Processed {self.game_counter} games in total.", self.log_update)
-            
+        
             if self.positions_update:
                 self.positions_update.emit({'positions': dict(self.positions)})
         
@@ -92,10 +89,10 @@ class OpeningBookWorker(BaseWorker):
         move_counter = 0
         
         for move in game.mainline_moves():
-            if should_stop(self.stop_event):
+            if should_stop(self._is_stopped):
                 log_message("Stopping processing of current game due to stop event.", self.log_update)
                 break
-            wait_if_paused(self.pause_event)
+            wait_if_paused(self._is_paused)
             
             if move_counter >= self.max_opening_moves:
                 break
@@ -165,16 +162,3 @@ class OpeningBookWorker(BaseWorker):
             log_message(f"Opening book saved to {opening_book_file}", self.log_update)
         except Exception as e:
             log_message(f"Error saving opening book: {str(e)}", self.log_update)
-
-    def stop(self):
-        super().stop()
-        self.stop_event.set()
-        self.pause_event.set()
-
-    def pause(self):
-        self.pause_event.clear()
-        log_message("Processing paused.", self.log_update)
-
-    def resume(self):
-        self.pause_event.set()
-        log_message("Processing resumed.", self.log_update)

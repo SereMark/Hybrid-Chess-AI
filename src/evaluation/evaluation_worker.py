@@ -224,7 +224,3 @@ class EvaluationWorker(BaseWorker):
                 self.time_left_update.emit(time_left_str)
             else:
                 self.time_left_update.emit("Calculating...")
-
-    def stop(self):
-        super().stop()
-        self._is_stopped.set()

@@ -1,5 +1,4 @@
-import chess
-import numpy as np
+import chess, numpy as np
 
 class MoveMapping:
     def __init__(self):

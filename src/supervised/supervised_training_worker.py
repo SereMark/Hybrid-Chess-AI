@@ -87,6 +87,7 @@ class SupervisedWorker(BaseWorker, TrainerBase):
             self.log_update.emit("Supervised training stopped by user request.")
 
     def train_model(self):
+        self.log_update.emit("Starting training process...")
         device = self.device
         log_message(f"Using device: {device}", self.log_fn)
         required_files = [

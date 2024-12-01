@@ -1,6 +1,6 @@
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-import os, glob, time, numpy as np, h5py, chess.pgn, io, threading
+import os, glob, time, numpy as np, h5py, chess.pgn, io
 from collections import defaultdict
 from src.utils.chess_utils import get_move_mapping, convert_board_to_tensor, flip_board, flip_move
 from src.utils.common_utils import format_time_left, log_message, should_stop, wait_if_paused
@@ -20,9 +20,6 @@ class DataPreparationWorker(BaseWorker):
         )
         self.game_counter = 0
         self.start_time = None
-        self.stop_event = threading.Event()
-        self.pause_event = threading.Event()
-        self.pause_event.set()
         self.total_samples = 0
         self.total_games_processed = 0
         self.total_moves_processed = 0
@@ -52,17 +49,17 @@ class DataPreparationWorker(BaseWorker):
                 self._initialize_h5_datasets(h5_file)
                 log_message("Initialized H5 datasets successfully", self.log_update)
                 for filename in pgn_files:
-                    if should_stop(self.stop_event):
+                    if should_stop(self._is_stopped):
                         log_message("Stopping processing due to stop event", self.log_update)
                         break
-                    wait_if_paused(self.pause_event)
+                    wait_if_paused(self._is_paused)
                     log_message(f"Processing file: {filename}", self.log_update)
                     with open(filename, 'r', errors='ignore') as f:
                         while True:
-                            if should_stop(self.stop_event):
+                            if should_stop(self._is_stopped):
                                 log_message("Stopping processing due to stop event", self.log_update)
                                 break
-                            wait_if_paused(self.pause_event)
+                            wait_if_paused(self._is_paused)
                             game = chess.pgn.read_game(f)
                             if game is None:
                                 break
@@ -81,7 +78,7 @@ class DataPreparationWorker(BaseWorker):
                 if self.batch_inputs:
                     log_message(f"Writing final batch of {len(self.batch_inputs)} samples", self.log_update)
                     self._write_batch_to_h5(h5_file)
-            if not self.stop_event.is_set():
+            if not self._is_stopped.is_set():
                 log_message("Splitting dataset into training and validation sets...", self.log_update)
                 self._split_dataset()
             else:
@@ -295,16 +292,3 @@ class DataPreparationWorker(BaseWorker):
         except Exception as e:
             log_message(f"Error processing game: {str(e)}", self.log_update)
             return None
-
-    def stop(self):
-        super().stop()
-        self.stop_event.set()
-        self.pause_event.set()
-
-    def pause(self):
-        self.pause_event.clear()
-        log_message("Processing paused.", self.log_update)
-
-    def resume(self):
-        self.pause_event.set()
-        log_message("Processing resumed.", self.log_update)
