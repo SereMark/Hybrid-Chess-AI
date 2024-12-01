@@ -14,7 +14,12 @@ def format_time_left(seconds):
 
 def log_message(message, log_callback=None):
     if log_callback:
-        log_callback(message)
+        if hasattr(log_callback, 'emit') and callable(log_callback.emit):
+            log_callback.emit(message)
+        elif callable(log_callback):
+            log_callback(message)
+        else:
+            print(f"Invalid log_callback provided: {log_callback}")
     else:
         print(message)
 

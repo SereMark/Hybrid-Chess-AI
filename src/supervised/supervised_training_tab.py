@@ -268,7 +268,7 @@ class SupervisedTab(BaseTab):
         self.visualization_group.setVisible(True)
 
         started = self.start_worker(
-            SupervisedVisualization,
+            SupervisedWorker,
             epochs=epochs,
             batch_size=batch_size,
             learning_rate=learning_rate,
