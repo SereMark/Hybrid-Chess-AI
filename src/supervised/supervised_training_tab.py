@@ -1,8 +1,5 @@
+from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QLabel, QCheckBox, QComboBox, QMessageBox, QHBoxLayout
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (
-    QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
-    QLabel, QCheckBox, QComboBox, QMessageBox, QHBoxLayout
-)
 from src.supervised.supervised_training_worker import SupervisedWorker
 from src.supervised.supervised_training_visualization import SupervisedVisualization
 from src.base.base_tab import BaseTab
@@ -45,8 +42,8 @@ class SupervisedTab(BaseTab):
 
         self.toggle_batch_size_input(self.automatic_batch_size_checkbox.isChecked())
         self.on_checkpoint_enabled_changed(self.save_checkpoints_checkbox.isChecked())
-        self.log_text_edit.setVisible(False)
-        self.visualization_group.setVisible(False)
+        self.toggle_widget_state([self.log_text_edit], state=False, attribute="visible")
+        self.toggle_widget_state([self.visualization_group], state=False, attribute="visible")
 
     def create_dataset_group(self):
         dataset_group = QGroupBox("Dataset Settings")
@@ -160,21 +157,26 @@ class SupervisedTab(BaseTab):
         checkpoint_group.setLayout(checkpoint_layout)
         return checkpoint_group
 
+    def toggle_batch_size_input(self, checked):
+        if hasattr(self, 'batch_size_input'):
+            self.toggle_widget_state([self.batch_size_input], state=not checked, attribute="enabled")
+
     def on_checkpoint_enabled_changed(self, state):
         is_enabled = state == Qt.Checked
-        self.checkpoint_type_combo.setEnabled(is_enabled)
-        self.checkpoint_path_input.setEnabled(is_enabled)
+        self.toggle_widget_state([self.checkpoint_type_combo, self.checkpoint_path_input], state=is_enabled, attribute="enabled")
         self.on_checkpoint_type_changed(self.checkpoint_type_combo.currentText())
 
     def on_checkpoint_type_changed(self, text):
         text = text.lower()
-        self.epoch_interval_widget.setVisible(text == 'epoch')
-        self.time_interval_widget.setVisible(text == 'time')
-        self.batch_interval_widget.setVisible(text == 'batch')
+        self.toggle_widget_state([self.epoch_interval_widget], state=(text == 'epoch'), attribute="visible")
+        self.toggle_widget_state([self.time_interval_widget], state=(text == 'time'), attribute="visible")
+        self.toggle_widget_state([self.batch_interval_widget], state=(text == 'batch'), attribute="visible")
         is_enabled = self.save_checkpoints_checkbox.isChecked()
-        self.epoch_interval_widget.setEnabled(is_enabled)
-        self.time_interval_widget.setEnabled(is_enabled)
-        self.batch_interval_widget.setEnabled(is_enabled)
+        self.toggle_widget_state(
+            [self.epoch_interval_widget, self.time_interval_widget, self.batch_interval_widget],
+            state=is_enabled,
+            attribute="enabled"
+        )
 
     def start_training(self):
         try:
@@ -249,10 +251,9 @@ class SupervisedTab(BaseTab):
                     QMessageBox.warning(self, "Input Error", str(e))
                     return
 
-        self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-        self.pause_button.setEnabled(True)
-        self.resume_button.setEnabled(False)
+        self.toggle_widget_state([self.start_button], state=False, attribute="enabled")
+        self.toggle_widget_state([self.stop_button, self.pause_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.resume_button], state=False, attribute="enabled")
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
         self.remaining_time_label.setText("Time Left: Calculating...")
@@ -261,11 +262,8 @@ class SupervisedTab(BaseTab):
         if not os.path.exists(os.path.dirname(output_model_path)):
             os.makedirs(os.path.dirname(output_model_path), exist_ok=True)
 
-        self.dataset_group.setVisible(False)
-        self.training_group.setVisible(False)
-        self.checkpoint_group.setVisible(False)
-        self.log_text_edit.setVisible(True)
-        self.visualization_group.setVisible(True)
+        self.toggle_widget_state([self.dataset_group, self.training_group, self.checkpoint_group], state=False, attribute="visible")
+        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=True, attribute="visible")
 
         started = self.start_worker(
             SupervisedWorker,
@@ -296,15 +294,10 @@ class SupervisedTab(BaseTab):
             self.worker.task_finished.connect(self.on_training_finished)
             self.worker.paused.connect(self.on_worker_paused)
         else:
-            self.start_button.setEnabled(True)
-            self.pause_button.setEnabled(False)
-            self.stop_button.setEnabled(False)
-            self.resume_button.setEnabled(False)
-            self.dataset_group.setVisible(True)
-            self.training_group.setVisible(True)
-            self.checkpoint_group.setVisible(True)
-            self.log_text_edit.setVisible(False)
-            self.visualization_group.setVisible(False)
+            self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+            self.toggle_widget_state([self.pause_button, self.stop_button, self.resume_button], state=False, attribute="enabled")
+            self.toggle_widget_state([self.dataset_group, self.training_group, self.checkpoint_group], state=True, attribute="visible")
+            self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
 
         if not self.checkpoint_path_input.text():
             self.visualization.reset_visualization()
@@ -312,22 +305,14 @@ class SupervisedTab(BaseTab):
     def stop_training(self):
         self.stop_worker()
         self.log_message("Stopping training...")
-        self.start_button.setEnabled(True)
-        self.pause_button.setEnabled(False)
-        self.resume_button.setEnabled(False)
-        self.stop_button.setEnabled(False)
-        self.dataset_group.setVisible(True)
-        self.training_group.setVisible(True)
-        self.checkpoint_group.setVisible(True)
+        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.pause_button, self.resume_button, self.stop_button], state=False, attribute="enabled")
+        self.toggle_widget_state([self.dataset_group, self.training_group, self.checkpoint_group], state=True, attribute="visible")
 
     def on_training_finished(self):
         self.log_message("Training process has been completed.")
-        self.start_button.setEnabled(True)
-        self.pause_button.setEnabled(False)
-        self.resume_button.setEnabled(False)
-        self.stop_button.setEnabled(False)
+        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.pause_button, self.resume_button, self.stop_button], state=False, attribute="enabled")
         self.progress_bar.setFormat("Training Finished")
         self.remaining_time_label.setText("Time Left: N/A")
-        self.dataset_group.setVisible(True)
-        self.training_group.setVisible(True)
-        self.checkpoint_group.setVisible(True)
+        self.toggle_widget_state([self.dataset_group, self.training_group, self.checkpoint_group], state=True, attribute="visible")

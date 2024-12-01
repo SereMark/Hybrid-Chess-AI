@@ -1,6 +1,4 @@
-from PyQt5.QtWidgets import (
-    QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QMessageBox
-)
+from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QMessageBox
 from src.evaluation.evaluation_visualization import EvaluationVisualization
 from src.evaluation.evaluation_worker import EvaluationWorker
 from src.base.base_tab import BaseTab
@@ -33,8 +31,8 @@ class EvaluationTab(BaseTab):
         main_layout.addWidget(self.log_text_edit)
         main_layout.addWidget(self.visualization_group)
 
-        self.log_text_edit.setVisible(False)
-        self.visualization_group.setVisible(False)
+        self.toggle_widget_state([self.log_text_edit], state=False, attribute="visible")
+        self.toggle_widget_state([self.visualization_group], state=False, attribute="visible")
 
     def create_paths_group(self) -> QGroupBox:
         paths_group = QGroupBox("Paths")
@@ -79,8 +77,8 @@ class EvaluationTab(BaseTab):
             QMessageBox.warning(self, "Error", "H5 Dataset file does not exist.")
             return
 
-        self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
+        self.toggle_widget_state([self.start_button], state=False, attribute="enabled")
+        self.toggle_widget_state([self.stop_button], state=True, attribute="enabled")
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting Evaluation...")
         self.remaining_time_label.setText("Time Left: Calculating...")
@@ -88,9 +86,8 @@ class EvaluationTab(BaseTab):
         self.log_message("Starting evaluation...")
         self.visualization.reset_visualization()
 
-        self.paths_group.setVisible(False)
-        self.log_text_edit.setVisible(True)
-        self.visualization_group.setVisible(True)
+        self.toggle_widget_state([self.paths_group], state=False, attribute="visible")
+        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=True, attribute="visible")
 
         started = self.start_worker(
             EvaluationWorker, model_path, dataset_indices_path, h5_file_path
@@ -99,25 +96,23 @@ class EvaluationTab(BaseTab):
             self.worker.metrics_update.connect(self.visualization.update_metrics_visualization)
             self.worker.task_finished.connect(self.on_evaluation_finished)
         else:
-            self.start_button.setEnabled(True)
-            self.stop_button.setEnabled(False)
-            self.paths_group.setVisible(True)
-            self.log_text_edit.setVisible(False)
-            self.visualization_group.setVisible(False)
+            self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+            self.toggle_widget_state([self.stop_button], state=False, attribute="enabled")
+            self.toggle_widget_state([self.paths_group], state=True, attribute="visible")
+            self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
 
     def stop_evaluation(self):
         self.stop_worker()
         self.log_message("Stopping evaluation...")
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.paths_group.setVisible(True)
-        self.log_text_edit.setVisible(False)
-        self.visualization_group.setVisible(False)
+        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.stop_button], state=False, attribute="enabled")
+        self.toggle_widget_state([self.paths_group], state=True, attribute="visible")
+        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
 
     def on_evaluation_finished(self):
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
+        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.stop_button], state=False, attribute="enabled")
         self.progress_bar.setFormat("Evaluation Finished")
         self.remaining_time_label.setText("Time Left: N/A")
         self.log_message("Evaluation process finished.")
-        self.paths_group.setVisible(True)
+        self.toggle_widget_state([self.paths_group], state=True, attribute="visible")

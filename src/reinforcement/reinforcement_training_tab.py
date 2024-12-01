@@ -1,12 +1,9 @@
-from PyQt5.QtWidgets import (
-    QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
-    QHBoxLayout, QMessageBox, QCheckBox, QLabel, QComboBox
-)
-import os
+from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QMessageBox, QCheckBox, QLabel, QComboBox
 from PyQt5.QtCore import Qt
 from src.reinforcement.reinforcement_training_visualization import ReinforcementVisualization
 from src.reinforcement.reinforcement_training_worker import ReinforcementWorker
 from src.base.base_tab import BaseTab
+import os
 
 
 class ReinforcementTab(BaseTab):
@@ -43,8 +40,8 @@ class ReinforcementTab(BaseTab):
         main_layout.addWidget(self.log_text_edit)
         main_layout.addWidget(self.visualization_group)
 
-        self.log_text_edit.setVisible(False)
-        self.visualization_group.setVisible(False)
+        self.toggle_widget_state([self.log_text_edit], state=False, attribute="visible")
+        self.toggle_widget_state([self.visualization_group], state=False, attribute="visible")
         self.toggle_batch_size_input(self.automatic_batch_size_checkbox.isChecked())
         self.on_checkpoint_enabled_changed(self.save_checkpoints_checkbox.isChecked())
 
@@ -155,22 +152,27 @@ class ReinforcementTab(BaseTab):
         checkpoint_group.setLayout(checkpoint_layout)
         return checkpoint_group
 
+    def toggle_batch_size_input(self, checked):
+        if hasattr(self, 'batch_size_input'):
+            self.toggle_widget_state([self.batch_size_input], state=not checked, attribute="enabled")
+
     def on_checkpoint_enabled_changed(self, state):
         is_enabled = state == Qt.Checked
-        self.checkpoint_type_combo.setEnabled(is_enabled)
+        self.toggle_widget_state([self.checkpoint_type_combo, self.checkpoint_path_input], state=is_enabled, attribute="enabled")
         self.on_checkpoint_type_changed(self.checkpoint_type_combo.currentText())
 
     def on_checkpoint_type_changed(self, text):
         text = text.lower()
-        self.iteration_interval_widget.setVisible(text == 'iteration')
-        self.epoch_interval_widget.setVisible(text == 'epoch')
-        self.time_interval_widget.setVisible(text == 'time')
-        self.batch_interval_widget.setVisible(text == 'batch')
+        self.toggle_widget_state([self.iteration_interval_widget], state=(text == 'iteration'), attribute="visible")
+        self.toggle_widget_state([self.epoch_interval_widget], state=(text == 'epoch'), attribute="visible")
+        self.toggle_widget_state([self.time_interval_widget], state=(text == 'time'), attribute="visible")
+        self.toggle_widget_state([self.batch_interval_widget], state=(text == 'batch'), attribute="visible")
         is_enabled = self.save_checkpoints_checkbox.isChecked()
-        self.iteration_interval_widget.setEnabled(is_enabled)
-        self.epoch_interval_widget.setEnabled(is_enabled)
-        self.time_interval_widget.setEnabled(is_enabled)
-        self.batch_interval_widget.setEnabled(is_enabled)
+        self.toggle_widget_state(
+            [self.iteration_interval_widget, self.epoch_interval_widget, self.time_interval_widget, self.batch_interval_widget],
+            state=is_enabled,
+            attribute="enabled"
+        )
 
     def start_self_play(self):
         try:
@@ -245,22 +247,19 @@ class ReinforcementTab(BaseTab):
                     QMessageBox.warning(self, "Input Error", str(e))
                     return
 
-        self.start_button.setEnabled(False)
-        self.pause_button.setEnabled(True)
-        self.stop_button.setEnabled(True)
-        self.resume_button.setEnabled(False)
+        self.toggle_widget_state([self.start_button], state=False, attribute="enabled")
+        self.toggle_widget_state([self.stop_button, self.pause_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.resume_button], state=False, attribute="enabled")
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
         self.remaining_time_label.setText("Time Left: Calculating...")
         self.log_text_edit.clear()
 
-        self.visualization.reset_visualization()
+        if not os.path.exists(os.path.dirname(model_path)):
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
 
-        self.model_output_group.setVisible(False)
-        self.parameters_group.setVisible(False)
-        self.checkpoint_group.setVisible(False)
-        self.log_text_edit.setVisible(True)
-        self.visualization_group.setVisible(True)
+        self.toggle_widget_state([self.model_output_group, self.parameters_group, self.checkpoint_group], state=False, attribute="visible")
+        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=True, attribute="visible")
 
         started = self.start_worker(
             ReinforcementWorker,
@@ -291,35 +290,22 @@ class ReinforcementTab(BaseTab):
             self.worker.task_finished.connect(self.on_self_play_finished)
             self.worker.paused.connect(self.on_worker_paused)
         else:
-            self.start_button.setEnabled(True)
-            self.pause_button.setEnabled(False)
-            self.stop_button.setEnabled(False)
-            self.resume_button.setEnabled(False)
-            self.model_output_group.setVisible(True)
-            self.parameters_group.setVisible(True)
-            self.checkpoint_group.setVisible(True)
-            self.log_text_edit.setVisible(False)
-            self.visualization_group.setVisible(False)
+            self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+            self.toggle_widget_state([self.pause_button, self.stop_button, self.resume_button], state=False, attribute="enabled")
+            self.toggle_widget_state([self.model_output_group, self.parameters_group, self.checkpoint_group], state=True, attribute="visible")
+            self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
 
     def stop_self_play(self):
         self.stop_worker()
         self.log_message("Stopping self-play...")
-        self.start_button.setEnabled(True)
-        self.pause_button.setEnabled(False)
-        self.resume_button.setEnabled(False)
-        self.stop_button.setEnabled(False)
-        self.model_output_group.setVisible(True)
-        self.parameters_group.setVisible(True)
-        self.checkpoint_group.setVisible(True)
+        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.pause_button, self.resume_button, self.stop_button], state=False, attribute="enabled")
+        self.toggle_widget_state([self.model_output_group, self.parameters_group, self.checkpoint_group], state=True, attribute="visible")
 
     def on_self_play_finished(self):
         self.log_message("Self-play process has been completed.")
-        self.start_button.setEnabled(True)
-        self.pause_button.setEnabled(False)
-        self.resume_button.setEnabled(False)
-        self.stop_button.setEnabled(False)
+        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.pause_button, self.resume_button, self.stop_button], state=False, attribute="enabled")
         self.progress_bar.setFormat("Self-Play Finished")
         self.remaining_time_label.setText("Time Left: N/A")
-        self.model_output_group.setVisible(True)
-        self.parameters_group.setVisible(True)
-        self.checkpoint_group.setVisible(True)
+        self.toggle_widget_state([self.model_output_group, self.parameters_group, self.checkpoint_group], state=True, attribute="visible")

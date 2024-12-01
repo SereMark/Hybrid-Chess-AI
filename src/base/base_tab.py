@@ -1,7 +1,4 @@
-from PyQt5.QtWidgets import (
-    QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout,
-    QHBoxLayout, QGroupBox, QLineEdit, QPushButton, QFileDialog, QSizePolicy, QLabel
-)
+from PyQt5.QtWidgets import QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton, QFileDialog, QSizePolicy, QLabel
 from PyQt5.QtCore import Qt, QThread
 import traceback
 
@@ -163,3 +160,17 @@ class BaseTab(QWidget):
         if hasattr(self, 'pause_button') and hasattr(self, 'resume_button'):
             self.pause_button.setEnabled(not is_paused)
             self.resume_button.setEnabled(is_paused)
+
+    def toggle_widget_state(self, widgets, state=None, attribute="enabled"):
+        if not isinstance(widgets, list):
+            widgets = [widgets]
+        
+        for widget in widgets:
+            if attribute == "enabled":
+                current_state = widget.isEnabled()
+                widget.setEnabled(not current_state if state is None else state)
+            elif attribute == "visible":
+                current_state = widget.isVisible()
+                widget.setVisible(not current_state if state is None else state)
+            else:
+                raise ValueError("Unsupported attribute. Use 'enabled' or 'visible'.")

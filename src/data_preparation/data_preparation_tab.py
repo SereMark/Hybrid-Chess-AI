@@ -39,8 +39,8 @@ class DataProcessingTab(BaseTab):
         main_layout.addWidget(self.log_text_edit)
         main_layout.addWidget(self.visualization_group)
 
-        self.log_text_edit.setVisible(False)
-        self.visualization_group.setVisible(False)
+        self.toggle_widget_state([self.log_text_edit], state=False, attribute="visible")
+        self.toggle_widget_state([self.visualization_group], state=False, attribute="visible")
 
     def create_parameters_group(self):
         parameters_group = QGroupBox("Parameters")
@@ -94,21 +94,18 @@ class DataProcessingTab(BaseTab):
             return
         os.makedirs(processed_data_dir, exist_ok=True)
 
-        self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-        self.pause_button.setEnabled(True)
-        self.resume_button.setEnabled(False)
-        self.log_text_edit.clear()
+        self.toggle_widget_state([self.start_button], state=False, attribute="enabled")
+        self.toggle_widget_state([self.stop_button, self.pause_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.resume_button], state=False, attribute="enabled")
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
         self.remaining_time_label.setText("Time Left: Calculating...")
+        self.log_text_edit.clear()
 
         self.visualization.reset_visualizations()
 
-        self.parameters_group.setVisible(False)
-        self.directories_group.setVisible(False)
-        self.log_text_edit.setVisible(True)
-        self.visualization_group.setVisible(True)
+        self.toggle_widget_state([self.parameters_group, self.directories_group], state=False, attribute="visible")
+        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=True, attribute="visible")
 
         started = self.start_worker(
             DataPreparationWorker,
@@ -122,35 +119,25 @@ class DataProcessingTab(BaseTab):
             self.worker.stats_update.connect(self.visualization.update_data_visualization)
             self.worker.task_finished.connect(self.on_data_preparation_finished)
         else:
-            self.start_button.setEnabled(True)
-            self.stop_button.setEnabled(False)
-            self.pause_button.setEnabled(False)
-            self.resume_button.setEnabled(False)
-            self.parameters_group.setVisible(True)
-            self.directories_group.setVisible(True)
-            self.log_text_edit.setVisible(False)
-            self.visualization_group.setVisible(False)
+            self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+            self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
+            self.toggle_widget_state([self.parameters_group, self.directories_group], state=True, attribute="visible")
+            self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
 
     def stop_data_preparation(self):
         self.stop_worker()
         self.log_message("Stopping data preparation...")
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.pause_button.setEnabled(False)
-        self.resume_button.setEnabled(False)
-        self.parameters_group.setVisible(True)
-        self.directories_group.setVisible(True)
+        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
+        self.toggle_widget_state([self.parameters_group, self.directories_group], state=True, attribute="visible")
 
     def on_data_preparation_finished(self):
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.pause_button.setEnabled(False)
-        self.resume_button.setEnabled(False)
+        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
         self.progress_bar.setFormat("Data Preparation Finished")
         self.remaining_time_label.setText("Time Left: N/A")
         self.log_message("Data preparation process finished.")
-        self.parameters_group.setVisible(True)
-        self.directories_group.setVisible(True)
+        self.toggle_widget_state([self.parameters_group, self.directories_group], state=True, attribute="visible")
 
 class OpeningBookTab(BaseTab):
     def __init__(self, parent=None, processed_data_dir_default="data/processed"):
@@ -184,8 +171,8 @@ class OpeningBookTab(BaseTab):
         main_layout.addWidget(self.opening_log_text_edit)
         main_layout.addWidget(self.opening_visualization_group)
 
-        self.opening_log_text_edit.setVisible(False)
-        self.opening_visualization_group.setVisible(False)
+        self.toggle_widget_state([self.opening_log_text_edit], state=False, attribute="visible")
+        self.toggle_widget_state([self.opening_visualization_group], state=False, attribute="visible")
 
     def create_opening_book_group(self):
         opening_book_group = QGroupBox("Opening Book Generation")
@@ -238,20 +225,18 @@ class OpeningBookTab(BaseTab):
                 QMessageBox.critical(self, "Directory Error", f"Failed to create processed data directory: {str(e)}")
                 return
 
-        self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-        self.pause_button.setEnabled(True)
-        self.resume_button.setEnabled(False)
-        self.opening_log_text_edit.clear()
+        self.toggle_widget_state([self.start_button], state=False, attribute="enabled")
+        self.toggle_widget_state([self.stop_button, self.pause_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.resume_button], state=False, attribute="enabled")
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
         self.remaining_time_label.setText("Time Left: Calculating...")
+        self.opening_log_text_edit.clear()
 
         self.opening_visualization.reset_visualization()
 
-        self.opening_book_group.setVisible(False)
-        self.opening_log_text_edit.setVisible(True)
-        self.opening_visualization_group.setVisible(True)
+        self.toggle_widget_state([self.opening_book_group], state=False, attribute="visible")
+        self.toggle_widget_state([self.opening_log_text_edit, self.opening_visualization_group], state=True, attribute="visible")
 
         started = self.start_worker(
             OpeningBookWorker,
@@ -265,34 +250,26 @@ class OpeningBookTab(BaseTab):
             self.worker.positions_update.connect(self.opening_visualization.update_opening_book)
             self.worker.task_finished.connect(self.on_opening_book_generation_finished)
         else:
-            self.start_button.setEnabled(True)
-            self.stop_button.setEnabled(False)
-            self.pause_button.setEnabled(False)
-            self.resume_button.setEnabled(False)
-            self.opening_book_group.setVisible(True)
-            self.opening_log_text_edit.setVisible(False)
-            self.opening_visualization_group.setVisible(False)
+            self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+            self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
+            self.toggle_widget_state([self.opening_book_group], state=True, attribute="visible")
+            self.toggle_widget_state([self.opening_log_text_edit, self.opening_visualization_group], state=False, attribute="visible")
 
     def stop_opening_book_generation(self):
         self.stop_worker()
         self.log_message("Stopping opening book generation...")
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.pause_button.setEnabled(False)
-        self.resume_button.setEnabled(False)
-        self.opening_book_group.setVisible(True)
-        self.opening_visualization_group.setVisible(False)
+        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
+        self.toggle_widget_state([self.opening_book_group], state=True, attribute="visible")
+        self.toggle_widget_state([self.opening_visualization_group], state=False, attribute="visible")
 
     def on_opening_book_generation_finished(self):
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.pause_button.setEnabled(False)
-        self.resume_button.setEnabled(False)
+        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
+        self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
         self.progress_bar.setFormat("Opening Book Generation Finished")
         self.remaining_time_label.setText("Time Left: N/A")
         self.log_message("Opening book generation process finished.")
-        self.opening_book_group.setVisible(True)
-        self.opening_visualization_group.setVisible(True)
+        self.toggle_widget_state([self.opening_book_group, self.opening_visualization_group], state=True, attribute="visible")
 
 class DataPreparationTab(QWidget):
     def __init__(self, parent=None):
