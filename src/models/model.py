@@ -45,21 +45,16 @@ class ChessModel(nn.Module):
         self.residual_layers = nn.Sequential(
             *[ResidualUnit(filters, filters) for _ in range(res_blocks)]
         )
-        self.policy_head = self._make_policy_head(filters)
-        self.value_head = self._make_value_head(filters)
-        self._initialize_weights()
-
-    def _make_policy_head(self, filters):
-        return nn.Sequential(
+        
+        self.policy_head = nn.Sequential(
             nn.Conv2d(filters, 2, kernel_size=1, bias=False),
             nn.BatchNorm2d(2),
             nn.ReLU(inplace=True),
             nn.Flatten(),
             nn.Linear(2 * 8 * 8, self.num_moves),
         )
-
-    def _make_value_head(self, filters):
-        return nn.Sequential(
+        
+        self.value_head = nn.Sequential(
             nn.Conv2d(filters, 1, kernel_size=1, bias=False),
             nn.BatchNorm2d(1),
             nn.ReLU(inplace=True),
@@ -69,8 +64,7 @@ class ChessModel(nn.Module):
             nn.Linear(64, 1),
             nn.Tanh(),
         )
-
-    def _initialize_weights(self):
+        
         for module in self.modules():
             if isinstance(module, (nn.Conv2d, nn.Linear)):
                 nn.init.kaiming_normal_(module.weight, nonlinearity="relu")
