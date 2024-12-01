@@ -73,7 +73,6 @@ class EvaluationWorker(BaseWorker):
         )
         all_predictions = []
         all_actuals = []
-        k = 5
         topk_predictions = []
         total_batches = len(loader)
         steps_done = 0
@@ -91,7 +90,7 @@ class EvaluationWorker(BaseWorker):
                 _, preds = torch.max(policy_outputs, 1)
                 all_predictions.extend(preds.cpu().numpy())
                 all_actuals.extend(policy_targets.cpu().numpy())
-                _, topk_preds = torch.topk(policy_outputs, k, dim=1)
+                _, topk_preds = torch.topk(policy_outputs, 5, dim=1)
                 topk_predictions.extend(topk_preds.cpu().numpy())
             steps_done += 1
             progress = int((steps_done / total_steps) * 100)
@@ -110,7 +109,7 @@ class EvaluationWorker(BaseWorker):
         log_message(f"Accuracy: {accuracy * 100:.2f}%", self.log_update)
         topk_correct = sum(1 for actual, preds in zip(all_actuals, topk_predictions) if actual in preds)
         topk_accuracy = topk_correct / len(all_actuals)
-        log_message(f"Top-{topk_predictions.shape[1]} Accuracy: {topk_accuracy * 100:.2f}%", self.log_update)
+        log_message(f"Top-5 Accuracy: {topk_accuracy * 100:.2f}%", self.log_update)
         N = 10
         class_counts = Counter(all_actuals)
         most_common_classes = [item[0] for item in class_counts.most_common(N)]
@@ -142,7 +141,7 @@ class EvaluationWorker(BaseWorker):
             self.log_update
         )
         if self.metrics_update:
-            self.metrics_update(
+            self.metrics_update.emit(
                 accuracy,
                 topk_accuracy,
                 macro_avg,
