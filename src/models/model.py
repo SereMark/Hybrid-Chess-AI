@@ -33,7 +33,6 @@ class ResidualUnit(nn.Module):
         out += identity
         return self.relu(out)
 
-
 class ChessModel(nn.Module):
     def __init__(self, num_moves: int, filters: int = 64, res_blocks: int = 5) -> None:
         super().__init__()
