@@ -2,7 +2,7 @@ from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 import chess.pgn
 from collections import defaultdict
-from src.utils.common_utils import should_stop, wait_if_paused, log_message, format_time_left
+from src.utils.common_utils import wait_if_paused, log_message, format_time_left
 import time, os, json
 
 class OpeningBookWorker(BaseWorker):
@@ -27,7 +27,7 @@ class OpeningBookWorker(BaseWorker):
             total_estimated_games = self._estimate_total_games()
             with open(self.pgn_file_path, 'r', encoding='utf-8', errors='ignore') as pgn_file:
                 while True:
-                    if should_stop(self._is_stopped):
+                    if self._is_stopped.is_set():
                         log_message("Stopping opening book generation due to stop event.", self.log_update)
                         break
                     wait_if_paused(self._is_paused)
@@ -89,7 +89,7 @@ class OpeningBookWorker(BaseWorker):
         move_counter = 0
         
         for move in game.mainline_moves():
-            if should_stop(self._is_stopped):
+            if self._is_stopped.is_set():
                 log_message("Stopping processing of current game due to stop event.", self.log_update)
                 break
             wait_if_paused(self._is_paused)

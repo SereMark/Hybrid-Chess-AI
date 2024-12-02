@@ -5,7 +5,7 @@ from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 from src.base.base_trainer import TrainerBase
 from src.utils.datasets import H5Dataset
-from src.utils.common_utils import format_time_left, log_message, should_stop, wait_if_paused
+from src.utils.common_utils import format_time_left, log_message, wait_if_paused
 from src.utils.chess_utils import get_total_moves
 from src.models.model import ChessModel
 
@@ -172,7 +172,7 @@ class SupervisedWorker(BaseWorker, TrainerBase):
 
             for epoch in range(start_epoch, self.epochs + 1):
                 epoch_start_time = time.time()
-                if should_stop(self.stop_event):
+                if self.stop_event.is_set():
                     break
                 log_message(f"Epoch {epoch}/{self.epochs} started.", self.log_fn)
                 model.train()
@@ -202,7 +202,7 @@ class SupervisedWorker(BaseWorker, TrainerBase):
                     scaler,
                     accumulation_steps,
                 )
-                if should_stop(self.stop_event):
+                if self.stop_event.is_set():
                     break
                 model.eval()
                 val_metrics = self._validate_epoch(model, val_loader, epoch, device, train_metrics['accuracy'])
@@ -253,7 +253,7 @@ class SupervisedWorker(BaseWorker, TrainerBase):
                     ),
                 ):
                     pass
-            if not should_stop(self.stop_event):
+            if not self.stop_event.is_set():
                 log_message("Training completed successfully.", self.log_fn)
             else:
                 log_message("Training stopped by user.", self.log_fn)
@@ -282,7 +282,7 @@ class SupervisedWorker(BaseWorker, TrainerBase):
             start_time = time.time()
             optimizer.zero_grad()
             for batch_idx, (inputs, policy_targets, value_targets) in enumerate(train_iterator, 1):
-                if should_stop(self.stop_event):
+                if self.stop_event.is_set():
                     break
                 wait_if_paused(self.pause_event)
                 inputs = inputs.to(device, non_blocking=True)
@@ -372,7 +372,7 @@ class SupervisedWorker(BaseWorker, TrainerBase):
         try:
             with torch.no_grad():
                 for inputs, policy_targets, value_targets in val_loader:
-                    if should_stop(self.stop_event):
+                    if self.stop_event.is_set():
                         break
                     wait_if_paused(self.pause_event)
                     inputs = inputs.to(device)

@@ -7,7 +7,7 @@ from typing import Optional
 from src.utils.chess_utils import get_total_moves, get_move_mapping
 from src.models.model import ChessModel
 from src.utils.datasets import H5Dataset
-from src.utils.common_utils import format_time_left, log_message, should_stop, initialize_random_seeds
+from src.utils.common_utils import format_time_left, log_message, initialize_random_seeds
 
 class EvaluationWorker(BaseWorker):
     metrics_update = pyqtSignal(float, float, dict, dict, np.ndarray, list)
@@ -80,7 +80,7 @@ class EvaluationWorker(BaseWorker):
         start_time = time.time()
         log_message("Starting evaluation...", self.log_update)
         for batch_idx, (inputs, policy_targets, _) in enumerate(loader, 1):
-            if should_stop(self._is_stopped):
+            if self._is_stopped.is_set():
                 log_message("Evaluation stopped by user.", self.log_update)
                 return
             inputs = inputs.to(self.device, non_blocking=True)

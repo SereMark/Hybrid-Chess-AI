@@ -7,7 +7,7 @@ from src.base.base_worker import BaseWorker
 from src.base.base_trainer import TrainerBase
 from src.models.model import ChessModel
 from src.utils.chess_utils import get_total_moves, get_move_mapping, convert_board_to_tensor
-from src.utils.common_utils import initialize_random_seeds, format_time_left, log_message, should_stop, wait_if_paused
+from src.utils.common_utils import initialize_random_seeds, format_time_left, log_message, wait_if_paused
 from src.utils.mcts import MCTS
 
 def _play_and_collect_wrapper(args):
@@ -272,7 +272,7 @@ class ReinforcementWorker(BaseWorker, TrainerBase):
     def train(self):
         self._initialize()
         for iteration in range(self.start_iteration, self.num_iterations):
-            if should_stop(self.stop_event):
+            if self.stop_event.is_set():
                 break
             iteration_start_time = time.time()
             log_message(
@@ -458,7 +458,7 @@ class ReinforcementWorker(BaseWorker, TrainerBase):
         )
         start_epoch = self.current_epoch
         for epoch in range(start_epoch, self.num_epochs + 1):
-            if should_stop(self.stop_event):
+            if self.stop_event.is_set():
                 break
             log_message(
                 f"Epoch {epoch}/{self.num_epochs} started.", self.log_fn
@@ -483,7 +483,7 @@ class ReinforcementWorker(BaseWorker, TrainerBase):
                 train_iterator, 1
             ):
                 self.total_batches_processed += 1
-                if should_stop(self.stop_event):
+                if self.stop_event.is_set():
                     break
                 wait_if_paused(self.pause_event)
                 batch_inputs = batch_inputs.to(

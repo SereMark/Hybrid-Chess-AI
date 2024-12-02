@@ -3,7 +3,7 @@ from src.base.base_worker import BaseWorker
 import os, glob, time, numpy as np, h5py, chess.pgn, io
 from collections import defaultdict
 from src.utils.chess_utils import get_move_mapping, convert_board_to_tensor, flip_board, flip_move
-from src.utils.common_utils import format_time_left, log_message, should_stop, wait_if_paused
+from src.utils.common_utils import format_time_left, log_message, wait_if_paused
 
 class DataPreparationWorker(BaseWorker):
     stats_update = pyqtSignal(dict)
@@ -49,14 +49,14 @@ class DataPreparationWorker(BaseWorker):
                 self._initialize_h5_datasets(h5_file)
                 log_message("Initialized H5 datasets successfully", self.log_update)
                 for filename in pgn_files:
-                    if should_stop(self._is_stopped):
+                    if self._is_stopped.is_set():
                         log_message("Stopping processing due to stop event", self.log_update)
                         break
                     wait_if_paused(self._is_paused)
                     log_message(f"Processing file: {filename}", self.log_update)
                     with open(filename, 'r', errors='ignore') as f:
                         while True:
-                            if should_stop(self._is_stopped):
+                            if self._is_stopped.is_set():
                                 log_message("Stopping processing due to stop event", self.log_update)
                                 break
                             wait_if_paused(self._is_paused)

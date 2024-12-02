@@ -23,9 +23,6 @@ def log_message(message, log_callback=None):
     else:
         print(message)
 
-def should_stop(stop_event):
-    return stop_event.is_set()
-
 def wait_if_paused(pause_event):
     while not pause_event.is_set():
         time.sleep(0.1)
