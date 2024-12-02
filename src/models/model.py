@@ -3,34 +3,32 @@ import torch, torch.nn as nn
 class ResidualUnit(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, stride: int = 1) -> None:
         super().__init__()
-        self.conv1 = nn.Conv2d(
-            in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False
-        )
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
         self.norm1 = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(
-            out_channels, out_channels, kernel_size=3, padding=1, bias=False
-        )
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False)
         self.norm2 = nn.BatchNorm2d(out_channels)
+
         self.downsample = (
             nn.Sequential(
-                nn.Conv2d(
-                    in_channels, out_channels, kernel_size=1, stride=stride, bias=False
-                ),
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(out_channels),
             )
             if stride != 1 or in_channels != out_channels
-            else None
+            else nn.Identity()
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         identity = x
 
-        out = self.relu(self.norm1(self.conv1(x)))
-        out = self.norm2(self.conv2(out))
+        out = self.conv1(x)
+        out = self.norm1(out)
+        out = self.relu(out)
 
-        if self.downsample is not None:
-            identity = self.downsample(x)
+        out = self.conv2(out)
+        out = self.norm2(out)
+
+        identity = self.downsample(identity)
 
         out += identity
         return self.relu(out)
@@ -48,7 +46,7 @@ class ChessModel(nn.Module):
         )
 
         self.residual_layers = nn.Sequential(
-            *[ResidualUnit(filters, filters) for _ in range(res_blocks)]
+            *(ResidualUnit(filters, filters) for _ in range(res_blocks))
         )
 
         self.policy_head = nn.Sequential(
@@ -74,8 +72,10 @@ class ChessModel(nn.Module):
 
     def _initialize_weights(self) -> None:
         for module in self.modules():
-            if isinstance(module, (nn.Conv2d, nn.Linear)):
+            if isinstance(module, nn.Conv2d):
                 nn.init.kaiming_normal_(module.weight, nonlinearity="relu")
+            elif isinstance(module, nn.Linear):
+                nn.init.kaiming_uniform_(module.weight, nonlinearity="relu")
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
             elif isinstance(module, nn.BatchNorm2d):
