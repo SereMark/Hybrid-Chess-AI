@@ -1,5 +1,6 @@
 import torch, torch.nn as nn
 
+
 class ResidualUnit(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, stride: int = 1) -> None:
         super().__init__()
@@ -32,6 +33,7 @@ class ResidualUnit(nn.Module):
 
         out += identity
         return self.relu(out)
+
 
 class ChessModel(nn.Module):
     def __init__(self, num_moves: int, filters: int = 64, res_blocks: int = 5) -> None:
