@@ -1,6 +1,5 @@
 from PyQt5.QtWidgets import QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton, QFileDialog, QSizePolicy, QLabel
 from PyQt5.QtCore import Qt, QThread
-import traceback
 
 
 class BaseTab(QWidget):
@@ -14,7 +13,6 @@ class BaseTab(QWidget):
 
     def start_worker(self, worker_class, *args, **kwargs):
         if self.thread is not None and self.thread.isRunning():
-            self.log_message("A worker is already running.")
             return False
 
         try:
@@ -26,38 +24,30 @@ class BaseTab(QWidget):
             self.worker.finished.connect(self.worker.deleteLater)
             self.thread.finished.connect(self.thread.deleteLater)
             self.thread.finished.connect(self.on_worker_finished)
-            self.worker.log_update.connect(self.log_message)
+            self.worker.log_update.connect(self.log_text_edit.append)
             self.worker.progress_update.connect(self.update_progress)
             self.worker.time_left_update.connect(self.update_time_left)
             self.worker.paused.connect(self.on_worker_paused)
             self.thread.start()
             return True
         except Exception as e:
-            self.log_message(f"Error starting worker: {str(e)}\n{traceback.format_exc()}")
             return False
 
     def pause_worker(self):
         if self.worker:
             self.worker.pause()
-        else:
-            self.log_message("No worker to pause.")
 
     def resume_worker(self):
         if self.worker:
             self.worker.resume()
-        else:
-            self.log_message("No worker to resume.")
 
     def stop_worker(self):
         if self.worker:
             self.worker.stop()
-            self.log_message("Worker stop requested.")
             if hasattr(self, 'pause_button'):
                 self.pause_button.setEnabled(False)
             if hasattr(self, 'resume_button'):
                 self.resume_button.setEnabled(False)
-        else:
-            self.log_message("No worker to stop.")
 
     def on_worker_paused(self, is_paused):
         if hasattr(self, 'pause_button') and hasattr(self, 'resume_button'):
@@ -78,12 +68,6 @@ class BaseTab(QWidget):
 
     def update_time_left(self, time_left_str):
         self.remaining_time_label.setText(f"Time Left: {time_left_str}")
-
-    def log_message(self, message):
-        if self.log_text_edit:
-            self.log_text_edit.append(message)
-        else:
-            print(message)
 
     def create_log_text_edit(self):
         self.log_text_edit = QTextEdit()

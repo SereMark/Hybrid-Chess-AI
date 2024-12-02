@@ -77,7 +77,6 @@ class EvaluationTab(BaseTab):
         self.progress_bar.setFormat("Starting Evaluation...")
         self.remaining_time_label.setText("Time Left: Calculating...")
         self.log_text_edit.clear()
-        self.log_message("Starting evaluation...")
         self.visualization.reset_visualization()
 
         self.toggle_widget_state([self.paths_group], state=False, attribute="visible")
@@ -100,7 +99,6 @@ class EvaluationTab(BaseTab):
 
     def stop_evaluation(self):
         self.stop_worker()
-        self.log_message("Stopping evaluation...")
         self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
         self.toggle_widget_state([self.stop_button], state=False, attribute="enabled")
         self.toggle_widget_state([self.paths_group], state=True, attribute="visible")
@@ -111,5 +109,4 @@ class EvaluationTab(BaseTab):
         self.toggle_widget_state([self.stop_button], state=False, attribute="enabled")
         self.progress_bar.setFormat("Evaluation Finished")
         self.remaining_time_label.setText("Time Left: N/A")
-        self.log_message("Evaluation process finished.")
         self.toggle_widget_state([self.paths_group], state=True, attribute="visible")

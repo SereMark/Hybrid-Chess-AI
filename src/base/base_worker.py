@@ -38,17 +38,19 @@ class BaseWorker(QObject):
         if not self._is_paused.is_set():
             return
         self._is_paused.clear()
-        self.log_update.emit("Worker paused by user.")
+        self.log_update.emit(f"{self.__class__.__name__} paused.")
         self.paused.emit(True)
 
     def resume(self):
         if self._is_paused.is_set():
             return
         self._is_paused.set()
-        self.log_update.emit("Worker resumed by user.")
+        self.log_update.emit(f"{self.__class__.__name__} resumed.")
         self.paused.emit(False)
 
     def stop(self):
         self._is_stopped.set()
         self._is_paused.set()
-        self.log_update.emit("Worker stopped by user.")
+        self.log_update.emit(f"{self.__class__.__name__} stopped.")
+        self.task_finished.emit()
+        self.paused.emit(False)

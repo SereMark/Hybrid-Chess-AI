@@ -280,13 +280,11 @@ class ReinforcementTab(BaseTab):
 
     def stop_self_play(self):
         self.stop_worker()
-        self.log_message("Stopping self-play...")
         self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
         self.toggle_widget_state([self.pause_button, self.resume_button, self.stop_button], state=False, attribute="enabled")
         self.toggle_widget_state([self.model_output_group, self.parameters_group, self.checkpoint_group], state=True, attribute="visible")
 
     def on_self_play_finished(self):
-        self.log_message("Self-play process has been completed.")
         self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
         self.toggle_widget_state([self.pause_button, self.resume_button, self.stop_button], state=False, attribute="enabled")
         self.progress_bar.setFormat("Self-Play Finished")

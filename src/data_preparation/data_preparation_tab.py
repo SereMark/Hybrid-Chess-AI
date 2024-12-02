@@ -126,7 +126,6 @@ class DataProcessingTab(BaseTab):
 
     def stop_data_preparation(self):
         self.stop_worker()
-        self.log_message("Stopping data preparation...")
         self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
         self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
         self.toggle_widget_state([self.parameters_group, self.directories_group], state=True, attribute="visible")
@@ -136,7 +135,6 @@ class DataProcessingTab(BaseTab):
         self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
         self.progress_bar.setFormat("Data Preparation Finished")
         self.remaining_time_label.setText("Time Left: N/A")
-        self.log_message("Data preparation process finished.")
         self.toggle_widget_state([self.parameters_group, self.directories_group], state=True, attribute="visible")
 
 class OpeningBookTab(BaseTab):
@@ -257,7 +255,6 @@ class OpeningBookTab(BaseTab):
 
     def stop_opening_book_generation(self):
         self.stop_worker()
-        self.log_message("Stopping opening book generation...")
         self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
         self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
         self.toggle_widget_state([self.opening_book_group], state=True, attribute="visible")
@@ -268,7 +265,6 @@ class OpeningBookTab(BaseTab):
         self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
         self.progress_bar.setFormat("Opening Book Generation Finished")
         self.remaining_time_label.setText("Time Left: N/A")
-        self.log_message("Opening book generation process finished.")
         self.toggle_widget_state([self.opening_book_group, self.opening_visualization_group], state=True, attribute="visible")
 
 class DataPreparationTab(QWidget):

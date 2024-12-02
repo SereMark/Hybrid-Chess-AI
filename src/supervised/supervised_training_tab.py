@@ -283,13 +283,11 @@ class SupervisedTab(BaseTab):
 
     def stop_training(self):
         self.stop_worker()
-        self.log_message("Stopping training...")
         self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
         self.toggle_widget_state([self.pause_button, self.resume_button, self.stop_button], state=False, attribute="enabled")
         self.toggle_widget_state([self.dataset_group, self.training_group, self.checkpoint_group], state=True, attribute="visible")
 
     def on_training_finished(self):
-        self.log_message("Training process has been completed.")
         self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
         self.toggle_widget_state([self.pause_button, self.resume_button, self.stop_button], state=False, attribute="enabled")
         self.progress_bar.setFormat("Training Finished")
