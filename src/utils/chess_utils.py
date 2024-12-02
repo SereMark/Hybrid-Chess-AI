@@ -93,3 +93,12 @@ def convert_board_to_tensor(board):
     planes[19, :, :] = 1.0 if board.turn == chess.WHITE else 0.0
 
     return planes
+
+def get_game_result(board):
+    result = board.result()
+    if result == '1-0':
+        return 1.0
+    elif result == '0-1':
+        return -1.0
+    else:
+        return 0.0

@@ -114,11 +114,6 @@ class SupervisedWorker(BaseWorker):
         self.scheduler = None
 
     def run_task(self):
-        self.train_model()
-        self.task_finished.emit()
-        self.finished.emit()
-
-    def train_model(self):
         self.log_update.emit("Starting training process...")
         device = self.device
         self.log_update.emit(f"Using device: {device}")
@@ -272,6 +267,9 @@ class SupervisedWorker(BaseWorker):
                 self.log_update.emit("Training stopped by user.")
         except Exception as e:
             self.log_update.emit(f"Error during training: {str(e)}")
+            
+        self.task_finished.emit()
+        self.finished.emit()
 
     def _train_epoch(self, train_loader, epoch, device, total_steps, scaler, accumulation_steps, skip_batches):
         total_policy_loss = 0.0

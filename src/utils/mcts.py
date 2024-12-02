@@ -1,4 +1,5 @@
 import math, chess, numpy as np, threading
+from src.utils.chess_utils import get_game_result
 
 class TreeNode:
     def __init__(self, parent, prior_p, board, move):
@@ -69,7 +70,7 @@ class MCTS:
         if not node.board.is_game_over():
             node.expand(action_probs)
         else:
-            leaf_value = self.get_game_result(node.board)
+            leaf_value = get_game_result(node.board)
         node.update_recursive(-leaf_value)
 
     def get_move_probs(self, temperature=1e-3):
@@ -132,13 +133,3 @@ class MCTS:
             if self.root:
                 recurse(self.root)
         return nodes, edges
-
-    @staticmethod
-    def get_game_result(board):
-        result = board.result()
-        if result == '1-0':
-            return 1.0
-        elif result == '0-1':
-            return -1.0
-        else:
-            return 0.0

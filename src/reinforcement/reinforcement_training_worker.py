@@ -5,7 +5,7 @@ from multiprocessing import Pool, cpu_count, Manager
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 from src.models.model import ChessModel
-from src.utils.chess_utils import get_total_moves, get_move_mapping, convert_board_to_tensor
+from src.utils.chess_utils import get_total_moves, get_move_mapping, convert_board_to_tensor, get_game_result
 from src.utils.common_utils import (
     initialize_random_seeds,
     format_time_left,
@@ -98,7 +98,7 @@ def play_and_collect_wrapper(args):
                 num_moves += 1
             move_count += 1
 
-        result = ReinforcementWorker.get_game_result_static(board)
+        result = get_game_result(board)
         if board.is_checkmate():
             last_player = not board.turn
             winners = [
@@ -241,24 +241,27 @@ class ReinforcementWorker(BaseWorker):
             log_fn=self.log_fn
         )
 
-    @staticmethod
-    @torch.no_grad()
-    def get_game_result_static(board):
-        result = board.result()
-        if result == "1-0":
-            return 1.0
-        elif result == "0-1":
-            return -1.0
-        else:
-            return 0.0
-
     def run_task(self):
-        self.train()
-        self.task_finished.emit()
-        self.finished.emit()
+        self.log_update.emit("Initializing model and optimizer...")
+        if os.path.exists(self.model_path):
+            checkpoint = load_checkpoint(
+                self.model_path, self.device, self.model, self.optimizer, self.scheduler, log_fn=self.log_fn
+            )
+            if checkpoint:
+                self.start_iteration = checkpoint.get("iteration", 0)
+                training_stats = checkpoint.get("training_stats", {})
+                self.total_games_played = training_stats.get("total_games_played", 0)
+                self.results = training_stats.get("results", [])
+                self.game_lengths = training_stats.get("game_lengths", [])
+                self.log_update.emit(f"Resuming from checkpoint at iteration {self.start_iteration}.")
+        else:
+            self.log_update.emit("No checkpoint found. Starting training from scratch.")
+            self.start_iteration = 0
+            self.current_epoch = 1
 
-    def train(self):
-        self._initialize()
+        self.start_time = time.time()
+        self.model_state_dict = {k: v.cpu() for k, v in self.model.state_dict().items()}
+    
         for iteration in range(self.start_iteration, self.num_iterations):
             if self._is_stopped.is_set():
                 break
@@ -289,28 +292,25 @@ class ReinforcementWorker(BaseWorker):
                 save_checkpoint(self.checkpoint_dir, checkpoint_data, log_fn=self.log_fn)
             iteration_time = time.time() - iteration_start_time
             self.log_update.emit(f"Iteration {iteration + 1} completed in {format_time_left(iteration_time)}")
-        self._save_final_model()
+            
+        final_model_dir = os.path.join("models", "saved_models")
+        final_model_path = os.path.join(final_model_dir, "final_model.pth")
+        os.makedirs(final_model_dir, exist_ok=True)
+        checkpoint = {
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler else None,
+            "training_stats": {
+                "total_games_played": self.total_games_played,
+                "results": self.results,
+                "game_lengths": self.game_lengths,
+            },
+        }
+        torch.save(checkpoint, final_model_path)
+        self.log_update.emit("Final model saved.")
 
-    def _initialize(self):
-        self.log_update.emit("Initializing model and optimizer...")
-        if os.path.exists(self.model_path):
-            checkpoint = load_checkpoint(
-                self.model_path, self.device, self.model, self.optimizer, self.scheduler, log_fn=self.log_fn
-            )
-            if checkpoint:
-                self.start_iteration = checkpoint.get("iteration", 0)
-                training_stats = checkpoint.get("training_stats", {})
-                self.total_games_played = training_stats.get("total_games_played", 0)
-                self.results = training_stats.get("results", [])
-                self.game_lengths = training_stats.get("game_lengths", [])
-                self.log_update.emit(f"Resuming from checkpoint at iteration {self.start_iteration}.")
-        else:
-            self.log_update.emit("No checkpoint found. Starting training from scratch.")
-            self.start_iteration = 0
-            self.current_epoch = 1
-
-        self.start_time = time.time()
-        self.model_state_dict = {k: v.cpu() for k, v in self.model.state_dict().items()}
+        self.task_finished.emit()
+        self.finished.emit()
 
     def _generate_self_play_data(self):
         num_processes = min(self.num_threads, cpu_count())
@@ -452,20 +452,3 @@ class ReinforcementWorker(BaseWorker):
                         },
                     }
                     save_checkpoint(self.checkpoint_dir, checkpoint_data, log_fn=self.log_fn)
-
-    def _save_final_model(self):
-        final_model_dir = os.path.join("models", "saved_models")
-        final_model_path = os.path.join(final_model_dir, "final_model.pth")
-        os.makedirs(final_model_dir, exist_ok=True)
-        checkpoint = {
-            "model_state_dict": self.model.state_dict(),
-            "optimizer_state_dict": self.optimizer.state_dict(),
-            "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler else None,
-            "training_stats": {
-                "total_games_played": self.total_games_played,
-                "results": self.results,
-                "game_lengths": self.game_lengths,
-            },
-        }
-        torch.save(checkpoint, final_model_path)
-        self.log_update.emit("Final model saved.")

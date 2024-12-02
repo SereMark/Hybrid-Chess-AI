@@ -30,7 +30,36 @@ class EvaluationWorker(BaseWorker):
         dataset = self._load_dataset()
         if dataset is None:
             return
-        self._evaluate(model, dataset)
+        loader = DataLoader(dataset, batch_size=1024, shuffle=False, num_workers=0, pin_memory=True)
+        all_predictions = []
+        all_actuals = []
+        topk_predictions = []
+        total_batches = len(loader)
+        steps_done = 0
+        total_steps = total_batches
+        start_time = time.time()
+        log_message("Starting evaluation...", self.log_update)
+        for batch_idx, (inputs, policy_targets, _) in enumerate(loader, 1):
+            if self._is_stopped.is_set():
+                log_message("Evaluation stopped by user.", self.log_update)
+                return
+            inputs = inputs.to(self.device, non_blocking=True)
+            policy_targets = policy_targets.to(self.device, non_blocking=True)
+            with torch.no_grad():
+                policy_outputs, _ = model(inputs)
+                _, preds = torch.max(policy_outputs, 1)
+                all_predictions.extend(preds.cpu().numpy())
+                all_actuals.extend(policy_targets.cpu().numpy())
+                _, topk_preds = torch.topk(policy_outputs, 5, dim=1)
+                topk_predictions.extend(topk_preds.cpu().numpy())
+            steps_done += 1
+            progress = int((steps_done / total_steps) * 100)
+            elapsed_time = time.time() - start_time
+            self._update_progress(progress)
+            self._update_time_left(elapsed_time, steps_done, total_steps)
+        del dataset
+        torch.cuda.empty_cache()
+        self._compute_metrics(all_predictions, all_actuals, topk_predictions)
         if self._is_stopped.is_set():
             self.log_update.emit("Evaluation stopped by user request.")
 
@@ -66,40 +95,6 @@ class EvaluationWorker(BaseWorker):
         except Exception as e:
             log_message(f"Failed to load dataset: {e}", self.log_update)
             return None
-
-    def _evaluate(self, model: ChessModel, dataset: H5Dataset):
-        loader = DataLoader(
-            dataset, batch_size=1024, shuffle=False, num_workers=0, pin_memory=True
-        )
-        all_predictions = []
-        all_actuals = []
-        topk_predictions = []
-        total_batches = len(loader)
-        steps_done = 0
-        total_steps = total_batches
-        start_time = time.time()
-        log_message("Starting evaluation...", self.log_update)
-        for batch_idx, (inputs, policy_targets, _) in enumerate(loader, 1):
-            if self._is_stopped.is_set():
-                log_message("Evaluation stopped by user.", self.log_update)
-                return
-            inputs = inputs.to(self.device, non_blocking=True)
-            policy_targets = policy_targets.to(self.device, non_blocking=True)
-            with torch.no_grad():
-                policy_outputs, _ = model(inputs)
-                _, preds = torch.max(policy_outputs, 1)
-                all_predictions.extend(preds.cpu().numpy())
-                all_actuals.extend(policy_targets.cpu().numpy())
-                _, topk_preds = torch.topk(policy_outputs, 5, dim=1)
-                topk_predictions.extend(topk_preds.cpu().numpy())
-            steps_done += 1
-            progress = int((steps_done / total_steps) * 100)
-            elapsed_time = time.time() - start_time
-            self._update_progress(progress)
-            self._update_time_left(elapsed_time, steps_done, total_steps)
-        del dataset
-        torch.cuda.empty_cache()
-        self._compute_metrics(all_predictions, all_actuals, topk_predictions)
 
     def _compute_metrics(self, all_predictions, all_actuals, topk_predictions):
         all_predictions = np.array(all_predictions)
