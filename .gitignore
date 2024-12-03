@@ -57,6 +57,9 @@ opening_book.json
 *.pth
 *.pt
 
+# ONNX model files
+*.onnx
+
 # Logs
 *.log
 

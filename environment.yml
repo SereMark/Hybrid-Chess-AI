@@ -12,3 +12,4 @@ dependencies:
   - pyqt
   - chess
   - h5py
+  - onnx
