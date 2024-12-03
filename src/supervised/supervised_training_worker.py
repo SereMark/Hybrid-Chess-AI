@@ -264,7 +264,14 @@ class SupervisedWorker(BaseWorker):
             if not self._is_stopped.is_set():
                 self.log_update.emit("Training completed successfully.")
                 try:
-                    torch.save(self.model.state_dict(), self.output_model_path)
+                    checkpoint = {
+                        "model_state_dict": self.model.state_dict(),
+                        "optimizer_state_dict": self.optimizer.state_dict(),
+                        "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler else None,
+                        "epoch": epoch,
+                        "batch_idx": self.total_batches_processed,
+                    }
+                    torch.save(checkpoint, self.output_model_path)
                     self.log_update.emit(f"Final model saved to {self.output_model_path}")
                 except Exception as e:
                     self.log_update.emit(f"Error saving final model: {str(e)}")
