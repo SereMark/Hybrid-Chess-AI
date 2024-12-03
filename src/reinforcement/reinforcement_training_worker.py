@@ -169,7 +169,7 @@ class ReinforcementWorker(BaseWorker):
         self.checkpoint_type = checkpoint_type
         self.checkpoint_interval_minutes = checkpoint_interval_minutes
         self.checkpoint_batch_interval = checkpoint_batch_interval
-        self.checkpoint_dir = os.path.join("models", "checkpoints", "self_play")
+        self.checkpoint_dir = os.path.join("models", "checkpoints", "reinforcement")
         self.random_seed = random_seed
         self.automatic_batch_size = automatic_batch_size
         self.batch_size = batch_size
