@@ -263,6 +263,11 @@ class SupervisedWorker(BaseWorker):
 
             if not self._is_stopped.is_set():
                 self.log_update.emit("Training completed successfully.")
+                try:
+                    torch.save(self.model.state_dict(), self.output_model_path)
+                    self.log_update.emit(f"Final model saved to {self.output_model_path}")
+                except Exception as e:
+                    self.log_update.emit(f"Error saving final model: {str(e)}")
             else:
                 self.log_update.emit("Training stopped by user.")
         except Exception as e:
