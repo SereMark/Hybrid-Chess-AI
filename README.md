@@ -34,8 +34,8 @@ The application is equipped with a **Graphical User Interface (GUI)** built usin
 
 ## **System Requirements**
 
-- **Python**: 3.12+
-- **Anaconda**: For managing dependencies
+- **Git**
+- **Anaconda**
 
 ---
 
