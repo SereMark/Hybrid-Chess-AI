@@ -11,10 +11,10 @@ from src.utils.common_utils import (
     initialize_model,
     initialize_optimizer,
     initialize_scheduler,
-    initialize_random_seeds,
-    CheckpointManager
+    initialize_random_seeds
 )
 from src.utils.chess_utils import get_total_moves
+from src.utils.checkpoint_manager import CheckpointManager
 
 class SupervisedWorker(BaseWorker):
     batch_loss_update = pyqtSignal(int, dict)

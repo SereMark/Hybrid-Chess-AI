@@ -12,10 +12,10 @@ from src.utils.common_utils import (
     wait_if_paused,
     initialize_model,
     initialize_optimizer,
-    initialize_scheduler,
-    CheckpointManager
+    initialize_scheduler
 )
 from src.utils.mcts import MCTS
+from src.utils.checkpoint_manager import CheckpointManager
 
 def play_and_collect_wrapper(args):
     model_state_dict, device_type, simulations, c_puct, temperature, games_per_process, stop_event, pause_event, seed, stats_queue, move_mapping, total_moves = args
