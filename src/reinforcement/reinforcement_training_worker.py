@@ -9,17 +9,13 @@ from src.utils.chess_utils import get_total_moves, get_move_mapping, convert_boa
 from src.utils.common_utils import (
     initialize_random_seeds,
     format_time_left,
-    log_message,
     wait_if_paused,
-    should_save_checkpoint,
-    save_checkpoint,
-    load_checkpoint,
     initialize_model,
     initialize_optimizer,
-    initialize_scheduler
+    initialize_scheduler,
+    CheckpointManager
 )
 from src.utils.mcts import MCTS
-
 
 def play_and_collect_wrapper(args):
     model_state_dict, device_type, simulations, c_puct, temperature, games_per_process, stop_event, pause_event, seed, stats_queue, move_mapping, total_moves = args
@@ -135,7 +131,6 @@ def play_and_collect_wrapper(args):
 
     return (inputs_list, policy_targets_list, value_targets_list, results_list, game_lengths_list)
 
-
 class ReinforcementWorker(BaseWorker):
     stats_update = pyqtSignal(dict)
 
@@ -217,15 +212,6 @@ class ReinforcementWorker(BaseWorker):
         if inferred_batch_size:
             self.batch_size = inferred_batch_size
 
-        if os.path.exists(self.model_path):
-            checkpoint = torch.load(self.model_path, map_location=self.device)
-            self.model.load_state_dict(checkpoint.get("model_state_dict", {}))
-            log_message("Model loaded successfully.", self.log_fn)
-        else:
-            log_message("Model file not found. Starting from scratch.", self.log_fn)
-        self.model.to(self.device)
-        self.model.eval()
-
         self.optimizer = initialize_optimizer(
             self.model,
             self.optimizer_type,
@@ -234,18 +220,21 @@ class ReinforcementWorker(BaseWorker):
             log_fn=self.log_fn
         )
 
-        self.scheduler = initialize_scheduler(
-            self.optimizer,
-            self.scheduler_type,
-            total_steps=None,
+        self.scheduler = None
+
+        self.checkpoint_manager = CheckpointManager(
+            checkpoint_dir=self.checkpoint_dir,
+            checkpoint_type=self.checkpoint_type,
+            checkpoint_interval=self.checkpoint_interval,
             log_fn=self.log_fn
         )
 
     def run_task(self):
         self.log_update.emit("Initializing model and optimizer...")
-        if os.path.exists(self.model_path):
-            checkpoint = load_checkpoint(
-                self.model_path, self.device, self.model, self.optimizer, self.scheduler, log_fn=self.log_fn
+
+        if self.checkpoint_path and os.path.exists(self.checkpoint_path):
+            checkpoint = self.checkpoint_manager.load(
+                self.checkpoint_path, self.device, self.model, self.optimizer, self.scheduler
             )
             if checkpoint:
                 self.start_iteration = checkpoint.get("iteration", 0)
@@ -254,14 +243,18 @@ class ReinforcementWorker(BaseWorker):
                 self.results = training_stats.get("results", [])
                 self.game_lengths = training_stats.get("game_lengths", [])
                 self.log_update.emit(f"Resuming from checkpoint at iteration {self.start_iteration}.")
+            else:
+                self.log_update.emit("No checkpoint found. Starting training from scratch.")
+                self.start_iteration = 0
+                self.current_epoch = 1
         else:
-            self.log_update.emit("No checkpoint found. Starting training from scratch.")
+            self.log_update.emit("No checkpoint path provided or checkpoint not found. Starting training from scratch.")
             self.start_iteration = 0
             self.current_epoch = 1
 
         self.start_time = time.time()
         self.model_state_dict = {k: v.cpu() for k, v in self.model.state_dict().items()}
-    
+
         for iteration in range(self.start_iteration, self.num_iterations):
             if self._is_stopped.is_set():
                 break
@@ -273,11 +266,7 @@ class ReinforcementWorker(BaseWorker):
             self.model.train()
             self._train_on_self_play_data(self_play_data, iteration)
             self.batch_idx = None
-            if should_save_checkpoint(
-                iteration=iteration + 1,
-                checkpoint_type=self.checkpoint_type,
-                checkpoint_interval=self.checkpoint_interval
-            ):
+            if self.save_checkpoints and self.checkpoint_manager.should_save(iteration=iteration + 1):
                 checkpoint_data = {
                     "model_state_dict": {k: v.cpu() for k, v in self.model.state_dict().items()},
                     "optimizer_state_dict": self.optimizer.state_dict(),
@@ -289,10 +278,11 @@ class ReinforcementWorker(BaseWorker):
                         "game_lengths": self.game_lengths,
                     },
                 }
-                save_checkpoint(self.checkpoint_dir, checkpoint_data, log_fn=self.log_fn)
+                self.checkpoint_manager.save(checkpoint_data)
+
             iteration_time = time.time() - iteration_start_time
             self.log_update.emit(f"Iteration {iteration + 1} completed in {format_time_left(iteration_time)}")
-            
+
         final_model_dir = os.path.join("models", "saved_models")
         final_model_path = os.path.join(final_model_dir, "final_model.pth")
         os.makedirs(final_model_dir, exist_ok=True)
@@ -391,8 +381,20 @@ class ReinforcementWorker(BaseWorker):
             batch_size=self.batch_size,
             shuffle=True,
             pin_memory=(self.device.type == "cuda"),
-            num_workers=min(os.cpu_count(), 8)
+            num_workers=min(os.cpu_count(), 8),
         )
+        total_steps = self.num_epochs * len(loader)
+        try:
+            self.scheduler = initialize_scheduler(
+                self.optimizer,
+                self.scheduler_type,
+                total_steps=total_steps,
+                log_fn=self.log_fn
+            )
+        except ValueError as ve:
+            self.log_update.emit(str(ve))
+            self.scheduler = None
+
         start_epoch = self.current_epoch
         for epoch in range(start_epoch, self.num_epochs + 1):
             if self._is_stopped.is_set():
@@ -427,23 +429,24 @@ class ReinforcementWorker(BaseWorker):
                 self.scaler.scale(loss).backward()
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
+                self.optimizer.zero_grad()
                 total_loss += loss.item()
                 del batch_inputs, batch_policy_targets, batch_value_targets
                 torch.cuda.empty_cache()
                 self.batch_idx = batch_idx
 
-                if should_save_checkpoint(
-                    iteration=iteration + 1,
-                    batch_idx=self.total_batches_processed + 1,
-                    checkpoint_type=self.checkpoint_type,
-                    checkpoint_interval=self.checkpoint_interval
-                ):
+                if self.scheduler:
+                    self.scheduler.step(epoch - 1 + batch_idx / len(loader))
+
+                self.total_batches_processed += 1
+
+                if self.save_checkpoints and self.checkpoint_manager.should_save(iteration=iteration + 1, batch_idx=self.total_batches_processed):
                     checkpoint_data = {
                         "model_state_dict": {k: v.cpu() for k, v in self.model.state_dict().items()},
                         "optimizer_state_dict": self.optimizer.state_dict(),
                         "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler else None,
                         "epoch": epoch,
-                        "batch_idx": self.total_batches_processed + 1,
+                        "batch_idx": self.total_batches_processed,
                         "iteration": iteration + 1,
                         "training_stats": {
                             "total_games_played": self.total_games_played,
@@ -451,4 +454,7 @@ class ReinforcementWorker(BaseWorker):
                             "game_lengths": self.game_lengths,
                         },
                     }
-                    save_checkpoint(self.checkpoint_dir, checkpoint_data, log_fn=self.log_fn)
+                    self.checkpoint_manager.save(checkpoint_data)
+
+            avg_loss = total_loss / len(loader)
+            self.log_update.emit(f"Epoch {epoch}/{self.num_epochs} completed. Average Loss: {avg_loss:.4f}")

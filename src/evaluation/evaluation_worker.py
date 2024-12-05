@@ -7,7 +7,7 @@ from typing import Optional
 from src.utils.chess_utils import get_total_moves, get_move_mapping
 from src.models.model import ChessModel
 from src.utils.datasets import H5Dataset
-from src.utils.common_utils import format_time_left, log_message, initialize_random_seeds
+from src.utils.common_utils import format_time_left, initialize_random_seeds
 
 class EvaluationWorker(BaseWorker):
     metrics_update = pyqtSignal(float, float, dict, dict, np.ndarray, list)
@@ -38,10 +38,10 @@ class EvaluationWorker(BaseWorker):
         steps_done = 0
         total_steps = total_batches
         start_time = time.time()
-        log_message("Starting evaluation...", self.log_update)
+        self.log_update.emit("Starting evaluation...")
         for batch_idx, (inputs, policy_targets, _) in enumerate(loader, 1):
             if self._is_stopped.is_set():
-                log_message("Evaluation stopped by user.", self.log_update)
+                self.log_update.emit("Evaluation stopped by user.")
                 return
             inputs = inputs.to(self.device, non_blocking=True)
             policy_targets = policy_targets.to(self.device, non_blocking=True)
@@ -74,26 +74,26 @@ class EvaluationWorker(BaseWorker):
                 model.load_state_dict(checkpoint)
             model.to(self.device)
             model.eval()
-            log_message(f"Model loaded from {self.model_path}", self.log_update)
+            self.log_update.emit(f"Model loaded from {self.model_path}")
             return model
         except Exception as e:
-            log_message(f"Failed to load model: {e}", self.log_update)
+            self.log_update.emit(f"Failed to load model: {e}")
             return None
 
     def _load_dataset(self) -> Optional[H5Dataset]:
         if not os.path.exists(self.h5_file_path):
-            log_message(f"Dataset file not found at {self.h5_file_path}.", self.log_update)
+            self.log_update.emit(f"Dataset file not found at {self.h5_file_path}.")
             return None
         if not os.path.exists(self.dataset_indices_path):
-            log_message(f"Dataset indices file not found at {self.dataset_indices_path}.", self.log_update)
+            self.log_update.emit(f"Dataset indices file not found at {self.dataset_indices_path}.")
             return None
         try:
             dataset_indices = np.load(self.dataset_indices_path)
             dataset = H5Dataset(self.h5_file_path, dataset_indices)
-            log_message(f"Loaded dataset indices from {self.dataset_indices_path}", self.log_update)
+            self.log_update.emit(f"Loaded dataset indices from {self.dataset_indices_path}")
             return dataset
         except Exception as e:
-            log_message(f"Failed to load dataset: {e}", self.log_update)
+            self.log_update.emit(f"Failed to load dataset: {e}")
             return None
 
     def _compute_metrics(self, all_predictions, all_actuals, topk_predictions):
@@ -101,10 +101,10 @@ class EvaluationWorker(BaseWorker):
         all_actuals = np.array(all_actuals)
         topk_predictions = np.array(topk_predictions)
         accuracy = np.mean(all_predictions == all_actuals)
-        log_message(f"Accuracy: {accuracy * 100:.2f}%", self.log_update)
+        self.log_update.emit(f"Accuracy: {accuracy * 100:.2f}%")
         topk_correct = sum(1 for actual, preds in zip(all_actuals, topk_predictions) if actual in preds)
         topk_accuracy = topk_correct / len(all_actuals)
-        log_message(f"Top-5 Accuracy: {topk_accuracy * 100:.2f}%", self.log_update)
+        self.log_update.emit(f"Top-5 Accuracy: {topk_accuracy * 100:.2f}%")
         N = 10
         class_counts = Counter(all_actuals)
         most_common_classes = [item[0] for item in class_counts.most_common(N)]
@@ -112,7 +112,7 @@ class EvaluationWorker(BaseWorker):
         filtered_actuals = all_actuals[indices]
         filtered_predictions = all_predictions[indices]
         confusion = self._compute_confusion_matrix(filtered_actuals, filtered_predictions, most_common_classes)
-        log_message("Confusion Matrix computed.", self.log_update)
+        self.log_update.emit("Confusion Matrix computed.")
         report = self._compute_classification_report(filtered_actuals, filtered_predictions, most_common_classes)
         macro_avg = report.get('macro avg', {})
         weighted_avg = report.get('weighted avg', {})
@@ -123,13 +123,13 @@ class EvaluationWorker(BaseWorker):
                 class_labels.append(move.uci())
             else:
                 class_labels.append(f"Unknown({cls})")
-        log_message(
+        self.log_update.emit(
             f"Macro Avg - Precision: {macro_avg.get('precision', 0.0):.4f}, "
             f"Recall: {macro_avg.get('recall', 0.0):.4f}, "
             f"F1-Score: {macro_avg.get('f1-score', 0.0):.4f}",
             self.log_update
         )
-        log_message(
+        self.log_update.emit(
             f"Weighted Avg - Precision: {weighted_avg.get('precision', 0.0):.4f}, "
             f"Recall: {weighted_avg.get('recall', 0.0):.4f}, "
             f"F1-Score: {weighted_avg.get('f1-score', 0.0):.4f}",
@@ -144,7 +144,7 @@ class EvaluationWorker(BaseWorker):
                 confusion,
                 class_labels
             )
-        log_message("Evaluation process finished.", self.log_update)
+        self.log_update.emit("Evaluation process finished.")
 
     def _compute_confusion_matrix(self, actuals, predictions, labels):
         label_to_index = {label: idx for idx, label in enumerate(labels)}

@@ -7,15 +7,12 @@ from src.models.model import ChessModel
 from src.utils.datasets import H5Dataset
 from src.utils.common_utils import (
     format_time_left,
-    log_message,
     wait_if_paused,
-    should_save_checkpoint,
-    save_checkpoint,
-    load_checkpoint,
     initialize_model,
     initialize_optimizer,
     initialize_scheduler,
-    initialize_random_seeds
+    initialize_random_seeds,
+    CheckpointManager
 )
 from src.utils.chess_utils import get_total_moves
 
@@ -83,7 +80,6 @@ class SupervisedWorker(BaseWorker):
         self.batch_accuracy_fn = self.batch_accuracy_update.emit
         self.lr_fn = self.lr_update.emit
         self.initial_batches_processed_callback = self.initial_batches_processed.emit
-
         self.log_fn = self.log_update.emit
 
         self.lock = threading.Lock()
@@ -95,14 +91,6 @@ class SupervisedWorker(BaseWorker):
         if inferred_batch_size:
             self.batch_size = inferred_batch_size
 
-        if self.checkpoint_path and os.path.exists(self.checkpoint_path):
-            checkpoint = torch.load(self.checkpoint_path, map_location=self.device)
-            self.model.load_state_dict(checkpoint.get('model_state_dict', {}))
-            log_message("Model loaded successfully.", self.log_fn)
-        else:
-            log_message("Model checkpoint not found. Starting from scratch.", self.log_fn)
-        self.model.to(self.device)
-
         self.optimizer = initialize_optimizer(
             self.model,
             self.optimizer_type,
@@ -112,6 +100,13 @@ class SupervisedWorker(BaseWorker):
         )
 
         self.scheduler = None
+
+        self.checkpoint_manager = CheckpointManager(
+            checkpoint_dir=self.checkpoint_dir,
+            checkpoint_type=self.checkpoint_type,
+            checkpoint_interval=self.checkpoint_interval,
+            log_fn=self.log_fn
+        )
 
     def run_task(self):
         self.log_update.emit("Starting training process...")
@@ -151,8 +146,8 @@ class SupervisedWorker(BaseWorker):
                 pin_memory=True,
             )
 
+            total_steps = self.epochs * len(train_loader)
             try:
-                total_steps = self.epochs * len(train_loader)
                 self.scheduler = initialize_scheduler(
                     self.optimizer,
                     self.scheduler_type,
@@ -166,8 +161,8 @@ class SupervisedWorker(BaseWorker):
             start_epoch = 1
             skip_batches = 0
             if self.checkpoint_path and os.path.exists(self.checkpoint_path):
-                checkpoint = load_checkpoint(
-                    self.checkpoint_path, self.device, self.model, self.optimizer, self.scheduler, log_fn=self.log_fn
+                checkpoint = self.checkpoint_manager.load(
+                    self.checkpoint_path, self.device, self.model, self.optimizer, self.scheduler
                 )
                 if checkpoint:
                     if 'epoch' in checkpoint:
@@ -176,13 +171,11 @@ class SupervisedWorker(BaseWorker):
                         self.log_update.emit(f"Resumed training from epoch {start_epoch - 1}, batch {skip_batches}")
                     else:
                         self.log_update.emit("No epoch information found in checkpoint. Starting from epoch 1.")
+            else:
+                self.log_update.emit("No checkpoint found. Starting training from scratch.")
 
-            remaining_epochs = self.epochs - (start_epoch - 1)
             if self.initial_batches_processed_callback:
                 self.initial_batches_processed_callback(self.total_batches_processed)
-            best_val_loss = float('inf')
-            early_stopping_patience = 5
-            no_improvement_epochs = 0
 
             scaler = GradScaler(device='cuda') if self.device.type == 'cuda' else GradScaler()
             desired_effective_batch_size = 256
@@ -218,33 +211,7 @@ class SupervisedWorker(BaseWorker):
                     f"Validation Accuracy: {val_metrics['accuracy']*100:.2f}%"
                 )
 
-                if total_val_loss < best_val_loss:
-                    best_val_loss = total_val_loss
-                    no_improvement_epochs = 0
-                    best_model_checkpoint = {
-                        'model_state_dict': self.model.state_dict(),
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
-                        'epoch': epoch,
-                        'batch_idx': self.total_batches_processed,
-                    }
-                    save_checkpoint(self.checkpoint_dir, best_model_checkpoint, log_fn=self.log_fn)
-                    self.log_update.emit(
-                        f"Best model updated at epoch {epoch} - "
-                        f"Validation Loss: {total_val_loss:.4f}, "
-                        f"Training Loss: {total_train_loss:.4f}"
-                    )
-                else:
-                    no_improvement_epochs += 1
-                    if no_improvement_epochs >= early_stopping_patience:
-                        self.log_update.emit("Early stopping triggered.")
-                        break
-
-                if should_save_checkpoint(
-                    epoch=epoch,
-                    checkpoint_type=self.checkpoint_type,
-                    checkpoint_interval=self.checkpoint_interval
-                ):
+                if self.save_checkpoints and self.checkpoint_type == 'epoch' and self.checkpoint_manager.should_save(epoch=epoch):
                     checkpoint_data = {
                         'model_state_dict': self.model.state_dict(),
                         'optimizer_state_dict': self.optimizer.state_dict(),
@@ -254,7 +221,7 @@ class SupervisedWorker(BaseWorker):
                         'iteration': None,
                         'training_stats': {},
                     }
-                    save_checkpoint(self.checkpoint_dir, checkpoint_data, log_fn=self.log_fn)
+                    self.checkpoint_manager.save(checkpoint_data)
 
                 if isinstance(self.scheduler, optim.lr_scheduler.StepLR):
                     self.scheduler.step()
@@ -279,7 +246,7 @@ class SupervisedWorker(BaseWorker):
                 self.log_update.emit("Training stopped by user.")
         except Exception as e:
             self.log_update.emit(f"Error during training: {str(e)}")
-            
+
         self.task_finished.emit()
         self.finished.emit()
 
@@ -321,10 +288,8 @@ class SupervisedWorker(BaseWorker):
                     scaler.step(self.optimizer)
                     scaler.update()
                     self.optimizer.zero_grad()
-                if isinstance(self.scheduler, optim.lr_scheduler.CosineAnnealingWarmRestarts) or isinstance(self.scheduler, optim.lr_scheduler.OneCycleLR):
+                if isinstance(self.scheduler, (optim.lr_scheduler.CosineAnnealingWarmRestarts, optim.lr_scheduler.OneCycleLR)):
                     self.scheduler.step(epoch - 1 + batch_idx / len(train_loader))
-                elif isinstance(self.scheduler, optim.lr_scheduler.StepLR):
-                    pass
 
                 total_policy_loss += policy_loss.item() * inputs.size(0)
                 total_value_loss += value_loss.item() * inputs.size(0)
@@ -359,12 +324,7 @@ class SupervisedWorker(BaseWorker):
                     else:
                         self.time_left_update.emit("Calculating...")
 
-                if should_save_checkpoint(
-                    epoch=epoch,
-                    batch_idx=self.total_batches_processed,
-                    checkpoint_type=self.checkpoint_type,
-                    checkpoint_interval=self.checkpoint_interval
-                ):
+                if self.save_checkpoints and self.checkpoint_type in ['batch', 'iteration'] and self.checkpoint_manager.should_save(batch_idx=self.total_batches_processed):
                     checkpoint_data = {
                         'model_state_dict': self.model.state_dict(),
                         'optimizer_state_dict': self.optimizer.state_dict(),
@@ -374,7 +334,7 @@ class SupervisedWorker(BaseWorker):
                         'iteration': None,
                         'training_stats': {},
                     }
-                    save_checkpoint(self.checkpoint_dir, checkpoint_data, log_fn=self.log_fn)
+                    self.checkpoint_manager.save(checkpoint_data)
 
                 del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
                 torch.cuda.empty_cache()

@@ -1,14 +1,13 @@
-import numpy as np, time
 from src.base.base_visualization import BasePlot, BaseVisualizationWidget
+import numpy as np, time
 
 
 class DataPreparationVisualization(BaseVisualizationWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.reset_visualizations()
+        self.reset_visualization()
 
     def init_visualization(self):
-        self.figure.clear()
         gs = self.figure.add_gridspec(2, 2, hspace=0.4, wspace=0.3)
         self.ax_game_results = self.figure.add_subplot(gs[0, 0])
         self.ax_games_processed = self.figure.add_subplot(gs[0, 1])
@@ -41,9 +40,7 @@ class DataPreparationVisualization(BaseVisualizationWidget):
         self.update_visualization()
 
     def update_game_results_plot(self):
-        ax = self.plots['game_results'].ax
-        ax.clear()
-        self.plots['game_results'].apply_settings()
+        self.clear_axis('game_results')
         results = [self.game_results.get(val, 0) for val in [1.0, -1.0, 0.0]]
         total = sum(results)
         if total > 0:
@@ -51,51 +48,45 @@ class DataPreparationVisualization(BaseVisualizationWidget):
             labels = ['White Wins', 'Black Wins', 'Draws']
             colors = ['#4CAF50', '#F44336', '#FFC107']
             explode = (0.05, 0.05, 0.05)
-            ax.pie(percentages, labels=labels, autopct='%1.1f%%', startangle=140,
-                   colors=colors, explode=explode, shadow=True)
-            ax.axis('equal')
+            self.ax_game_results.pie(percentages, labels=labels, autopct='%1.1f%%', startangle=140,
+                                     colors=colors, explode=explode, shadow=True)
+            self.ax_game_results.axis('equal')
         else:
-            ax.text(0.5, 0.5, 'No Data Yet', ha='center', va='center', fontsize=12)
+            self.add_text_to_axis('game_results', 'No Data Yet')
 
     def update_games_processed_plot(self):
-        ax = self.plots['games_processed'].ax
-        ax.clear()
-        self.plots['games_processed'].apply_settings()
+        self.clear_axis('games_processed')
         if self.total_games_processed and self.processing_times:
-            ax.plot(self.processing_times, self.total_games_processed,
-                    marker='o', color='#2196F3')
-            ax.relim()
-            ax.autoscale_view()
+            self.ax_games_processed.plot(self.processing_times, self.total_games_processed,
+                                         marker='o', color='#2196F3')
+            self.ax_games_processed.relim()
+            self.ax_games_processed.autoscale_view()
         else:
-            ax.text(0.5, 0.5, 'No Data Yet', ha='center', va='center', fontsize=12)
+            self.add_text_to_axis('games_processed', 'No Data Yet')
 
     def update_game_lengths_plot(self):
-        ax = self.plots['game_lengths'].ax
-        ax.clear()
-        self.plots['game_lengths'].apply_settings()
+        self.clear_axis('game_lengths')
         if self.game_length_histogram is not None and np.sum(self.game_length_histogram) > 0:
-            ax.bar(self.game_length_bins[:-1], self.game_length_histogram,
-                   width=np.diff(self.game_length_bins), align='edge',
-                   color='#9C27B0', edgecolor='black', alpha=0.7)
-            ax.relim()
-            ax.autoscale_view()
+            self.ax_game_lengths.bar(self.game_length_bins[:-1], self.game_length_histogram,
+                                     width=np.diff(self.game_length_bins), align='edge',
+                                     color='#9C27B0', edgecolor='black', alpha=0.7)
+            self.ax_game_lengths.relim()
+            self.ax_game_lengths.autoscale_view()
         else:
-            ax.text(0.5, 0.5, 'No Data Yet', ha='center', va='center', fontsize=12)
+            self.add_text_to_axis('game_lengths', 'No Data Yet')
 
     def update_player_ratings_plot(self):
-        ax = self.plots['player_ratings'].ax
-        ax.clear()
-        self.plots['player_ratings'].apply_settings()
+        self.clear_axis('player_ratings')
         if self.player_rating_histogram is not None and np.sum(self.player_rating_histogram) > 0:
-            ax.bar(self.player_rating_bins[:-1], self.player_rating_histogram,
-                   width=np.diff(self.player_rating_bins), align='edge',
-                   color='#FF5722', edgecolor='black', alpha=0.7)
-            ax.relim()
-            ax.autoscale_view()
+            self.ax_player_ratings.bar(self.player_rating_bins[:-1], self.player_rating_histogram,
+                                       width=np.diff(self.player_rating_bins), align='edge',
+                                       color='#FF5722', edgecolor='black', alpha=0.7)
+            self.ax_player_ratings.relim()
+            self.ax_player_ratings.autoscale_view()
         else:
-            ax.text(0.5, 0.5, 'No Data Yet', ha='center', va='center', fontsize=12)
+            self.add_text_to_axis('player_ratings', 'No Data Yet')
 
-    def reset_visualizations(self):
+    def reset_visualization(self):
         self.game_results = {1.0: 0, -1.0: 0, 0.0: 0}
         self.total_games_processed = []
         self.processing_times = []
@@ -104,4 +95,4 @@ class DataPreparationVisualization(BaseVisualizationWidget):
         self.player_rating_bins = np.arange(1000, 3000, 50)
         self.player_rating_histogram = np.zeros(len(self.player_rating_bins) - 1, dtype=int)
         self.start_time = None
-        self.reset_visualization()
+        super().reset_visualization()

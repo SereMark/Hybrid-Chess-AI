@@ -1,10 +1,8 @@
 from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QLabel, QCheckBox, QComboBox, QMessageBox, QHBoxLayout
-from PyQt5.QtCore import Qt
 from src.supervised.supervised_training_worker import SupervisedWorker
 from src.supervised.supervised_training_visualization import SupervisedVisualization
 from src.base.base_tab import BaseTab
 import os
-
 
 class SupervisedTab(BaseTab):
     def __init__(self, parent=None):
@@ -40,10 +38,15 @@ class SupervisedTab(BaseTab):
         main_layout.addWidget(self.log_text_edit)
         main_layout.addWidget(self.visualization_group)
 
-        self.toggle_batch_size_input(self.automatic_batch_size_checkbox.isChecked())
-        self.on_checkpoint_enabled_changed(self.save_checkpoints_checkbox.isChecked())
-        self.toggle_widget_state([self.log_text_edit], state=False, attribute="visible")
-        self.toggle_widget_state([self.visualization_group], state=False, attribute="visible")
+        self.setup_batch_size_control(self.automatic_batch_size_checkbox, self.batch_size_input)
+        interval_widgets = {
+            'epoch': self.epoch_interval_widget,
+            'time': self.time_interval_widget,
+            'batch': self.batch_interval_widget,
+        }
+        self.setup_checkpoint_controls(self.save_checkpoints_checkbox, self.checkpoint_type_combo, interval_widgets)
+
+        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
 
     def create_dataset_group(self):
         dataset_group = QGroupBox("Dataset Settings")
@@ -84,7 +87,6 @@ class SupervisedTab(BaseTab):
 
         self.automatic_batch_size_checkbox = QCheckBox("Automatic Batch Size")
         self.automatic_batch_size_checkbox.setChecked(True)
-        self.automatic_batch_size_checkbox.toggled.connect(self.toggle_batch_size_input)
 
         self.output_model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
         output_model_browse_button = QPushButton("Browse")
@@ -109,11 +111,9 @@ class SupervisedTab(BaseTab):
 
         self.save_checkpoints_checkbox = QCheckBox("Enable Checkpoints")
         self.save_checkpoints_checkbox.setChecked(True)
-        self.save_checkpoints_checkbox.stateChanged.connect(self.on_checkpoint_enabled_changed)
 
         self.checkpoint_type_combo = QComboBox()
         self.checkpoint_type_combo.addItems(['Epoch', 'Time', 'Batch'])
-        self.checkpoint_type_combo.currentTextChanged.connect(self.on_checkpoint_type_changed)
 
         checkpoint_type_layout = QHBoxLayout()
         checkpoint_type_layout.addWidget(QLabel("Save checkpoint by:"))
@@ -128,8 +128,6 @@ class SupervisedTab(BaseTab):
         self.time_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_minutes_input, "minutes")
         self.batch_interval_widget = self.create_interval_widget("Every", self.checkpoint_batch_interval_input, "batches")
 
-        self.on_checkpoint_type_changed(self.checkpoint_type_combo.currentText())
-
         self.checkpoint_path_input = QLineEdit("")
         checkpoint_browse_button = QPushButton("Browse")
         checkpoint_browse_button.clicked.connect(lambda: self.browse_file(self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"))
@@ -143,23 +141,6 @@ class SupervisedTab(BaseTab):
 
         checkpoint_group.setLayout(checkpoint_layout)
         return checkpoint_group
-
-    def toggle_batch_size_input(self, checked):
-        if hasattr(self, 'batch_size_input'):
-            self.toggle_widget_state([self.batch_size_input], state=not checked, attribute="enabled")
-
-    def on_checkpoint_enabled_changed(self, state):
-        is_enabled = state == Qt.Checked
-        self.toggle_widget_state([self.checkpoint_type_combo, self.checkpoint_path_input], state=is_enabled, attribute="enabled")
-        self.on_checkpoint_type_changed(self.checkpoint_type_combo.currentText())
-
-    def on_checkpoint_type_changed(self, text):
-        text = text.lower()
-        self.toggle_widget_state([self.epoch_interval_widget], state=(text == 'epoch'), attribute="visible")
-        self.toggle_widget_state([self.time_interval_widget], state=(text == 'time'), attribute="visible")
-        self.toggle_widget_state([self.batch_interval_widget], state=(text == 'batch'), attribute="visible")
-        is_enabled = self.save_checkpoints_checkbox.isChecked()
-        self.toggle_widget_state([self.epoch_interval_widget, self.time_interval_widget, self.batch_interval_widget], state=is_enabled, attribute="enabled")
 
     def start_training(self):
         try:

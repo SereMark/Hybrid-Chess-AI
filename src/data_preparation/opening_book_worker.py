@@ -2,7 +2,7 @@ from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 import chess.pgn
 from collections import defaultdict
-from src.utils.common_utils import wait_if_paused, log_message, format_time_left
+from src.utils.common_utils import wait_if_paused, format_time_left
 import time, os, json
 
 class OpeningBookWorker(BaseWorker):
@@ -28,12 +28,12 @@ class OpeningBookWorker(BaseWorker):
             with open(self.pgn_file_path, 'r', encoding='utf-8', errors='ignore') as pgn_file:
                 while True:
                     if self._is_stopped.is_set():
-                        log_message("Stopping opening book generation due to stop event.", self.log_update)
+                        self.log_update.emit("Stopping opening book generation due to stop event.")
                         break
                     wait_if_paused(self._is_paused)
                     
                     if self.game_counter >= self.max_games:
-                        log_message("Reached maximum number of games.", self.log_update)
+                        self.log_update.emit("Reached maximum number of games.")
                         break
                     
                     game = chess.pgn.read_game(pgn_file)
@@ -45,16 +45,16 @@ class OpeningBookWorker(BaseWorker):
                     
                     if self.game_counter % 1000 == 0:
                         self._update_progress_and_time_left(total_estimated_games)
-                        log_message(f"Processed {self.game_counter} games so far...", self.log_update)
+                        self.log_update.emit(f"Processed {self.game_counter} games so far...")
         
             self._update_progress_and_time_left(total_estimated_games)
-            log_message(f"Processed {self.game_counter} games in total.", self.log_update)
+            self.log_update.emit(f"Processed {self.game_counter} games in total.")
         
             if self.positions_update:
                 self.positions_update.emit({'positions': dict(self.positions)})
         
         except Exception as e:
-            log_message(f"Error during opening book generation: {str(e)}", self.log_update)
+            self.log_update.emit(f"Error during opening book generation: {str(e)}")
         
         self.save_opening_book()
 
@@ -63,14 +63,14 @@ class OpeningBookWorker(BaseWorker):
         black_elo = game.headers.get('BlackElo')
         
         if white_elo is None or black_elo is None:
-            log_message("Skipped a game: Missing WhiteElo or BlackElo.", self.log_update)
+            self.log_update.emit("Skipped a game: Missing WhiteElo or BlackElo.")
             return
         
         try:
             white_elo = int(white_elo)
             black_elo = int(black_elo)
         except ValueError:
-            log_message("Skipped a game: Non-integer ELO value.", self.log_update)
+            self.log_update.emit("Skipped a game: Non-integer ELO value.")
             return
         
         if white_elo < self.min_elo or black_elo < self.min_elo:
@@ -80,7 +80,7 @@ class OpeningBookWorker(BaseWorker):
         outcome = self._determine_outcome(result)
         
         if outcome is None:
-            log_message("Skipped a game: Unrecognized result format.", self.log_update)
+            self.log_update.emit("Skipped a game: Unrecognized result format.")
             return
         
         eco_code = game.headers.get('ECO', '')
@@ -90,7 +90,7 @@ class OpeningBookWorker(BaseWorker):
         
         for move in game.mainline_moves():
             if self._is_stopped.is_set():
-                log_message("Stopping processing of current game due to stop event.", self.log_update)
+                self.log_update.emit("Stopping processing of current game due to stop event.")
                 break
             wait_if_paused(self._is_paused)
             
@@ -128,7 +128,7 @@ class OpeningBookWorker(BaseWorker):
             estimated_total_games = min(file_size // avg_game_size, self.max_games)
             return estimated_total_games
         except Exception as e:
-            log_message(f"Error estimating total games: {str(e)}", self.log_update)
+            self.log_update.emit(f"Error estimating total games: {str(e)}")
             return self.max_games
 
     def _update_progress_and_time_left(self, total_estimated_games):
@@ -159,6 +159,6 @@ class OpeningBookWorker(BaseWorker):
             with open(opening_book_file, 'w') as f:
                 json.dump(positions, f, indent=4)
             
-            log_message(f"Opening book saved to {opening_book_file}", self.log_update)
+            self.log_update.emit(f"Opening book saved to {opening_book_file}")
         except Exception as e:
-            log_message(f"Error saving opening book: {str(e)}", self.log_update)
+            self.log_update.emit(f"Error saving opening book: {str(e)}")

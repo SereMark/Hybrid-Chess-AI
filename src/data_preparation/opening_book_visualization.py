@@ -5,26 +5,21 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor, QStandardItemModel, QStandardItem, QIcon
+from PyQt5.QtSvg import QSvgWidget
 from chess import Board, InvalidMoveError
 import chess.svg
-from PyQt5.QtSvg import QSvgWidget
+
 
 class OpeningBookVisualization(QWidget):
-    __slots__ = (
-        'opening_name_filter', 'win_percentage_slider', 'win_percentage_label',
-        'sorting_combobox', 'win_checkbox', 'draw_checkbox', 'loss_checkbox',
-        'tree_model', 'tree_view', 'board_widget', 'prev_move_action',
-        'next_move_action', 'reset_board_action', 'root_board', 'positions',
-        'current_board', 'move_stack'
-    )
-
     def __init__(self, parent=None):
         super().__init__(parent)
         main_layout = QVBoxLayout(self)
         control_layout = QHBoxLayout()
+
         self.opening_name_filter = QLineEdit()
         self.opening_name_filter.setPlaceholderText("Filter by Opening Name")
         self.opening_name_filter.textChanged.connect(self.apply_filters)
+
         self.win_percentage_slider = QSlider(Qt.Horizontal)
         self.win_percentage_slider.setMinimum(0)
         self.win_percentage_slider.setMaximum(100)
@@ -32,22 +27,28 @@ class OpeningBookVisualization(QWidget):
         self.win_percentage_slider.setTickInterval(10)
         self.win_percentage_slider.setTickPosition(QSlider.TicksBelow)
         self.win_percentage_slider.valueChanged.connect(self.on_win_percentage_slider_changed)
+
         self.win_percentage_label = QLabel("Min Win %: 0%")
+
         self.sorting_combobox = QComboBox()
         self.sorting_combobox.addItem("Sort by Move Order")
         self.sorting_combobox.addItem("Sort by Win %")
         self.sorting_combobox.addItem("Sort by Total Games")
         self.sorting_combobox.addItem("Sort by Move Popularity")
         self.sorting_combobox.currentIndexChanged.connect(self.apply_filters)
+
         self.win_checkbox = QCheckBox("Include Wins")
         self.win_checkbox.setChecked(True)
         self.win_checkbox.stateChanged.connect(self.apply_filters)
+
         self.draw_checkbox = QCheckBox("Include Draws")
         self.draw_checkbox.setChecked(True)
         self.draw_checkbox.stateChanged.connect(self.apply_filters)
+
         self.loss_checkbox = QCheckBox("Include Losses")
         self.loss_checkbox.setChecked(True)
         self.loss_checkbox.stateChanged.connect(self.apply_filters)
+
         control_layout.addWidget(QLabel("Opening Name:"))
         control_layout.addWidget(self.opening_name_filter)
         control_layout.addWidget(self.win_percentage_label)
@@ -57,7 +58,9 @@ class OpeningBookVisualization(QWidget):
         control_layout.addWidget(self.win_checkbox)
         control_layout.addWidget(self.draw_checkbox)
         control_layout.addWidget(self.loss_checkbox)
+
         splitter = QSplitter(Qt.Horizontal)
+
         self.tree_model = QStandardItemModel()
         self.tree_model.setHorizontalHeaderLabels([
             "Move", "Win %", "Draw %", "Loss %", "Total Games", "Opening Name"
@@ -73,10 +76,13 @@ class OpeningBookVisualization(QWidget):
         self.tree_view.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree_view.customContextMenuRequested.connect(self.on_tree_view_context_menu)
         self.tree_view.expanded.connect(self.on_item_expanded)
+
         splitter.addWidget(self.tree_view)
+
         board_layout = QVBoxLayout()
         self.board_widget = QSvgWidget()
         self.board_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
         nav_toolbar = QToolBar()
         self.prev_move_action = QAction(QIcon.fromTheme("go-previous"), "Previous Move", self)
         self.prev_move_action.triggered.connect(self.on_prev_move)
@@ -87,15 +93,21 @@ class OpeningBookVisualization(QWidget):
         nav_toolbar.addAction(self.prev_move_action)
         nav_toolbar.addAction(self.next_move_action)
         nav_toolbar.addAction(self.reset_board_action)
+
         board_layout.addWidget(nav_toolbar)
         board_layout.addWidget(self.board_widget)
+
         board_container = QWidget()
         board_container.setLayout(board_layout)
+
         splitter.addWidget(board_container)
         splitter.setSizes([400, 600])
+
         main_layout.addLayout(control_layout)
         main_layout.addWidget(splitter)
+
         self.setLayout(main_layout)
+
         self.root_board = Board()
         self.positions = {}
         self.current_board = Board()

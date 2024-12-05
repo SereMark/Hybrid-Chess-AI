@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton, QFileDialog, QSizePolicy, QLabel
+from PyQt5.QtWidgets import QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton, QFileDialog, QSizePolicy
 from PyQt5.QtCore import Qt, QThread
 
 
@@ -10,28 +10,26 @@ class BaseTab(QWidget):
         self.log_text_edit = None
         self.progress_bar = None
         self.remaining_time_label = None
+        self.save_checkpoints_checkbox = None
 
     def start_worker(self, worker_class, *args, **kwargs):
         if self.thread is not None and self.thread.isRunning():
             return False
 
-        try:
-            self.thread = QThread()
-            self.worker = worker_class(*args, **kwargs)
-            self.worker.moveToThread(self.thread)
-            self.thread.started.connect(self.worker.run)
-            self.worker.finished.connect(self.thread.quit)
-            self.worker.finished.connect(self.worker.deleteLater)
-            self.thread.finished.connect(self.thread.deleteLater)
-            self.thread.finished.connect(self.on_worker_finished)
-            self.worker.log_update.connect(self.log_text_edit.append)
-            self.worker.progress_update.connect(self.update_progress)
-            self.worker.time_left_update.connect(self.update_time_left)
-            self.worker.paused.connect(self.on_worker_paused)
-            self.thread.start()
-            return True
-        except Exception as e:
-            return False
+        self.thread = QThread()
+        self.worker = worker_class(*args, **kwargs)
+        self.worker.moveToThread(self.thread)
+        self.thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.thread.finished.connect(self.on_worker_finished)
+        self.worker.log_update.connect(self.log_text_edit.append)
+        self.worker.progress_update.connect(self.update_progress)
+        self.worker.time_left_update.connect(self.update_time_left)
+        self.worker.paused.connect(self.on_worker_paused)
+        self.thread.start()
+        return True
 
     def pause_worker(self):
         if self.worker:
@@ -141,20 +139,35 @@ class BaseTab(QWidget):
         if dir_path:
             input_field.setText(dir_path)
 
-    def toggle_batch_size_input(self, checked):
-        if hasattr(self, 'batch_size_input'):
-            self.batch_size_input.setEnabled(not checked)
-
     def toggle_widget_state(self, widgets, state=None, attribute="enabled"):
         if not isinstance(widgets, list):
             widgets = [widgets]
-        
         for widget in widgets:
             if attribute == "enabled":
-                current_state = widget.isEnabled()
-                widget.setEnabled(not current_state if state is None else state)
+                widget.setEnabled(not widget.isEnabled() if state is None else state)
             elif attribute == "visible":
-                current_state = widget.isVisible()
-                widget.setVisible(not current_state if state is None else state)
+                widget.setVisible(not widget.isVisible() if state is None else state)
             else:
                 raise ValueError("Unsupported attribute. Use 'enabled' or 'visible'.")
+
+    def setup_batch_size_control(self, automatic_batch_size_checkbox, batch_size_input):
+        automatic_batch_size_checkbox.toggled.connect(lambda checked: self.toggle_widget_state([batch_size_input], state=not checked, attribute="enabled"))
+        self.toggle_widget_state([batch_size_input], state=not automatic_batch_size_checkbox.isChecked(), attribute="enabled")
+
+    def setup_checkpoint_controls(self, save_checkpoints_checkbox, checkpoint_type_combo, interval_widgets):
+        self.save_checkpoints_checkbox = save_checkpoints_checkbox
+        save_checkpoints_checkbox.stateChanged.connect(lambda state: self.on_checkpoint_enabled_changed(state, checkpoint_type_combo, interval_widgets))
+        checkpoint_type_combo.currentTextChanged.connect(lambda text: self.on_checkpoint_type_changed(text, interval_widgets))
+        self.on_checkpoint_enabled_changed(save_checkpoints_checkbox.checkState(), checkpoint_type_combo, interval_widgets)
+
+    def on_checkpoint_enabled_changed(self, state, checkpoint_type_combo, interval_widgets):
+        is_enabled = state == Qt.Checked
+        self.toggle_widget_state([checkpoint_type_combo], state=is_enabled, attribute="enabled")
+        self.on_checkpoint_type_changed(checkpoint_type_combo.currentText(), interval_widgets)
+
+    def on_checkpoint_type_changed(self, text, interval_widgets):
+        is_enabled = self.save_checkpoints_checkbox.isChecked()
+        text = text.lower()
+        for key, widget in interval_widgets.items():
+            visible = is_enabled and (key == text)
+            self.toggle_widget_state([widget], state=visible, attribute="visible")

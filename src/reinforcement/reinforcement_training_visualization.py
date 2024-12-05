@@ -1,5 +1,5 @@
-import time
 from src.base.base_visualization import BasePlot, BaseVisualizationWidget
+import time
 
 
 class ReinforcementVisualization(BaseVisualizationWidget):
@@ -10,67 +10,29 @@ class ReinforcementVisualization(BaseVisualizationWidget):
         self.update_interval = 0.5
 
     def init_visualization(self):
-        self.figure.clear()
-        gs = self.figure.add_gridspec(5, 2)
-
+        gs = self.figure.add_gridspec(5, 2, hspace=0.4, wspace=0.3)
         self.ax1 = self.figure.add_subplot(gs[0, :])
+        self.ax2 = self.figure.add_subplot(gs[1, 0])
+        self.ax3 = self.figure.add_subplot(gs[1, 1])
+        self.ax4 = self.figure.add_subplot(gs[2, :])
+        self.ax5 = self.figure.add_subplot(gs[3, :])
+
         self.plots['game_outcomes'] = BasePlot(
-            self.ax1,
-            title='Game Outcomes',
-            xlabel='Games Played',
-            ylabel='Percentage',
-            title_fontsize=10,
-            label_fontsize=9,
-            tick_labelsize=8
-        )
+            self.ax1, title='Game Outcomes', xlabel='Games Played', ylabel='Percentage')
         self.ax1.set_ylim(0, 100)
 
-        self.ax2 = self.figure.add_subplot(gs[1, 0])
         self.plots['game_length'] = BasePlot(
-            self.ax2,
-            title='Game Length Distribution',
-            xlabel='Number of Moves',
-            ylabel='Frequency',
-            title_fontsize=10,
-            label_fontsize=9,
-            tick_labelsize=8
-        )
+            self.ax2, title='Game Length Distribution', xlabel='Number of Moves', ylabel='Frequency')
 
-        self.ax3 = self.figure.add_subplot(gs[1, 1])
         self.plots['training_speed'] = BasePlot(
-            self.ax3,
-            title='Training Speed',
-            xlabel='Games Played',
-            ylabel='Games/Second',
-            title_fontsize=10,
-            label_fontsize=9,
-            tick_labelsize=8
-        )
+            self.ax3, title='Training Speed', xlabel='Games Played', ylabel='Games/Second')
 
-        self.ax4 = self.figure.add_subplot(gs[2, :])
         self.plots['training_metrics'] = BasePlot(
-            self.ax4,
-            title='Training Progress Metrics',
-            xlabel='Games Played',
-            ylabel='Percentage',
-            title_fontsize=10,
-            label_fontsize=9,
-            tick_labelsize=8
-        )
+            self.ax4, title='Training Progress Metrics', xlabel='Games Played', ylabel='Percentage')
         self.ax4.set_ylim(0, 100)
 
-        self.ax5 = self.figure.add_subplot(gs[3, :])
         self.plots['avg_mcts_visits'] = BasePlot(
-            self.ax5,
-            title='Average MCTS Visits per Game',
-            xlabel='Iterations',
-            ylabel='Average Visits',
-            title_fontsize=10,
-            label_fontsize=9,
-            tick_labelsize=8
-        )
-
-        self.canvas.draw()
+            self.ax5, title='Average MCTS Visits per Game', xlabel='Iterations', ylabel='Average Visits')
 
     def initialize_data_storage(self):
         self.games_played = []
@@ -138,76 +100,31 @@ class ReinforcementVisualization(BaseVisualizationWidget):
         self.last_update_time = current_time
 
     def update_visualization(self):
-        self.ax1.clear()
-        self.plots['game_outcomes'] = BasePlot(
-            self.ax1,
-            title='Game Outcomes',
-            xlabel='Games Played',
-            ylabel='Percentage',
-            title_fontsize=10,
-            label_fontsize=9,
-            tick_labelsize=8
-        )
+        self.clear_axis('game_outcomes')
         self.ax1.plot(self.games_played, self.win_rates, label='Win Rate', color='green')
         self.ax1.plot(self.games_played, self.draw_rates, label='Draw Rate', color='blue')
         self.ax1.plot(self.games_played, self.loss_rates, label='Loss Rate', color='red')
         self.ax1.legend()
         self.ax1.set_ylim(0, 100)
 
-        self.ax2.clear()
-        self.plots['game_length'] = BasePlot(
-            self.ax2,
-            title='Game Length Distribution',
-            xlabel='Number of Moves',
-            ylabel='Frequency',
-            title_fontsize=10,
-            label_fontsize=9,
-            tick_labelsize=8
-        )
+        self.clear_axis('game_length')
         if self.game_lengths_all:
             self.ax2.hist(self.game_lengths_all, bins=20, color='purple', alpha=0.7)
         else:
-            self.ax2.text(0.5, 0.5, 'No Data', horizontalalignment='center', verticalalignment='center')
+            self.add_text_to_axis('game_length', 'No Data')
 
-        self.ax3.clear()
-        self.plots['training_speed'] = BasePlot(
-            self.ax3,
-            title='Training Speed',
-            xlabel='Games Played',
-            ylabel='Games/Second',
-            title_fontsize=10,
-            label_fontsize=9,
-            tick_labelsize=8
-        )
+        self.clear_axis('training_speed')
         self.ax3.plot(self.games_played, self.games_per_second, color='orange')
         self.ax3.set_ylim(bottom=0)
 
-        self.ax4.clear()
-        self.plots['training_metrics'] = BasePlot(
-            self.ax4,
-            title='Training Progress Metrics',
-            xlabel='Games Played',
-            ylabel='Percentage',
-            title_fontsize=10,
-            label_fontsize=9,
-            tick_labelsize=8
-        )
+        self.clear_axis('training_metrics')
         self.ax4.plot(self.games_played, self.win_rates, label='Win Rate', color='green')
         self.ax4.plot(self.games_played, self.draw_rates, label='Draw Rate', color='blue')
         self.ax4.plot(self.games_played, self.loss_rates, label='Loss Rate', color='red')
         self.ax4.legend()
         self.ax4.set_ylim(0, 100)
 
-        self.ax5.clear()
-        self.plots['avg_mcts_visits'] = BasePlot(
-            self.ax5,
-            title='Average MCTS Visits per Game',
-            xlabel='Iterations',
-            ylabel='Average Visits',
-            title_fontsize=10,
-            label_fontsize=9,
-            tick_labelsize=8
-        )
+        self.clear_axis('avg_mcts_visits')
         self.ax5.plot(self.games_played, self.avg_mcts_visits, label='Avg MCTS Visits', color='magenta')
         self.ax5.legend()
         self.ax5.set_ylim(bottom=0)

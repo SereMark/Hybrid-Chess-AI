@@ -1,10 +1,8 @@
 from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QMessageBox, QCheckBox, QLabel, QComboBox
-from PyQt5.QtCore import Qt
 from src.reinforcement.reinforcement_training_visualization import ReinforcementVisualization
 from src.reinforcement.reinforcement_training_worker import ReinforcementWorker
 from src.base.base_tab import BaseTab
 import os
-
 
 class ReinforcementTab(BaseTab):
     def __init__(self, parent=None):
@@ -40,13 +38,19 @@ class ReinforcementTab(BaseTab):
         main_layout.addWidget(self.log_text_edit)
         main_layout.addWidget(self.visualization_group)
 
-        self.toggle_widget_state([self.log_text_edit], state=False, attribute="visible")
-        self.toggle_widget_state([self.visualization_group], state=False, attribute="visible")
-        self.toggle_batch_size_input(self.automatic_batch_size_checkbox.isChecked())
-        self.on_checkpoint_enabled_changed(self.save_checkpoints_checkbox.isChecked())
+        self.setup_batch_size_control(self.automatic_batch_size_checkbox, self.batch_size_input)
+        interval_widgets = {
+            'iteration': self.iteration_interval_widget,
+            'epoch': self.epoch_interval_widget,
+            'time': self.time_interval_widget,
+            'batch': self.batch_interval_widget,
+        }
+        self.setup_checkpoint_controls(self.save_checkpoints_checkbox, self.checkpoint_type_combo, interval_widgets)
+
+        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
 
     def create_model_output_group(self):
-        model_output_group = QGroupBox("Model and Output Settings")
+        model_output_group = QGroupBox("Output Settings")
         model_output_layout = QFormLayout()
 
         self.model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
@@ -54,11 +58,8 @@ class ReinforcementTab(BaseTab):
 
         model_browse_button = QPushButton("Browse")
         model_browse_button.clicked.connect(lambda: self.browse_file(self.model_path_input, "Select Model File", "PyTorch Files (*.pth *.pt)"))
-        checkpoint_browse_button = QPushButton("Browse")
-        checkpoint_browse_button.clicked.connect(lambda: self.browse_file(self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"))
 
         model_output_layout.addRow("Model Path:", self.create_browse_layout(self.model_path_input, model_browse_button))
-        model_output_layout.addRow("Resume from Checkpoint:", self.create_browse_layout(self.checkpoint_path_input, checkpoint_browse_button))
 
         model_output_group.setLayout(model_output_layout)
         return model_output_group
@@ -76,7 +77,6 @@ class ReinforcementTab(BaseTab):
         self.batch_size_input = QLineEdit("128")
         self.automatic_batch_size_checkbox = QCheckBox("Automatic Batch Size")
         self.automatic_batch_size_checkbox.setChecked(False)
-        self.automatic_batch_size_checkbox.toggled.connect(self.toggle_batch_size_input)
         self.num_threads_input = QLineEdit("4")
         self.random_seed_input = QLineEdit("42")
 
@@ -112,11 +112,9 @@ class ReinforcementTab(BaseTab):
 
         self.save_checkpoints_checkbox = QCheckBox("Enable Checkpoints")
         self.save_checkpoints_checkbox.setChecked(True)
-        self.save_checkpoints_checkbox.stateChanged.connect(self.on_checkpoint_enabled_changed)
 
         self.checkpoint_type_combo = QComboBox()
         self.checkpoint_type_combo.addItems(['Iteration', 'Epoch', 'Time', 'Batch'])
-        self.checkpoint_type_combo.currentTextChanged.connect(self.on_checkpoint_type_changed)
 
         checkpoint_type_layout = QHBoxLayout()
         checkpoint_type_layout.addWidget(QLabel("Save checkpoint by:"))
@@ -132,8 +130,6 @@ class ReinforcementTab(BaseTab):
         self.time_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_minutes_input, "minutes")
         self.batch_interval_widget = self.create_interval_widget("Every", self.checkpoint_batch_interval_input, "batches")
 
-        self.on_checkpoint_type_changed(self.checkpoint_type_combo.currentText())
-
         checkpoint_layout.addRow(self.save_checkpoints_checkbox)
         checkpoint_layout.addRow(checkpoint_type_layout)
         checkpoint_layout.addRow(self.iteration_interval_widget)
@@ -141,26 +137,12 @@ class ReinforcementTab(BaseTab):
         checkpoint_layout.addRow(self.time_interval_widget)
         checkpoint_layout.addRow(self.batch_interval_widget)
 
+        checkpoint_browse_button = QPushButton("Browse")
+        checkpoint_browse_button.clicked.connect(lambda: self.browse_file(self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"))
+        checkpoint_layout.addRow("Resume from Checkpoint:", self.create_browse_layout(self.checkpoint_path_input, checkpoint_browse_button))
+
         checkpoint_group.setLayout(checkpoint_layout)
         return checkpoint_group
-
-    def toggle_batch_size_input(self, checked):
-        if hasattr(self, 'batch_size_input'):
-            self.toggle_widget_state([self.batch_size_input], state=not checked, attribute="enabled")
-
-    def on_checkpoint_enabled_changed(self, state):
-        is_enabled = state == Qt.Checked
-        self.toggle_widget_state([self.checkpoint_type_combo, self.checkpoint_path_input], state=is_enabled, attribute="enabled")
-        self.on_checkpoint_type_changed(self.checkpoint_type_combo.currentText())
-
-    def on_checkpoint_type_changed(self, text):
-        text = text.lower()
-        self.toggle_widget_state([self.iteration_interval_widget], state=(text == 'iteration'), attribute="visible")
-        self.toggle_widget_state([self.epoch_interval_widget], state=(text == 'epoch'), attribute="visible")
-        self.toggle_widget_state([self.time_interval_widget], state=(text == 'time'), attribute="visible")
-        self.toggle_widget_state([self.batch_interval_widget], state=(text == 'batch'), attribute="visible")
-        is_enabled = self.save_checkpoints_checkbox.isChecked()
-        self.toggle_widget_state([self.iteration_interval_widget, self.epoch_interval_widget, self.time_interval_widget, self.batch_interval_widget], state=is_enabled, attribute="enabled")
 
     def start_self_play(self):
         try:
@@ -205,7 +187,7 @@ class ReinforcementTab(BaseTab):
         checkpoint_batch_interval = None
 
         if save_checkpoints:
-            if checkpoint_type == 'iteration' or checkpoint_type == 'epoch':
+            if checkpoint_type in ['iteration', 'epoch']:
                 try:
                     checkpoint_interval = int(self.checkpoint_interval_input.text())
                     if checkpoint_interval <= 0:

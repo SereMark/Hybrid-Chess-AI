@@ -4,7 +4,6 @@ from src.evaluation.evaluation_worker import EvaluationWorker
 from src.base.base_tab import BaseTab
 import os
 
-
 class EvaluationTab(BaseTab):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -31,8 +30,7 @@ class EvaluationTab(BaseTab):
         main_layout.addWidget(self.log_text_edit)
         main_layout.addWidget(self.visualization_group)
 
-        self.toggle_widget_state([self.log_text_edit], state=False, attribute="visible")
-        self.toggle_widget_state([self.visualization_group], state=False, attribute="visible")
+        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
 
     def create_paths_group(self) -> QGroupBox:
         paths_group = QGroupBox("Paths")

@@ -39,8 +39,7 @@ class DataProcessingTab(BaseTab):
         main_layout.addWidget(self.log_text_edit)
         main_layout.addWidget(self.visualization_group)
 
-        self.toggle_widget_state([self.log_text_edit], state=False, attribute="visible")
-        self.toggle_widget_state([self.visualization_group], state=False, attribute="visible")
+        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
 
     def create_parameters_group(self):
         parameters_group = QGroupBox("Parameters")
@@ -102,7 +101,7 @@ class DataProcessingTab(BaseTab):
         self.remaining_time_label.setText("Time Left: Calculating...")
         self.log_text_edit.clear()
 
-        self.visualization.reset_visualizations()
+        self.visualization.reset_visualization()
 
         self.toggle_widget_state([self.parameters_group, self.directories_group], state=False, attribute="visible")
         self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=True, attribute="visible")
@@ -169,14 +168,13 @@ class OpeningBookTab(BaseTab):
         main_layout.addWidget(self.opening_log_text_edit)
         main_layout.addWidget(self.opening_visualization_group)
 
-        self.toggle_widget_state([self.opening_log_text_edit], state=False, attribute="visible")
-        self.toggle_widget_state([self.opening_visualization_group], state=False, attribute="visible")
+        self.toggle_widget_state([self.opening_log_text_edit, self.opening_visualization_group], state=False, attribute="visible")
 
     def create_opening_book_group(self):
         opening_book_group = QGroupBox("Opening Book Generation")
         opening_book_layout = QFormLayout()
 
-        self.pgn_file_input = QLineEdit("data/raw/lichess_db_standard_rated_2024-08.pgn")
+        self.pgn_file_input = QLineEdit("data/raw/lichess_db_standard_rated_2024-11.pgn")
         pgn_browse_button = QPushButton("Browse")
         pgn_browse_button.clicked.connect(lambda: self.browse_file(self.pgn_file_input, "Select PGN File", "PGN Files (*.pgn)"))
 
