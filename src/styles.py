@@ -7,6 +7,8 @@ def get_stylesheet():
         font-size: 10pt;
         selection-background-color: #464646;
         selection-color: #ffffff;
+        padding: 0;
+        margin: 0;
     }
 
     QToolTip {
@@ -19,8 +21,10 @@ def get_stylesheet():
     }
 
     QGroupBox {
-        border: none;
+        border: 1px solid #2a2a2a;
+        border-radius: 4px;
         margin-top: 10px;
+        margin-bottom: 10px;
         background: #1e1e1e;
         font-weight: 600;
         padding: 10px;
@@ -139,12 +143,14 @@ def get_stylesheet():
     QTabBar::tab {
         background: #2a2a2a;
         border: none;
-        padding: 6px 10px;
+        padding: 10px 15px;
         margin-right: 2px;
         border-top-left-radius: 2px;
         border-top-right-radius: 2px;
         font-weight: 500;
         color: #cccccc;
+        font-size: 10pt;
+        min-width: 220px;
     }
     QTabBar::tab:selected {
         background: #333333;
@@ -159,6 +165,17 @@ def get_stylesheet():
     QTabWidget::pane {
         border: 1px solid #2a2a2a;
         top: -1px;
+    }
+
+    QFrame[frameShape="4"] {
+        border-top: 1px solid #444444;
+        margin-top: 10px;
+        margin-bottom: 10px;
+    }
+    QFrame[frameShape="5"] {
+        border-left: 1px solid #444444;
+        margin-left: 10px;
+        margin-right: 10px;
     }
 
     QTreeView, QTableView {
