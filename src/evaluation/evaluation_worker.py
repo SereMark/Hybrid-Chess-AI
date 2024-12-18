@@ -126,14 +126,12 @@ class EvaluationWorker(BaseWorker):
         self.log_update.emit(
             f"Macro Avg - Precision: {macro_avg.get('precision', 0.0):.4f}, "
             f"Recall: {macro_avg.get('recall', 0.0):.4f}, "
-            f"F1-Score: {macro_avg.get('f1-score', 0.0):.4f}",
-            self.log_update
+            f"F1-Score: {macro_avg.get('f1-score', 0.0):.4f}"
         )
         self.log_update.emit(
             f"Weighted Avg - Precision: {weighted_avg.get('precision', 0.0):.4f}, "
             f"Recall: {weighted_avg.get('recall', 0.0):.4f}, "
-            f"F1-Score: {weighted_avg.get('f1-score', 0.0):.4f}",
-            self.log_update
+            f"F1-Score: {weighted_avg.get('f1-score', 0.0):.4f}"
         )
         if self.metrics_update:
             self.metrics_update.emit(

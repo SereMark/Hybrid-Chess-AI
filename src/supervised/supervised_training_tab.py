@@ -1,4 +1,5 @@
-from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QLabel, QCheckBox, QComboBox, QMessageBox, QHBoxLayout
+from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QLabel, QCheckBox, QComboBox, QMessageBox, QHBoxLayout, QFrame
+from PyQt5.QtCore import Qt
 from src.supervised.supervised_training_worker import SupervisedWorker
 from src.supervised.supervised_training_visualization import SupervisedVisualization
 from src.base.base_tab import BaseTab
@@ -13,9 +14,28 @@ class SupervisedTab(BaseTab):
     def init_ui(self):
         main_layout = QVBoxLayout(self)
 
+        intro_label = QLabel("Train a supervised model on processed chess data to predict moves.")
+        intro_label.setWordWrap(True)
+        intro_label.setAlignment(Qt.AlignLeft)
+        intro_label.setToolTip("Use this tab to train a neural network in a supervised manner using labeled data.")
+
         self.dataset_group = self.create_dataset_group()
         self.training_group = self.create_training_group()
         self.checkpoint_group = self.create_checkpoint_group()
+
+        progress_group = QGroupBox("Training Progress")
+        pg_layout = QVBoxLayout(progress_group)
+        pg_layout.addLayout(self.create_progress_layout())
+
+        logs_group = QGroupBox("Training Logs")
+        lg_layout = QVBoxLayout(logs_group)
+        self.log_text_edit = self.create_log_text_edit()
+        lg_layout.addWidget(self.log_text_edit)
+
+        self.visualization_group = self.create_visualization_group(self.visualization, "Training Visualization")
+
+        controls_group = QGroupBox("Actions")
+        cg_layout = QVBoxLayout(controls_group)
         control_buttons_layout = self.create_control_buttons(
             "Start Training",
             "Stop Training",
@@ -26,17 +46,21 @@ class SupervisedTab(BaseTab):
             pause_callback=self.pause_worker,
             resume_callback=self.resume_worker
         )
-        progress_layout = self.create_progress_layout()
-        self.log_text_edit = self.create_log_text_edit()
-        self.visualization_group = self.create_visualization_group(self.visualization, "Training Visualization")
+        cg_layout.addLayout(control_buttons_layout)
 
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+
+        main_layout.addWidget(intro_label)
         main_layout.addWidget(self.dataset_group)
         main_layout.addWidget(self.training_group)
         main_layout.addWidget(self.checkpoint_group)
-        main_layout.addLayout(control_buttons_layout)
-        main_layout.addLayout(progress_layout)
-        main_layout.addWidget(self.log_text_edit)
+        main_layout.addWidget(separator)
+        main_layout.addWidget(progress_group)
+        main_layout.addWidget(logs_group)
         main_layout.addWidget(self.visualization_group)
+        main_layout.addWidget(controls_group)
 
         self.setup_batch_size_control(self.automatic_batch_size_checkbox, self.batch_size_input)
         interval_widgets = {
@@ -53,14 +77,27 @@ class SupervisedTab(BaseTab):
         dataset_layout = QFormLayout()
 
         self.dataset_input = QLineEdit("data/processed/dataset.h5")
+        self.dataset_input.setPlaceholderText("Path to dataset file (HDF5)")
+        self.dataset_input.setToolTip("Path to the main dataset file in HDF5 format.")
+
         self.train_indices_input = QLineEdit("data/processed/train_indices.npy")
+        self.train_indices_input.setPlaceholderText("Path to training indices file")
+        self.train_indices_input.setToolTip("NumPy file containing indices for training examples.")
+
         self.val_indices_input = QLineEdit("data/processed/val_indices.npy")
+        self.val_indices_input.setPlaceholderText("Path to validation indices file")
+        self.val_indices_input.setToolTip("NumPy file containing indices for validation examples.")
 
         dataset_browse_button = QPushButton("Browse")
+        dataset_browse_button.setToolTip("Browse for the dataset file.")
         dataset_browse_button.clicked.connect(lambda: self.browse_file(self.dataset_input, "Select Dataset File", "HDF5 Files (*.h5 *.hdf5)"))
+
         train_indices_browse_button = QPushButton("Browse")
+        train_indices_browse_button.setToolTip("Browse for the train indices file.")
         train_indices_browse_button.clicked.connect(lambda: self.browse_file(self.train_indices_input, "Select Train Indices File", "NumPy Files (*.npy)"))
+
         val_indices_browse_button = QPushButton("Browse")
+        val_indices_browse_button.setToolTip("Browse for the validation indices file.")
         val_indices_browse_button.clicked.connect(lambda: self.browse_file(self.val_indices_input, "Select Validation Indices File", "NumPy Files (*.npy)"))
 
         dataset_layout.addRow("Dataset Path:", self.create_browse_layout(self.dataset_input, dataset_browse_button))
@@ -75,21 +112,43 @@ class SupervisedTab(BaseTab):
         training_layout = QFormLayout()
 
         self.epochs_input = QLineEdit("25")
+        self.epochs_input.setPlaceholderText("e.g. 25")
+        self.epochs_input.setToolTip("Number of training epochs.")
+
         self.batch_size_input = QLineEdit("128")
+        self.batch_size_input.setPlaceholderText("e.g. 128")
+        self.batch_size_input.setToolTip("Batch size for training (if not automatic).")
+
         self.learning_rate_input = QLineEdit("0.0005")
+        self.learning_rate_input.setPlaceholderText("e.g. 0.0005")
+        self.learning_rate_input.setToolTip("Learning rate for the optimizer.")
+
         self.weight_decay_input = QLineEdit("2e-4")
+        self.weight_decay_input.setPlaceholderText("e.g. 2e-4")
+        self.weight_decay_input.setToolTip("Weight decay (L2 regularization) rate.")
+
         self.optimizer_type_combo = QComboBox()
         self.optimizer_type_combo.addItems(['AdamW', 'SGD'])
+        self.optimizer_type_combo.setToolTip("Select the optimizer type.")
+
         self.scheduler_type_combo = QComboBox()
         self.scheduler_type_combo.addItems(['CosineAnnealingWarmRestarts', 'StepLR'])
+        self.scheduler_type_combo.setToolTip("Select the learning rate scheduler.")
 
         self.num_workers_input = QLineEdit("4")
+        self.num_workers_input.setPlaceholderText("e.g. 4")
+        self.num_workers_input.setToolTip("Number of worker threads for data loading.")
 
         self.automatic_batch_size_checkbox = QCheckBox("Automatic Batch Size")
         self.automatic_batch_size_checkbox.setChecked(True)
+        self.automatic_batch_size_checkbox.setToolTip("Enable automatic batch size determination.")
 
         self.output_model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
+        self.output_model_path_input.setPlaceholderText("Path to save the trained model")
+        self.output_model_path_input.setToolTip("Path where the trained model will be saved.")
+
         output_model_browse_button = QPushButton("Browse")
+        output_model_browse_button.setToolTip("Browse for the output model file path.")
         output_model_browse_button.clicked.connect(lambda: self.browse_file(self.output_model_path_input, "Select Output Model File", "PyTorch Files (*.pth *.pt)"))
 
         training_layout.addRow("Epochs:", self.epochs_input)
@@ -111,25 +170,41 @@ class SupervisedTab(BaseTab):
 
         self.save_checkpoints_checkbox = QCheckBox("Enable Checkpoints")
         self.save_checkpoints_checkbox.setChecked(True)
+        self.save_checkpoints_checkbox.setToolTip("Enable saving model checkpoints at intervals.")
 
         self.checkpoint_type_combo = QComboBox()
         self.checkpoint_type_combo.addItems(['Epoch', 'Time', 'Batch'])
+        self.checkpoint_type_combo.setToolTip("Select checkpoint saving criterion.")
 
         checkpoint_type_layout = QHBoxLayout()
-        checkpoint_type_layout.addWidget(QLabel("Save checkpoint by:"))
+        cpl = QLabel("Save checkpoint by:")
+        cpl.setToolTip("Choose how checkpoints are triggered.")
+        checkpoint_type_layout.addWidget(cpl)
         checkpoint_type_layout.addWidget(self.checkpoint_type_combo)
         checkpoint_type_layout.addStretch()
 
         self.checkpoint_interval_input = QLineEdit("1")
+        self.checkpoint_interval_input.setPlaceholderText("e.g. 1")
+        self.checkpoint_interval_input.setToolTip("Interval for epoch-based checkpoints.")
+
         self.checkpoint_interval_minutes_input = QLineEdit("30")
+        self.checkpoint_interval_minutes_input.setPlaceholderText("e.g. 30")
+        self.checkpoint_interval_minutes_input.setToolTip("Interval in minutes for time-based checkpoints.")
+
         self.checkpoint_batch_interval_input = QLineEdit("2000")
+        self.checkpoint_batch_interval_input.setPlaceholderText("e.g. 2000")
+        self.checkpoint_batch_interval_input.setToolTip("Interval in batches for batch-based checkpoints.")
 
         self.epoch_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_input, "epochs")
         self.time_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_minutes_input, "minutes")
         self.batch_interval_widget = self.create_interval_widget("Every", self.checkpoint_batch_interval_input, "batches")
 
         self.checkpoint_path_input = QLineEdit("")
+        self.checkpoint_path_input.setPlaceholderText("Path to resume from checkpoint (optional)")
+        self.checkpoint_path_input.setToolTip("If resuming training, specify the checkpoint file path here.")
+
         checkpoint_browse_button = QPushButton("Browse")
+        checkpoint_browse_button.setToolTip("Browse for the checkpoint file to resume from.")
         checkpoint_browse_button.clicked.connect(lambda: self.browse_file(self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"))
 
         checkpoint_layout.addRow(self.save_checkpoints_checkbox)

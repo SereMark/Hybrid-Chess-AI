@@ -1,4 +1,5 @@
-from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QMessageBox, QCheckBox, QLabel, QComboBox
+from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QMessageBox, QCheckBox, QLabel, QComboBox, QFrame
+from PyQt5.QtCore import Qt
 from src.reinforcement.reinforcement_training_visualization import ReinforcementVisualization
 from src.reinforcement.reinforcement_training_worker import ReinforcementWorker
 from src.base.base_tab import BaseTab
@@ -13,9 +14,28 @@ class ReinforcementTab(BaseTab):
     def init_ui(self):
         main_layout = QVBoxLayout(self)
 
+        intro_label = QLabel("Train a chess model through self-play reinforcement learning.")
+        intro_label.setWordWrap(True)
+        intro_label.setAlignment(Qt.AlignLeft)
+        intro_label.setToolTip("Use this tab to train a model using self-play games and reinforcement learning.")
+
         self.model_output_group = self.create_model_output_group()
         self.parameters_group = self.create_parameters_group()
         self.checkpoint_group = self.create_checkpoint_group()
+
+        progress_group = QGroupBox("Self-Play Progress")
+        pg_layout = QVBoxLayout(progress_group)
+        pg_layout.addLayout(self.create_progress_layout())
+
+        logs_group = QGroupBox("Self-Play Logs")
+        lg_layout = QVBoxLayout(logs_group)
+        self.log_text_edit = self.create_log_text_edit()
+        lg_layout.addWidget(self.log_text_edit)
+
+        self.visualization_group = self.create_visualization_group(self.visualization, "Self-Play Visualization")
+
+        controls_group = QGroupBox("Actions")
+        cg_layout = QVBoxLayout(controls_group)
         control_buttons_layout = self.create_control_buttons(
             "Start Self-Play",
             "Stop Self-Play",
@@ -26,17 +46,21 @@ class ReinforcementTab(BaseTab):
             pause_callback=self.pause_worker,
             resume_callback=self.resume_worker
         )
-        progress_layout = self.create_progress_layout()
-        self.log_text_edit = self.create_log_text_edit()
-        self.visualization_group = self.create_visualization_group(self.visualization, "Self-Play Visualization")
+        cg_layout.addLayout(control_buttons_layout)
 
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+
+        main_layout.addWidget(intro_label)
         main_layout.addWidget(self.model_output_group)
         main_layout.addWidget(self.parameters_group)
         main_layout.addWidget(self.checkpoint_group)
-        main_layout.addLayout(control_buttons_layout)
-        main_layout.addLayout(progress_layout)
-        main_layout.addWidget(self.log_text_edit)
+        main_layout.addWidget(separator)
+        main_layout.addWidget(progress_group)
+        main_layout.addWidget(logs_group)
         main_layout.addWidget(self.visualization_group)
+        main_layout.addWidget(controls_group)
 
         self.setup_batch_size_control(self.automatic_batch_size_checkbox, self.batch_size_input)
         interval_widgets = {
@@ -54,9 +78,15 @@ class ReinforcementTab(BaseTab):
         model_output_layout = QFormLayout()
 
         self.model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
+        self.model_path_input.setPlaceholderText("Path to the base model file")
+        self.model_path_input.setToolTip("The model to start from or continue training.")
+
         self.checkpoint_path_input = QLineEdit("")
+        self.checkpoint_path_input.setPlaceholderText("Path to resume from checkpoint (optional)")
+        self.checkpoint_path_input.setToolTip("If resuming training, specify the checkpoint file here.")
 
         model_browse_button = QPushButton("Browse")
+        model_browse_button.setToolTip("Browse for the model file.")
         model_browse_button.clicked.connect(lambda: self.browse_file(self.model_path_input, "Select Model File", "PyTorch Files (*.pth *.pt)"))
 
         model_output_layout.addRow("Model Path:", self.create_browse_layout(self.model_path_input, model_browse_button))
@@ -69,24 +99,61 @@ class ReinforcementTab(BaseTab):
         parameters_layout = QFormLayout()
 
         self.num_iterations_input = QLineEdit("10")
+        self.num_iterations_input.setPlaceholderText("e.g. 10")
+        self.num_iterations_input.setToolTip("Number of self-play iterations.")
+
         self.num_games_per_iteration_input = QLineEdit("100")
+        self.num_games_per_iteration_input.setPlaceholderText("e.g. 100")
+        self.num_games_per_iteration_input.setToolTip("Number of games per iteration.")
+
         self.simulations_input = QLineEdit("800")
+        self.simulations_input.setPlaceholderText("e.g. 800")
+        self.simulations_input.setToolTip("Number of MCTS simulations per move.")
+
         self.c_puct_input = QLineEdit("1.4")
+        self.c_puct_input.setPlaceholderText("e.g. 1.4")
+        self.c_puct_input.setToolTip("Exploration constant for MCTS.")
+
         self.temperature_input = QLineEdit("1.0")
+        self.temperature_input.setPlaceholderText("e.g. 1.0")
+        self.temperature_input.setToolTip("Temperature parameter for move selection.")
+
         self.num_epochs_input = QLineEdit("5")
+        self.num_epochs_input.setPlaceholderText("e.g. 5")
+        self.num_epochs_input.setToolTip("Training epochs per iteration.")
+
         self.batch_size_input = QLineEdit("128")
+        self.batch_size_input.setPlaceholderText("e.g. 128")
+        self.batch_size_input.setToolTip("Batch size if not automatic.")
+
         self.automatic_batch_size_checkbox = QCheckBox("Automatic Batch Size")
+        self.automatic_batch_size_checkbox.setToolTip("Enable automatic determination of batch size.")
         self.automatic_batch_size_checkbox.setChecked(False)
+
         self.num_threads_input = QLineEdit("4")
+        self.num_threads_input.setPlaceholderText("e.g. 4")
+        self.num_threads_input.setToolTip("Number of CPU threads for self-play and training.")
+
         self.random_seed_input = QLineEdit("42")
+        self.random_seed_input.setPlaceholderText("e.g. 42")
+        self.random_seed_input.setToolTip("Random seed for reproducibility.")
 
         self.optimizer_type_combo = QComboBox()
         self.optimizer_type_combo.addItems(['Adam', 'AdamW', 'SGD'])
+        self.optimizer_type_combo.setToolTip("Select the optimizer for training.")
+
         self.learning_rate_input = QLineEdit("0.0005")
+        self.learning_rate_input.setPlaceholderText("e.g. 0.0005")
+        self.learning_rate_input.setToolTip("Learning rate for the optimizer.")
+
         self.weight_decay_input = QLineEdit("0.0001")
+        self.weight_decay_input.setPlaceholderText("e.g. 0.0001")
+        self.weight_decay_input.setToolTip("Weight decay for regularization.")
+
         self.scheduler_type_combo = QComboBox()
         self.scheduler_type_combo.addItems(['None', 'StepLR', 'CosineAnnealing', 'CosineAnnealingWarmRestarts'])
         self.scheduler_type_combo.setCurrentText('CosineAnnealing')
+        self.scheduler_type_combo.setToolTip("Select the scheduler type for learning rate.")
 
         parameters_layout.addRow("Number of Iterations:", self.num_iterations_input)
         parameters_layout.addRow("Games per Iteration:", self.num_games_per_iteration_input)
@@ -112,23 +179,39 @@ class ReinforcementTab(BaseTab):
 
         self.save_checkpoints_checkbox = QCheckBox("Enable Checkpoints")
         self.save_checkpoints_checkbox.setChecked(True)
+        self.save_checkpoints_checkbox.setToolTip("Enable periodic saving of training checkpoints.")
 
         self.checkpoint_type_combo = QComboBox()
         self.checkpoint_type_combo.addItems(['Iteration', 'Epoch', 'Time', 'Batch'])
+        self.checkpoint_type_combo.setToolTip("Criteria to trigger checkpoint saving.")
 
         checkpoint_type_layout = QHBoxLayout()
-        checkpoint_type_layout.addWidget(QLabel("Save checkpoint by:"))
+        cpl = QLabel("Save checkpoint by:")
+        cpl.setToolTip("Select when to save checkpoints.")
+        checkpoint_type_layout.addWidget(cpl)
         checkpoint_type_layout.addWidget(self.checkpoint_type_combo)
         checkpoint_type_layout.addStretch()
 
         self.checkpoint_interval_input = QLineEdit("1")
+        self.checkpoint_interval_input.setPlaceholderText("e.g. 1")
+        self.checkpoint_interval_input.setToolTip("Interval for iteration/epoch-based checkpoints.")
+
         self.checkpoint_interval_minutes_input = QLineEdit("30")
+        self.checkpoint_interval_minutes_input.setPlaceholderText("e.g. 30")
+        self.checkpoint_interval_minutes_input.setToolTip("Interval in minutes for time-based checkpoints.")
+
         self.checkpoint_batch_interval_input = QLineEdit("2000")
+        self.checkpoint_batch_interval_input.setPlaceholderText("e.g. 2000")
+        self.checkpoint_batch_interval_input.setToolTip("Interval in batches for batch-based checkpoints.")
 
         self.iteration_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_input, "iterations")
         self.epoch_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_input, "epochs")
         self.time_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_minutes_input, "minutes")
         self.batch_interval_widget = self.create_interval_widget("Every", self.checkpoint_batch_interval_input, "batches")
+
+        checkpoint_browse_button = QPushButton("Browse")
+        checkpoint_browse_button.setToolTip("Browse for a checkpoint file to resume from.")
+        checkpoint_browse_button.clicked.connect(lambda: self.browse_file(self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"))
 
         checkpoint_layout.addRow(self.save_checkpoints_checkbox)
         checkpoint_layout.addRow(checkpoint_type_layout)
@@ -136,9 +219,6 @@ class ReinforcementTab(BaseTab):
         checkpoint_layout.addRow(self.epoch_interval_widget)
         checkpoint_layout.addRow(self.time_interval_widget)
         checkpoint_layout.addRow(self.batch_interval_widget)
-
-        checkpoint_browse_button = QPushButton("Browse")
-        checkpoint_browse_button.clicked.connect(lambda: self.browse_file(self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"))
         checkpoint_layout.addRow("Resume from Checkpoint:", self.create_browse_layout(self.checkpoint_path_input, checkpoint_browse_button))
 
         checkpoint_group.setLayout(checkpoint_layout)

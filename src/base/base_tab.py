@@ -15,7 +15,6 @@ class BaseTab(QWidget):
     def start_worker(self, worker_class, *args, **kwargs):
         if self.thread is not None and self.thread.isRunning():
             return False
-
         self.thread = QThread()
         self.worker = worker_class(*args, **kwargs)
         self.worker.moveToThread(self.thread)
@@ -70,6 +69,7 @@ class BaseTab(QWidget):
     def create_log_text_edit(self):
         self.log_text_edit = QTextEdit()
         self.log_text_edit.setReadOnly(True)
+        self.log_text_edit.setPlaceholderText("Logs will appear here...")
         return self.log_text_edit
 
     def create_progress_layout(self):
@@ -77,8 +77,10 @@ class BaseTab(QWidget):
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Idle")
+        self.progress_bar.setToolTip("Shows the overall progress of the current task.")
         self.remaining_time_label = QLabel("Time Left: N/A")
         self.remaining_time_label.setAlignment(Qt.AlignCenter)
+        self.remaining_time_label.setToolTip("Estimated time remaining for the current task.")
         layout.addWidget(self.progress_bar)
         layout.addWidget(self.remaining_time_label)
         return layout
@@ -91,7 +93,9 @@ class BaseTab(QWidget):
 
     def create_interval_widget(self, prefix, input_field, suffix):
         layout = QHBoxLayout()
-        layout.addWidget(QLabel(prefix))
+        prefix_label = QLabel(prefix)
+        prefix_label.setToolTip("Specify the interval.")
+        layout.addWidget(prefix_label)
         layout.addWidget(input_field)
         layout.addWidget(QLabel(suffix))
         layout.addStretch()
@@ -101,6 +105,7 @@ class BaseTab(QWidget):
 
     def create_visualization_group(self, visualization_widget, title: str):
         visualization_group = QGroupBox(title)
+        visualization_group.setToolTip("Visual representation of data or training progress.")
         vis_layout = QVBoxLayout()
         visualization_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         vis_layout.addWidget(visualization_widget)
@@ -109,23 +114,31 @@ class BaseTab(QWidget):
 
     def create_control_buttons(self, start_text, stop_text, start_callback, stop_callback, pause_text=None, resume_text=None, pause_callback=None, resume_callback=None):
         layout = QHBoxLayout()
+
         self.start_button = QPushButton(start_text)
-        layout.addWidget(self.start_button)
+        self.start_button.setToolTip("Begin the process.")
         self.stop_button = QPushButton(stop_text)
-        layout.addWidget(self.stop_button)
+        self.stop_button.setToolTip("Stop the process.")
         self.stop_button.setEnabled(False)
+
+        layout.addWidget(self.start_button)
+        layout.addWidget(self.stop_button)
+
         self.start_button.clicked.connect(start_callback)
         self.stop_button.clicked.connect(stop_callback)
 
         if pause_text and resume_text and pause_callback and resume_callback:
             self.pause_button = QPushButton(pause_text)
+            self.pause_button.setToolTip("Pause the ongoing process.")
             self.resume_button = QPushButton(resume_text)
+            self.resume_button.setToolTip("Resume the paused process.")
             self.pause_button.setEnabled(False)
             self.resume_button.setEnabled(False)
             layout.addWidget(self.pause_button)
             layout.addWidget(self.resume_button)
             self.pause_button.clicked.connect(pause_callback)
             self.resume_button.clicked.connect(resume_callback)
+
         layout.addStretch()
         return layout
 
