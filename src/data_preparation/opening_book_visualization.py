@@ -9,7 +9,6 @@ from PyQt5.QtSvg import QSvgWidget
 from chess import Board, InvalidMoveError
 import chess.svg
 
-
 class OpeningBookVisualization(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -18,6 +17,7 @@ class OpeningBookVisualization(QWidget):
 
         self.opening_name_filter = QLineEdit()
         self.opening_name_filter.setPlaceholderText("Filter by Opening Name")
+        self.opening_name_filter.setToolTip("Enter partial or full opening name to filter moves.")
         self.opening_name_filter.textChanged.connect(self.apply_filters)
 
         self.win_percentage_slider = QSlider(Qt.Horizontal)
@@ -26,6 +26,7 @@ class OpeningBookVisualization(QWidget):
         self.win_percentage_slider.setValue(0)
         self.win_percentage_slider.setTickInterval(10)
         self.win_percentage_slider.setTickPosition(QSlider.TicksBelow)
+        self.win_percentage_slider.setToolTip("Minimum win percentage for filtered moves.")
         self.win_percentage_slider.valueChanged.connect(self.on_win_percentage_slider_changed)
 
         self.win_percentage_label = QLabel("Min Win %: 0%")
@@ -35,18 +36,22 @@ class OpeningBookVisualization(QWidget):
         self.sorting_combobox.addItem("Sort by Win %")
         self.sorting_combobox.addItem("Sort by Total Games")
         self.sorting_combobox.addItem("Sort by Move Popularity")
+        self.sorting_combobox.setToolTip("Change sorting criteria for displayed moves.")
         self.sorting_combobox.currentIndexChanged.connect(self.apply_filters)
 
         self.win_checkbox = QCheckBox("Include Wins")
         self.win_checkbox.setChecked(True)
+        self.win_checkbox.setToolTip("Include moves with winning outcomes.")
         self.win_checkbox.stateChanged.connect(self.apply_filters)
 
         self.draw_checkbox = QCheckBox("Include Draws")
         self.draw_checkbox.setChecked(True)
+        self.draw_checkbox.setToolTip("Include moves with draw outcomes.")
         self.draw_checkbox.stateChanged.connect(self.apply_filters)
 
         self.loss_checkbox = QCheckBox("Include Losses")
         self.loss_checkbox.setChecked(True)
+        self.loss_checkbox.setToolTip("Include moves with losing outcomes.")
         self.loss_checkbox.stateChanged.connect(self.apply_filters)
 
         control_layout.addWidget(QLabel("Opening Name:"))
@@ -85,10 +90,13 @@ class OpeningBookVisualization(QWidget):
 
         nav_toolbar = QToolBar()
         self.prev_move_action = QAction(QIcon.fromTheme("go-previous"), "Previous Move", self)
+        self.prev_move_action.setToolTip("Go to the previous move in the stack.")
         self.prev_move_action.triggered.connect(self.on_prev_move)
         self.next_move_action = QAction(QIcon.fromTheme("go-next"), "Next Move", self)
+        self.next_move_action.setToolTip("Go to the next available move.")
         self.next_move_action.triggered.connect(self.on_next_move)
         self.reset_board_action = QAction(QIcon.fromTheme("view-refresh"), "Reset Board", self)
+        self.reset_board_action.setToolTip("Reset the board to the initial position.")
         self.reset_board_action.triggered.connect(self.on_reset_board)
         nav_toolbar.addAction(self.prev_move_action)
         nav_toolbar.addAction(self.next_move_action)
@@ -171,7 +179,7 @@ class OpeningBookVisualization(QWidget):
             r = int((1 - win_ratio) * 255)
             g = int(win_ratio * 255)
             b = 0
-            color = QColor(r, g, b)
+            color = QColor(r, g, b, 50)
             for item in [move_item, win_item, draw_item, loss_item, total_games_item, opening_name_item]:
                 item.setBackground(color)
             tooltip_text = f"Move: {san}\nWin: {move_data['win']}\nDraw: {move_data['draw']}\nLoss: {move_data['loss']}"
@@ -219,9 +227,9 @@ class OpeningBookVisualization(QWidget):
             win_percentage = (move_data['win'] / total) * 100
             if win_percentage < min_win_percentage:
                 continue
-            if not (include_win and move_data['win'] > 0 or
-                    include_draw and move_data['draw'] > 0 or
-                    include_loss and move_data['loss'] > 0):
+            if not ((include_win and move_data['win'] > 0) or
+                    (include_draw and move_data['draw'] > 0) or
+                    (include_loss and move_data['loss'] > 0)):
                 continue
             if opening_name_filter and opening_name_filter not in move_data['name'].lower():
                 continue

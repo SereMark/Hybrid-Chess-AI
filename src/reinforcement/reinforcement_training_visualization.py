@@ -1,7 +1,6 @@
 from src.base.base_visualization import BasePlot, BaseVisualizationWidget
 import time
 
-
 class ReinforcementVisualization(BaseVisualizationWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -101,32 +100,44 @@ class ReinforcementVisualization(BaseVisualizationWidget):
 
     def update_visualization(self):
         self.clear_axis('game_outcomes')
-        self.ax1.plot(self.games_played, self.win_rates, label='Win Rate', color='green')
-        self.ax1.plot(self.games_played, self.draw_rates, label='Draw Rate', color='blue')
-        self.ax1.plot(self.games_played, self.loss_rates, label='Loss Rate', color='red')
-        self.ax1.legend()
-        self.ax1.set_ylim(0, 100)
+        if self.games_played:
+            self.ax1.plot(self.games_played, self.win_rates, label='Win Rate', color='green', alpha=0.8)
+            self.ax1.plot(self.games_played, self.draw_rates, label='Draw Rate', color='blue', alpha=0.8)
+            self.ax1.plot(self.games_played, self.loss_rates, label='Loss Rate', color='red', alpha=0.8)
+            self.ax1.legend(frameon=False, fontsize=10)
+            self.ax1.set_ylim(0, 100)
+        else:
+            self.add_text_to_axis('game_outcomes', 'No Data')
 
         self.clear_axis('game_length')
         if self.game_lengths_all:
-            self.ax2.hist(self.game_lengths_all, bins=20, color='purple', alpha=0.7)
+            self.ax2.hist(self.game_lengths_all, bins=20, color='purple', alpha=0.7, edgecolor='black')
         else:
             self.add_text_to_axis('game_length', 'No Data')
 
         self.clear_axis('training_speed')
-        self.ax3.plot(self.games_played, self.games_per_second, color='orange')
-        self.ax3.set_ylim(bottom=0)
+        if self.games_played and self.games_per_second:
+            self.ax3.plot(self.games_played, self.games_per_second, color='orange', alpha=0.8)
+            self.ax3.set_ylim(bottom=0)
+        else:
+            self.add_text_to_axis('training_speed', 'No Data')
 
         self.clear_axis('training_metrics')
-        self.ax4.plot(self.games_played, self.win_rates, label='Win Rate', color='green')
-        self.ax4.plot(self.games_played, self.draw_rates, label='Draw Rate', color='blue')
-        self.ax4.plot(self.games_played, self.loss_rates, label='Loss Rate', color='red')
-        self.ax4.legend()
-        self.ax4.set_ylim(0, 100)
+        if self.games_played:
+            self.ax4.plot(self.games_played, self.win_rates, label='Win Rate', color='green', alpha=0.8)
+            self.ax4.plot(self.games_played, self.draw_rates, label='Draw Rate', color='blue', alpha=0.8)
+            self.ax4.plot(self.games_played, self.loss_rates, label='Loss Rate', color='red', alpha=0.8)
+            self.ax4.legend(frameon=False, fontsize=10)
+            self.ax4.set_ylim(0, 100)
+        else:
+            self.add_text_to_axis('training_metrics', 'No Data')
 
         self.clear_axis('avg_mcts_visits')
-        self.ax5.plot(self.games_played, self.avg_mcts_visits, label='Avg MCTS Visits', color='magenta')
-        self.ax5.legend()
-        self.ax5.set_ylim(bottom=0)
+        if self.games_played and self.avg_mcts_visits:
+            self.ax5.plot(self.games_played, self.avg_mcts_visits, label='Avg MCTS Visits', color='magenta', alpha=0.8)
+            self.ax5.legend(frameon=False, fontsize=10)
+            self.ax5.set_ylim(bottom=0)
+        else:
+            self.add_text_to_axis('avg_mcts_visits', 'No Data')
 
         self.canvas.draw_idle()

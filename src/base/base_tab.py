@@ -1,6 +1,8 @@
-from PyQt5.QtWidgets import QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton, QFileDialog, QSizePolicy
+from PyQt5.QtWidgets import (
+    QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout, QHBoxLayout, QGroupBox, 
+    QLineEdit, QPushButton, QFileDialog, QSizePolicy, QStyle
+)
 from PyQt5.QtCore import Qt, QThread
-
 
 class BaseTab(QWidget):
     def __init__(self, parent=None):
@@ -11,6 +13,11 @@ class BaseTab(QWidget):
         self.progress_bar = None
         self.remaining_time_label = None
         self.save_checkpoints_checkbox = None
+
+        self.setContentsMargins(10, 10, 10, 10)
+
+        self.init_ui_state = True
+        self.showing_logs = True
 
     def start_worker(self, worker_class, *args, **kwargs):
         if self.thread is not None and self.thread.isRunning():
@@ -58,6 +65,8 @@ class BaseTab(QWidget):
             self.pause_button.setEnabled(False)
         if hasattr(self, 'resume_button'):
             self.resume_button.setEnabled(False)
+        if hasattr(self, 'start_new_button'):
+            self.start_new_button.setVisible(True)
 
     def update_progress(self, value):
         self.progress_bar.setValue(value)
@@ -67,10 +76,10 @@ class BaseTab(QWidget):
         self.remaining_time_label.setText(f"Time Left: {time_left_str}")
 
     def create_log_text_edit(self):
-        self.log_text_edit = QTextEdit()
-        self.log_text_edit.setReadOnly(True)
-        self.log_text_edit.setPlaceholderText("Logs will appear here...")
-        return self.log_text_edit
+        log_text_edit = QTextEdit()
+        log_text_edit.setReadOnly(True)
+        log_text_edit.setPlaceholderText("Logs will appear here...")
+        return log_text_edit
 
     def create_progress_layout(self):
         layout = QVBoxLayout()
@@ -87,6 +96,8 @@ class BaseTab(QWidget):
 
     def create_browse_layout(self, line_edit, browse_button):
         layout = QHBoxLayout()
+        layout.setContentsMargins(0,0,0,0)
+        layout.setSpacing(5)
         layout.addWidget(line_edit)
         layout.addWidget(browse_button)
         return layout
@@ -105,20 +116,25 @@ class BaseTab(QWidget):
 
     def create_visualization_group(self, visualization_widget, title: str):
         visualization_group = QGroupBox(title)
-        visualization_group.setToolTip("Visual representation of data or training progress.")
+        visualization_group.setToolTip("Visual representation of data or progress.")
         vis_layout = QVBoxLayout()
+        vis_layout.setSpacing(10)
         visualization_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         vis_layout.addWidget(visualization_widget)
         visualization_group.setLayout(vis_layout)
         return visualization_group
 
-    def create_control_buttons(self, start_text, stop_text, start_callback, stop_callback, pause_text=None, resume_text=None, pause_callback=None, resume_callback=None):
+    def create_control_buttons(self, start_text, stop_text, start_callback, stop_callback,
+                               pause_text=None, resume_text=None, pause_callback=None, resume_callback=None):
         layout = QHBoxLayout()
+        layout.setSpacing(10)
 
         self.start_button = QPushButton(start_text)
         self.start_button.setToolTip("Begin the process.")
+        self.start_button.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
         self.stop_button = QPushButton(stop_text)
         self.stop_button.setToolTip("Stop the process.")
+        self.stop_button.setIcon(self.style().standardIcon(QStyle.SP_MediaStop))
         self.stop_button.setEnabled(False)
 
         layout.addWidget(self.start_button)
@@ -130,8 +146,10 @@ class BaseTab(QWidget):
         if pause_text and resume_text and pause_callback and resume_callback:
             self.pause_button = QPushButton(pause_text)
             self.pause_button.setToolTip("Pause the ongoing process.")
+            self.pause_button.setIcon(self.style().standardIcon(QStyle.SP_MediaPause))
             self.resume_button = QPushButton(resume_text)
             self.resume_button.setToolTip("Resume the paused process.")
+            self.resume_button.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
             self.pause_button.setEnabled(False)
             self.resume_button.setEnabled(False)
             layout.addWidget(self.pause_button)
@@ -164,7 +182,9 @@ class BaseTab(QWidget):
                 raise ValueError("Unsupported attribute. Use 'enabled' or 'visible'.")
 
     def setup_batch_size_control(self, automatic_batch_size_checkbox, batch_size_input):
-        automatic_batch_size_checkbox.toggled.connect(lambda checked: self.toggle_widget_state([batch_size_input], state=not checked, attribute="enabled"))
+        automatic_batch_size_checkbox.toggled.connect(
+            lambda checked: self.toggle_widget_state([batch_size_input], state=not checked, attribute="enabled")
+        )
         self.toggle_widget_state([batch_size_input], state=not automatic_batch_size_checkbox.isChecked(), attribute="enabled")
 
     def setup_checkpoint_controls(self, save_checkpoints_checkbox, checkpoint_type_combo, interval_widgets):

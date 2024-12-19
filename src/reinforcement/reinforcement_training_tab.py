@@ -1,4 +1,7 @@
-from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QMessageBox, QCheckBox, QLabel, QComboBox, QFrame
+from PyQt5.QtWidgets import (
+    QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QMessageBox, 
+    QCheckBox, QLabel, QComboBox, QFrame
+)
 from PyQt5.QtCore import Qt
 from src.reinforcement.reinforcement_training_visualization import ReinforcementVisualization
 from src.reinforcement.reinforcement_training_worker import ReinforcementWorker
@@ -13,29 +16,20 @@ class ReinforcementTab(BaseTab):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(15)
 
         intro_label = QLabel("Train a chess model through self-play reinforcement learning.")
         intro_label.setWordWrap(True)
         intro_label.setAlignment(Qt.AlignLeft)
-        intro_label.setToolTip("Use this tab to train a model using self-play games and reinforcement learning.")
+        intro_label.setToolTip("Use self-play games and reinforcement learning to improve the model.")
 
         self.model_output_group = self.create_model_output_group()
         self.parameters_group = self.create_parameters_group()
         self.checkpoint_group = self.create_checkpoint_group()
 
-        progress_group = QGroupBox("Self-Play Progress")
-        pg_layout = QVBoxLayout(progress_group)
-        pg_layout.addLayout(self.create_progress_layout())
-
-        logs_group = QGroupBox("Self-Play Logs")
-        lg_layout = QVBoxLayout(logs_group)
-        self.log_text_edit = self.create_log_text_edit()
-        lg_layout.addWidget(self.log_text_edit)
-
-        self.visualization_group = self.create_visualization_group(self.visualization, "Self-Play Visualization")
-
-        controls_group = QGroupBox("Actions")
-        cg_layout = QVBoxLayout(controls_group)
+        self.controls_group = QGroupBox("Actions")
+        cg_layout = QVBoxLayout(self.controls_group)
+        cg_layout.setSpacing(10)
         control_buttons_layout = self.create_control_buttons(
             "Start Self-Play",
             "Stop Self-Play",
@@ -48,19 +42,54 @@ class ReinforcementTab(BaseTab):
         )
         cg_layout.addLayout(control_buttons_layout)
 
+        self.toggle_buttons_layout = QHBoxLayout()
+        self.show_logs_button = QPushButton("Show Logs")
+        self.show_logs_button.setCheckable(True)
+        self.show_logs_button.setChecked(True)
+        self.show_logs_button.clicked.connect(self.show_logs_view)
+        self.show_graphs_button = QPushButton("Show Graphs")
+        self.show_graphs_button.setCheckable(True)
+        self.show_graphs_button.setChecked(False)
+        self.show_graphs_button.clicked.connect(self.show_graphs_view)
+        self.show_logs_button.clicked.connect(lambda: self.show_graphs_button.setChecked(not self.show_logs_button.isChecked()))
+        self.show_graphs_button.clicked.connect(lambda: self.show_logs_button.setChecked(not self.show_graphs_button.isChecked()))
+        self.toggle_buttons_layout.addWidget(self.show_logs_button)
+        self.toggle_buttons_layout.addWidget(self.show_graphs_button)
+        cg_layout.addLayout(self.toggle_buttons_layout)
+
+        self.start_new_button = QPushButton("Start New")
+        self.start_new_button.setToolTip("Start a new reinforcement training configuration.")
+        self.start_new_button.clicked.connect(self.reset_to_initial_state)
+        cg_layout.addWidget(self.start_new_button)
+
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
         separator.setFrameShadow(QFrame.Sunken)
+
+        self.progress_group = QGroupBox("Self-Play Progress")
+        pg_layout = QVBoxLayout(self.progress_group)
+        pg_layout.setSpacing(10)
+        pg_layout.addLayout(self.create_progress_layout())
+
+        self.log_group = QGroupBox("Self-Play Logs")
+        lg_layout = QVBoxLayout(self.log_group)
+        lg_layout.setSpacing(10)
+        self.log_text_edit = self.create_log_text_edit()
+        lg_layout.addWidget(self.log_text_edit)
+        self.log_group.setLayout(lg_layout)
+
+        self.visualization_group = self.create_visualization_group(self.visualization, "Self-Play Visualization")
 
         main_layout.addWidget(intro_label)
         main_layout.addWidget(self.model_output_group)
         main_layout.addWidget(self.parameters_group)
         main_layout.addWidget(self.checkpoint_group)
+        main_layout.addWidget(self.controls_group)
         main_layout.addWidget(separator)
-        main_layout.addWidget(progress_group)
-        main_layout.addWidget(logs_group)
+        main_layout.addWidget(self.progress_group)
+        main_layout.addWidget(self.log_group)
         main_layout.addWidget(self.visualization_group)
-        main_layout.addWidget(controls_group)
+        self.setLayout(main_layout)
 
         self.setup_batch_size_control(self.automatic_batch_size_checkbox, self.batch_size_input)
         interval_widgets = {
@@ -71,19 +100,74 @@ class ReinforcementTab(BaseTab):
         }
         self.setup_checkpoint_controls(self.save_checkpoints_checkbox, self.checkpoint_type_combo, interval_widgets)
 
-        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
+        self.progress_group.setVisible(False)
+        self.log_group.setVisible(False)
+        self.visualization_group.setVisible(False)
+        self.show_logs_button.setVisible(False)
+        self.show_graphs_button.setVisible(False)
+        self.start_new_button.setVisible(False)
+        self.stop_button.setEnabled(False)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
+
+    def reset_to_initial_state(self):
+        self.model_output_group.setVisible(True)
+        self.parameters_group.setVisible(True)
+        self.checkpoint_group.setVisible(True)
+        self.progress_group.setVisible(False)
+        self.log_group.setVisible(False)
+        self.visualization_group.setVisible(False)
+        self.controls_group.setVisible(True)
+        self.start_new_button.setVisible(False)
+        self.show_logs_button.setVisible(False)
+        self.show_graphs_button.setVisible(False)
+        self.show_logs_button.setChecked(True)
+        self.show_graphs_button.setChecked(False)
+
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Idle")
+        self.remaining_time_label.setText("Time Left: N/A")
+        self.log_text_edit.clear()
+        self.visualization.reset_visualization()
+
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
+        self.init_ui_state = True
+
+    def show_logs_view(self):
+        if self.show_logs_button.isChecked():
+            self.show_graphs_button.setChecked(False)
+            self.log_group.setVisible(True)
+            self.visualization_group.setVisible(False)
+            self.showing_logs = True
+            self.visualization.update_visualization()
+
+    def show_graphs_view(self):
+        if self.show_graphs_button.isChecked():
+            self.show_logs_button.setChecked(False)
+            self.log_group.setVisible(False)
+            self.visualization_group.setVisible(True)
+            self.showing_logs = False
+            self.visualization.update_visualization()
 
     def create_model_output_group(self):
         model_output_group = QGroupBox("Output Settings")
         model_output_layout = QFormLayout()
+        model_output_layout.setSpacing(10)
 
         self.model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
         self.model_path_input.setPlaceholderText("Path to the base model file")
-        self.model_path_input.setToolTip("The model to start from or continue training.")
+        self.model_path_input.setToolTip("The initial model or the one to continue training from.")
 
         self.checkpoint_path_input = QLineEdit("")
         self.checkpoint_path_input.setPlaceholderText("Path to resume from checkpoint (optional)")
-        self.checkpoint_path_input.setToolTip("If resuming training, specify the checkpoint file here.")
+        self.checkpoint_path_input.setToolTip("Optional checkpoint file to resume training.")
 
         model_browse_button = QPushButton("Browse")
         model_browse_button.setToolTip("Browse for the model file.")
@@ -97,6 +181,7 @@ class ReinforcementTab(BaseTab):
     def create_parameters_group(self):
         parameters_group = QGroupBox("Self-Play Parameters")
         parameters_layout = QFormLayout()
+        parameters_layout.setSpacing(10)
 
         self.num_iterations_input = QLineEdit("10")
         self.num_iterations_input.setPlaceholderText("e.g. 10")
@@ -108,11 +193,11 @@ class ReinforcementTab(BaseTab):
 
         self.simulations_input = QLineEdit("800")
         self.simulations_input.setPlaceholderText("e.g. 800")
-        self.simulations_input.setToolTip("Number of MCTS simulations per move.")
+        self.simulations_input.setToolTip("MCTS simulations per move.")
 
         self.c_puct_input = QLineEdit("1.4")
         self.c_puct_input.setPlaceholderText("e.g. 1.4")
-        self.c_puct_input.setToolTip("Exploration constant for MCTS.")
+        self.c_puct_input.setToolTip("Exploration constant in MCTS.")
 
         self.temperature_input = QLineEdit("1.0")
         self.temperature_input.setPlaceholderText("e.g. 1.0")
@@ -127,7 +212,7 @@ class ReinforcementTab(BaseTab):
         self.batch_size_input.setToolTip("Batch size if not automatic.")
 
         self.automatic_batch_size_checkbox = QCheckBox("Automatic Batch Size")
-        self.automatic_batch_size_checkbox.setToolTip("Enable automatic determination of batch size.")
+        self.automatic_batch_size_checkbox.setToolTip("Enable automatic batch size determination.")
         self.automatic_batch_size_checkbox.setChecked(False)
 
         self.num_threads_input = QLineEdit("4")
@@ -140,11 +225,11 @@ class ReinforcementTab(BaseTab):
 
         self.optimizer_type_combo = QComboBox()
         self.optimizer_type_combo.addItems(['Adam', 'AdamW', 'SGD'])
-        self.optimizer_type_combo.setToolTip("Select the optimizer for training.")
+        self.optimizer_type_combo.setToolTip("Optimizer for training.")
 
         self.learning_rate_input = QLineEdit("0.0005")
         self.learning_rate_input.setPlaceholderText("e.g. 0.0005")
-        self.learning_rate_input.setToolTip("Learning rate for the optimizer.")
+        self.learning_rate_input.setToolTip("Learning rate for optimizer.")
 
         self.weight_decay_input = QLineEdit("0.0001")
         self.weight_decay_input.setPlaceholderText("e.g. 0.0001")
@@ -153,7 +238,7 @@ class ReinforcementTab(BaseTab):
         self.scheduler_type_combo = QComboBox()
         self.scheduler_type_combo.addItems(['None', 'StepLR', 'CosineAnnealing', 'CosineAnnealingWarmRestarts'])
         self.scheduler_type_combo.setCurrentText('CosineAnnealing')
-        self.scheduler_type_combo.setToolTip("Select the scheduler type for learning rate.")
+        self.scheduler_type_combo.setToolTip("Scheduler type for learning rate.")
 
         parameters_layout.addRow("Number of Iterations:", self.num_iterations_input)
         parameters_layout.addRow("Games per Iteration:", self.num_games_per_iteration_input)
@@ -176,6 +261,7 @@ class ReinforcementTab(BaseTab):
     def create_checkpoint_group(self):
         checkpoint_group = QGroupBox("Checkpoint Settings")
         checkpoint_layout = QFormLayout()
+        checkpoint_layout.setSpacing(10)
 
         self.save_checkpoints_checkbox = QCheckBox("Enable Checkpoints")
         self.save_checkpoints_checkbox.setChecked(True)
@@ -183,7 +269,7 @@ class ReinforcementTab(BaseTab):
 
         self.checkpoint_type_combo = QComboBox()
         self.checkpoint_type_combo.addItems(['Iteration', 'Epoch', 'Time', 'Batch'])
-        self.checkpoint_type_combo.setToolTip("Criteria to trigger checkpoint saving.")
+        self.checkpoint_type_combo.setToolTip("Criteria for saving checkpoints.")
 
         checkpoint_type_layout = QHBoxLayout()
         cpl = QLabel("Save checkpoint by:")
@@ -233,17 +319,16 @@ class ReinforcementTab(BaseTab):
             temperature = float(self.temperature_input.text())
             num_epochs = int(self.num_epochs_input.text())
             num_threads = int(self.num_threads_input.text())
-            random_seed = int(self.random_seed_input.text())
 
             if self.automatic_batch_size_checkbox.isChecked():
                 batch_size = None
             else:
                 batch_size = int(self.batch_size_input.text())
                 if batch_size <= 0:
-                    raise ValueError("Batch Size must be a positive integer.")
+                    raise ValueError("Batch Size must be positive.")
 
             if any(v <= 0 for v in [num_iterations, num_games_per_iteration, simulations, c_puct, temperature, num_epochs, num_threads]):
-                raise ValueError("All numerical parameters must be positive.")
+                raise ValueError("All parameters must be positive.")
 
             optimizer_type = self.optimizer_type_combo.currentText().lower()
             learning_rate = float(self.learning_rate_input.text())
@@ -292,9 +377,13 @@ class ReinforcementTab(BaseTab):
                     QMessageBox.warning(self, "Input Error", str(e))
                     return
 
-        self.toggle_widget_state([self.start_button], state=False, attribute="enabled")
-        self.toggle_widget_state([self.stop_button, self.pause_button], state=True, attribute="enabled")
-        self.toggle_widget_state([self.resume_button], state=False, attribute="enabled")
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(True)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
+
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
         self.remaining_time_label.setText("Time Left: Calculating...")
@@ -303,8 +392,18 @@ class ReinforcementTab(BaseTab):
         if not os.path.exists(os.path.dirname(model_path)):
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
 
-        self.toggle_widget_state([self.model_output_group, self.parameters_group, self.checkpoint_group], state=False, attribute="visible")
-        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=True, attribute="visible")
+        self.model_output_group.setVisible(False)
+        self.parameters_group.setVisible(False)
+        self.checkpoint_group.setVisible(False)
+        self.progress_group.setVisible(True)
+        self.controls_group.setVisible(True)
+        self.log_group.setVisible(True)
+        self.visualization_group.setVisible(False)
+        self.show_logs_button.setVisible(True)
+        self.show_graphs_button.setVisible(True)
+        self.start_new_button.setVisible(False)
+
+        self.init_ui_state = False
 
         started = self.start_worker(
             ReinforcementWorker,
@@ -319,7 +418,7 @@ class ReinforcementTab(BaseTab):
             automatic_batch_size=self.automatic_batch_size_checkbox.isChecked(),
             num_threads=num_threads,
             checkpoint_path=checkpoint_path,
-            random_seed=random_seed,
+            random_seed=int(self.random_seed_input.text()),
             save_checkpoints=save_checkpoints,
             checkpoint_interval=checkpoint_interval,
             checkpoint_type=checkpoint_type,
@@ -332,23 +431,20 @@ class ReinforcementTab(BaseTab):
         )
         if started:
             self.worker.stats_update.connect(self.visualization.update_stats)
-            self.worker.task_finished.connect(self.on_self_play_finished)
-            self.worker.paused.connect(self.on_worker_paused)
         else:
-            self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
-            self.toggle_widget_state([self.pause_button, self.stop_button, self.resume_button], state=False, attribute="enabled")
-            self.toggle_widget_state([self.model_output_group, self.parameters_group, self.checkpoint_group], state=True, attribute="visible")
-            self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
+            self.reset_to_initial_state()
 
     def stop_self_play(self):
         self.stop_worker()
-        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
-        self.toggle_widget_state([self.pause_button, self.resume_button, self.stop_button], state=False, attribute="enabled")
-        self.toggle_widget_state([self.model_output_group, self.parameters_group, self.checkpoint_group], state=True, attribute="visible")
+        self.reset_to_initial_state()
 
     def on_self_play_finished(self):
-        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
-        self.toggle_widget_state([self.pause_button, self.resume_button, self.stop_button], state=False, attribute="enabled")
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
         self.progress_bar.setFormat("Self-Play Finished")
         self.remaining_time_label.setText("Time Left: N/A")
-        self.toggle_widget_state([self.model_output_group, self.parameters_group, self.checkpoint_group], state=True, attribute="visible")
+        self.start_new_button.setVisible(True)

@@ -1,4 +1,7 @@
-from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QLabel, QCheckBox, QComboBox, QMessageBox, QHBoxLayout, QFrame
+from PyQt5.QtWidgets import (
+    QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QLabel, QCheckBox, QComboBox, 
+    QMessageBox, QHBoxLayout, QFrame
+)
 from PyQt5.QtCore import Qt
 from src.supervised.supervised_training_worker import SupervisedWorker
 from src.supervised.supervised_training_visualization import SupervisedVisualization
@@ -13,29 +16,20 @@ class SupervisedTab(BaseTab):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(15)
 
         intro_label = QLabel("Train a supervised model on processed chess data to predict moves.")
         intro_label.setWordWrap(True)
         intro_label.setAlignment(Qt.AlignLeft)
-        intro_label.setToolTip("Use this tab to train a neural network in a supervised manner using labeled data.")
+        intro_label.setToolTip("Train a model to predict moves in a supervised manner using labeled data.")
 
         self.dataset_group = self.create_dataset_group()
         self.training_group = self.create_training_group()
         self.checkpoint_group = self.create_checkpoint_group()
 
-        progress_group = QGroupBox("Training Progress")
-        pg_layout = QVBoxLayout(progress_group)
-        pg_layout.addLayout(self.create_progress_layout())
-
-        logs_group = QGroupBox("Training Logs")
-        lg_layout = QVBoxLayout(logs_group)
-        self.log_text_edit = self.create_log_text_edit()
-        lg_layout.addWidget(self.log_text_edit)
-
-        self.visualization_group = self.create_visualization_group(self.visualization, "Training Visualization")
-
-        controls_group = QGroupBox("Actions")
-        cg_layout = QVBoxLayout(controls_group)
+        self.controls_group = QGroupBox("Actions")
+        cg_layout = QVBoxLayout(self.controls_group)
+        cg_layout.setSpacing(10)
         control_buttons_layout = self.create_control_buttons(
             "Start Training",
             "Stop Training",
@@ -48,19 +42,54 @@ class SupervisedTab(BaseTab):
         )
         cg_layout.addLayout(control_buttons_layout)
 
+        self.toggle_buttons_layout = QHBoxLayout()
+        self.show_logs_button = QPushButton("Show Logs")
+        self.show_logs_button.setCheckable(True)
+        self.show_logs_button.setChecked(True)
+        self.show_logs_button.clicked.connect(self.show_logs_view)
+        self.show_graphs_button = QPushButton("Show Graphs")
+        self.show_graphs_button.setCheckable(True)
+        self.show_graphs_button.setChecked(False)
+        self.show_graphs_button.clicked.connect(self.show_graphs_view)
+        self.show_logs_button.clicked.connect(lambda: self.show_graphs_button.setChecked(not self.show_logs_button.isChecked()))
+        self.show_graphs_button.clicked.connect(lambda: self.show_logs_button.setChecked(not self.show_graphs_button.isChecked()))
+        self.toggle_buttons_layout.addWidget(self.show_logs_button)
+        self.toggle_buttons_layout.addWidget(self.show_graphs_button)
+        cg_layout.addLayout(self.toggle_buttons_layout)
+
+        self.start_new_button = QPushButton("Start New")
+        self.start_new_button.setToolTip("Start a new training configuration.")
+        self.start_new_button.clicked.connect(self.reset_to_initial_state)
+        cg_layout.addWidget(self.start_new_button)
+
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
         separator.setFrameShadow(QFrame.Sunken)
+
+        self.progress_group = QGroupBox("Training Progress")
+        pg_layout = QVBoxLayout(self.progress_group)
+        pg_layout.setSpacing(10)
+        pg_layout.addLayout(self.create_progress_layout())
+
+        self.log_group = QGroupBox("Training Logs")
+        lg_layout = QVBoxLayout(self.log_group)
+        lg_layout.setSpacing(10)
+        self.log_text_edit = self.create_log_text_edit()
+        lg_layout.addWidget(self.log_text_edit)
+        self.log_group.setLayout(lg_layout)
+
+        self.visualization_group = self.create_visualization_group(self.visualization, "Training Visualization")
 
         main_layout.addWidget(intro_label)
         main_layout.addWidget(self.dataset_group)
         main_layout.addWidget(self.training_group)
         main_layout.addWidget(self.checkpoint_group)
+        main_layout.addWidget(self.controls_group)
         main_layout.addWidget(separator)
-        main_layout.addWidget(progress_group)
-        main_layout.addWidget(logs_group)
+        main_layout.addWidget(self.progress_group)
+        main_layout.addWidget(self.log_group)
         main_layout.addWidget(self.visualization_group)
-        main_layout.addWidget(controls_group)
+        self.setLayout(main_layout)
 
         self.setup_batch_size_control(self.automatic_batch_size_checkbox, self.batch_size_input)
         interval_widgets = {
@@ -70,23 +99,78 @@ class SupervisedTab(BaseTab):
         }
         self.setup_checkpoint_controls(self.save_checkpoints_checkbox, self.checkpoint_type_combo, interval_widgets)
 
-        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
+        self.progress_group.setVisible(False)
+        self.log_group.setVisible(False)
+        self.visualization_group.setVisible(False)
+        self.show_logs_button.setVisible(False)
+        self.show_graphs_button.setVisible(False)
+        self.start_new_button.setVisible(False)
+        self.stop_button.setEnabled(False)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
+
+    def reset_to_initial_state(self):
+        self.dataset_group.setVisible(True)
+        self.training_group.setVisible(True)
+        self.checkpoint_group.setVisible(True)
+        self.progress_group.setVisible(False)
+        self.log_group.setVisible(False)
+        self.visualization_group.setVisible(False)
+        self.start_new_button.setVisible(False)
+        self.show_logs_button.setVisible(False)
+        self.show_graphs_button.setVisible(False)
+        self.show_logs_button.setChecked(True)
+        self.show_graphs_button.setChecked(False)
+
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Idle")
+        self.remaining_time_label.setText("Time Left: N/A")
+        self.log_text_edit.clear()
+        self.visualization.reset_visualization()
+
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
+
+        self.init_ui_state = True
+
+    def show_logs_view(self):
+        if self.show_logs_button.isChecked():
+            self.show_graphs_button.setChecked(False)
+            self.log_group.setVisible(True)
+            self.visualization_group.setVisible(False)
+            self.showing_logs = True
+            self.visualization.update_visualization()
+
+    def show_graphs_view(self):
+        if self.show_graphs_button.isChecked():
+            self.show_logs_button.setChecked(False)
+            self.log_group.setVisible(False)
+            self.visualization_group.setVisible(True)
+            self.showing_logs = False
+            self.visualization.update_visualization()
 
     def create_dataset_group(self):
         dataset_group = QGroupBox("Dataset Settings")
         dataset_layout = QFormLayout()
+        dataset_layout.setSpacing(10)
 
         self.dataset_input = QLineEdit("data/processed/dataset.h5")
         self.dataset_input.setPlaceholderText("Path to dataset file (HDF5)")
-        self.dataset_input.setToolTip("Path to the main dataset file in HDF5 format.")
+        self.dataset_input.setToolTip("Main dataset file in HDF5 format.")
 
         self.train_indices_input = QLineEdit("data/processed/train_indices.npy")
         self.train_indices_input.setPlaceholderText("Path to training indices file")
-        self.train_indices_input.setToolTip("NumPy file containing indices for training examples.")
+        self.train_indices_input.setToolTip("NumPy file with training sample indices.")
 
         self.val_indices_input = QLineEdit("data/processed/val_indices.npy")
         self.val_indices_input.setPlaceholderText("Path to validation indices file")
-        self.val_indices_input.setToolTip("NumPy file containing indices for validation examples.")
+        self.val_indices_input.setToolTip("NumPy file with validation sample indices.")
 
         dataset_browse_button = QPushButton("Browse")
         dataset_browse_button.setToolTip("Browse for the dataset file.")
@@ -110,6 +194,7 @@ class SupervisedTab(BaseTab):
     def create_training_group(self):
         training_group = QGroupBox("Training Hyperparameters")
         training_layout = QFormLayout()
+        training_layout.setSpacing(10)
 
         self.epochs_input = QLineEdit("25")
         self.epochs_input.setPlaceholderText("e.g. 25")
@@ -117,7 +202,7 @@ class SupervisedTab(BaseTab):
 
         self.batch_size_input = QLineEdit("128")
         self.batch_size_input.setPlaceholderText("e.g. 128")
-        self.batch_size_input.setToolTip("Batch size for training (if not automatic).")
+        self.batch_size_input.setToolTip("Batch size if not automatic.")
 
         self.learning_rate_input = QLineEdit("0.0005")
         self.learning_rate_input.setPlaceholderText("e.g. 0.0005")
@@ -125,15 +210,15 @@ class SupervisedTab(BaseTab):
 
         self.weight_decay_input = QLineEdit("2e-4")
         self.weight_decay_input.setPlaceholderText("e.g. 2e-4")
-        self.weight_decay_input.setToolTip("Weight decay (L2 regularization) rate.")
+        self.weight_decay_input.setToolTip("Weight decay for regularization.")
 
         self.optimizer_type_combo = QComboBox()
         self.optimizer_type_combo.addItems(['AdamW', 'SGD'])
-        self.optimizer_type_combo.setToolTip("Select the optimizer type.")
+        self.optimizer_type_combo.setToolTip("Optimizer type to use.")
 
         self.scheduler_type_combo = QComboBox()
         self.scheduler_type_combo.addItems(['CosineAnnealingWarmRestarts', 'StepLR'])
-        self.scheduler_type_combo.setToolTip("Select the learning rate scheduler.")
+        self.scheduler_type_combo.setToolTip("Learning rate scheduler type.")
 
         self.num_workers_input = QLineEdit("4")
         self.num_workers_input.setPlaceholderText("e.g. 4")
@@ -145,7 +230,7 @@ class SupervisedTab(BaseTab):
 
         self.output_model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
         self.output_model_path_input.setPlaceholderText("Path to save the trained model")
-        self.output_model_path_input.setToolTip("Path where the trained model will be saved.")
+        self.output_model_path_input.setToolTip("Output path for the trained model.")
 
         output_model_browse_button = QPushButton("Browse")
         output_model_browse_button.setToolTip("Browse for the output model file path.")
@@ -167,6 +252,7 @@ class SupervisedTab(BaseTab):
     def create_checkpoint_group(self):
         checkpoint_group = QGroupBox("Checkpoint Settings")
         checkpoint_layout = QFormLayout()
+        checkpoint_layout.setSpacing(10)
 
         self.save_checkpoints_checkbox = QCheckBox("Enable Checkpoints")
         self.save_checkpoints_checkbox.setChecked(True)
@@ -174,7 +260,7 @@ class SupervisedTab(BaseTab):
 
         self.checkpoint_type_combo = QComboBox()
         self.checkpoint_type_combo.addItems(['Epoch', 'Time', 'Batch'])
-        self.checkpoint_type_combo.setToolTip("Select checkpoint saving criterion.")
+        self.checkpoint_type_combo.setToolTip("Checkpoint saving criterion.")
 
         checkpoint_type_layout = QHBoxLayout()
         cpl = QLabel("Save checkpoint by:")
@@ -201,7 +287,7 @@ class SupervisedTab(BaseTab):
 
         self.checkpoint_path_input = QLineEdit("")
         self.checkpoint_path_input.setPlaceholderText("Path to resume from checkpoint (optional)")
-        self.checkpoint_path_input.setToolTip("If resuming training, specify the checkpoint file path here.")
+        self.checkpoint_path_input.setToolTip("Optional checkpoint file to resume training.")
 
         checkpoint_browse_button = QPushButton("Browse")
         checkpoint_browse_button.setToolTip("Browse for the checkpoint file to resume from.")
@@ -286,9 +372,13 @@ class SupervisedTab(BaseTab):
                     QMessageBox.warning(self, "Input Error", str(e))
                     return
 
-        self.toggle_widget_state([self.start_button], state=False, attribute="enabled")
-        self.toggle_widget_state([self.stop_button, self.pause_button], state=True, attribute="enabled")
-        self.toggle_widget_state([self.resume_button], state=False, attribute="enabled")
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(True)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
+
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
         self.remaining_time_label.setText("Time Left: Calculating...")
@@ -297,8 +387,18 @@ class SupervisedTab(BaseTab):
         if not os.path.exists(os.path.dirname(output_model_path)):
             os.makedirs(os.path.dirname(output_model_path), exist_ok=True)
 
-        self.toggle_widget_state([self.dataset_group, self.training_group, self.checkpoint_group], state=False, attribute="visible")
-        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=True, attribute="visible")
+        self.dataset_group.setVisible(False)
+        self.training_group.setVisible(False)
+        self.checkpoint_group.setVisible(False)
+        self.progress_group.setVisible(True)
+        self.controls_group.setVisible(True)
+        self.log_group.setVisible(True)
+        self.visualization_group.setVisible(False)
+        self.show_logs_button.setVisible(True)
+        self.show_graphs_button.setVisible(True)
+        self.start_new_button.setVisible(False)
+
+        self.init_ui_state = False
 
         started = self.start_worker(
             SupervisedWorker,
@@ -326,26 +426,23 @@ class SupervisedTab(BaseTab):
             self.worker.batch_accuracy_update.connect(self.visualization.update_accuracy_plot)
             self.worker.val_loss_update.connect(self.visualization.update_validation_loss_plots)
             self.worker.epoch_accuracy_update.connect(self.visualization.update_validation_accuracy_plot)
-            self.worker.task_finished.connect(self.on_training_finished)
-            self.worker.paused.connect(self.on_worker_paused)
         else:
-            self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
-            self.toggle_widget_state([self.pause_button, self.stop_button, self.resume_button], state=False, attribute="enabled")
-            self.toggle_widget_state([self.dataset_group, self.training_group, self.checkpoint_group], state=True, attribute="visible")
-            self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
+            self.reset_to_initial_state()
 
         if not self.checkpoint_path_input.text():
             self.visualization.reset_visualization()
 
     def stop_training(self):
         self.stop_worker()
-        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
-        self.toggle_widget_state([self.pause_button, self.resume_button, self.stop_button], state=False, attribute="enabled")
-        self.toggle_widget_state([self.dataset_group, self.training_group, self.checkpoint_group], state=True, attribute="visible")
+        self.reset_to_initial_state()
 
     def on_training_finished(self):
-        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
-        self.toggle_widget_state([self.pause_button, self.resume_button, self.stop_button], state=False, attribute="enabled")
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
         self.progress_bar.setFormat("Training Finished")
         self.remaining_time_label.setText("Time Left: N/A")
-        self.toggle_widget_state([self.dataset_group, self.training_group, self.checkpoint_group], state=True, attribute="visible")
+        self.start_new_button.setVisible(True)

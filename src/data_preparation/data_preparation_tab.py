@@ -1,4 +1,7 @@
-from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QMessageBox, QWidget, QTabWidget, QLabel, QFrame
+from PyQt5.QtWidgets import (
+    QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton, QMessageBox, QWidget, 
+    QTabWidget, QLabel, QFrame, QHBoxLayout
+)
 from PyQt5.QtCore import Qt
 from src.data_preparation.data_preparation_visualization import DataPreparationVisualization
 from src.data_preparation.data_preparation_worker import DataPreparationWorker
@@ -14,30 +17,20 @@ class DataProcessingTab(BaseTab):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(15)
 
         intro_label = QLabel("Prepare your raw data and turn it into processed data for training.")
         intro_label.setWordWrap(True)
         intro_label.setAlignment(Qt.AlignLeft)
-        intro_label.setToolTip("This section allows you to preprocess raw chess data into a structured format.")
 
         self.visualization = DataPreparationVisualization()
 
         self.parameters_group = self.create_parameters_group()
         self.directories_group = self.create_directories_group()
 
-        progress_group = QGroupBox("Data Preparation Progress")
-        pg_layout = QVBoxLayout(progress_group)
-        pg_layout.addLayout(self.create_progress_layout())
-
-        log_group = QGroupBox("Data Preparation Logs")
-        lg_layout = QVBoxLayout(log_group)
-        self.log_text_edit = self.create_log_text_edit()
-        lg_layout.addWidget(self.log_text_edit)
-
-        self.visualization_group = self.create_visualization_group(self.visualization, "Data Preparation Visualization")
-
-        control_group = QGroupBox("Actions")
-        cg_layout = QVBoxLayout(control_group)
+        self.control_group = QGroupBox("Actions")
+        cg_layout = QVBoxLayout(self.control_group)
+        cg_layout.setSpacing(10)
         control_buttons_layout = self.create_control_buttons(
             "Start Data Preparation",
             "Stop",
@@ -50,24 +43,113 @@ class DataProcessingTab(BaseTab):
         )
         cg_layout.addLayout(control_buttons_layout)
 
+        self.toggle_buttons_layout = QHBoxLayout()
+        self.show_logs_button = QPushButton("Show Logs")
+        self.show_logs_button.setCheckable(True)
+        self.show_logs_button.setChecked(True)
+        self.show_logs_button.clicked.connect(self.show_logs_view)
+        self.show_graphs_button = QPushButton("Show Graphs")
+        self.show_graphs_button.setCheckable(True)
+        self.show_graphs_button.setChecked(False)
+        self.show_graphs_button.clicked.connect(self.show_graphs_view)
+        self.show_logs_button.clicked.connect(lambda: self.show_graphs_button.setChecked(not self.show_logs_button.isChecked()))
+        self.show_graphs_button.clicked.connect(lambda: self.show_logs_button.setChecked(not self.show_graphs_button.isChecked()))
+        self.toggle_buttons_layout.addWidget(self.show_logs_button)
+        self.toggle_buttons_layout.addWidget(self.show_graphs_button)
+        cg_layout.addLayout(self.toggle_buttons_layout)
+
+        self.start_new_button = QPushButton("Start New")
+        self.start_new_button.setToolTip("Start a new configuration and preparation process.")
+        self.start_new_button.clicked.connect(self.reset_to_initial_state)
+        cg_layout.addWidget(self.start_new_button)
+
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
         separator.setFrameShadow(QFrame.Sunken)
 
+        self.progress_group = QGroupBox("Data Preparation Progress")
+        pg_layout = QVBoxLayout(self.progress_group)
+        pg_layout.setSpacing(10)
+        pg_layout.addLayout(self.create_progress_layout())
+
+        self.log_group = QGroupBox("Data Preparation Logs")
+        lg_layout = QVBoxLayout(self.log_group)
+        lg_layout.setSpacing(10)
+        self.log_text_edit = self.create_log_text_edit()
+        lg_layout.addWidget(self.log_text_edit)
+        self.log_group.setLayout(lg_layout)
+
+        self.visualization_group = self.create_visualization_group(self.visualization, "Data Preparation Visualization")
+
         main_layout.addWidget(intro_label)
         main_layout.addWidget(self.parameters_group)
         main_layout.addWidget(self.directories_group)
+        main_layout.addWidget(self.control_group)
         main_layout.addWidget(separator)
-        main_layout.addWidget(progress_group)
-        main_layout.addWidget(log_group)
+        main_layout.addWidget(self.progress_group)
+        main_layout.addWidget(self.log_group)
         main_layout.addWidget(self.visualization_group)
-        main_layout.addWidget(control_group)
+        self.setLayout(main_layout)
 
-        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
+        self.progress_group.setVisible(False)
+        self.log_group.setVisible(False)
+        self.visualization_group.setVisible(False)
+        self.show_logs_button.setVisible(False)
+        self.show_graphs_button.setVisible(False)
+        self.start_new_button.setVisible(False)
+        self.stop_button.setEnabled(False)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
+
+    def reset_to_initial_state(self):
+        self.parameters_group.setVisible(True)
+        self.directories_group.setVisible(True)
+        self.progress_group.setVisible(False)
+        self.log_group.setVisible(False)
+        self.visualization_group.setVisible(False)
+        self.start_new_button.setVisible(False)
+        self.show_logs_button.setVisible(False)
+        self.show_graphs_button.setVisible(False)
+        self.show_logs_button.setChecked(True)
+        self.show_graphs_button.setChecked(False)
+
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Idle")
+        self.remaining_time_label.setText("Time Left: N/A")
+        self.log_text_edit.clear()
+        self.visualization.reset_visualization()
+
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
+
+        self.init_ui_state = True
+
+    def show_logs_view(self):
+        if self.show_logs_button.isChecked():
+            self.show_graphs_button.setChecked(False)
+            self.log_group.setVisible(True)
+            self.visualization_group.setVisible(False)
+            self.showing_logs = True
+            self.visualization.update_visualization()
+
+    def show_graphs_view(self):
+        if self.show_graphs_button.isChecked():
+            self.show_logs_button.setChecked(False)
+            self.log_group.setVisible(False)
+            self.visualization_group.setVisible(True)
+            self.showing_logs = False
+            self.visualization.update_visualization()
 
     def create_parameters_group(self):
         parameters_group = QGroupBox("Data Parameters")
         parameters_layout = QFormLayout()
+        parameters_layout.setSpacing(10)
 
         self.max_games_input = QLineEdit("100000")
         self.max_games_input.setPlaceholderText("e.g. 100000")
@@ -91,6 +173,7 @@ class DataProcessingTab(BaseTab):
     def create_directories_group(self):
         directories_group = QGroupBox("Data Directories")
         directories_layout = QFormLayout()
+        directories_layout.setSpacing(10)
 
         self.raw_data_dir_input = QLineEdit("data/raw")
         self.raw_data_dir_input.setPlaceholderText("Path to raw data directory")
@@ -119,7 +202,6 @@ class DataProcessingTab(BaseTab):
             max_games = int(self.max_games_input.text())
             min_elo = int(self.min_elo_input.text())
             batch_size = int(self.batch_size_input.text())
-
             if max_games <= 0 or min_elo <= 0 or batch_size <= 0:
                 raise ValueError("All numerical parameters must be positive integers.")
         except ValueError:
@@ -133,18 +215,30 @@ class DataProcessingTab(BaseTab):
             return
         os.makedirs(processed_data_dir, exist_ok=True)
 
-        self.toggle_widget_state([self.start_button], state=False, attribute="enabled")
-        self.toggle_widget_state([self.stop_button, self.pause_button], state=True, attribute="enabled")
-        self.toggle_widget_state([self.resume_button], state=False, attribute="enabled")
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(True)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
+
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
         self.remaining_time_label.setText("Time Left: Calculating...")
         self.log_text_edit.clear()
-
         self.visualization.reset_visualization()
 
-        self.toggle_widget_state([self.parameters_group, self.directories_group], state=False, attribute="visible")
-        self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=True, attribute="visible")
+        self.parameters_group.setVisible(False)
+        self.directories_group.setVisible(False)
+        self.progress_group.setVisible(True)
+        self.control_group.setVisible(True)
+        self.log_group.setVisible(True)
+        self.visualization_group.setVisible(False)
+        self.show_logs_button.setVisible(True)
+        self.show_graphs_button.setVisible(True)
+        self.start_new_button.setVisible(False)
+
+        self.init_ui_state = False
 
         started = self.start_worker(
             DataPreparationWorker,
@@ -156,25 +250,23 @@ class DataProcessingTab(BaseTab):
         )
         if started:
             self.worker.stats_update.connect(self.visualization.update_data_visualization)
-            self.worker.task_finished.connect(self.on_data_preparation_finished)
         else:
-            self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
-            self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
-            self.toggle_widget_state([self.parameters_group, self.directories_group], state=True, attribute="visible")
-            self.toggle_widget_state([self.log_text_edit, self.visualization_group], state=False, attribute="visible")
+            self.reset_to_initial_state()
 
     def stop_data_preparation(self):
         self.stop_worker()
-        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
-        self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
-        self.toggle_widget_state([self.parameters_group, self.directories_group], state=True, attribute="visible")
+        self.reset_to_initial_state()
 
     def on_data_preparation_finished(self):
-        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
-        self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
         self.progress_bar.setFormat("Data Preparation Finished")
         self.remaining_time_label.setText("Time Left: N/A")
-        self.toggle_widget_state([self.parameters_group, self.directories_group], state=True, attribute="visible")
+        self.start_new_button.setVisible(True)
 
 
 class OpeningBookTab(BaseTab):
@@ -185,28 +277,19 @@ class OpeningBookTab(BaseTab):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(15)
 
         intro_label = QLabel("Generate an Opening Book from processed PGN files.")
         intro_label.setWordWrap(True)
         intro_label.setAlignment(Qt.AlignLeft)
-        intro_label.setToolTip("This section generates an opening book from a large PGN dataset.")
+        intro_label.setToolTip("Generate an opening book from a large PGN dataset.")
 
-        self.opening_visualization = OpeningBookVisualization()
+        self.visualization = OpeningBookVisualization()
         self.opening_book_group = self.create_opening_book_group()
 
-        progress_group = QGroupBox("Opening Book Generation Progress")
-        pg_layout = QVBoxLayout(progress_group)
-        pg_layout.addLayout(self.create_progress_layout())
-
-        log_group = QGroupBox("Opening Book Generation Logs")
-        lg_layout = QVBoxLayout(log_group)
-        self.opening_log_text_edit = self.create_log_text_edit()
-        lg_layout.addWidget(self.opening_log_text_edit)
-
-        self.opening_visualization_group = self.create_visualization_group(self.opening_visualization, "Opening Book Visualization")
-
-        control_group = QGroupBox("Actions")
-        cg_layout = QVBoxLayout(control_group)
+        self.control_group = QGroupBox("Actions")
+        cg_layout = QVBoxLayout(self.control_group)
+        cg_layout.setSpacing(10)
         control_buttons_layout = self.create_control_buttons(
             "Start Opening Book Generation",
             "Stop",
@@ -219,38 +302,125 @@ class OpeningBookTab(BaseTab):
         )
         cg_layout.addLayout(control_buttons_layout)
 
+        self.toggle_buttons_layout = QHBoxLayout()
+        self.show_logs_button = QPushButton("Show Logs")
+        self.show_logs_button.setCheckable(True)
+        self.show_logs_button.setChecked(True)
+        self.show_logs_button.clicked.connect(self.show_logs_view)
+        self.show_graphs_button = QPushButton("Show Graphs")
+        self.show_graphs_button.setCheckable(True)
+        self.show_graphs_button.setChecked(False)
+        self.show_graphs_button.clicked.connect(self.show_graphs_view)
+        self.show_logs_button.clicked.connect(lambda: self.show_graphs_button.setChecked(not self.show_logs_button.isChecked()))
+        self.show_graphs_button.clicked.connect(lambda: self.show_logs_button.setChecked(not self.show_graphs_button.isChecked()))
+        self.toggle_buttons_layout.addWidget(self.show_logs_button)
+        self.toggle_buttons_layout.addWidget(self.show_graphs_button)
+        cg_layout.addLayout(self.toggle_buttons_layout)
+
+        self.start_new_button = QPushButton("Start New")
+        self.start_new_button.setToolTip("Start a new configuration and generation process.")
+        self.start_new_button.clicked.connect(self.reset_to_initial_state)
+        cg_layout.addWidget(self.start_new_button)
+
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
         separator.setFrameShadow(QFrame.Sunken)
 
+        self.progress_group = QGroupBox("Opening Book Generation Progress")
+        pg_layout = QVBoxLayout(self.progress_group)
+        pg_layout.setSpacing(10)
+        pg_layout.addLayout(self.create_progress_layout())
+
+        self.log_group = QGroupBox("Opening Book Generation Logs")
+        lg_layout = QVBoxLayout(self.log_group)
+        lg_layout.setSpacing(10)
+        self.log_text_edit = self.create_log_text_edit()
+        lg_layout.addWidget(self.log_text_edit)
+        self.log_group.setLayout(lg_layout)
+
+        self.visualization_group = self.create_visualization_group(self.visualization, "Opening Book Visualization")
+
         main_layout.addWidget(intro_label)
         main_layout.addWidget(self.opening_book_group)
+        main_layout.addWidget(self.control_group)
         main_layout.addWidget(separator)
-        main_layout.addWidget(progress_group)
-        main_layout.addWidget(log_group)
-        main_layout.addWidget(self.opening_visualization_group)
-        main_layout.addWidget(control_group)
+        main_layout.addWidget(self.progress_group)
+        main_layout.addWidget(self.log_group)
+        main_layout.addWidget(self.visualization_group)
 
-        self.toggle_widget_state([self.opening_log_text_edit, self.opening_visualization_group], state=False, attribute="visible")
+        self.setLayout(main_layout)
+
+        self.progress_group.setVisible(False)
+        self.log_group.setVisible(False)
+        self.visualization_group.setVisible(False)
+        self.show_logs_button.setVisible(False)
+        self.show_graphs_button.setVisible(False)
+        self.start_new_button.setVisible(False)
+        self.stop_button.setEnabled(False)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
+
+    def reset_to_initial_state(self):
+        self.opening_book_group.setVisible(True)
+        self.progress_group.setVisible(False)
+        self.log_group.setVisible(False)
+        self.visualization_group.setVisible(False)
+        self.start_new_button.setVisible(False)
+        self.show_logs_button.setVisible(False)
+        self.show_graphs_button.setVisible(False)
+        self.show_logs_button.setChecked(True)
+        self.show_graphs_button.setChecked(False)
+
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Idle")
+        self.remaining_time_label.setText("Time Left: N/A")
+        self.log_text_edit.clear()
+        self.visualization.reset_visualization()
+
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
+        self.init_ui_state = True
+
+    def show_logs_view(self):
+        if self.show_logs_button.isChecked():
+            self.show_graphs_button.setChecked(False)
+            self.log_group.setVisible(True)
+            self.visualization_group.setVisible(False)
+            self.showing_logs = True
+
+    def show_graphs_view(self):
+        if self.show_graphs_button.isChecked():
+            self.show_logs_button.setChecked(False)
+            self.log_group.setVisible(False)
+            self.visualization_group.setVisible(True)
+            self.showing_logs = False
 
     def create_opening_book_group(self):
         opening_book_group = QGroupBox("Opening Book Configuration")
         opening_book_layout = QFormLayout()
+        opening_book_layout.setSpacing(10)
 
         self.pgn_file_input = QLineEdit("data/raw/lichess_db_standard_rated_2024-11.pgn")
         self.pgn_file_input.setPlaceholderText("Path to PGN file")
-        self.pgn_file_input.setToolTip("The PGN file containing raw games.")
+        self.pgn_file_input.setToolTip("PGN file containing raw chess games.")
+
         pgn_browse_button = QPushButton("Browse")
         pgn_browse_button.setToolTip("Select the PGN file.")
         pgn_browse_button.clicked.connect(lambda: self.browse_file(self.pgn_file_input, "Select PGN File", "PGN Files (*.pgn)"))
 
         self.ob_max_games_input = QLineEdit("100000")
         self.ob_max_games_input.setPlaceholderText("e.g. 100000")
-        self.ob_max_games_input.setToolTip("Maximum number of games to consider.")
+        self.ob_max_games_input.setToolTip("Maximum number of games to consider for the opening book.")
 
         self.ob_min_elo_input = QLineEdit("1500")
         self.ob_min_elo_input.setPlaceholderText("e.g. 1500")
-        self.ob_min_elo_input.setToolTip("Minimum ELO rating for games included.")
+        self.ob_min_elo_input.setToolTip("Minimum ELO rating for included games.")
 
         self.ob_max_opening_moves_input = QLineEdit("20")
         self.ob_max_opening_moves_input.setPlaceholderText("e.g. 20")
@@ -286,7 +456,7 @@ class OpeningBookTab(BaseTab):
 
             if max_games <= 0 or min_elo <= 0 or max_opening_moves <= 0:
                 raise ValueError("All numerical parameters must be positive integers.")
-        except ValueError:
+        except ValueError as e:
             QMessageBox.warning(self, "Input Error", "Please ensure all inputs are valid positive integers.")
             return
 
@@ -298,18 +468,29 @@ class OpeningBookTab(BaseTab):
                 QMessageBox.critical(self, "Directory Error", f"Failed to create processed data directory: {str(e)}")
                 return
 
-        self.toggle_widget_state([self.start_button], state=False, attribute="enabled")
-        self.toggle_widget_state([self.stop_button, self.pause_button], state=True, attribute="enabled")
-        self.toggle_widget_state([self.resume_button], state=False, attribute="enabled")
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(True)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
+
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
         self.remaining_time_label.setText("Time Left: Calculating...")
-        self.opening_log_text_edit.clear()
+        self.log_text_edit.clear()
+        self.visualization.reset_visualization()
 
-        self.opening_visualization.reset_visualization()
+        self.opening_book_group.setVisible(False)
+        self.progress_group.setVisible(True)
+        self.control_group.setVisible(True)
+        self.log_group.setVisible(True)
+        self.visualization_group.setVisible(False)
+        self.show_logs_button.setVisible(True)
+        self.show_graphs_button.setVisible(True)
+        self.start_new_button.setVisible(False)
 
-        self.toggle_widget_state([self.opening_book_group], state=False, attribute="visible")
-        self.toggle_widget_state([self.opening_log_text_edit, self.opening_visualization_group], state=True, attribute="visible")
+        self.init_ui_state = False
 
         started = self.start_worker(
             OpeningBookWorker,
@@ -319,28 +500,23 @@ class OpeningBookTab(BaseTab):
             max_opening_moves,
             processed_data_dir
         )
-        if started:
-            self.worker.positions_update.connect(self.opening_visualization.update_opening_book)
-            self.worker.task_finished.connect(self.on_opening_book_generation_finished)
-        else:
-            self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
-            self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
-            self.toggle_widget_state([self.opening_book_group], state=True, attribute="visible")
-            self.toggle_widget_state([self.opening_log_text_edit, self.opening_visualization_group], state=False, attribute="visible")
+        if not started:
+            self.reset_to_initial_state()
 
     def stop_opening_book_generation(self):
         self.stop_worker()
-        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
-        self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
-        self.toggle_widget_state([self.opening_book_group], state=True, attribute="visible")
-        self.toggle_widget_state([self.opening_visualization_group], state=False, attribute="visible")
+        self.reset_to_initial_state()
 
     def on_opening_book_generation_finished(self):
-        self.toggle_widget_state([self.start_button], state=True, attribute="enabled")
-        self.toggle_widget_state([self.stop_button, self.pause_button, self.resume_button], state=False, attribute="enabled")
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        if hasattr(self, 'pause_button'):
+            self.pause_button.setEnabled(False)
+        if hasattr(self, 'resume_button'):
+            self.resume_button.setEnabled(False)
         self.progress_bar.setFormat("Opening Book Generation Finished")
         self.remaining_time_label.setText("Time Left: N/A")
-        self.toggle_widget_state([self.opening_book_group, self.opening_visualization_group], state=True, attribute="visible")
+        self.start_new_button.setVisible(True)
 
 
 class DataPreparationTab(QWidget):
@@ -350,9 +526,12 @@ class DataPreparationTab(QWidget):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(15)
         self.tab_widget = QTabWidget(self)
         self.tab_widget.setTabToolTip(0, "Convert raw chess data into a processed format.")
         self.tab_widget.setTabToolTip(1, "Create an opening book from processed PGN data.")
+        self.tab_widget.setMovable(False)
+        self.tab_widget.setElideMode(Qt.ElideRight)
 
         self.data_processing_tab = DataProcessingTab()
         self.opening_book_tab = OpeningBookTab()
@@ -361,3 +540,4 @@ class DataPreparationTab(QWidget):
         self.tab_widget.addTab(self.opening_book_tab, "Opening Book Generation")
 
         main_layout.addWidget(self.tab_widget)
+        self.setLayout(main_layout)

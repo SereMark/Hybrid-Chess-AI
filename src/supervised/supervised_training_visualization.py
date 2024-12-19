@@ -1,7 +1,6 @@
 from src.base.base_visualization import BasePlot, BaseVisualizationWidget
 import numpy as np
 
-
 class SupervisedVisualization(BaseVisualizationWidget):
     def __init__(self, parent=None, max_points=1000):
         self.max_points = max_points
@@ -20,21 +19,20 @@ class SupervisedVisualization(BaseVisualizationWidget):
         self.plots['total_loss'] = BasePlot(self.ax_total_loss, title='Total Loss', xlabel='Batch/Epoch', ylabel='Loss')
         self.plots['accuracy'] = BasePlot(self.ax_accuracy, title='Accuracy', xlabel='Batch/Epoch', ylabel='Accuracy (%)')
 
-        self.line_policy_loss_train, = self.ax_policy_loss.plot([], [], label='Training Policy Loss', color='blue')
-        self.line_policy_loss_val, = self.ax_policy_loss.plot([], [], label='Validation Policy Loss', color='orange')
-        self.ax_policy_loss.legend()
+        self.line_policy_loss_train, = self.ax_policy_loss.plot([], [], label='Train Policy', color='blue', alpha=0.8)
+        self.line_value_loss_train, = self.ax_value_loss.plot([], [], label='Train Value', color='blue', alpha=0.8)
+        self.line_total_loss_train, = self.ax_total_loss.plot([], [], label='Train Total', color='blue', alpha=0.8)
+        self.line_accuracy_train, = self.ax_accuracy.plot([], [], label='Train Accuracy', color='blue', alpha=0.8)
 
-        self.line_value_loss_train, = self.ax_value_loss.plot([], [], label='Training Value Loss', color='blue')
-        self.line_value_loss_val, = self.ax_value_loss.plot([], [], label='Validation Value Loss', color='orange')
-        self.ax_value_loss.legend()
+        self.line_policy_loss_val, = self.ax_policy_loss.plot([], [], label='Val Policy', color='orange', alpha=0.8)
+        self.line_value_loss_val, = self.ax_value_loss.plot([], [], label='Val Value', color='orange', alpha=0.8)
+        self.line_total_loss_val, = self.ax_total_loss.plot([], [], label='Val Total', color='orange', alpha=0.8)
+        self.line_accuracy_val, = self.ax_accuracy.plot([], [], label='Val Accuracy', color='orange', alpha=0.8)
 
-        self.line_total_loss_train, = self.ax_total_loss.plot([], [], label='Training Total Loss', color='blue')
-        self.line_total_loss_val, = self.ax_total_loss.plot([], [], label='Validation Total Loss', color='orange')
-        self.ax_total_loss.legend()
-
-        self.line_accuracy_train, = self.ax_accuracy.plot([], [], label='Training Accuracy', color='blue')
-        self.line_accuracy_val, = self.ax_accuracy.plot([], [], label='Validation Accuracy', color='orange')
-        self.ax_accuracy.legend()
+        self.ax_policy_loss.legend(frameon=False, fontsize=10)
+        self.ax_value_loss.legend(frameon=False, fontsize=10)
+        self.ax_total_loss.legend(frameon=False, fontsize=10)
+        self.ax_accuracy.legend(frameon=False, fontsize=10)
 
     def update_loss_plots(self, batch_idx, losses):
         if not all(isinstance(v, (float, int)) and not np.isnan(v) and np.isfinite(v) for v in losses.values()):

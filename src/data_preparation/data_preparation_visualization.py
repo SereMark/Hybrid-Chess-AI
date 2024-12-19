@@ -1,7 +1,6 @@
 from src.base.base_visualization import BasePlot, BaseVisualizationWidget
 import numpy as np, time
 
-
 class DataPreparationVisualization(BaseVisualizationWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -49,7 +48,7 @@ class DataPreparationVisualization(BaseVisualizationWidget):
             colors = ['#4CAF50', '#F44336', '#FFC107']
             explode = (0.05, 0.05, 0.05)
             self.ax_game_results.pie(percentages, labels=labels, autopct='%1.1f%%', startangle=140,
-                                     colors=colors, explode=explode, shadow=True)
+                                     colors=colors, explode=explode, shadow=False, textprops={'color':'#333333','fontsize':10})
             self.ax_game_results.axis('equal')
         else:
             self.add_text_to_axis('game_results', 'No Data Yet')
@@ -58,7 +57,7 @@ class DataPreparationVisualization(BaseVisualizationWidget):
         self.clear_axis('games_processed')
         if self.total_games_processed and self.processing_times:
             self.ax_games_processed.plot(self.processing_times, self.total_games_processed,
-                                         marker='o', color='#2196F3')
+                                         marker='o', color='#2196F3', alpha=0.8, linewidth=1.5)
             self.ax_games_processed.relim()
             self.ax_games_processed.autoscale_view()
         else:

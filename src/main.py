@@ -3,7 +3,6 @@ from src.data_preparation.data_preparation_tab import DataPreparationTab
 from src.supervised.supervised_training_tab import SupervisedTab
 from src.reinforcement.reinforcement_training_tab import ReinforcementTab
 from src.evaluation.evaluation_tab import EvaluationTab
-from src.styles import get_stylesheet
 import sys
 
 class ChessMainWindow(QMainWindow):
@@ -20,7 +19,6 @@ class ChessMainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setStyleSheet(get_stylesheet())
     main_window = ChessMainWindow()
     main_window.show()
     sys.exit(app.exec_())
