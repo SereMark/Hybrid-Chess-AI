@@ -10,14 +10,29 @@ class EvaluationVisualization(BaseVisualizationWidget):
         gs = self.figure.add_gridspec(1, 2, wspace=0.4)
         self.ax_accuracy = self.figure.add_subplot(gs[0, 0])
         self.ax_confusion = self.figure.add_subplot(gs[0, 1])
-
-        self.plots['accuracy_metrics'] = BasePlot(self.ax_accuracy, title='Model Accuracy and Metrics', ylabel='Scores')
-        self.plots['confusion_matrix'] = BasePlot(self.ax_confusion, title='Confusion Matrix', xlabel='Predicted Label', ylabel='True Label')
-
+        self.plots['accuracy_metrics'] = BasePlot(
+            self.ax_accuracy,
+            title='Model Accuracy and Metrics',
+            ylabel='Scores'
+        )
+        self.plots['confusion_matrix'] = BasePlot(
+            self.ax_confusion,
+            title='Confusion Matrix',
+            xlabel='Predicted Label',
+            ylabel='True Label'
+        )
         self.add_text_to_axis('accuracy_metrics', 'No Data Yet')
         self.add_text_to_axis('confusion_matrix', 'No Data Yet')
 
-    def update_metrics_visualization(self, accuracy, topk_accuracy, macro_avg, weighted_avg, confusion_matrix, class_labels):
+    def update_metrics_visualization(
+            self,
+            accuracy,
+            topk_accuracy,
+            macro_avg,
+            weighted_avg,
+            confusion_matrix,
+            class_labels
+    ):
         self.accuracy = accuracy
         self.topk_accuracy = topk_accuracy
         self.macro_avg = macro_avg
@@ -43,7 +58,15 @@ class EvaluationVisualization(BaseVisualizationWidget):
             self.ax_accuracy.bar(labels, values, color=colors, alpha=0.8)
             self.ax_accuracy.set_ylim(0, 100)
             for i, v in enumerate(values):
-                self.ax_accuracy.text(i, v + 1, f"{v:.1f}%", ha='center', fontsize=9, fontweight='bold', color='#333333')
+                self.ax_accuracy.text(
+                    i,
+                    v + 1,
+                    f"{v:.1f}%",
+                    ha='center',
+                    fontsize=9,
+                    fontweight='bold',
+                    color='#333333'
+                )
         else:
             self.add_text_to_axis('accuracy_metrics', 'No Data Yet')
 
@@ -54,12 +77,19 @@ class EvaluationVisualization(BaseVisualizationWidget):
             cbar = self.figure.colorbar(im, ax=self.ax_confusion)
             cbar.ax.tick_params(colors='#333333')
             num_classes = len(self.class_labels)
-            thresh = self.confusion_matrix.max() / 2.
+            thresh = self.confusion_matrix.max() / 2.0
             for i in range(num_classes):
                 for j in range(num_classes):
-                    self.ax_confusion.text(j, i, format(self.confusion_matrix[i, j], 'd'),
-                                           ha="center", va="center",
-                                           color="white" if self.confusion_matrix[i, j] > thresh else "black", fontsize=9)
+                    value = self.confusion_matrix[i, j]
+                    self.ax_confusion.text(
+                        j,
+                        i,
+                        format(value, 'd'),
+                        ha="center",
+                        va="center",
+                        color="white" if value > thresh else "black",
+                        fontsize=9
+                    )
             self.ax_confusion.set_xticks(np.arange(num_classes))
             self.ax_confusion.set_yticks(np.arange(num_classes))
             self.ax_confusion.set_xticklabels(self.class_labels, rotation=45, ha="right", fontsize=9, color='#333333')

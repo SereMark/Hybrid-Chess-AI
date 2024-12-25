@@ -1,7 +1,6 @@
 import threading, traceback
 from PyQt5.QtCore import QObject, pyqtSignal
 
-
 class BaseWorker(QObject):
     log_update = pyqtSignal(str)
     progress_update = pyqtSignal(int)

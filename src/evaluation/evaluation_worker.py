@@ -1,6 +1,9 @@
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-import os, time, numpy as np, torch
+import os
+import time
+import numpy as np
+import torch
 from collections import Counter
 from torch.utils.data import DataLoader
 from typing import Optional
@@ -38,11 +41,13 @@ class EvaluationWorker(BaseWorker):
         steps_done = 0
         total_steps = total_batches
         start_time = time.time()
-        self.log_update.emit("Starting evaluation...")
+        self.log_update.emit("Running evaluation on the dataset...")
         for batch_idx, (inputs, policy_targets, _) in enumerate(loader, 1):
             if self._is_stopped.is_set():
                 self.log_update.emit("Evaluation stopped by user.")
                 return
+            while not self._is_paused.is_set():
+                time.sleep(0.1)
             inputs = inputs.to(self.device, non_blocking=True)
             policy_targets = policy_targets.to(self.device, non_blocking=True)
             with torch.no_grad():
@@ -67,7 +72,7 @@ class EvaluationWorker(BaseWorker):
         num_moves = get_total_moves()
         model = ChessModel(num_moves=num_moves)
         try:
-            checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
+            checkpoint = torch.load(self.model_path, map_location=self.device)
             if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
                 model.load_state_dict(checkpoint['model_state_dict'])
             else:
@@ -117,12 +122,12 @@ class EvaluationWorker(BaseWorker):
         macro_avg = report.get('macro avg', {})
         weighted_avg = report.get('weighted avg', {})
         class_labels = []
-        for cls in most_common_classes:
-            move = self.move_mapping.get_move_by_index(cls)
-            if move:
-                class_labels.append(move.uci())
+        for cls_idx in most_common_classes:
+            move_obj = self.move_mapping.get_move_by_index(cls_idx)
+            if move_obj:
+                class_labels.append(move_obj.uci())
             else:
-                class_labels.append(f"Unknown({cls})")
+                class_labels.append(f"Unknown({cls_idx})")
         self.log_update.emit(
             f"Macro Avg - Precision: {macro_avg.get('precision', 0.0):.4f}, "
             f"Recall: {macro_avg.get('recall', 0.0):.4f}, "
@@ -169,8 +174,10 @@ class EvaluationWorker(BaseWorker):
         recall = {}
         f1_score = {}
         for label in labels:
-            precision[label] = tp[label] / (tp[label] + fp[label]) if (tp[label] + fp[label]) > 0 else 0.0
-            recall[label] = tp[label] / (tp[label] + fn[label]) if (tp[label] + fn[label]) > 0 else 0.0
+            p_denom = tp[label] + fp[label]
+            r_denom = tp[label] + fn[label]
+            precision[label] = tp[label] / p_denom if p_denom > 0 else 0.0
+            recall[label] = tp[label] / r_denom if r_denom > 0 else 0.0
             if precision[label] + recall[label] > 0:
                 f1_score[label] = 2 * precision[label] * recall[label] / (precision[label] + recall[label])
             else:
@@ -179,9 +186,9 @@ class EvaluationWorker(BaseWorker):
         macro_recall = np.mean(list(recall.values()))
         macro_f1 = np.mean(list(f1_score.values()))
         total_support = sum(support[label] for label in labels)
-        weighted_precision = sum(precision[label] * support[label] for label in labels) / total_support if total_support > 0 else 0.0
-        weighted_recall = sum(recall[label] * support[label] for label in labels) / total_support if total_support > 0 else 0.0
-        weighted_f1 = sum(f1_score[label] * support[label] for label in labels) / total_support if total_support > 0 else 0.0
+        weighted_precision = sum(precision[l] * support[l] for l in labels) / total_support if total_support > 0 else 0.0
+        weighted_recall = sum(recall[l] * support[l] for l in labels) / total_support if total_support > 0 else 0.0
+        weighted_f1 = sum(f1_score[l] * support[l] for l in labels) / total_support if total_support > 0 else 0.0
         for label in labels:
             report[label] = {
                 'precision': precision[label],
@@ -212,7 +219,8 @@ class EvaluationWorker(BaseWorker):
             if steps_done > 0:
                 estimated_total_time = (elapsed_time / steps_done) * total_steps
                 time_left = estimated_total_time - elapsed_time
-                time_left = max(0, time_left)
+                if time_left < 0:
+                    time_left = 0
                 time_left_str = format_time_left(time_left)
                 self.time_left_update.emit(time_left_str)
             else:
