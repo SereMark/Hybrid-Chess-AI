@@ -70,9 +70,6 @@ class BaseVisualizationWidget(QWidget):
         self.plots = {}
         self.init_visualization()
 
-    def init_visualization(self):
-        pass
-
     def update_visualization(self):
         self.canvas.draw_idle()
 

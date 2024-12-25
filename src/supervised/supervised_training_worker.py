@@ -121,8 +121,6 @@ class SupervisedWorker(BaseWorker):
                     self.checkpoint_manager.save(checkpoint_data)
                 if isinstance(self.scheduler, optim.lr_scheduler.StepLR):
                     self.scheduler.step()
-                elif isinstance(self.scheduler, (optim.lr_scheduler.CosineAnnealingWarmRestarts, optim.lr_scheduler.OneCycleLR)):
-                    pass
             if not self._is_stopped.is_set():
                 self.log_update.emit("Training completed successfully.")
                 try:

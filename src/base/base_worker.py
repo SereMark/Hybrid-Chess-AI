@@ -30,9 +30,6 @@ class BaseWorker(QObject):
         finally:
             self.finished.emit()
 
-    def run_task(self):
-        pass
-
     def pause(self):
         if not self._is_paused.is_set():
             return
