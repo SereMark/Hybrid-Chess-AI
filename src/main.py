@@ -14,9 +14,9 @@ class TabWidget(QWidget):
         tab_widget = QTabWidget(self)
         for i, (tab, title) in enumerate(tabs):
             tab_widget.addTab(tab, title)
-            if tooltips and i < len(tooltips): tab_widget.setTabToolTip(i, tooltips[i])
+            if tooltips and i < len(tooltips):
+                tab_widget.setTabToolTip(i, tooltips[i])
         layout.addWidget(tab_widget)
-        self.setLayout(layout)
 
 class ChessMainWindow(QMainWindow):
     def __init__(self):
@@ -24,9 +24,37 @@ class ChessMainWindow(QMainWindow):
         self.setWindowTitle("Hybrid Chess AI")
         self.setGeometry(100, 100, 1600, 800)
         main_tabs = QTabWidget(self)
-        main_tabs.addTab(TabWidget([(DataPreparationSubTab(), "Data Preparation"), (OpeningBookSubTab(), "Opening Book")], ["Convert raw chess data (e.g., PGN files) into a processed format suitable for training.", "Generate an opening book by analyzing processed chess game data."]), "Data Preparation")
-        main_tabs.addTab(TabWidget([(SupervisedTrainingSubTab(), "Supervised Training"), (ReinforcementTrainingSubTab(), "Reinforcement Training")], ["Train the AI using labeled data from historical chess games.", "Enhance the AI through self-play reinforcement learning."]), "Training")
-        main_tabs.addTab(TabWidget([(EvaluationSubTab(), "Model Evaluation"), (BenchmarkSubTab(), "Benchmarking")], ["Evaluate the AI's performance on unseen test data.", "Benchmark the AI against other models or predefined baselines."]), "Evaluation")
+
+        tab_data = [
+            (
+                [(DataPreparationSubTab(), "Data Preparation"), (OpeningBookSubTab(), "Opening Book")],
+                [
+                    "Convert raw chess data (e.g., PGN files) into a processed format suitable for training.",
+                    "Generate an opening book by analyzing processed chess game data."
+                ],
+                "Data Preparation"
+            ),
+            (
+                [(SupervisedTrainingSubTab(), "Supervised Training"), (ReinforcementTrainingSubTab(), "Reinforcement Training")],
+                [
+                    "Train the AI using labeled data from historical chess games.",
+                    "Enhance the AI through self-play reinforcement learning."
+                ],
+                "Training"
+            ),
+            (
+                [(EvaluationSubTab(), "Model Evaluation"), (BenchmarkSubTab(), "Benchmarking")],
+                [
+                    "Evaluate the AI's performance on unseen test data.",
+                    "Benchmark the AI against other models or predefined baselines."
+                ],
+                "Evaluation"
+            )
+        ]
+
+        for tabs, tooltips, title in tab_data:
+            main_tabs.addTab(TabWidget(tabs, tooltips), title)
+
         self.setCentralWidget(main_tabs)
 
 if __name__ == "__main__":

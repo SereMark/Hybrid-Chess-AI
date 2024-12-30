@@ -1,9 +1,8 @@
 from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QGridLayout, QLineEdit, QPushButton, QMessageBox, QLabel
-from PyQt5.QtCore import Qt
-import os
-from src.base.base_tab import BaseTab
 from src.evaluation.evaluation_worker import EvaluationWorker
 from src.evaluation.evaluation_visualization import EvaluationVisualization
+from src.base.base_tab import BaseTab
+import os
 
 class EvaluationSubTab(BaseTab):
     def __init__(self, parent=None):
@@ -13,84 +12,37 @@ class EvaluationSubTab(BaseTab):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(10)
-        intro_label = QLabel("Evaluate a trained model's performance on a test dataset.")
-        intro_label.setWordWrap(True)
-        intro_label.setAlignment(Qt.AlignLeft)
-        self.paths_group = self.create_paths_group()
-        self.controls_group = QGroupBox("Evaluation Actions")
-        controls_layout = QVBoxLayout(self.controls_group)
-        controls_layout.setSpacing(8)
-        control_buttons_layout = self.create_control_buttons(
-            "Start Evaluation",
-            "Stop Evaluation",
-            self.start_evaluation,
-            self.stop_evaluation
+        self.setup_subtab(
+            main_layout,
+            "Evaluate a trained model's performance on a test dataset.",
+            "Evaluation Progress",
+            "Evaluation Logs",
+            "Evaluation Visualization",
+            self.visualization,
+            {
+                "start_text": "Start Evaluation",
+                "stop_text": "Stop Evaluation",
+                "start_callback": self.start_evaluation,
+                "stop_callback": self.stop_evaluation,
+                "start_new_callback": self.reset_to_initial_state
+            },
+            "Start New Evaluation",
+            spacing=10
         )
-        controls_layout.addLayout(control_buttons_layout)
-        self.toggle_buttons_layout = self.create_log_graph_buttons(self.show_logs_view, self.show_graphs_view, "Show Logs", "Show Graphs", True)
-        controls_layout.addLayout(self.toggle_buttons_layout)
-        self.start_new_button = self.create_start_new_button("Start New Evaluation", self.reset_to_initial_state)
-        controls_layout.addWidget(self.start_new_button)
-        separator = self.create_separator()
-        self.progress_group = QGroupBox("Evaluation Progress")
-        progress_layout = QVBoxLayout(self.progress_group)
-        progress_layout.setSpacing(8)
-        progress_layout.addLayout(self.create_progress_layout())
-        self.log_group = QGroupBox("Evaluation Logs")
-        log_layout = QVBoxLayout(self.log_group)
-        log_layout.setSpacing(8)
-        self.log_text_edit = self.create_log_text_edit()
-        log_layout.addWidget(self.log_text_edit)
-        self.log_group.setLayout(log_layout)
-        self.visualization_group = self.create_visualization_group(self.visualization, "Evaluation Visualization")
-        main_layout.addWidget(intro_label)
-        main_layout.addWidget(self.paths_group)
-        main_layout.addWidget(self.controls_group)
-        main_layout.addWidget(separator)
-        main_layout.addWidget(self.progress_group)
-        main_layout.addWidget(self.log_group)
-        main_layout.addWidget(self.visualization_group)
-        self.setLayout(main_layout)
+        self.paths_group = self.create_paths_group()
+        self.layout().insertWidget(1, self.paths_group)
         self.progress_group.setVisible(False)
         self.log_group.setVisible(False)
-        self.visualization_group.setVisible(False)
-        self.show_logs_button.setVisible(False)
-        self.show_graphs_button.setVisible(False)
-        self.start_new_button.setVisible(False)
-        self.stop_button.setEnabled(False)
-
-    def reset_to_initial_state(self):
-        self.paths_group.setVisible(True)
-        self.progress_group.setVisible(False)
-        self.log_group.setVisible(False)
-        self.visualization_group.setVisible(False)
-        self.controls_group.setVisible(True)
-        self.start_new_button.setVisible(False)
-        self.show_logs_button.setVisible(False)
-        self.show_graphs_button.setVisible(False)
-        self.show_logs_button.setChecked(True)
-        self.show_graphs_button.setChecked(False)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Idle")
-        self.remaining_time_label.setText("Time Left: N/A")
-        self.log_text_edit.clear()
-        self.visualization.reset_visualization()
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.init_ui_state = True
-
-    def show_logs_view(self):
-        if self.show_logs_button.isChecked():
-            self.show_graphs_button.setChecked(False)
-            self.log_group.setVisible(True)
+        if self.visualization_group:
             self.visualization_group.setVisible(False)
-
-    def show_graphs_view(self):
-        if self.show_graphs_button.isChecked():
-            self.show_logs_button.setChecked(False)
-            self.log_group.setVisible(False)
-            self.visualization_group.setVisible(True)
+        if self.show_logs_button:
+            self.show_logs_button.setVisible(False)
+        if self.show_graphs_button:
+            self.show_graphs_button.setVisible(False)
+        if self.start_new_button:
+            self.start_new_button.setVisible(False)
+        if self.stop_button:
+            self.stop_button.setEnabled(False)
 
     def create_paths_group(self):
         group = QGroupBox("Evaluation Files")
@@ -130,7 +82,8 @@ class EvaluationSubTab(BaseTab):
             QMessageBox.warning(self, "Error", "H5 dataset file does not exist.")
             return
         self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
+        if self.stop_button:
+            self.stop_button.setEnabled(True)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting Evaluation...")
         self.remaining_time_label.setText("Time Left: Calculating...")
@@ -138,12 +91,17 @@ class EvaluationSubTab(BaseTab):
         self.visualization.reset_visualization()
         self.paths_group.setVisible(False)
         self.progress_group.setVisible(True)
-        self.controls_group.setVisible(True)
+        if self.control_group:
+            self.control_group.setVisible(True)
         self.log_group.setVisible(True)
-        self.visualization_group.setVisible(False)
-        self.show_logs_button.setVisible(True)
-        self.show_graphs_button.setVisible(True)
-        self.start_new_button.setVisible(False)
+        if self.visualization_group:
+            self.visualization_group.setVisible(False)
+        if self.show_logs_button:
+            self.show_logs_button.setVisible(True)
+        if self.show_graphs_button:
+            self.show_graphs_button.setVisible(True)
+        if self.start_new_button:
+            self.start_new_button.setVisible(False)
         self.init_ui_state = False
         started = self.start_worker(EvaluationWorker, model_path, indices_path, h5_path)
         if started:
@@ -154,3 +112,39 @@ class EvaluationSubTab(BaseTab):
     def stop_evaluation(self):
         self.stop_worker()
         self.reset_to_initial_state()
+
+    def reset_to_initial_state(self):
+        self.paths_group.setVisible(True)
+        self.progress_group.setVisible(False)
+        self.log_group.setVisible(False)
+        if self.visualization_group:
+            self.visualization_group.setVisible(False)
+        self.controls_group = getattr(self, 'control_group', None)
+        if self.controls_group:
+            self.controls_group.setVisible(True)
+        if self.start_new_button:
+            self.start_new_button.setVisible(False)
+        if self.show_logs_button:
+            self.show_logs_button.setVisible(False)
+        if self.show_graphs_button:
+            self.show_graphs_button.setVisible(False)
+        if self.show_logs_button:
+            self.show_logs_button.setChecked(True)
+        if self.show_graphs_button:
+            self.show_graphs_button.setChecked(False)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Idle")
+        self.remaining_time_label.setText("Time Left: N/A")
+        self.log_text_edit.clear()
+        self.visualization.reset_visualization()
+        if self.start_button:
+            self.start_button.setEnabled(True)
+        if self.stop_button:
+            self.stop_button.setEnabled(False)
+        self.init_ui_state = True
+
+    def show_logs_view(self):
+        super().show_logs_view()
+
+    def show_graphs_view(self):
+        super().show_graphs_view()

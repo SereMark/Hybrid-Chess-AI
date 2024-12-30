@@ -13,6 +13,84 @@ class BaseTab(QWidget):
         self.setContentsMargins(10, 10, 10, 10)
         self.init_ui_state = True
         self.showing_logs = True
+        self.intro_label = None
+        self.control_group = None
+        self.progress_group = None
+        self.log_group = None
+        self.visualization_group = None
+        self.start_button = None
+        self.stop_button = None
+        self.pause_button = None
+        self.resume_button = None
+        self.show_logs_button = None
+        self.show_graphs_button = None
+        self.start_new_button = None
+        self.toggle_buttons_layout = None
+        self.visualization = None
+
+    def create_subtab_layout(self, layout, intro_text, progress_title, log_title, visualization_title, visualization_widget=None):
+        self.intro_label = QLabel(intro_text)
+        self.intro_label.setWordWrap(True)
+        self.intro_label.setAlignment(Qt.AlignLeft)
+        layout.addWidget(self.intro_label)
+        self.control_group = QGroupBox("Actions")
+        cg_layout = QVBoxLayout(self.control_group)
+        cg_layout.setSpacing(10)
+        layout.addWidget(self.control_group)
+        self.toggle_buttons_layout = None
+        self.start_new_button = None
+        separator = self.create_separator()
+        layout.addWidget(separator)
+        self.progress_group = QGroupBox(progress_title)
+        pg_layout = QVBoxLayout(self.progress_group)
+        pg_layout.setSpacing(10)
+        pg_layout.addLayout(self.create_progress_layout())
+        self.log_group = QGroupBox(log_title)
+        lg_layout = QVBoxLayout(self.log_group)
+        lg_layout.setSpacing(10)
+        self.log_text_edit = self.create_log_text_edit()
+        lg_layout.addWidget(self.log_text_edit)
+        self.log_group.setLayout(lg_layout)
+        if visualization_widget is not None:
+            self.visualization_group = self.create_visualization_group(visualization_widget, visualization_title)
+        layout.addWidget(self.progress_group)
+        layout.addWidget(self.log_group)
+        if self.visualization_group is not None:
+            layout.addWidget(self.visualization_group)
+        self.progress_group.setVisible(False)
+        self.log_group.setVisible(False)
+        if self.visualization_group is not None:
+            self.visualization_group.setVisible(False)
+
+    def setup_subtab(self, main_layout, intro_text, progress_title, log_title, visualization_title, visualization_widget, control_buttons_config, start_new_text, spacing=15, show_logs_default=True, show_graphs_default=False):
+        main_layout.setSpacing(spacing)
+        self.create_subtab_layout(main_layout, intro_text, progress_title, log_title, visualization_title, visualization_widget)
+        cg_layout = self.control_group.layout()
+        control_buttons_layout = self.create_control_buttons(
+            control_buttons_config.get("start_text", ""),
+            control_buttons_config.get("stop_text", ""),
+            control_buttons_config.get("start_callback", None),
+            control_buttons_config.get("stop_callback", None),
+            pause_text=control_buttons_config.get("pause_text", None),
+            resume_text=control_buttons_config.get("resume_text", None),
+            pause_callback=control_buttons_config.get("pause_callback", None),
+            resume_callback=control_buttons_config.get("resume_callback", None)
+        )
+        cg_layout.addLayout(control_buttons_layout)
+        self.toggle_buttons_layout = self.create_log_graph_buttons(self.show_logs_view, self.show_graphs_view, "Show Logs", "Show Graphs", show_logs_default)
+        cg_layout.addLayout(self.toggle_buttons_layout)
+        self.start_new_button = self.create_start_new_button(start_new_text, control_buttons_config.get("start_new_callback", None))
+        cg_layout.addWidget(self.start_new_button)
+        self.setLayout(main_layout)
+        self.show_logs_button.setVisible(False)
+        self.show_graphs_button.setVisible(False)
+        self.start_new_button.setVisible(False)
+        if self.stop_button:
+            self.stop_button.setEnabled(False)
+        if self.pause_button:
+            self.pause_button.setEnabled(False)
+        if self.resume_button:
+            self.resume_button.setEnabled(False)
 
     def start_worker(self, worker_class, *args, **kwargs):
         if self.thread is not None and self.thread.isRunning():
@@ -43,32 +121,32 @@ class BaseTab(QWidget):
     def stop_worker(self):
         if self.worker:
             self.worker.stop()
-            if hasattr(self, 'pause_button'):
+            if self.pause_button:
                 self.pause_button.setEnabled(False)
-            if hasattr(self, 'resume_button'):
+            if self.resume_button:
                 self.resume_button.setEnabled(False)
 
     def on_worker_paused(self, is_paused):
-        if hasattr(self, 'pause_button') and hasattr(self, 'resume_button'):
+        if self.pause_button and self.resume_button:
             self.pause_button.setEnabled(not is_paused)
             self.resume_button.setEnabled(is_paused)
 
     def on_worker_finished(self):
         self.worker = None
         self.thread = None
-        if hasattr(self, 'pause_button'):
+        if self.pause_button:
             self.pause_button.setEnabled(False)
-        if hasattr(self, 'resume_button'):
+        if self.resume_button:
             self.resume_button.setEnabled(False)
-        if hasattr(self, 'start_new_button'):
+        if self.start_new_button:
             self.start_new_button.setVisible(True)
 
     def update_progress(self, value):
         self.progress_bar.setValue(value)
-        self.progress_bar.setFormat(f"Progress: {value}%")
+        self.progress_bar.setFormat("Progress: {}%".format(value))
 
     def update_time_left(self, time_left_str):
-        self.remaining_time_label.setText(f"Time Left: {time_left_str}")
+        self.remaining_time_label.setText("Time Left: {}".format(time_left_str))
 
     def create_log_text_edit(self):
         text_edit = QTextEdit()
@@ -81,17 +159,15 @@ class BaseTab(QWidget):
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Idle")
-        self.progress_bar.setToolTip("Shows the overall progress of the current task.")
         self.remaining_time_label = QLabel("Time Left: N/A")
         self.remaining_time_label.setAlignment(Qt.AlignCenter)
-        self.remaining_time_label.setToolTip("Estimated time remaining for the current task.")
         layout.addWidget(self.progress_bar)
         layout.addWidget(self.remaining_time_label)
         return layout
 
     def create_browse_layout(self, line_edit, browse_button):
         layout = QHBoxLayout()
-        layout.setContentsMargins(0,0,0,0)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
         layout.addWidget(line_edit)
         layout.addWidget(browse_button)
@@ -100,7 +176,7 @@ class BaseTab(QWidget):
     def create_interval_widget(self, prefix, input_field, suffix):
         widget = QWidget()
         widget_layout = QHBoxLayout(widget)
-        widget_layout.setContentsMargins(0,0,0,0)
+        widget_layout.setContentsMargins(0, 0, 0, 0)
         prefix_label = QLabel(prefix)
         widget_layout.addWidget(prefix_label)
         widget_layout.addWidget(input_field)
@@ -118,22 +194,20 @@ class BaseTab(QWidget):
     def create_control_buttons(self, start_text, stop_text, start_callback, stop_callback, pause_text=None, resume_text=None, pause_callback=None, resume_callback=None):
         layout = QHBoxLayout()
         self.start_button = QPushButton(start_text)
-        self.start_button.setToolTip("Begin the process.")
         self.start_button.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
         self.stop_button = QPushButton(stop_text)
-        self.stop_button.setToolTip("Stop the process.")
         self.stop_button.setIcon(self.style().standardIcon(QStyle.SP_MediaStop))
         self.stop_button.setEnabled(False)
         layout.addWidget(self.start_button)
         layout.addWidget(self.stop_button)
-        self.start_button.clicked.connect(start_callback)
-        self.stop_button.clicked.connect(stop_callback)
+        if start_callback:
+            self.start_button.clicked.connect(start_callback)
+        if stop_callback:
+            self.stop_button.clicked.connect(stop_callback)
         if pause_text and resume_text and pause_callback and resume_callback:
             self.pause_button = QPushButton(pause_text)
-            self.pause_button.setToolTip("Pause the ongoing process.")
             self.pause_button.setIcon(self.style().standardIcon(QStyle.SP_MediaPause))
             self.resume_button = QPushButton(resume_text)
-            self.resume_button.setToolTip("Resume the paused process.")
             self.resume_button.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
             self.pause_button.setEnabled(False)
             self.resume_button.setEnabled(False)
@@ -203,8 +277,8 @@ class BaseTab(QWidget):
 
     def create_start_new_button(self, text, callback):
         button = QPushButton(text)
-        button.setToolTip("Start a new process.")
-        button.clicked.connect(callback)
+        if callback:
+            button.clicked.connect(callback)
         return button
 
     def create_separator(self):
@@ -212,3 +286,23 @@ class BaseTab(QWidget):
         separator.setFrameShape(QFrame.HLine)
         separator.setFrameShadow(QFrame.Sunken)
         return separator
+
+    def show_logs_view(self):
+        if self.show_logs_button and self.show_logs_button.isChecked():
+            if self.show_graphs_button:
+                self.show_graphs_button.setChecked(False)
+            if self.log_group:
+                self.log_group.setVisible(True)
+            if self.visualization_group:
+                self.visualization_group.setVisible(False)
+            self.showing_logs = True
+
+    def show_graphs_view(self):
+        if self.show_graphs_button and self.show_graphs_button.isChecked():
+            if self.show_logs_button:
+                self.show_logs_button.setChecked(False)
+            if self.log_group:
+                self.log_group.setVisible(False)
+            if self.visualization_group:
+                self.visualization_group.setVisible(True)
+            self.showing_logs = False

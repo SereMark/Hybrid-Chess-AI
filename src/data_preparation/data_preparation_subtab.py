@@ -1,114 +1,46 @@
 from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QGridLayout, QLineEdit, QPushButton, QMessageBox, QLabel
-from PyQt5.QtCore import Qt
-from src.data_preparation.data_preparation_visualization import DataPreparationVisualization
 from src.data_preparation.data_preparation_worker import DataPreparationWorker
+from src.data_preparation.data_preparation_visualization import DataPreparationVisualization
 from src.base.base_tab import BaseTab
 import os
 
 class DataPreparationSubTab(BaseTab):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.visualization = DataPreparationVisualization()
         self.init_ui()
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(15)
-        intro_label = QLabel("Prepare your raw data and turn it into processed data for training.")
-        intro_label.setWordWrap(True)
-        intro_label.setAlignment(Qt.AlignLeft)
-        self.visualization = DataPreparationVisualization()
+        self.setup_subtab(
+            main_layout,
+            "Prepare your raw data and turn it into processed data for training.",
+            "Data Preparation Progress",
+            "Data Preparation Logs",
+            "Data Preparation Visualization",
+            self.visualization,
+            {
+                "start_text": "Start Data Preparation",
+                "stop_text": "Stop",
+                "start_callback": self.start_process,
+                "stop_callback": self.stop_process,
+                "pause_text": "Pause",
+                "resume_text": "Resume",
+                "pause_callback": self.pause_worker,
+                "resume_callback": self.resume_worker,
+                "start_new_callback": self.reset_to_initial_state
+            },
+            "Start New"
+        )
         self.parameters_group = self.create_parameters_group()
         self.directories_group = self.create_directories_group()
-        self.control_group = QGroupBox("Actions")
-        cg_layout = QVBoxLayout(self.control_group)
-        cg_layout.setSpacing(10)
-        control_buttons_layout = self.create_control_buttons(
-            "Start Data Preparation",
-            "Stop",
-            self.start_process,
-            self.stop_process,
-            pause_text="Pause",
-            resume_text="Resume",
-            pause_callback=self.pause_worker,
-            resume_callback=self.resume_worker
-        )
-        cg_layout.addLayout(control_buttons_layout)
-        self.toggle_buttons_layout = self.create_log_graph_buttons(self.show_logs_view, self.show_graphs_view, "Show Logs", "Show Graphs", True)
-        cg_layout.addLayout(self.toggle_buttons_layout)
-        self.start_new_button = self.create_start_new_button("Start New", self.reset_to_initial_state)
-        cg_layout.addWidget(self.start_new_button)
-        separator = self.create_separator()
-        self.progress_group = QGroupBox("Data Preparation Progress")
-        pg_layout = QVBoxLayout(self.progress_group)
-        pg_layout.setSpacing(10)
-        pg_layout.addLayout(self.create_progress_layout())
-        self.log_group = QGroupBox("Data Preparation Logs")
-        lg_layout = QVBoxLayout(self.log_group)
-        lg_layout.setSpacing(10)
-        self.log_text_edit = self.create_log_text_edit()
-        lg_layout.addWidget(self.log_text_edit)
-        self.log_group.setLayout(lg_layout)
-        self.visualization_group = self.create_visualization_group(self.visualization, "Data Preparation Visualization")
-        main_layout.addWidget(intro_label)
-        main_layout.addWidget(self.parameters_group)
-        main_layout.addWidget(self.directories_group)
-        main_layout.addWidget(self.control_group)
-        main_layout.addWidget(separator)
-        main_layout.addWidget(self.progress_group)
-        main_layout.addWidget(self.log_group)
-        main_layout.addWidget(self.visualization_group)
-        self.setLayout(main_layout)
-        self.progress_group.setVisible(False)
-        self.log_group.setVisible(False)
-        self.visualization_group.setVisible(False)
-        self.show_logs_button.setVisible(False)
-        self.show_graphs_button.setVisible(False)
-        self.start_new_button.setVisible(False)
+        self.layout().insertWidget(1, self.parameters_group)
+        self.layout().insertWidget(2, self.directories_group)
         self.stop_button.setEnabled(False)
-        if hasattr(self, 'pause_button'):
+        if self.pause_button:
             self.pause_button.setEnabled(False)
-        if hasattr(self, 'resume_button'):
+        if self.resume_button:
             self.resume_button.setEnabled(False)
-
-    def reset_to_initial_state(self):
-        self.parameters_group.setVisible(True)
-        self.directories_group.setVisible(True)
-        self.progress_group.setVisible(False)
-        self.log_group.setVisible(False)
-        self.visualization_group.setVisible(False)
-        self.start_new_button.setVisible(False)
-        self.show_logs_button.setVisible(False)
-        self.show_graphs_button.setVisible(False)
-        self.show_logs_button.setChecked(True)
-        self.show_graphs_button.setChecked(False)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Idle")
-        self.remaining_time_label.setText("Time Left: N/A")
-        self.log_text_edit.clear()
-        self.visualization.reset_visualization()
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        if hasattr(self, 'pause_button'):
-            self.pause_button.setEnabled(False)
-        if hasattr(self, 'resume_button'):
-            self.resume_button.setEnabled(False)
-        self.init_ui_state = True
-
-    def show_logs_view(self):
-        if self.show_logs_button.isChecked():
-            self.show_graphs_button.setChecked(False)
-            self.log_group.setVisible(True)
-            self.visualization_group.setVisible(False)
-            self.showing_logs = True
-            self.visualization.update_visualization()
-
-    def show_graphs_view(self):
-        if self.show_graphs_button.isChecked():
-            self.show_logs_button.setChecked(False)
-            self.log_group.setVisible(False)
-            self.visualization_group.setVisible(True)
-            self.showing_logs = False
-            self.visualization.update_visualization()
 
     def create_parameters_group(self):
         group = QGroupBox("Data Parameters")
@@ -152,7 +84,7 @@ class DataPreparationSubTab(BaseTab):
             min_elo = int(self.min_elo_input.text())
             batch_size = int(self.batch_size_input.text())
             if max_games <= 0 or min_elo <= 0 or batch_size <= 0:
-                raise ValueError("All numerical parameters must be positive integers.")
+                raise ValueError
         except ValueError:
             QMessageBox.warning(self, "Input Error", "Max Games, Minimum ELO, and Batch Size must be positive integers.")
             return
@@ -164,9 +96,9 @@ class DataPreparationSubTab(BaseTab):
         os.makedirs(processed_data_dir, exist_ok=True)
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
-        if hasattr(self, 'pause_button'):
+        if self.pause_button:
             self.pause_button.setEnabled(True)
-        if hasattr(self, 'resume_button'):
+        if self.resume_button:
             self.resume_button.setEnabled(False)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
@@ -178,10 +110,14 @@ class DataPreparationSubTab(BaseTab):
         self.progress_group.setVisible(True)
         self.control_group.setVisible(True)
         self.log_group.setVisible(True)
-        self.visualization_group.setVisible(False)
-        self.show_logs_button.setVisible(True)
-        self.show_graphs_button.setVisible(True)
-        self.start_new_button.setVisible(False)
+        if self.visualization_group:
+            self.visualization_group.setVisible(False)
+        if self.show_logs_button:
+            self.show_logs_button.setVisible(True)
+        if self.show_graphs_button:
+            self.show_graphs_button.setVisible(True)
+        if self.start_new_button:
+            self.start_new_button.setVisible(False)
         self.init_ui_state = False
         started = self.start_worker(DataPreparationWorker, raw_data_dir, processed_data_dir, max_games, min_elo, batch_size)
         if started:
@@ -193,13 +129,34 @@ class DataPreparationSubTab(BaseTab):
         self.stop_worker()
         self.reset_to_initial_state()
 
-    def on_process_finished(self):
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        if hasattr(self, 'pause_button'):
-            self.pause_button.setEnabled(False)
-        if hasattr(self, 'resume_button'):
-            self.resume_button.setEnabled(False)
-        self.progress_bar.setFormat("Data Preparation Finished")
+    def reset_to_initial_state(self):
+        self.parameters_group.setVisible(True)
+        self.directories_group.setVisible(True)
+        self.progress_group.setVisible(False)
+        self.log_group.setVisible(False)
+        if self.visualization_group:
+            self.visualization_group.setVisible(False)
+        if self.start_new_button:
+            self.start_new_button.setVisible(False)
+        if self.show_logs_button:
+            self.show_logs_button.setVisible(False)
+        if self.show_graphs_button:
+            self.show_graphs_button.setVisible(False)
+        if self.show_logs_button:
+            self.show_logs_button.setChecked(True)
+        if self.show_graphs_button:
+            self.show_graphs_button.setChecked(False)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Idle")
         self.remaining_time_label.setText("Time Left: N/A")
-        self.start_new_button.setVisible(True)
+        self.log_text_edit.clear()
+        self.visualization.reset_visualization()
+        if self.start_button:
+            self.start_button.setEnabled(True)
+        if self.stop_button:
+            self.stop_button.setEnabled(False)
+        if self.pause_button:
+            self.pause_button.setEnabled(False)
+        if self.resume_button:
+            self.resume_button.setEnabled(False)
+        self.init_ui_state = True
