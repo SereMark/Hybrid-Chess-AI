@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit, QPushButton, QFileDialog, QSizePolicy, QStyle
+from PyQt5.QtWidgets import QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout, QHBoxLayout, QGroupBox, QPushButton, QFileDialog, QSizePolicy, QStyle, QFrame
 from PyQt5.QtCore import Qt, QThread
 
 class BaseTab(QWidget):
@@ -184,3 +184,31 @@ class BaseTab(QWidget):
         for key, widget in interval_widgets.items():
             visible = is_enabled and (key == t)
             self.toggle_widget_state([widget], state=visible, attribute="visible")
+
+    def create_log_graph_buttons(self, logs_callback, graphs_callback, logs_text="Show Logs", graphs_text="Show Graphs", logs_default=True):
+        layout = QHBoxLayout()
+        self.show_logs_button = QPushButton(logs_text)
+        self.show_logs_button.setCheckable(True)
+        self.show_logs_button.setChecked(logs_default)
+        self.show_logs_button.clicked.connect(logs_callback)
+        self.show_graphs_button = QPushButton(graphs_text)
+        self.show_graphs_button.setCheckable(True)
+        self.show_graphs_button.setChecked(not logs_default)
+        self.show_graphs_button.clicked.connect(graphs_callback)
+        self.show_logs_button.clicked.connect(lambda: self.show_graphs_button.setChecked(not self.show_logs_button.isChecked()))
+        self.show_graphs_button.clicked.connect(lambda: self.show_logs_button.setChecked(not self.show_graphs_button.isChecked()))
+        layout.addWidget(self.show_logs_button)
+        layout.addWidget(self.show_graphs_button)
+        return layout
+
+    def create_start_new_button(self, text, callback):
+        button = QPushButton(text)
+        button.setToolTip("Start a new process.")
+        button.clicked.connect(callback)
+        return button
+
+    def create_separator(self):
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        return separator

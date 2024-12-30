@@ -13,22 +13,18 @@ class SupervisedVisualization(BaseVisualizationWidget):
         self.ax_value_loss = self.figure.add_subplot(gs[0, 1])
         self.ax_total_loss = self.figure.add_subplot(gs[1, 0])
         self.ax_accuracy = self.figure.add_subplot(gs[1, 1])
-
         self.plots['policy_loss'] = BasePlot(self.ax_policy_loss, title='Policy Loss', xlabel='Batch/Epoch', ylabel='Loss')
         self.plots['value_loss'] = BasePlot(self.ax_value_loss, title='Value Loss', xlabel='Batch/Epoch', ylabel='Loss')
         self.plots['total_loss'] = BasePlot(self.ax_total_loss, title='Total Loss', xlabel='Batch/Epoch', ylabel='Loss')
         self.plots['accuracy'] = BasePlot(self.ax_accuracy, title='Accuracy', xlabel='Batch/Epoch', ylabel='Accuracy (%)')
-
         self.line_policy_loss_train, = self.ax_policy_loss.plot([], [], label='Train Policy', color='blue', alpha=0.8)
         self.line_value_loss_train, = self.ax_value_loss.plot([], [], label='Train Value', color='blue', alpha=0.8)
         self.line_total_loss_train, = self.ax_total_loss.plot([], [], label='Train Total', color='blue', alpha=0.8)
         self.line_accuracy_train, = self.ax_accuracy.plot([], [], label='Train Accuracy', color='blue', alpha=0.8)
-
         self.line_policy_loss_val, = self.ax_policy_loss.plot([], [], label='Val Policy', color='orange', alpha=0.8)
         self.line_value_loss_val, = self.ax_value_loss.plot([], [], label='Val Value', color='orange', alpha=0.8)
         self.line_total_loss_val, = self.ax_total_loss.plot([], [], label='Val Total', color='orange', alpha=0.8)
         self.line_accuracy_val, = self.ax_accuracy.plot([], [], label='Val Accuracy', color='orange', alpha=0.8)
-
         self.ax_policy_loss.legend(frameon=False, fontsize=10)
         self.ax_value_loss.legend(frameon=False, fontsize=10)
         self.ax_total_loss.legend(frameon=False, fontsize=10)
@@ -100,12 +96,10 @@ class SupervisedVisualization(BaseVisualizationWidget):
         self.value_losses_train = []
         self.total_losses_train = []
         self.accuracies_train = []
-
         self.epochs = []
         self.accuracy_epochs = []
         self.policy_losses_val = []
         self.value_losses_val = []
         self.total_losses_val = []
         self.accuracies_val = []
-
         super().reset_visualization()

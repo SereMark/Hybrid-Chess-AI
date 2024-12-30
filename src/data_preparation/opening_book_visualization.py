@@ -14,12 +14,10 @@ class OpeningBookVisualization(QWidget):
         super().__init__(parent)
         main_layout = QVBoxLayout(self)
         control_layout = QHBoxLayout()
-
         self.opening_name_filter = QLineEdit()
         self.opening_name_filter.setPlaceholderText("Filter by Opening Name")
         self.opening_name_filter.setToolTip("Enter partial or full opening name to filter moves.")
         self.opening_name_filter.textChanged.connect(self.apply_filters)
-
         self.win_percentage_slider = QSlider(Qt.Horizontal)
         self.win_percentage_slider.setMinimum(0)
         self.win_percentage_slider.setMaximum(100)
@@ -28,9 +26,7 @@ class OpeningBookVisualization(QWidget):
         self.win_percentage_slider.setTickPosition(QSlider.TicksBelow)
         self.win_percentage_slider.setToolTip("Minimum win percentage for filtered moves.")
         self.win_percentage_slider.valueChanged.connect(self.on_win_percentage_slider_changed)
-
         self.win_percentage_label = QLabel("Min Win %: 0%")
-
         self.sorting_combobox = QComboBox()
         self.sorting_combobox.addItem("Sort by Move Order")
         self.sorting_combobox.addItem("Sort by Win %")
@@ -38,22 +34,18 @@ class OpeningBookVisualization(QWidget):
         self.sorting_combobox.addItem("Sort by Move Popularity")
         self.sorting_combobox.setToolTip("Change sorting criteria for displayed moves.")
         self.sorting_combobox.currentIndexChanged.connect(self.apply_filters)
-
         self.win_checkbox = QCheckBox("Include Wins")
         self.win_checkbox.setChecked(True)
         self.win_checkbox.setToolTip("Include moves with winning outcomes.")
         self.win_checkbox.stateChanged.connect(self.apply_filters)
-
         self.draw_checkbox = QCheckBox("Include Draws")
         self.draw_checkbox.setChecked(True)
         self.draw_checkbox.setToolTip("Include moves with draw outcomes.")
         self.draw_checkbox.stateChanged.connect(self.apply_filters)
-
         self.loss_checkbox = QCheckBox("Include Losses")
         self.loss_checkbox.setChecked(True)
         self.loss_checkbox.setToolTip("Include moves with losing outcomes.")
         self.loss_checkbox.stateChanged.connect(self.apply_filters)
-
         control_layout.addWidget(QLabel("Opening Name:"))
         control_layout.addWidget(self.opening_name_filter)
         control_layout.addWidget(self.win_percentage_label)
@@ -63,9 +55,7 @@ class OpeningBookVisualization(QWidget):
         control_layout.addWidget(self.win_checkbox)
         control_layout.addWidget(self.draw_checkbox)
         control_layout.addWidget(self.loss_checkbox)
-
         splitter = QSplitter(Qt.Horizontal)
-
         self.tree_model = QStandardItemModel()
         self.tree_model.setHorizontalHeaderLabels([
             "Move", "Win %", "Draw %", "Loss %", "Total Games", "Opening Name"
@@ -81,13 +71,10 @@ class OpeningBookVisualization(QWidget):
         self.tree_view.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree_view.customContextMenuRequested.connect(self.on_tree_view_context_menu)
         self.tree_view.expanded.connect(self.on_item_expanded)
-
         splitter.addWidget(self.tree_view)
-
         board_layout = QVBoxLayout()
         self.board_widget = QSvgWidget()
         self.board_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
         nav_toolbar = QToolBar()
         self.prev_move_action = QAction(QIcon.fromTheme("go-previous"), "Previous Move", self)
         self.prev_move_action.setToolTip("Go to the previous move in the stack.")
@@ -101,21 +88,15 @@ class OpeningBookVisualization(QWidget):
         nav_toolbar.addAction(self.prev_move_action)
         nav_toolbar.addAction(self.next_move_action)
         nav_toolbar.addAction(self.reset_board_action)
-
         board_layout.addWidget(nav_toolbar)
         board_layout.addWidget(self.board_widget)
-
         board_container = QWidget()
         board_container.setLayout(board_layout)
-
         splitter.addWidget(board_container)
         splitter.setSizes([400, 600])
-
         main_layout.addLayout(control_layout)
         main_layout.addWidget(splitter)
-
         self.setLayout(main_layout)
-
         self.root_board = Board()
         self.positions = {}
         self.current_board = Board()
@@ -180,12 +161,24 @@ class OpeningBookVisualization(QWidget):
             g = int(win_ratio * 255)
             b = 0
             color = QColor(r, g, b, 50)
-            for item in [move_item, win_item, draw_item, loss_item, total_games_item, opening_name_item]:
+            for item in [
+                move_item,
+                win_item,
+                draw_item,
+                loss_item,
+                total_games_item,
+                opening_name_item
+            ]:
                 item.setBackground(color)
             tooltip_text = f"Move: {san}\nWin: {move_data['win']}\nDraw: {move_data['draw']}\nLoss: {move_data['loss']}"
             move_item.setToolTip(tooltip_text)
             parent_item.appendRow([
-                move_item, win_item, draw_item, loss_item, total_games_item, opening_name_item
+                move_item,
+                win_item,
+                draw_item,
+                loss_item,
+                total_games_item,
+                opening_name_item
             ])
             move_item.appendRow([QStandardItem() for _ in range(self.tree_model.columnCount())])
 
@@ -227,18 +220,26 @@ class OpeningBookVisualization(QWidget):
             win_percentage = (move_data['win'] / total) * 100
             if win_percentage < min_win_percentage:
                 continue
-            if not ((include_win and move_data['win'] > 0) or
-                    (include_draw and move_data['draw'] > 0) or
-                    (include_loss and move_data['loss'] > 0)):
+            if not (
+                (include_win and move_data['win'] > 0) or
+                (include_draw and move_data['draw'] > 0) or
+                (include_loss and move_data['loss'] > 0)
+            ):
                 continue
             if opening_name_filter and opening_name_filter not in move_data['name'].lower():
                 continue
             filtered_moves.append((san, move_data))
         sort_index = self.sorting_combobox.currentIndex()
         if sort_index == 1:
-            filtered_moves.sort(key=lambda x: (x[1]['win'] / (x[1]['win'] + x[1]['draw'] + x[1]['loss'])), reverse=True)
+            filtered_moves.sort(
+                key=lambda x: (x[1]['win'] / (x[1]['win'] + x[1]['draw'] + x[1]['loss'])),
+                reverse=True
+            )
         elif sort_index == 2 or sort_index == 3:
-            filtered_moves.sort(key=lambda x: x[1]['win'] + x[1]['draw'] + x[1]['loss'], reverse=True)
+            filtered_moves.sort(
+                key=lambda x: x[1]['win'] + x[1]['draw'] + x[1]['loss'],
+                reverse=True
+            )
         return filtered_moves
 
     def on_item_clicked(self, index):

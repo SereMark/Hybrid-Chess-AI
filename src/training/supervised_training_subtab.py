@@ -1,11 +1,11 @@
-from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QGridLayout, QLineEdit, QPushButton, QLabel, QCheckBox, QComboBox, QMessageBox, QHBoxLayout, QFrame
+from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QGridLayout, QLineEdit, QPushButton, QLabel, QCheckBox, QComboBox, QMessageBox, QHBoxLayout
 from PyQt5.QtCore import Qt
-from src.supervised.supervised_training_worker import SupervisedWorker
-from src.supervised.supervised_training_visualization import SupervisedVisualization
-from src.base.base_tab import BaseTab
 import os
+from src.training.supervised_training_worker import SupervisedWorker
+from src.training.supervised_training_visualization import SupervisedVisualization
+from src.base.base_tab import BaseTab
 
-class SupervisedTab(BaseTab):
+class SupervisedTrainingSubTab(BaseTab):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.visualization = SupervisedVisualization()
@@ -23,29 +23,22 @@ class SupervisedTab(BaseTab):
         self.controls_group = QGroupBox("Actions")
         cg_layout = QVBoxLayout(self.controls_group)
         cg_layout.setSpacing(10)
-        control_buttons_layout = self.create_control_buttons("Start Training","Stop Training",self.start_training,self.stop_training,pause_text="Pause Training",resume_text="Resume Training",pause_callback=self.pause_worker,resume_callback=self.resume_worker)
+        control_buttons_layout = self.create_control_buttons(
+            "Start Training",
+            "Stop Training",
+            self.start_training,
+            self.stop_training,
+            pause_text="Pause Training",
+            resume_text="Resume Training",
+            pause_callback=self.pause_worker,
+            resume_callback=self.resume_worker
+        )
         cg_layout.addLayout(control_buttons_layout)
-        self.toggle_buttons_layout = QHBoxLayout()
-        self.show_logs_button = QPushButton("Show Logs")
-        self.show_logs_button.setCheckable(True)
-        self.show_logs_button.setChecked(True)
-        self.show_logs_button.clicked.connect(self.show_logs_view)
-        self.show_graphs_button = QPushButton("Show Graphs")
-        self.show_graphs_button.setCheckable(True)
-        self.show_graphs_button.setChecked(False)
-        self.show_graphs_button.clicked.connect(self.show_graphs_view)
-        self.show_logs_button.clicked.connect(lambda: self.show_graphs_button.setChecked(not self.show_logs_button.isChecked()))
-        self.show_graphs_button.clicked.connect(lambda: self.show_logs_button.setChecked(not self.show_graphs_button.isChecked()))
-        self.toggle_buttons_layout.addWidget(self.show_logs_button)
-        self.toggle_buttons_layout.addWidget(self.show_graphs_button)
+        self.toggle_buttons_layout = self.create_log_graph_buttons(self.show_logs_view, self.show_graphs_view, "Show Logs", "Show Graphs", True)
         cg_layout.addLayout(self.toggle_buttons_layout)
-        self.start_new_button = QPushButton("Start New")
-        self.start_new_button.setToolTip("Start a new training configuration.")
-        self.start_new_button.clicked.connect(self.reset_to_initial_state)
+        self.start_new_button = self.create_start_new_button("Start New", self.reset_to_initial_state)
         cg_layout.addWidget(self.start_new_button)
-        separator = QFrame()
-        separator.setFrameShape(QFrame.HLine)
-        separator.setFrameShadow(QFrame.Sunken)
+        separator = self.create_separator()
         self.progress_group = QGroupBox("Training Progress")
         pg_layout = QVBoxLayout(self.progress_group)
         pg_layout.setSpacing(10)
@@ -68,7 +61,11 @@ class SupervisedTab(BaseTab):
         main_layout.addWidget(self.visualization_group)
         self.setLayout(main_layout)
         self.setup_batch_size_control(self.automatic_batch_size_checkbox, self.batch_size_input)
-        interval_widgets = {'epoch': self.epoch_interval_widget, 'time': self.time_interval_widget, 'batch': self.batch_interval_widget}
+        interval_widgets = {
+            'epoch': self.epoch_interval_widget,
+            'time': self.time_interval_widget,
+            'batch': self.batch_interval_widget
+        }
         self.setup_checkpoint_controls(self.save_checkpoints_checkbox, self.checkpoint_type_combo, interval_widgets)
         self.progress_group.setVisible(False)
         self.log_group.setVisible(False)
@@ -315,7 +312,8 @@ class SupervisedTab(BaseTab):
         self.show_graphs_button.setVisible(True)
         self.start_new_button.setVisible(False)
         self.init_ui_state = False
-        started = self.start_worker(SupervisedWorker,
+        started = self.start_worker(
+            SupervisedWorker,
             epochs=epochs,
             batch_size=batch_size,
             learning_rate=learning_rate,

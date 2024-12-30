@@ -25,13 +25,13 @@ class EvaluationVisualization(BaseVisualizationWidget):
         self.add_text_to_axis('confusion_matrix', 'No Data Yet')
 
     def update_metrics_visualization(
-            self,
-            accuracy,
-            topk_accuracy,
-            macro_avg,
-            weighted_avg,
-            confusion_matrix,
-            class_labels
+        self,
+        accuracy,
+        topk_accuracy,
+        macro_avg,
+        weighted_avg,
+        confusion_matrix,
+        class_labels
     ):
         self.accuracy = accuracy
         self.topk_accuracy = topk_accuracy
