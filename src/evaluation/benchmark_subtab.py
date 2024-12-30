@@ -35,8 +35,6 @@ class BenchmarkSubTab(BaseTab):
         )
         self.benchmark_group = self.create_benchmark_group()
         self.layout().insertWidget(1, self.benchmark_group)
-        separator = self.create_separator()
-        self.layout().addWidget(separator)
         self.progress_group.setVisible(False)
         self.log_group.setVisible(False)
         if self.visualization_group:

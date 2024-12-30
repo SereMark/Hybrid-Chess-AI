@@ -6,6 +6,7 @@ from src.training.supervised_training_subtab import SupervisedTrainingSubTab
 from src.training.reinforcement_training_subtab import ReinforcementTrainingSubTab
 from src.evaluation.evaluation_subtab import EvaluationSubTab
 from src.evaluation.benchmark_subtab import BenchmarkSubTab
+from src.style import stylesheet
 
 class TabWidget(QWidget):
     def __init__(self, tabs, tooltips=None, parent=None):
@@ -30,7 +31,7 @@ class ChessMainWindow(QMainWindow):
                 [(DataPreparationSubTab(), "Data Preparation"), (OpeningBookSubTab(), "Opening Book")],
                 [
                     "Convert raw chess data (e.g., PGN files) into a processed format suitable for training.",
-                    "Generate an opening book by analyzing processed chess game data."
+                    "Generate an opening book by analyzing chess game data."
                 ],
                 "Data Preparation"
             ),
@@ -59,6 +60,7 @@ class ChessMainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyleSheet(stylesheet)
     main_window = ChessMainWindow()
     main_window.show()
     sys.exit(app.exec_())
