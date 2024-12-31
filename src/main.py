@@ -25,7 +25,7 @@ class ChessMainWindow(QMainWindow):
         main_tabs = QTabWidget(self)
 
         tab_data = [
-            ([(DataPreparationSubTab(), "Data Preparation"), (OpeningBookSubTab(), "Opening Book")], "Data Preparation"),
+            ([(DataPreparationSubTab(), "Data Preparation"), (OpeningBookSubTab(), "Opening Book")], "Data Processing"),
             ([(SupervisedTrainingSubTab(), "Supervised Training"), (ReinforcementTrainingSubTab(), "Reinforcement Training")], "Training"),
             ([(EvaluationSubTab(), "Model Evaluation"), (BenchmarkSubTab(), "Benchmarking")], "Analysis")
         ]
