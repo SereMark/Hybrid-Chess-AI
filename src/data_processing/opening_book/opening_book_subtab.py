@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QVBoxLayout, QLabel, QGridLayout, QLineEdit, QPushButton, QGroupBox, QMessageBox
-from src.data_preparation.opening_book_worker import OpeningBookWorker
-from src.data_preparation.opening_book_visualization import OpeningBookVisualization
+from src.data_processing.opening_book.opening_book_worker import OpeningBookWorker
+from src.data_processing.opening_book.opening_book_visualization import OpeningBookVisualization
 from src.base.base_tab import BaseTab
 import os
 

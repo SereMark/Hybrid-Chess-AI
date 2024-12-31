@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QGridLayout, QLineEdit, QPushButton, QMessageBox, QLabel
-from src.analysis.evaluation_worker import EvaluationWorker
-from src.analysis.evaluation_visualization import EvaluationVisualization
+from src.analysis.evaluation.evaluation_worker import EvaluationWorker
+from src.analysis.evaluation.evaluation_visualization import EvaluationVisualization
 from src.base.base_tab import BaseTab
 import os
 

@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QGridLayout, QLineEdit, QPushButton, QMessageBox, QLabel
-from src.data_preparation.data_preparation_worker import DataPreparationWorker
-from src.data_preparation.data_preparation_visualization import DataPreparationVisualization
+from src.data_processing.data_preparation.data_preparation_worker import DataPreparationWorker
+from src.data_processing.data_preparation.data_preparation_visualization import DataPreparationVisualization
 from src.base.base_tab import BaseTab
 import os
 

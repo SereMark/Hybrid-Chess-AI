@@ -1,11 +1,11 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout
-from src.data_preparation.data_preparation_subtab import DataPreparationSubTab
-from src.data_preparation.opening_book_subtab import OpeningBookSubTab
-from src.training.supervised_training_subtab import SupervisedTrainingSubTab
-from src.training.reinforcement_training_subtab import ReinforcementTrainingSubTab
-from src.analysis.evaluation_subtab import EvaluationSubTab
-from src.analysis.benchmark_subtab import BenchmarkSubTab
+from src.data_processing.data_preparation.data_preparation_subtab import DataPreparationSubTab
+from src.data_processing.opening_book.opening_book_subtab import OpeningBookSubTab
+from src.training.supervised.supervised_training_subtab import SupervisedTrainingSubTab
+from src.training.reinforcement.reinforcement_training_subtab import ReinforcementTrainingSubTab
+from src.analysis.evaluation.evaluation_subtab import EvaluationSubTab
+from src.analysis.benchmark.benchmark_subtab import BenchmarkSubTab
 from src.style import stylesheet
 
 class TabWidget(QWidget):

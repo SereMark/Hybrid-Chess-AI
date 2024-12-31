@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QGridLayout, QLineEdit, QPushButton, QMessageBox, QLabel, QSpinBox, QDoubleSpinBox
-from src.analysis.benchmark_worker import BenchmarkWorker
-from src.analysis.benchmark_visualization import BenchmarkVisualization
+from src.analysis.benchmark.benchmark_worker import BenchmarkWorker
+from src.analysis.benchmark.benchmark_visualization import BenchmarkVisualization
 from src.base.base_tab import BaseTab
 import os
 
