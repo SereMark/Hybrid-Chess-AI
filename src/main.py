@@ -4,8 +4,8 @@ from src.data_preparation.data_preparation_subtab import DataPreparationSubTab
 from src.data_preparation.opening_book_subtab import OpeningBookSubTab
 from src.training.supervised_training_subtab import SupervisedTrainingSubTab
 from src.training.reinforcement_training_subtab import ReinforcementTrainingSubTab
-from src.evaluation.evaluation_subtab import EvaluationSubTab
-from src.evaluation.benchmark_subtab import BenchmarkSubTab
+from src.analysis.evaluation_subtab import EvaluationSubTab
+from src.analysis.benchmark_subtab import BenchmarkSubTab
 from src.style import stylesheet
 
 class TabWidget(QWidget):
@@ -27,7 +27,7 @@ class ChessMainWindow(QMainWindow):
         tab_data = [
             ([(DataPreparationSubTab(), "Data Preparation"), (OpeningBookSubTab(), "Opening Book")], "Data Preparation"),
             ([(SupervisedTrainingSubTab(), "Supervised Training"), (ReinforcementTrainingSubTab(), "Reinforcement Training")], "Training"),
-            ([(EvaluationSubTab(), "Model Evaluation"), (BenchmarkSubTab(), "Benchmarking")], "Evaluation")
+            ([(EvaluationSubTab(), "Model Evaluation"), (BenchmarkSubTab(), "Benchmarking")], "Analysis")
         ]
 
         for tabs, title in tab_data:
