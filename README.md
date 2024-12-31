@@ -73,7 +73,6 @@ The application is equipped with a **Graphical User Interface (GUI)** built usin
 - **Supervised Training**: Trains neural networks using labeled datasets.
 - **Self-Play Training**: Implements reinforcement learning through self-play games powered by MCTS.
 - **Evaluation**: Assesses model performance with test datasets.
-- **Gameplay**: Allows users to play against the AI, utilizing MCTS for move selection.
 
 ### **3. Visualization**
 - Provides real-time insights via charts and plots, such as:
