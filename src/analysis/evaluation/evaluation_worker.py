@@ -25,7 +25,7 @@ class EvaluationWorker(BaseWorker):
         self.move_mapping = get_move_mapping()
 
     def run_task(self):
-        self.log_update.emit("Starting model evaluation...")
+        self.logger.log("Starting evaluation worker.")
         initialize_random_seeds(self.random_seed)
         model = self._load_model()
         if model is None:
@@ -41,10 +41,10 @@ class EvaluationWorker(BaseWorker):
         steps_done = 0
         total_steps = total_batches
         start_time = time.time()
-        self.log_update.emit("Running evaluation on the dataset...")
+        self.logger.log("Evaluating model on the dataset.")
         for batch_idx, (inputs, policy_targets, _) in enumerate(loader, 1):
             if self._is_stopped.is_set():
-                self.log_update.emit("Evaluation stopped by user.")
+                self.logger.log("Evaluation stopped by user request.")
                 return
             while not self._is_paused.is_set():
                 time.sleep(0.1)
@@ -66,7 +66,7 @@ class EvaluationWorker(BaseWorker):
         torch.cuda.empty_cache()
         self._compute_metrics(all_predictions, all_actuals, topk_predictions)
         if self._is_stopped.is_set():
-            self.log_update.emit("Evaluation stopped by user request.")
+            self.logger.log("Evaluation ended by user.")
 
     def _load_model(self) -> Optional[ChessModel]:
         num_moves = get_total_moves()
@@ -79,26 +79,26 @@ class EvaluationWorker(BaseWorker):
                 model.load_state_dict(checkpoint)
             model.to(self.device)
             model.eval()
-            self.log_update.emit(f"Model loaded from {self.model_path}")
+            self.logger.log(f"Loaded model from {self.model_path}")
             return model
         except Exception as e:
-            self.log_update.emit(f"Failed to load model: {e}")
+            self.logger.log(f"Could not load model from {self.model_path}: {str(e)}")
             return None
 
     def _load_dataset(self) -> Optional[H5Dataset]:
         if not os.path.exists(self.h5_file_path):
-            self.log_update.emit(f"Dataset file not found at {self.h5_file_path}.")
+            self.logger.log(f"Dataset file not found at {self.h5_file_path}. Aborting evaluation.")
             return None
         if not os.path.exists(self.dataset_indices_path):
-            self.log_update.emit(f"Dataset indices file not found at {self.dataset_indices_path}.")
+            self.logger.log(f"Indices file not found at {self.dataset_indices_path}. Aborting evaluation.")
             return None
         try:
             dataset_indices = np.load(self.dataset_indices_path)
             dataset = H5Dataset(self.h5_file_path, dataset_indices)
-            self.log_update.emit(f"Loaded dataset indices from {self.dataset_indices_path}")
+            self.logger.log(f"Dataset indices loaded from {self.dataset_indices_path}")
             return dataset
         except Exception as e:
-            self.log_update.emit(f"Failed to load dataset: {e}")
+            self.logger.log(f"Failed to load dataset: {str(e)}")
             return None
 
     def _compute_metrics(self, all_predictions, all_actuals, topk_predictions):
@@ -106,10 +106,10 @@ class EvaluationWorker(BaseWorker):
         all_actuals = np.array(all_actuals)
         topk_predictions = np.array(topk_predictions)
         accuracy = np.mean(all_predictions == all_actuals)
-        self.log_update.emit(f"Accuracy: {accuracy * 100:.2f}%")
+        self.logger.log(f"Accuracy: {accuracy * 100:.2f}%")
         topk_correct = sum(1 for actual, preds in zip(all_actuals, topk_predictions) if actual in preds)
         topk_accuracy = topk_correct / len(all_actuals)
-        self.log_update.emit(f"Top-5 Accuracy: {topk_accuracy * 100:.2f}%")
+        self.logger.log(f"Top-5 Accuracy: {topk_accuracy * 100:.2f}%")
         N = 10
         class_counts = Counter(all_actuals)
         most_common_classes = [item[0] for item in class_counts.most_common(N)]
@@ -117,7 +117,7 @@ class EvaluationWorker(BaseWorker):
         filtered_actuals = all_actuals[indices]
         filtered_predictions = all_predictions[indices]
         confusion = self._compute_confusion_matrix(filtered_actuals, filtered_predictions, most_common_classes)
-        self.log_update.emit("Confusion Matrix computed.")
+        self.logger.log("Calculated confusion matrix for the top classes.")
         report = self._compute_classification_report(filtered_actuals, filtered_predictions, most_common_classes)
         macro_avg = report.get('macro avg', {})
         weighted_avg = report.get('weighted avg', {})
@@ -128,26 +128,11 @@ class EvaluationWorker(BaseWorker):
                 class_labels.append(move_obj.uci())
             else:
                 class_labels.append(f"Unknown({cls_idx})")
-        self.log_update.emit(
-            f"Macro Avg - Precision: {macro_avg.get('precision', 0.0):.4f}, "
-            f"Recall: {macro_avg.get('recall', 0.0):.4f}, "
-            f"F1-Score: {macro_avg.get('f1-score', 0.0):.4f}"
-        )
-        self.log_update.emit(
-            f"Weighted Avg - Precision: {weighted_avg.get('precision', 0.0):.4f}, "
-            f"Recall: {weighted_avg.get('recall', 0.0):.4f}, "
-            f"F1-Score: {weighted_avg.get('f1-score', 0.0):.4f}"
-        )
+        self.logger.log(f"Macro Avg - Precision: {macro_avg.get('precision', 0.0):.4f}, Recall: {macro_avg.get('recall', 0.0):.4f}, F1: {macro_avg.get('f1-score', 0.0):.4f}")
+        self.logger.log(f"Weighted Avg - Precision: {weighted_avg.get('precision', 0.0):.4f}, Recall: {weighted_avg.get('recall', 0.0):.4f}, F1: {weighted_avg.get('f1-score', 0.0):.4f}")
         if self.metrics_update:
-            self.metrics_update.emit(
-                accuracy,
-                topk_accuracy,
-                macro_avg,
-                weighted_avg,
-                confusion,
-                class_labels
-            )
-        self.log_update.emit("Evaluation process finished.")
+            self.metrics_update.emit(accuracy, topk_accuracy, macro_avg, weighted_avg, confusion, class_labels)
+        self.logger.log("Evaluation metrics have been computed successfully.")
 
     def _compute_confusion_matrix(self, actuals, predictions, labels):
         label_to_index = {label: idx for idx, label in enumerate(labels)}

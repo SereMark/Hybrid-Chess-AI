@@ -15,9 +15,7 @@ class DataPreparationWorker(BaseWorker):
         self.max_games = max_games
         self.min_elo = min_elo
         self.batch_size = batch_size
-        self.positions = defaultdict(
-            lambda: defaultdict(lambda: {'win': 0, 'draw': 0, 'loss': 0, 'eco': '', 'name': ''})
-        )
+        self.positions = defaultdict(lambda: defaultdict(lambda: {'win': 0, 'draw': 0, 'loss': 0, 'eco': '', 'name': ''}))
         self.game_counter = 0
         self.start_time = None
         self.total_samples = 0
@@ -40,24 +38,24 @@ class DataPreparationWorker(BaseWorker):
             total_estimated_games = self._estimate_total_games()
             pgn_files = glob.glob(os.path.join(self.raw_data_dir, '*.pgn'))
             if not pgn_files:
-                self.log_update.emit(f"No PGN files found in {self.raw_data_dir}")
+                self.logger.log(f"No .pgn files detected in {self.raw_data_dir}. Aborting data preparation.")
                 return
-            self.log_update.emit(f"Found {len(pgn_files)} PGN files to process")
+            self.logger.log(f"Discovered {len(pgn_files)} PGN file(s) in {self.raw_data_dir}.")
             os.makedirs(self.processed_data_dir, exist_ok=True)
             h5_file_path = os.path.join(self.processed_data_dir, 'dataset.h5')
             with h5py.File(h5_file_path, 'w') as h5_file:
                 self._initialize_h5_datasets(h5_file)
-                self.log_update.emit("Initialized H5 datasets successfully")
+                self.logger.log("HDF5 datasets created successfully.")
                 for filename in pgn_files:
                     if self._is_stopped.is_set():
-                        self.log_update.emit("Stopping processing due to stop event")
+                        self.logger.log("Data preparation stopping due to user request.")
                         break
                     wait_if_paused(self._is_paused)
-                    self.log_update.emit(f"Processing file: {filename}")
+                    self.logger.log(f"Processing PGN file: {filename}")
                     with open(filename, 'r', errors='ignore') as f:
                         while True:
                             if self._is_stopped.is_set():
-                                self.log_update.emit("Stopping processing due to stop event")
+                                self.logger.log("Data preparation stopping due to user request.")
                                 break
                             wait_if_paused(self._is_paused)
                             game = chess.pgn.read_game(f)
@@ -73,18 +71,18 @@ class DataPreparationWorker(BaseWorker):
                                 self._update_progress_and_time_left(total_estimated_games)
                                 self._emit_stats()
                             if self.total_games_processed >= self.max_games:
-                                self.log_update.emit("Reached maximum number of games")
+                                self.logger.log(f"Reached the max_games limit of {self.max_games}.")
                                 break
                 if self.batch_inputs:
-                    self.log_update.emit(f"Writing final batch of {len(self.batch_inputs)} samples")
+                    self.logger.log(f"Writing remaining batch of {len(self.batch_inputs)} samples to HDF5.")
                     self._write_batch_to_h5(h5_file)
             if not self._is_stopped.is_set():
-                self.log_update.emit("Splitting dataset into training and validation sets...")
+                self.logger.log("Splitting the processed dataset into training/validation sets.")
                 self._split_dataset()
             else:
-                self.log_update.emit("Data preparation stopped by user request.")
+                self.logger.log("Data preparation was stopped by user.")
         except Exception as e:
-            self.log_update.emit(f"Critical error during data processing: {str(e)}")
+            self.logger.log(f"Critical error in data preparation: {str(e)}")
             raise
 
     def _initialize_h5_datasets(self, h5_file):
@@ -123,7 +121,7 @@ class DataPreparationWorker(BaseWorker):
     def _write_batch_to_h5(self, h5_file):
         try:
             if not self.batch_inputs:
-                self.log_update.emit("Warning: Attempted to write empty batch")
+                self.logger.log("Attempted to write an empty batch to HDF5. Skipping.")
                 return
             batch_size = len(self.batch_inputs)
             start_idx = self.current_dataset_size
@@ -139,7 +137,7 @@ class DataPreparationWorker(BaseWorker):
             self.batch_policy_targets.clear()
             self.batch_value_targets.clear()
         except Exception as e:
-            self.log_update.emit(f"Error writing batch to H5: {str(e)}")
+            self.logger.log(f"Error while writing batch to HDF5: {str(e)}")
             raise
 
     def _update_histograms(self, game_length, avg_rating):
@@ -163,7 +161,7 @@ class DataPreparationWorker(BaseWorker):
             estimated_total_games = min(total_games, self.max_games)
             return estimated_total_games
         except Exception as e:
-            self.log_update.emit(f"Error estimating total games: {str(e)}")
+            self.logger.log(f"Error estimating total games in directory {self.raw_data_dir}: {str(e)}")
             return self.max_games
 
     def _update_progress_and_time_left(self, total_estimated_games):
@@ -213,27 +211,27 @@ class DataPreparationWorker(BaseWorker):
                 np.save(train_indices_path, train_indices)
                 np.save(val_indices_path, val_indices)
                 np.save(test_indices_path, test_indices)
-            self.log_update.emit("Dataset split into training, validation, and test sets.")
+            self.logger.log("Successfully split dataset into training, validation, and test sets.")
         except Exception as e:
-            self.log_update.emit(f"Error during dataset splitting: {e}")
+            self.logger.log(f"Error splitting dataset: {str(e)}")
 
     def _process_game(self, game_str):
         try:
             game = chess.pgn.read_game(io.StringIO(game_str))
             if game is None:
-                self.log_update.emit("Skipped a game: Unable to parse game.")
+                self.logger.log("Encountered an unparseable game entry. Skipping.")
                 return None
             headers = game.headers
             white_elo_str = headers.get('WhiteElo')
             black_elo_str = headers.get('BlackElo')
             if white_elo_str is None or black_elo_str is None:
-                self.log_update.emit("Skipped a game: Missing WhiteElo or BlackElo.")
+                self.logger.log("Missing WhiteElo or BlackElo header. Skipping game.")
                 return None
             try:
                 white_elo = int(white_elo_str)
                 black_elo = int(black_elo_str)
             except ValueError:
-                self.log_update.emit("Skipped a game: Non-integer ELO value.")
+                self.logger.log("Encountered non-integer ELO values. Skipping game.")
                 return None
             if white_elo < self.min_elo or black_elo < self.min_elo:
                 return None
@@ -246,12 +244,11 @@ class DataPreparationWorker(BaseWorker):
             elif result == '1/2-1/2':
                 game_result = 0.0
             else:
-                self.log_update.emit("Skipped a game: Unrecognized result format.")
+                self.logger.log("Game result format unrecognized. Skipping game.")
                 return None
             inputs = []
             policy_targets = []
             value_targets = []
-            game_length = 0
             board = game.board()
             moves = list(game.mainline_moves())
             game_length = len(moves)
@@ -259,7 +256,7 @@ class DataPreparationWorker(BaseWorker):
                 current_tensor = convert_board_to_tensor(board)
                 move_idx = self.move_mapping.get_index_by_move(move)
                 if move_idx is None:
-                    self.log_update.emit(f"Skipped a move: Move '{move}' not in MOVE_MAPPING.")
+                    self.logger.log(f"Unmapped move '{move}'. Skipping this move.")
                     board.push(move)
                     continue
                 inputs.append(current_tensor)
@@ -276,10 +273,10 @@ class DataPreparationWorker(BaseWorker):
                     flipped_value_target = -value_target
                     value_targets.append(flipped_value_target)
                 else:
-                    self.log_update.emit(f"Skipped a flipped move: Move '{flipped_move}' not in MOVE_MAPPING.")
+                    self.logger.log(f"Flipped move '{flipped_move}' not mapped. Skipping flipped data.")
                 board.push(move)
             if not inputs:
-                self.log_update.emit("Skipped a game: No valid moves found.")
+                self.logger.log("No valid moves found in this game. Skipping.")
                 return None
             return {
                 'inputs': inputs,
@@ -290,5 +287,5 @@ class DataPreparationWorker(BaseWorker):
                 'game_result': game_result
             }
         except Exception as e:
-            self.log_update.emit(f"Error processing game: {str(e)}")
+            self.logger.log(f"Error processing game entry: {str(e)}")
             return None

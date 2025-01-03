@@ -19,16 +19,16 @@ class BenchmarkWorker(BaseWorker):
 
     def run_task(self):
         if not os.path.exists(self.engine_path):
-            self.log_update.emit("Engine or model file not found. Benchmark aborted.")
+            self.logger.log(f"Engine or model file not found at {self.engine_path}. Benchmark aborted.")
             return
-        self.log_update.emit("Benchmarking started.")
-        self.log_update.emit(f"Opponent: {self.engine_path}")
-        self.log_update.emit(f"Number of games: {self.num_games}, Time per move: {self.time_per_move}s")
+        self.logger.log("Starting benchmark worker.")
+        self.logger.log(f"Opponent engine path: {self.engine_path}")
+        self.logger.log(f"Running {self.num_games} games with {self.time_per_move}s per move.")
         start_time = time.time()
         results = []
         for game_idx in range(self.num_games):
             if self._is_stopped.is_set():
-                self.log_update.emit("Benchmarking stopped by user.")
+                self.logger.log("Benchmarking was stopped by user.")
                 return
             wait_if_paused(self._is_paused)
             board = chess.Board()
@@ -51,8 +51,8 @@ class BenchmarkWorker(BaseWorker):
         engine_wins = sum(g['winner'] == 'Engine' for g in results)
         our_model_wins = sum(g['winner'] == 'OurModel' for g in results)
         draws = sum(g['winner'] == 'Draw' for g in results)
-        self.log_update.emit("Benchmarking completed.")
-        self.log_update.emit(f"Engine wins: {engine_wins}, OurModel wins: {our_model_wins}, Draws: {draws}")
+        self.logger.log("Benchmark run complete.")
+        self.logger.log(f"Final results: Engine wins: {engine_wins}, OurModel wins: {our_model_wins}, Draws: {draws}")
         final_stats = {
             'engine_wins': engine_wins,
             'our_model_wins': our_model_wins,
@@ -76,8 +76,8 @@ class BenchmarkWorker(BaseWorker):
 
     def _get_move_our_model(self, board: chess.Board):
         our_mcts = MCTS(
-            policy_value_fn=self._policy_value_fn_our_model, 
-            c_puct=1.4, 
+            policy_value_fn=self._policy_value_fn_our_model,
+            c_puct=1.4,
             n_simulations=self.default_mcts_simulations
         )
         our_mcts.set_root_node(board.copy())
@@ -104,8 +104,8 @@ class BenchmarkWorker(BaseWorker):
 
     def _get_move_opponent(self, board: chess.Board):
         opponent_mcts = MCTS(
-            policy_value_fn=self._policy_value_fn_opponent_model, 
-            c_puct=1.4, 
+            policy_value_fn=self._policy_value_fn_opponent_model,
+            c_puct=1.4,
             n_simulations=self.default_mcts_simulations
         )
         opponent_mcts.set_root_node(board.copy())
