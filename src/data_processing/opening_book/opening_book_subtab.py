@@ -45,7 +45,7 @@ class OpeningBookSubTab(BaseTab):
         group = QGroupBox("Opening Book Configuration")
         layout = QGridLayout()
         label1 = QLabel("PGN File:")
-        self.pgn_file_input = QLineEdit("data/raw/lichess_db_standard_rated_2024-11.pgn")
+        self.pgn_file_input = QLineEdit("data/raw/lichess_db_standard_rated_2024-12.pgn")
         pgn_browse_button = QPushButton("Browse")
         pgn_browse_button.clicked.connect(lambda: self.browse_file(self.pgn_file_input, "Select PGN File", "PGN Files (*.pgn)"))
         label2 = QLabel("Max Games:")
