@@ -1,11 +1,11 @@
 import os, time, torch
 
 class CheckpointManager:
-    def __init__(self, checkpoint_dir, checkpoint_type='epoch', checkpoint_interval=5, log_fn=None):
+    def __init__(self, checkpoint_dir, checkpoint_type='epoch', checkpoint_interval=5, logger=None):
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_type = checkpoint_type
         self.checkpoint_interval = checkpoint_interval
-        self.log_fn = log_fn
+        self.logger = logger
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
     def should_save(self, epoch=None, batch_idx=None, iteration=None):
@@ -25,23 +25,23 @@ class CheckpointManager:
         try:
             torch.save(checkpoint_data, temp_path)
             os.replace(temp_path, final_path)
-            if self.log_fn:
-                self.log_fn(f"Checkpoint saved: {checkpoint_name}")
+            if self.logger:
+                self.logger.info(f"Checkpoint saved: {checkpoint_name}")
         except Exception as e:
-            if self.log_fn:
-                self.log_fn(f"Error saving checkpoint: {str(e)}")
+            if self.logger:
+                self.logger.error(f"Error saving checkpoint: {str(e)}")
             if os.path.exists(temp_path):
                 try:
                     os.remove(temp_path)
                 except Exception as remove_e:
-                    if self.log_fn:
-                        self.log_fn(f"Failed to remove temp checkpoint: {str(remove_e)}")
+                    if self.logger:
+                        self.logger.error(f"Failed to remove temp checkpoint: {str(remove_e)}")
             raise
 
     def load(self, checkpoint_path, device, model, optimizer=None, scheduler=None):
         if not os.path.exists(checkpoint_path):
-            if self.log_fn:
-                self.log_fn(f"Checkpoint not found at {checkpoint_path}.")
+            if self.logger:
+                self.logger.warning(f"Checkpoint not found at {checkpoint_path}.")
             return None
         try:
             checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -50,10 +50,10 @@ class CheckpointManager:
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             if scheduler and 'scheduler_state_dict' in checkpoint and hasattr(scheduler, 'load_state_dict'):
                 scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-            if self.log_fn:
-                self.log_fn(f"Checkpoint loaded from {checkpoint_path}.")
+            if self.logger:
+                self.logger.info(f"Checkpoint loaded from {checkpoint_path}.")
             return checkpoint
         except Exception as e:
-            if self.log_fn:
-                self.log_fn(f"Error loading checkpoint: {str(e)}")
+            if self.logger:
+                self.logger.error(f"Error loading checkpoint: {str(e)}")
             raise

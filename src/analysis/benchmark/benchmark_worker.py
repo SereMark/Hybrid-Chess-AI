@@ -19,20 +19,19 @@ class BenchmarkWorker(BaseWorker):
 
     def run_task(self):
         if not os.path.exists(self.engine_path):
-            self.logger.log(f"Engine or model file not found at {self.engine_path}. Benchmark aborted.")
+            self.logger.error(f"Engine or model file not found at {self.engine_path}. Benchmark aborted.")
             return
-        self.logger.log("Starting benchmark worker.")
-        self.logger.log(f"Opponent engine path: {self.engine_path}")
-        self.logger.log(f"Running {self.num_games} games with {self.time_per_move}s per move.")
+        self.logger.info("Starting benchmark worker.")
+        self.logger.info(f"Opponent engine path: {self.engine_path}")
+        self.logger.info(f"Running {self.num_games} games with {self.time_per_move}s per move.")
         start_time = time.time()
         results = []
         for game_idx in range(self.num_games):
             if self._is_stopped.is_set():
-                self.logger.log("Benchmarking was stopped by user.")
+                self.logger.info("Benchmarking was stopped by user.")
                 return
             wait_if_paused(self._is_paused)
-            board = chess.Board()
-            game_result, move_count = self._play_single_game(board)
+            game_result, move_count = self._play_single_game(chess.Board())
             if game_result > 0:
                 winner = "OurModel"
             elif game_result < 0:
@@ -51,8 +50,8 @@ class BenchmarkWorker(BaseWorker):
         engine_wins = sum(g['winner'] == 'Engine' for g in results)
         our_model_wins = sum(g['winner'] == 'OurModel' for g in results)
         draws = sum(g['winner'] == 'Draw' for g in results)
-        self.logger.log("Benchmark run complete.")
-        self.logger.log(f"Final results: Engine wins: {engine_wins}, OurModel wins: {our_model_wins}, Draws: {draws}")
+        self.logger.info("Benchmark run complete.")
+        self.logger.info(f"Final results: Engine wins: {engine_wins}, OurModel wins: {our_model_wins}, Draws: {draws}")
         final_stats = {
             'engine_wins': engine_wins,
             'our_model_wins': our_model_wins,

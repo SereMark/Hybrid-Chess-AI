@@ -49,20 +49,19 @@ class SupervisedWorker(BaseWorker):
         self.batch_accuracy_fn = self.batch_accuracy_update.emit
         self.lr_fn = self.lr_update.emit
         self.initial_batches_processed_callback = self.initial_batches_processed.emit
-        self.log_fn = self.logger.log
         self.lock = threading.Lock()
         self.total_batches_processed = 0
-        self.model, inferred_batch_size = initialize_model(ChessModel, num_moves=get_total_moves(), device=self.device, automatic_batch_size=self.automatic_batch_size, log_fn=self.log_fn)
+        self.model, inferred_batch_size = initialize_model(ChessModel, num_moves=get_total_moves(), device=self.device, automatic_batch_size=self.automatic_batch_size, logger=self.logger)
         if inferred_batch_size:
             self.batch_size = inferred_batch_size
-        self.optimizer = initialize_optimizer(self.model,self.optimizer_type,self.learning_rate,self.weight_decay,log_fn=self.log_fn)
+        self.optimizer = initialize_optimizer(self.model,self.optimizer_type,self.learning_rate,self.weight_decay,logger=self.logger)
         self.scheduler = None
-        self.checkpoint_manager = CheckpointManager(checkpoint_dir=self.checkpoint_dir,checkpoint_type=self.checkpoint_type,checkpoint_interval=self.checkpoint_interval,log_fn=self.log_fn)
+        self.checkpoint_manager = CheckpointManager(checkpoint_dir=self.checkpoint_dir,checkpoint_type=self.checkpoint_type,checkpoint_interval=self.checkpoint_interval,logger=self.logger)
 
     def run_task(self):
-        self.logger.log("Starting supervised training worker.")
+        self.logger.info("Starting supervised training worker.")
         device = self.device
-        self.logger.log(f"Using device: {device}")
+        self.logger.info(f"Using device: {device}")
         required_files = [
             (self.dataset_path, "dataset file"),
             (self.train_indices_path, "training indices"),
@@ -70,22 +69,22 @@ class SupervisedWorker(BaseWorker):
         ]
         for file_path, description in required_files:
             if not os.path.exists(file_path):
-                self.logger.log(f"Required {description} was not found at {file_path}. Aborting.")
+                self.logger.error(f"Required {description} was not found at {file_path}. Aborting.")
                 return
         try:
-            self.logger.log("Loading training and validation datasets.")
+            self.logger.info("Loading training and validation datasets.")
             train_indices = np.load(self.train_indices_path)
             val_indices = np.load(self.val_indices_path)
             train_dataset = H5Dataset(self.dataset_path, train_indices)
             val_dataset = H5Dataset(self.dataset_path, val_indices)
-            self.logger.log(f"Training dataset size: {len(train_dataset)} (text/tabular/image?), Validation dataset size: {len(val_dataset)} (text/tabular/image?).")
+            self.logger.info(f"Training dataset size: {len(train_dataset)}, Validation dataset size: {len(val_dataset)}.")
             train_loader = DataLoader(train_dataset,batch_size=self.batch_size,shuffle=True,num_workers=self.num_workers,pin_memory=True)
             val_loader = DataLoader(val_dataset,batch_size=self.batch_size,shuffle=False,num_workers=self.num_workers,pin_memory=True)
             total_steps = self.epochs * len(train_loader)
             try:
-                self.scheduler = initialize_scheduler(self.optimizer,self.scheduler_type,total_steps=total_steps,log_fn=self.log_fn)
+                self.scheduler = initialize_scheduler(self.optimizer,self.scheduler_type,total_steps=total_steps,logger=self.logger)
             except ValueError as ve:
-                self.logger.log(f"Scheduler initialization error: {str(ve)}")
+                self.logger.error(f"Scheduler initialization error: {str(ve)}")
                 self.scheduler = None
             start_epoch = 1
             skip_batches = 0
@@ -95,11 +94,11 @@ class SupervisedWorker(BaseWorker):
                     if 'epoch' in checkpoint:
                         start_epoch = checkpoint['epoch'] + 1
                         skip_batches = checkpoint.get('batch_idx', 0) or 0
-                        self.logger.log(f"Resuming training from epoch {start_epoch - 1}, batch {skip_batches}.")
+                        self.logger.info(f"Resuming training from epoch {start_epoch - 1}, batch {skip_batches}.")
                     else:
-                        self.logger.log("Epoch info not found in checkpoint. Starting from epoch 1.")
+                        self.logger.warning("Epoch info not found in checkpoint. Starting from epoch 1.")
             else:
-                self.logger.log("No valid checkpoint found. Training from scratch.")
+                self.logger.info("No valid checkpoint found. Training from scratch.")
             if self.initial_batches_processed_callback:
                 self.initial_batches_processed_callback(self.total_batches_processed)
             scaler = GradScaler(device='cuda') if self.device.type == 'cuda' else GradScaler()
@@ -109,7 +108,7 @@ class SupervisedWorker(BaseWorker):
                 if self._is_stopped.is_set():
                     break
                 epoch_start_time = time.time()
-                self.logger.log(f"Beginning epoch {epoch}/{self.epochs}.")
+                self.logger.info(f"Beginning epoch {epoch}/{self.epochs}.")
                 self.model.train()
                 train_metrics = self._train_epoch(train_loader,epoch,device,total_steps,scaler,accumulation_steps,skip_batches if epoch == start_epoch else 0)
                 if self._is_stopped.is_set():
@@ -119,7 +118,7 @@ class SupervisedWorker(BaseWorker):
                 total_train_loss = train_metrics['policy_loss'] + train_metrics['value_loss']
                 total_val_loss = val_metrics['policy_loss'] + val_metrics['value_loss']
                 epoch_duration = time.time() - epoch_start_time
-                self.logger.log(f"Epoch {epoch}/{self.epochs} done in {format_time_left(epoch_duration)}. Training Loss: {total_train_loss:.4f}, Validation Loss: {total_val_loss:.4f}, Training Acc: {train_metrics['accuracy']*100:.2f}%, Validation Acc: {val_metrics['accuracy']*100:.2f}%.")
+                self.logger.info(f"Epoch {epoch}/{self.epochs} done in {format_time_left(epoch_duration)}. Training Loss: {total_train_loss:.4f}, Validation Loss: {total_val_loss:.4f}, Training Acc: {train_metrics['accuracy']*100:.2f}%, Validation Acc: {val_metrics['accuracy']*100:.2f}%.")
                 if self.save_checkpoints and self.checkpoint_type == 'epoch' and self.checkpoint_manager.should_save(epoch=epoch):
                     checkpoint_data = {
                         'model_state_dict': self.model.state_dict(),
@@ -134,7 +133,7 @@ class SupervisedWorker(BaseWorker):
                 if isinstance(self.scheduler, optim.lr_scheduler.StepLR):
                     self.scheduler.step()
             if not self._is_stopped.is_set():
-                self.logger.log("Supervised training finished successfully.")
+                self.logger.info("Supervised training finished successfully.")
                 try:
                     checkpoint = {
                         "model_state_dict": self.model.state_dict(),
@@ -144,13 +143,13 @@ class SupervisedWorker(BaseWorker):
                         "batch_idx": self.total_batches_processed
                     }
                     torch.save(checkpoint, self.output_model_path)
-                    self.logger.log(f"Final model checkpoint saved at {self.output_model_path}")
+                    self.logger.info(f"Final model checkpoint saved at {self.output_model_path}")
                 except Exception as e:
-                    self.logger.log(f"Error saving final model checkpoint: {str(e)}")
+                    self.logger.error(f"Error saving final model checkpoint: {str(e)}")
             else:
-                self.logger.log("Training was stopped by user before completion.")
+                self.logger.info("Training was stopped by user before completion.")
         except Exception as e:
-            self.logger.log(f"Error in SupervisedWorker: {str(e)}")
+            self.logger.error(f"Error in SupervisedWorker: {str(e)}")
         self.task_finished.emit()
         self.finished.emit()
 
@@ -163,7 +162,7 @@ class SupervisedWorker(BaseWorker):
         try:
             start_time = time.time()
             if skip_batches:
-                self.logger.log(f"Skipping the first {skip_batches} batch(es) from previous checkpoint.")
+                self.logger.info(f"Skipping the first {skip_batches} batch(es) from previous checkpoint.")
             for batch_idx, (inputs, policy_targets, value_targets) in enumerate(train_loader, 1):
                 if self._is_stopped.is_set():
                     break
@@ -201,7 +200,6 @@ class SupervisedWorker(BaseWorker):
                 with self.lock:
                     self.total_batches_processed += 1
                     local_steps += 1
-                    current_progress = min(int((self.total_batches_processed / total_steps) * 100), 100)
                 if self.batch_loss_fn:
                     self.batch_loss_fn(self.total_batches_processed, {'policy': policy_loss.item(), 'value': value_loss.item()})
                 if self.batch_accuracy_fn:
@@ -210,24 +208,31 @@ class SupervisedWorker(BaseWorker):
                     current_lr = self.optimizer.param_groups[0]['lr']
                     self.lr_fn(self.total_batches_processed, current_lr)
                 if self.progress_update:
+                    current_progress = min(int((self.total_batches_processed / total_steps) * 100), 100)
                     self.progress_update.emit(current_progress)
                 if self.time_left_update:
                     elapsed_time = time.time() - start_time
                     if local_steps > 0:
                         estimated_total_time = (elapsed_time / local_steps) * (total_steps - self.total_batches_processed)
-                        time_left_str = format_time_left(estimated_total_time)
+                        time_left = estimated_total_time - elapsed_time
+                        time_left = max(0, time_left)
+                        time_left_str = format_time_left(time_left)
                         self.time_left_update.emit(time_left_str)
                     else:
                         self.time_left_update.emit("Calculating...")
                 if self.save_checkpoints and self.checkpoint_type in ['batch', 'iteration'] and self.checkpoint_manager.should_save(batch_idx=self.total_batches_processed):
                     checkpoint_data = {
-                        'model_state_dict': self.model.state_dict(),
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
-                        'epoch': epoch,
-                        'batch_idx': self.total_batches_processed,
-                        'iteration': None,
-                        'training_stats': {}
+                        "model_state_dict": {k: v.cpu() for k, v in self.model.state_dict().items()},
+                        "optimizer_state_dict": self.optimizer.state_dict(),
+                        "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler else None,
+                        "epoch": epoch,
+                        "batch_idx": self.total_batches_processed,
+                        "iteration": None,
+                        "training_stats": {
+                            "total_games_played": 0,
+                            "results": [],
+                            "game_lengths": []
+                        }
                     }
                     self.checkpoint_manager.save(checkpoint_data)
                 del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
@@ -236,12 +241,12 @@ class SupervisedWorker(BaseWorker):
             metrics['policy_loss'] = total_policy_loss / total_predictions if total_predictions > 0 else float('inf')
             metrics['value_loss'] = total_value_loss / total_predictions if total_predictions > 0 else float('inf')
             metrics['accuracy'] = correct_predictions / total_predictions if total_predictions > 0 else 0.0
-            self.logger.log(f"Epoch {epoch}: Training Accuracy {metrics['accuracy']*100:.2f}%.")
+            self.logger.info(f"Epoch {epoch}: Training Accuracy {metrics['accuracy']*100:.2f}%.")
             if self.loss_fn:
                 self.loss_fn(epoch, {'policy': metrics['policy_loss'], 'value': metrics['value_loss']})
             return metrics
         except Exception as e:
-            self.logger.log(f"Error during training epoch {epoch}: {str(e)}")
+            self.logger.error(f"Error during training epoch {epoch}: {str(e)}")
             return {'policy_loss': float('inf'), 'value_loss': float('inf'), 'accuracy': 0.0}
         finally:
             with self.lock:
@@ -282,8 +287,8 @@ class SupervisedWorker(BaseWorker):
                 self.val_loss_fn(epoch, {'policy': metrics['policy_loss'], 'value': metrics['value_loss']})
             if self.accuracy_fn:
                 self.accuracy_fn(epoch, training_accuracy, metrics['accuracy'])
-            self.logger.log(f"Epoch {epoch}: Validation Policy Loss {metrics['policy_loss']:.4f}, Value Loss {metrics['value_loss']:.4f}, Accuracy {metrics['accuracy']*100:.2f}%.")
+            self.logger.info(f"Epoch {epoch}: Validation Policy Loss {metrics['policy_loss']:.4f}, Value Loss {metrics['value_loss']:.4f}, Accuracy {metrics['accuracy']*100:.2f}%.")
             return metrics
         except Exception as e:
-            self.logger.log(f"Error during validation for epoch {epoch}: {str(e)}")
+            self.logger.error(f"Error during validation for epoch {epoch}: {str(e)}")
             return {'policy_loss': float('inf'), 'value_loss': float('inf'), 'accuracy': 0.0}

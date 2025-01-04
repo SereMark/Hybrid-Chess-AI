@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import QWidget, QTextEdit, QProgressBar, QLabel, QVBoxLayout, QHBoxLayout, QGroupBox, QPushButton, QFileDialog, QSizePolicy, QStyle, QFrame
 from PyQt5.QtCore import Qt, QThread
+from PyQt5.QtGui import QColor
 
 class BaseTab(QWidget):
     def __init__(self, parent=None):
@@ -103,12 +104,27 @@ class BaseTab(QWidget):
         self.worker.finished.connect(self.worker.deleteLater)
         self.thread.finished.connect(self.thread.deleteLater)
         self.thread.finished.connect(self.on_worker_finished)
-        self.worker.log_update.connect(self.log_text_edit.append)
+        self.worker.log_update.connect(self.handle_log_update)
         self.worker.progress_update.connect(self.update_progress)
         self.worker.time_left_update.connect(self.update_time_left)
         self.worker.paused.connect(self.on_worker_paused)
         self.thread.start()
         return True
+
+    def handle_log_update(self, level, message):
+        color = self.get_color_for_level(level)
+        self.log_text_edit.setTextColor(QColor(color))
+        self.log_text_edit.append(message)
+
+    def get_color_for_level(self, level):
+        color_map = {
+            'DEBUG': 'gray',
+            'INFO': 'black',
+            'WARNING': 'orange',
+            'ERROR': 'red',
+            'CRITICAL': 'darkred'
+        }
+        return color_map.get(level.upper(), 'black')
 
     def pause_worker(self):
         if self.worker:

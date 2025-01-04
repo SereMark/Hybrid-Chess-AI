@@ -25,7 +25,7 @@ class EvaluationWorker(BaseWorker):
         self.move_mapping = get_move_mapping()
 
     def run_task(self):
-        self.logger.log("Starting evaluation worker.")
+        self.logger.info("Starting evaluation worker.")
         initialize_random_seeds(self.random_seed)
         model = self._load_model()
         if model is None:
@@ -41,10 +41,10 @@ class EvaluationWorker(BaseWorker):
         steps_done = 0
         total_steps = total_batches
         start_time = time.time()
-        self.logger.log("Evaluating model on the dataset.")
+        self.logger.info("Evaluating model on the dataset.")
         for batch_idx, (inputs, policy_targets, _) in enumerate(loader, 1):
             if self._is_stopped.is_set():
-                self.logger.log("Evaluation stopped by user request.")
+                self.logger.info("Evaluation stopped by user request.")
                 return
             while not self._is_paused.is_set():
                 time.sleep(0.1)
@@ -58,15 +58,15 @@ class EvaluationWorker(BaseWorker):
                 _, topk_preds = torch.topk(policy_outputs, 5, dim=1)
                 topk_predictions.extend(topk_preds.cpu().numpy())
             steps_done += 1
-            progress = int((steps_done / total_steps) * 100)
-            elapsed_time = time.time() - start_time
+            progress = int(((steps_done) / total_steps) * 100)
+            elapsed = time.time() - start_time
             self._update_progress(progress)
-            self._update_time_left(elapsed_time, steps_done, total_steps)
+            self._update_time_left(elapsed, steps_done, total_steps)
         del dataset
         torch.cuda.empty_cache()
         self._compute_metrics(all_predictions, all_actuals, topk_predictions)
         if self._is_stopped.is_set():
-            self.logger.log("Evaluation ended by user.")
+            self.logger.info("Evaluation ended by user.")
 
     def _load_model(self) -> Optional[ChessModel]:
         num_moves = get_total_moves()
@@ -79,26 +79,26 @@ class EvaluationWorker(BaseWorker):
                 model.load_state_dict(checkpoint)
             model.to(self.device)
             model.eval()
-            self.logger.log(f"Loaded model from {self.model_path}")
+            self.logger.info(f"Loaded model from {self.model_path}")
             return model
         except Exception as e:
-            self.logger.log(f"Could not load model from {self.model_path}: {str(e)}")
+            self.logger.error(f"Could not load model from {self.model_path}: {str(e)}")
             return None
 
     def _load_dataset(self) -> Optional[H5Dataset]:
         if not os.path.exists(self.h5_file_path):
-            self.logger.log(f"Dataset file not found at {self.h5_file_path}. Aborting evaluation.")
+            self.logger.error(f"Dataset file not found at {self.h5_file_path}. Aborting evaluation.")
             return None
         if not os.path.exists(self.dataset_indices_path):
-            self.logger.log(f"Indices file not found at {self.dataset_indices_path}. Aborting evaluation.")
+            self.logger.error(f"Indices file not found at {self.dataset_indices_path}. Aborting evaluation.")
             return None
         try:
             dataset_indices = np.load(self.dataset_indices_path)
             dataset = H5Dataset(self.h5_file_path, dataset_indices)
-            self.logger.log(f"Dataset indices loaded from {self.dataset_indices_path}")
+            self.logger.info(f"Dataset indices loaded from {self.dataset_indices_path}")
             return dataset
         except Exception as e:
-            self.logger.log(f"Failed to load dataset: {str(e)}")
+            self.logger.error(f"Failed to load dataset: {str(e)}")
             return None
 
     def _compute_metrics(self, all_predictions, all_actuals, topk_predictions):
@@ -106,10 +106,10 @@ class EvaluationWorker(BaseWorker):
         all_actuals = np.array(all_actuals)
         topk_predictions = np.array(topk_predictions)
         accuracy = np.mean(all_predictions == all_actuals)
-        self.logger.log(f"Accuracy: {accuracy * 100:.2f}%")
+        self.logger.info(f"Accuracy: {accuracy * 100:.2f}%")
         topk_correct = sum(1 for actual, preds in zip(all_actuals, topk_predictions) if actual in preds)
         topk_accuracy = topk_correct / len(all_actuals)
-        self.logger.log(f"Top-5 Accuracy: {topk_accuracy * 100:.2f}%")
+        self.logger.info(f"Top-5 Accuracy: {topk_accuracy * 100:.2f}%")
         N = 10
         class_counts = Counter(all_actuals)
         most_common_classes = [item[0] for item in class_counts.most_common(N)]
@@ -117,7 +117,6 @@ class EvaluationWorker(BaseWorker):
         filtered_actuals = all_actuals[indices]
         filtered_predictions = all_predictions[indices]
         confusion = self._compute_confusion_matrix(filtered_actuals, filtered_predictions, most_common_classes)
-        self.logger.log("Calculated confusion matrix for the top classes.")
         report = self._compute_classification_report(filtered_actuals, filtered_predictions, most_common_classes)
         macro_avg = report.get('macro avg', {})
         weighted_avg = report.get('weighted avg', {})
@@ -128,11 +127,11 @@ class EvaluationWorker(BaseWorker):
                 class_labels.append(move_obj.uci())
             else:
                 class_labels.append(f"Unknown({cls_idx})")
-        self.logger.log(f"Macro Avg - Precision: {macro_avg.get('precision', 0.0):.4f}, Recall: {macro_avg.get('recall', 0.0):.4f}, F1: {macro_avg.get('f1-score', 0.0):.4f}")
-        self.logger.log(f"Weighted Avg - Precision: {weighted_avg.get('precision', 0.0):.4f}, Recall: {weighted_avg.get('recall', 0.0):.4f}, F1: {weighted_avg.get('f1-score', 0.0):.4f}")
+        self.logger.info(f"Macro Avg - Precision: {macro_avg.get('precision', 0.0):.4f}, Recall: {macro_avg.get('recall', 0.0):.4f}, F1: {macro_avg.get('f1-score', 0.0):.4f}")
+        self.logger.info(f"Weighted Avg - Precision: {weighted_avg.get('precision', 0.0):.4f}, Recall: {weighted_avg.get('recall', 0.0):.4f}, F1: {weighted_avg.get('f1-score', 0.0):.4f}")
         if self.metrics_update:
             self.metrics_update.emit(accuracy, topk_accuracy, macro_avg, weighted_avg, confusion, class_labels)
-        self.logger.log("Evaluation metrics have been computed successfully.")
+        self.logger.info("Evaluation metrics have been computed successfully.")
 
     def _compute_confusion_matrix(self, actuals, predictions, labels):
         label_to_index = {label: idx for idx, label in enumerate(labels)}
@@ -200,13 +199,8 @@ class EvaluationWorker(BaseWorker):
             self.progress_update.emit(progress)
 
     def _update_time_left(self, elapsed_time: float, steps_done: int, total_steps: int):
-        if self.time_left_update:
-            if steps_done > 0:
-                estimated_total_time = (elapsed_time / steps_done) * total_steps
-                time_left = estimated_total_time - elapsed_time
-                if time_left < 0:
-                    time_left = 0
-                time_left_str = format_time_left(time_left)
-                self.time_left_update.emit(time_left_str)
-            else:
-                self.time_left_update.emit("Calculating...")
+        if steps_done > 0 and self.time_left_update:
+            estimated_total_time = (elapsed_time / steps_done) * total_steps
+            time_left = max(0, estimated_total_time - elapsed_time)
+            time_left_str = format_time_left(time_left)
+            self.time_left_update.emit(time_left_str)

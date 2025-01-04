@@ -26,7 +26,7 @@ def initialize_random_seeds(random_seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-def estimate_batch_size(model, device, desired_effective_batch_size=256, max_batch_size=1024, min_batch_size=32, log_fn=None):
+def estimate_batch_size(model, device, desired_effective_batch_size=256, max_batch_size=1024, min_batch_size=32, logger=None):
     try:
         if device.type == 'cuda':
             batch_size = min_batch_size
@@ -41,6 +41,8 @@ def estimate_batch_size(model, device, desired_effective_batch_size=256, max_bat
                     if 'out of memory' in str(e).lower():
                         torch.cuda.empty_cache()
                         batch_size = max(batch_size // 2, min_batch_size)
+                        if logger:
+                            logger.warning(f"Out of memory at batch size {batch_size * 2}. Reducing to {batch_size}.")
                         break
                     else:
                         raise e
@@ -49,23 +51,23 @@ def estimate_batch_size(model, device, desired_effective_batch_size=256, max_bat
         else:
             return desired_effective_batch_size
     except Exception as e:
-        if log_fn:
-            log_fn(f"Failed to estimate batch size: {e}. Using default batch size of 128.")
+        if logger:
+            logger.error(f"Failed to estimate batch size: {e}. Using default batch size of 128.")
         return 128
 
-def initialize_model(model_class, num_moves, device, automatic_batch_size=False, desired_effective_batch_size=256, log_fn=None):
+def initialize_model(model_class, num_moves, device, automatic_batch_size=False, desired_effective_batch_size=256, logger=None):
     model = model_class(num_moves=num_moves).to(device)
     if automatic_batch_size:
-        batch_size = estimate_batch_size(model, device, desired_effective_batch_size, log_fn=log_fn)
-        if log_fn:
-            log_fn(f"Automatic batch size estimation: Using batch size of {batch_size}.")
+        batch_size = estimate_batch_size(model, device, desired_effective_batch_size, logger=logger)
+        if logger:
+            logger.info(f"Automatic batch size estimation: Using batch size of {batch_size}.")
     else:
         batch_size = None
-        if log_fn:
-            log_fn("Using manual batch size.")
+        if logger:
+            logger.info("Using manual batch size.")
     return model, batch_size
 
-def initialize_optimizer(model, optimizer_type, learning_rate, weight_decay, log_fn=None):
+def initialize_optimizer(model, optimizer_type, learning_rate, weight_decay, logger=None):
     optimizer_type_lower = optimizer_type.lower()
     if optimizer_type_lower == 'adamw':
         optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -74,12 +76,12 @@ def initialize_optimizer(model, optimizer_type, learning_rate, weight_decay, log
     elif optimizer_type_lower == 'adam':
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     else:
-        if log_fn:
-            log_fn(f"Unsupported optimizer type: {optimizer_type}. Using AdamW by default.")
+        if logger:
+            logger.warning(f"Unsupported optimizer type: {optimizer_type}. Using AdamW by default.")
         optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     return optimizer
 
-def initialize_scheduler(optimizer, scheduler_type, total_steps=None, log_fn=None):
+def initialize_scheduler(optimizer, scheduler_type, total_steps=None, logger=None):
     scheduler_type_lower = scheduler_type.lower()
     if scheduler_type_lower == 'cosineannealingwarmrestarts':
         scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
@@ -87,6 +89,8 @@ def initialize_scheduler(optimizer, scheduler_type, total_steps=None, log_fn=Non
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
     elif scheduler_type_lower == 'onecyclelr':
         if total_steps is None:
+            if logger:
+                logger.error("total_steps must be provided for OneCycleLR scheduler.")
             raise ValueError("total_steps must be provided for OneCycleLR scheduler.")
         scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=optimizer.param_groups[0]['lr'], total_steps=total_steps)
     elif scheduler_type_lower == 'cosineannealing':
@@ -94,7 +98,7 @@ def initialize_scheduler(optimizer, scheduler_type, total_steps=None, log_fn=Non
     elif scheduler_type_lower == 'none':
         scheduler = None
     else:
-        if log_fn:
-            log_fn(f"Unsupported scheduler type: {scheduler_type}. Using CosineAnnealingWarmRestarts by default.")
+        if logger:
+            logger.warning(f"Unsupported scheduler type: {scheduler_type}. Using CosineAnnealingWarmRestarts by default.")
         scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
     return scheduler

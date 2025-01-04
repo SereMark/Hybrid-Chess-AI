@@ -141,7 +141,6 @@ class ReinforcementWorker(BaseWorker):
         self.num_threads = num_threads
         self.checkpoint_path = checkpoint_path
         self.stats_fn = self.stats_update.emit
-        self.log_fn = self.logger.log
         self.lock = threading.Lock()
         self.total_batches_processed = 0
         self.results = []
@@ -153,15 +152,15 @@ class ReinforcementWorker(BaseWorker):
         self.start_iteration = 0
         self.move_mapping = get_move_mapping()
         self.total_moves = get_total_moves()
-        self.model, inferred_batch_size = initialize_model(ChessModel, num_moves=self.total_moves, device=self.device, automatic_batch_size=self.automatic_batch_size, log_fn=self.log_fn)
+        self.model, inferred_batch_size = initialize_model(ChessModel, num_moves=self.total_moves, device=self.device, automatic_batch_size=self.automatic_batch_size, logger=self.logger)
         if inferred_batch_size:
             self.batch_size = inferred_batch_size
-        self.optimizer = initialize_optimizer(self.model,self.optimizer_type,self.learning_rate,self.weight_decay,log_fn=self.log_fn)
+        self.optimizer = initialize_optimizer(self.model,self.optimizer_type,self.learning_rate,self.weight_decay,logger=self.logger)
         self.scheduler = None
-        self.checkpoint_manager = CheckpointManager(checkpoint_dir=self.checkpoint_dir,checkpoint_type=self.checkpoint_type,checkpoint_interval=self.checkpoint_interval,log_fn=self.log_fn)
+        self.checkpoint_manager = CheckpointManager(checkpoint_dir=self.checkpoint_dir,checkpoint_type=self.checkpoint_type,checkpoint_interval=self.checkpoint_interval,logger=self.logger)
 
     def run_task(self):
-        self.logger.log("Initializing reinforcement worker with model and optimizer.")
+        self.logger.info("Initializing reinforcement worker with model and optimizer.")
         if self.checkpoint_path and os.path.exists(self.checkpoint_path):
             checkpoint = self.checkpoint_manager.load(self.checkpoint_path, self.device, self.model, self.optimizer, self.scheduler)
             if checkpoint:
@@ -170,13 +169,13 @@ class ReinforcementWorker(BaseWorker):
                 self.total_games_played = training_stats.get("total_games_played", 0)
                 self.results = training_stats.get("results", [])
                 self.game_lengths = training_stats.get("game_lengths", [])
-                self.logger.log(f"Resuming training from iteration {self.start_iteration}.")
+                self.logger.info(f"Resuming training from iteration {self.start_iteration}.")
             else:
-                self.logger.log("No valid checkpoint data found. Starting reinforcement training from scratch.")
+                self.logger.warning("No valid checkpoint data found. Starting reinforcement training from scratch.")
                 self.start_iteration = 0
                 self.current_epoch = 1
         else:
-            self.logger.log("No checkpoint specified or checkpoint not found. Training from scratch.")
+            self.logger.info("No checkpoint specified or checkpoint not found. Training from scratch.")
             self.start_iteration = 0
             self.current_epoch = 1
         self.start_time = time.time()
@@ -185,7 +184,7 @@ class ReinforcementWorker(BaseWorker):
             if self._is_stopped.is_set():
                 break
             iteration_start_time = time.time()
-            self.logger.log(f"Starting iteration {iteration + 1}/{self.num_iterations}.")
+            self.logger.info(f"Starting iteration {iteration + 1}/{self.num_iterations}.")
             self.current_epoch = 1
             self.model.eval()
             self_play_data = self._generate_self_play_data()
@@ -206,7 +205,7 @@ class ReinforcementWorker(BaseWorker):
                 }
                 self.checkpoint_manager.save(checkpoint_data)
             iteration_time = time.time() - iteration_start_time
-            self.logger.log(f"Iteration {iteration + 1} finished in {format_time_left(iteration_time)}.")
+            self.logger.info(f"Iteration {iteration + 1} finished in {format_time_left(iteration_time)}.")
         final_model_dir = os.path.join("models", "saved_models")
         final_model_path = os.path.join(final_model_dir, "final_model.pth")
         os.makedirs(final_model_dir, exist_ok=True)
@@ -221,7 +220,7 @@ class ReinforcementWorker(BaseWorker):
             }
         }
         torch.save(checkpoint, final_model_path)
-        self.logger.log("Reinforcement training completed. Final model saved.")
+        self.logger.info("Reinforcement training completed. Final model saved.")
         self.task_finished.emit()
         self.finished.emit()
 
@@ -261,7 +260,7 @@ class ReinforcementWorker(BaseWorker):
             self.game_lengths.extend(res[4])
         total_positions = len(inputs_list)
         if total_positions == 0:
-            self.logger.log("No self-play data generated this iteration. Continuing to next iteration.")
+            self.logger.warning("No self-play data generated this iteration. Continuing to next iteration.")
             return (torch.empty(0, device=self.device), torch.empty(0, device=self.device), torch.empty(0, device=self.device))
         inputs = torch.from_numpy(np.array(inputs_list, dtype=np.float32)).to(self.device)
         policy_targets = torch.from_numpy(np.array(policy_targets_list, dtype=np.float32)).to(self.device)
@@ -277,21 +276,21 @@ class ReinforcementWorker(BaseWorker):
         loader = DataLoader(dataset,batch_size=self.batch_size,shuffle=True,pin_memory=(self.device.type == "cuda"),num_workers=min(os.cpu_count(), 8))
         total_steps = self.num_epochs * len(loader)
         try:
-            self.scheduler = initialize_scheduler(self.optimizer,self.scheduler_type,total_steps=total_steps,log_fn=self.log_fn)
+            self.scheduler = initialize_scheduler(self.optimizer,self.scheduler_type,total_steps=total_steps,logger=self.logger)
         except ValueError as ve:
-            self.logger.log(f"Scheduler initialization error: {str(ve)}")
+            self.logger.error(f"Scheduler initialization error: {str(ve)}")
             self.scheduler = None
         start_epoch = self.current_epoch
         for epoch in range(start_epoch, self.num_epochs + 1):
             if self._is_stopped.is_set():
                 break
-            self.logger.log(f"Starting epoch {epoch}/{self.num_epochs} for iteration {iteration + 1}.")
+            self.logger.info(f"Starting epoch {epoch}/{self.num_epochs} for iteration {iteration + 1}.")
             self.current_epoch = epoch
             train_iterator = iter(loader)
             if epoch == start_epoch and self.batch_idx is not None:
                 skip_batches = self.batch_idx
                 if skip_batches >= len(loader):
-                    self.logger.log("Skip count exceeds total number of batches. Skipping the entire epoch.")
+                    self.logger.warning("Skip count exceeds total number of batches. Skipping the entire epoch.")
                     continue
                 for _ in range(skip_batches):
                     try:
@@ -341,4 +340,4 @@ class ReinforcementWorker(BaseWorker):
                     }
                     self.checkpoint_manager.save(checkpoint_data)
             avg_loss = total_loss / len(loader) if len(loader) > 0 else 0.0
-            self.logger.log(f"Epoch {epoch}/{self.num_epochs} completed with average loss: {avg_loss:.4f}")
+            self.logger.info(f"Epoch {epoch}/{self.num_epochs} completed with average loss: {avg_loss:.4f}")
