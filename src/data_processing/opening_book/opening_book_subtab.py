@@ -15,7 +15,7 @@ class OpeningBookSubTab(BaseTab):
         main_layout = QVBoxLayout(self)
         self.setup_subtab(
             main_layout,
-            "Generate an Opening Book from processed PGN files.",
+            "Generate an Opening Book from raw PGN files.",
             "Opening Book Generation Progress",
             "Opening Book Generation Logs",
             "Opening Book Visualization",
