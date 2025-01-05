@@ -1,6 +1,6 @@
 import threading, traceback
 from PyQt5.QtCore import QObject, pyqtSignal
-from src.utils.timestamped_logger import TimestampedLogger
+from src.utils.logger import Logger
 
 class BaseWorker(QObject):
     log_update = pyqtSignal(str, str)
@@ -15,7 +15,7 @@ class BaseWorker(QObject):
         self._is_stopped = threading.Event()
         self._is_paused = threading.Event()
         self._is_paused.set()
-        self.logger = TimestampedLogger(log_signal=self.log_update)
+        self.logger = Logger(log_signal=self.log_update)
 
     def run(self):
         try:

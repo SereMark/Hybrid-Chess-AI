@@ -3,7 +3,7 @@ import threading
 import traceback
 from PyQt5.QtCore import QObject, pyqtSignal
 
-class TimestampedLogger(QObject):
+class Logger(QObject):
     log_signal = pyqtSignal(str, str)
     LOG_LEVELS = {'DEBUG': 10, 'INFO': 20, 'WARNING': 30, 'ERROR': 40, 'CRITICAL': 50}
 
