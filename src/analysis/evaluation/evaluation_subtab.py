@@ -24,6 +24,10 @@ class EvaluationSubTab(BaseTab):
                 "stop_text": "Stop Evaluation",
                 "start_callback": self.start_evaluation,
                 "stop_callback": self.stop_evaluation,
+                "pause_text": "Pause Evaluation",
+                "resume_text": "Resume Evaluation",
+                "pause_callback": self.pause_worker,
+                "resume_callback": self.resume_worker,
                 "start_new_callback": self.reset_to_initial_state
             },
             "Start New Evaluation",
@@ -43,6 +47,10 @@ class EvaluationSubTab(BaseTab):
             self.start_new_button.setVisible(False)
         if self.stop_button:
             self.stop_button.setEnabled(False)
+        if self.pause_button:
+            self.pause_button.setEnabled(False)
+        if self.resume_button:
+            self.resume_button.setEnabled(False)
 
     def create_paths_group(self):
         group = QGroupBox("Evaluation Files")
@@ -84,15 +92,16 @@ class EvaluationSubTab(BaseTab):
         self.start_button.setEnabled(False)
         if self.stop_button:
             self.stop_button.setEnabled(True)
+        if self.pause_button:
+            self.pause_button.setEnabled(True)
+        if self.resume_button:
+            self.resume_button.setEnabled(False)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting Evaluation...")
         self.remaining_time_label.setText("Time Left: Calculating...")
         self.log_text_edit.clear()
-        self.visualization.reset_visualization()
         self.paths_group.setVisible(False)
         self.progress_group.setVisible(True)
-        if self.control_group:
-            self.control_group.setVisible(True)
         self.log_group.setVisible(True)
         if self.visualization_group:
             self.visualization_group.setVisible(False)
@@ -106,6 +115,8 @@ class EvaluationSubTab(BaseTab):
         started = self.start_worker(EvaluationWorker, model_path, indices_path, h5_path)
         if started:
             self.worker.metrics_update.connect(self.visualization.update_metrics_visualization)
+            self.worker.task_finished.connect(self.on_evaluation_finished)
+            self.worker.progress_update.connect(self.update_progress)
         else:
             self.reset_to_initial_state()
 
@@ -113,15 +124,42 @@ class EvaluationSubTab(BaseTab):
         self.stop_worker()
         self.reset_to_initial_state()
 
+    def pause_evaluation(self):
+        self.pause_worker()
+        if self.pause_button:
+            self.pause_button.setEnabled(False)
+        if self.resume_button:
+            self.resume_button.setEnabled(True)
+        self.progress_bar.setFormat("Evaluation Paused")
+
+    def resume_evaluation(self):
+        self.resume_worker()
+        if self.pause_button:
+            self.pause_button.setEnabled(True)
+        if self.resume_button:
+            self.resume_button.setEnabled(False)
+        self.progress_bar.setFormat("Resuming Evaluation...")
+
+    def on_evaluation_finished(self):
+        if self.start_button:
+            self.start_button.setEnabled(True)
+        if self.stop_button:
+            self.stop_button.setEnabled(False)
+        if self.pause_button:
+            self.pause_button.setEnabled(False)
+        if self.resume_button:
+            self.resume_button.setEnabled(False)
+        self.progress_bar.setFormat("Evaluation Finished")
+        self.remaining_time_label.setText("Time Left: N/A")
+        if self.start_new_button:
+            self.start_new_button.setVisible(True)
+
     def reset_to_initial_state(self):
         self.paths_group.setVisible(True)
         self.progress_group.setVisible(False)
         self.log_group.setVisible(False)
         if self.visualization_group:
             self.visualization_group.setVisible(False)
-        self.controls_group = getattr(self, 'control_group', None)
-        if self.controls_group:
-            self.controls_group.setVisible(True)
         if self.start_new_button:
             self.start_new_button.setVisible(False)
         if self.show_logs_button:
@@ -141,10 +179,18 @@ class EvaluationSubTab(BaseTab):
             self.start_button.setEnabled(True)
         if self.stop_button:
             self.stop_button.setEnabled(False)
+        if self.pause_button:
+            self.pause_button.setEnabled(False)
+        if self.resume_button:
+            self.resume_button.setEnabled(False)
         self.init_ui_state = True
 
     def show_logs_view(self):
         super().show_logs_view()
+        if self.visualization:
+            self.visualization.update_visualization()
 
     def show_graphs_view(self):
         super().show_graphs_view()
+        if self.visualization:
+            self.visualization.update_visualization()

@@ -24,8 +24,8 @@ class BenchmarkSubTab(BaseTab):
                 "stop_text": "Stop Benchmark",
                 "start_callback": self.start_benchmark,
                 "stop_callback": self.stop_benchmark,
-                "pause_text": "Pause",
-                "resume_text": "Resume",
+                "pause_text": "Pause Benchmark",
+                "resume_text": "Resume Benchmark",
                 "pause_callback": self.pause_worker,
                 "resume_callback": self.resume_worker,
                 "start_new_callback": self.reset_to_initial_state
@@ -47,6 +47,10 @@ class BenchmarkSubTab(BaseTab):
             self.start_new_button.setVisible(False)
         if self.stop_button:
             self.stop_button.setEnabled(False)
+        if self.pause_button:
+            self.pause_button.setEnabled(False)
+        if self.resume_button:
+            self.resume_button.setEnabled(False)
 
     def create_benchmark_group(self):
         group = QGroupBox("Benchmark Configuration")
@@ -75,15 +79,23 @@ class BenchmarkSubTab(BaseTab):
 
     def start_benchmark(self):
         engine_path = self.engine_path_input.text()
+        num_games = self.num_games_spin.value()
+        time_per_move = self.time_per_move_spin.value()
         if not engine_path or not os.path.exists(engine_path):
             QMessageBox.warning(self, "Error", "Engine/Model file does not exist.")
             return
-        num_games = self.num_games_spin.value()
-        time_per_move = self.time_per_move_spin.value()
+        self.start_button.setEnabled(False)
+        if self.stop_button:
+            self.stop_button.setEnabled(True)
+        if self.pause_button:
+            self.pause_button.setEnabled(True)
+        if self.resume_button:
+            self.resume_button.setEnabled(False)
         self.log_text_edit.clear()
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting Benchmark...")
         self.remaining_time_label.setText("Time Left: Calculating...")
+        self.visualization.reset_visualization()
         self.benchmark_group.setVisible(False)
         self.progress_group.setVisible(True)
         self.log_group.setVisible(True)
@@ -95,19 +107,34 @@ class BenchmarkSubTab(BaseTab):
             self.show_graphs_button.setVisible(True)
         if self.start_new_button:
             self.start_new_button.setVisible(False)
-        if self.start_button:
-            self.start_button.setEnabled(False)
-        if self.stop_button:
-            self.stop_button.setEnabled(True)
+        self.init_ui_state = False
         started = self.start_worker(BenchmarkWorker, engine_path, num_games, time_per_move)
         if started:
             self.worker.benchmark_update.connect(self.on_benchmark_update)
+            self.worker.task_finished.connect(self.on_benchmark_finished)
+            self.worker.progress_update.connect(self.update_progress)
         else:
             self.reset_to_initial_state()
 
     def stop_benchmark(self):
         self.stop_worker()
         self.reset_to_initial_state()
+
+    def pause_benchmark(self):
+        self.pause_worker()
+        if self.pause_button:
+            self.pause_button.setEnabled(False)
+        if self.resume_button:
+            self.resume_button.setEnabled(True)
+        self.progress_bar.setFormat("Benchmark Paused")
+
+    def resume_benchmark(self):
+        self.resume_worker()
+        if self.pause_button:
+            self.pause_button.setEnabled(True)
+        if self.resume_button:
+            self.resume_button.setEnabled(False)
+        self.progress_bar.setFormat("Resuming Benchmark...")
 
     def on_benchmark_update(self, stats_dict):
         engine_wins = stats_dict.get("engine_wins", 0)
@@ -116,12 +143,24 @@ class BenchmarkSubTab(BaseTab):
         total = stats_dict.get("total_games", 0)
         self.log_text_edit.append(
             "=== BENCHMARK RESULTS ===\n"
-            "Engine wins: {}\n"
-            "OurModel wins: {}\n"
-            "Draws: {}\n"
-            "Out of {} games.\n".format(engine_wins, our_model_wins, draws, total)
+            f"Engine wins: {engine_wins}\n"
+            f"Our Model wins: {our_model_wins}\n"
+            f"Draws: {draws}\n"
+            f"Out of {total} games.\n"
         )
         self.visualization.update_benchmark_visualization(engine_wins, our_model_wins, draws, total)
+
+    def on_benchmark_finished(self):
+        if self.start_button:
+            self.start_button.setEnabled(True)
+        if self.stop_button:
+            self.stop_button.setEnabled(False)
+        if self.pause_button:
+            self.pause_button.setEnabled(False)
+        if self.resume_button:
+            self.resume_button.setEnabled(False)
+        self.progress_bar.setFormat("Benchmark Finished")
+        self.remaining_time_label.setText("Time Left: N/A")
         if self.start_new_button:
             self.start_new_button.setVisible(True)
 
@@ -131,9 +170,6 @@ class BenchmarkSubTab(BaseTab):
         self.log_group.setVisible(False)
         if self.visualization_group:
             self.visualization_group.setVisible(False)
-        self.controls_group = getattr(self, 'control_group', None)
-        if self.controls_group:
-            self.controls_group.setVisible(True)
         if self.start_new_button:
             self.start_new_button.setVisible(False)
         if self.show_logs_button:
@@ -153,6 +189,11 @@ class BenchmarkSubTab(BaseTab):
             self.start_button.setEnabled(True)
         if self.stop_button:
             self.stop_button.setEnabled(False)
+        if self.pause_button:
+            self.pause_button.setEnabled(False)
+        if self.resume_button:
+            self.resume_button.setEnabled(False)
+        self.init_ui_state = True
 
     def show_logs_view(self):
         super().show_logs_view()
