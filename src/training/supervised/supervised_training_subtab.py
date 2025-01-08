@@ -97,7 +97,9 @@ class SupervisedTrainingSubTab(BaseTab):
         self.scheduler_type_combo.addItems(["CosineAnnealingWarmRestarts", "StepLR"])
         label7 = QLabel("Number of Workers:")
         self.num_workers_input = QLineEdit("4")
-        label8 = QLabel("Output Model Path:")
+        label8 = QLabel("Random Seed:")
+        self.random_seed_input = QLineEdit("42")
+        label9 = QLabel("Output Model Path:")
         self.output_model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
         output_model_browse_button = QPushButton("Browse")
         output_model_browse_button.clicked.connect(lambda: self.browse_file(self.output_model_path_input, "Select Output Model File", "PyTorch Files (*.pth *.pt)"))
@@ -117,7 +119,9 @@ class SupervisedTrainingSubTab(BaseTab):
         layout.addWidget(label7, 3, 0)
         layout.addWidget(self.num_workers_input, 3, 1)
         layout.addWidget(label8, 4, 0)
-        layout.addLayout(self.create_browse_layout(self.output_model_path_input, output_model_browse_button), 4, 1, 1, 3)
+        layout.addWidget(self.random_seed_input, 4, 1)
+        layout.addWidget(label9, 5, 0)
+        layout.addLayout(self.create_browse_layout(self.output_model_path_input, output_model_browse_button), 5, 1, 1, 3)
         group.setLayout(layout)
         return group
 
@@ -248,6 +252,12 @@ class SupervisedTrainingSubTab(BaseTab):
         if self.start_new_button:
             self.start_new_button.setVisible(False)
         self.init_ui_state = False
+        try:
+            random_seed = int(self.random_seed_input.text())
+        except ValueError:
+            QMessageBox.warning(self, "Input Error", "Random Seed must be an integer.")
+            self.reset_to_initial_state()
+            return
         started = self.start_worker(
             SupervisedWorker,
             epochs=epochs,
@@ -267,7 +277,8 @@ class SupervisedTrainingSubTab(BaseTab):
             optimizer_type=optimizer_type,
             scheduler_type=scheduler_type,
             output_model_path=output_model_path,
-            num_workers=num_workers
+            num_workers=num_workers,
+            random_seed=random_seed
         )
         if started:
             self.worker.batch_loss_update.connect(self.visualization.update_loss_plots)
