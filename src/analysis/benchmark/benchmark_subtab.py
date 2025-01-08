@@ -14,7 +14,7 @@ class BenchmarkSubTab(BaseTab):
         main_layout = QVBoxLayout(self)
         self.setup_subtab(
             main_layout,
-            "Benchmark games against another engine or model.",
+            "Benchmark games between two custom models (Model1 vs Model2).",
             "Benchmark Progress",
             "Benchmark Logs",
             "Benchmark Visualization",
@@ -55,10 +55,14 @@ class BenchmarkSubTab(BaseTab):
     def create_benchmark_group(self):
         group = QGroupBox("Benchmark Configuration")
         layout = QGridLayout()
-        label_engine = QLabel("Engine/Model Path:")
-        self.engine_path_input = QLineEdit("path/to/engine_or_model")
-        browse_engine_btn = QPushButton("Browse")
-        browse_engine_btn.clicked.connect(lambda: self.browse_file(self.engine_path_input, "Select Engine/Model File", "All Files (*.*)"))
+        label_model1 = QLabel("Model1 Path:")
+        self.model1_path_input = QLineEdit("path/to/model1")
+        browse_model1_btn = QPushButton("Browse")
+        browse_model1_btn.clicked.connect(lambda: self.browse_file(self.model1_path_input, "Select Model1 File", "All Files (*.*)"))
+        label_model2 = QLabel("Model2 Path:")
+        self.model2_path_input = QLineEdit("path/to/model2")
+        browse_model2_btn = QPushButton("Browse")
+        browse_model2_btn.clicked.connect(lambda: self.browse_file(self.model2_path_input, "Select Model2 File", "All Files (*.*)"))
         label_num_games = QLabel("Number of Games:")
         self.num_games_spin = QSpinBox()
         self.num_games_spin.setRange(1, 10000)
@@ -68,21 +72,27 @@ class BenchmarkSubTab(BaseTab):
         self.time_per_move_spin.setRange(0.1, 600.0)
         self.time_per_move_spin.setValue(1.0)
         self.time_per_move_spin.setSingleStep(0.1)
-        layout.addWidget(label_engine, 0, 0)
-        layout.addLayout(self.create_browse_layout(self.engine_path_input, browse_engine_btn), 0, 1, 1, 3)
-        layout.addWidget(label_num_games, 1, 0)
-        layout.addWidget(self.num_games_spin, 1, 1)
-        layout.addWidget(label_time_per_move, 2, 0)
-        layout.addWidget(self.time_per_move_spin, 2, 1)
+        layout.addWidget(label_model1, 0, 0)
+        layout.addLayout(self.create_browse_layout(self.model1_path_input, browse_model1_btn), 0, 1, 1, 3)
+        layout.addWidget(label_model2, 1, 0)
+        layout.addLayout(self.create_browse_layout(self.model2_path_input, browse_model2_btn), 1, 1, 1, 3)
+        layout.addWidget(label_num_games, 2, 0)
+        layout.addWidget(self.num_games_spin, 2, 1)
+        layout.addWidget(label_time_per_move, 3, 0)
+        layout.addWidget(self.time_per_move_spin, 3, 1)
         group.setLayout(layout)
         return group
 
     def start_benchmark(self):
-        engine_path = self.engine_path_input.text()
+        model1_path = self.model1_path_input.text()
+        model2_path = self.model2_path_input.text()
         num_games = self.num_games_spin.value()
         time_per_move = self.time_per_move_spin.value()
-        if not engine_path or not os.path.exists(engine_path):
-            QMessageBox.warning(self, "Error", "Engine/Model file does not exist.")
+        if not model1_path or not os.path.exists(model1_path):
+            QMessageBox.warning(self, "Error", "Model1 file does not exist.")
+            return
+        if not model2_path or not os.path.exists(model2_path):
+            QMessageBox.warning(self, "Error", "Model2 file does not exist.")
             return
         self.start_button.setEnabled(False)
         if self.stop_button:
@@ -108,7 +118,7 @@ class BenchmarkSubTab(BaseTab):
         if self.start_new_button:
             self.start_new_button.setVisible(False)
         self.init_ui_state = False
-        started = self.start_worker(BenchmarkWorker, engine_path, num_games, time_per_move)
+        started = self.start_worker(BenchmarkWorker, model1_path, model2_path, num_games, time_per_move)
         if started:
             self.worker.benchmark_update.connect(self.on_benchmark_update)
             self.worker.task_finished.connect(self.on_benchmark_finished)
@@ -137,18 +147,18 @@ class BenchmarkSubTab(BaseTab):
         self.progress_bar.setFormat("Resuming Benchmark...")
 
     def on_benchmark_update(self, stats_dict):
-        engine_wins = stats_dict.get("engine_wins", 0)
-        our_model_wins = stats_dict.get("our_model_wins", 0)
+        model1_wins = stats_dict.get("model1_wins", 0)
+        model2_wins = stats_dict.get("model2_wins", 0)
         draws = stats_dict.get("draws", 0)
         total = stats_dict.get("total_games", 0)
         self.log_text_edit.append(
             "=== BENCHMARK RESULTS ===\n"
-            f"Engine wins: {engine_wins}\n"
-            f"Our Model wins: {our_model_wins}\n"
+            f"Model1 wins: {model1_wins}\n"
+            f"Model2 wins: {model2_wins}\n"
             f"Draws: {draws}\n"
             f"Out of {total} games.\n"
         )
-        self.visualization.update_benchmark_visualization(engine_wins, our_model_wins, draws, total)
+        self.visualization.update_benchmark_visualization(model1_wins, model2_wins, draws, total)
 
     def on_benchmark_finished(self):
         if self.start_button:

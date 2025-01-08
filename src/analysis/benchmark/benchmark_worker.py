@@ -10,19 +10,24 @@ from src.utils.common_utils import wait_if_paused
 class BenchmarkWorker(BaseWorker):
     benchmark_update = pyqtSignal(dict)
 
-    def __init__(self, engine_path: str, num_games: int, time_per_move: float):
+    def __init__(self, model1_path: str, model2_path: str, num_games: int, time_per_move: float):
         super().__init__()
-        self.engine_path = engine_path
+        self.model1_path = model1_path
+        self.model2_path = model2_path
         self.num_games = num_games
         self.time_per_move = time_per_move
         self.default_mcts_simulations = 200
 
     def run_task(self):
-        if not os.path.exists(self.engine_path):
-            self.logger.error(f"Engine or model file not found at {self.engine_path}. Benchmark aborted.")
+        if not os.path.exists(self.model1_path):
+            self.logger.error(f"Model1 file not found at {self.model1_path}. Benchmark aborted.")
+            return
+        if not os.path.exists(self.model2_path):
+            self.logger.error(f"Model2 file not found at {self.model2_path}. Benchmark aborted.")
             return
         self.logger.info("Starting benchmark worker.")
-        self.logger.info(f"Opponent engine path: {self.engine_path}")
+        self.logger.info(f"Model1 path: {self.model1_path}")
+        self.logger.info(f"Model2 path: {self.model2_path}")
         self.logger.info(f"Running {self.num_games} games with {self.time_per_move}s per move.")
         start_time = time.time()
         results = []
@@ -31,11 +36,12 @@ class BenchmarkWorker(BaseWorker):
                 self.logger.info("Benchmarking was stopped by user.")
                 return
             wait_if_paused(self._is_paused)
-            game_result, move_count = self._play_single_game(chess.Board())
+            board = chess.Board()
+            game_result, move_count = self._play_single_game(board)
             if game_result > 0:
-                winner = "OurModel"
+                winner = "Model1"
             elif game_result < 0:
-                winner = "Engine"
+                winner = "Model2"
             else:
                 winner = "Draw"
             results.append({
@@ -47,14 +53,14 @@ class BenchmarkWorker(BaseWorker):
             self._update_progress(progress)
             elapsed = time.time() - start_time
             self._update_time_left(elapsed, game_idx + 1, self.num_games)
-        engine_wins = sum(g['winner'] == 'Engine' for g in results)
-        our_model_wins = sum(g['winner'] == 'OurModel' for g in results)
+        model1_wins = sum(g['winner'] == 'Model1' for g in results)
+        model2_wins = sum(g['winner'] == 'Model2' for g in results)
         draws = sum(g['winner'] == 'Draw' for g in results)
         self.logger.info("Benchmark run complete.")
-        self.logger.info(f"Final results: Engine wins: {engine_wins}, OurModel wins: {our_model_wins}, Draws: {draws}")
+        self.logger.info(f"Final results: Model1 wins: {model1_wins}, Model2 wins: {model2_wins}, Draws: {draws}")
         final_stats = {
-            'engine_wins': engine_wins,
-            'our_model_wins': our_model_wins,
+            'model1_wins': model1_wins,
+            'model2_wins': model2_wins,
             'draws': draws,
             'total_games': self.num_games,
         }
@@ -65,34 +71,34 @@ class BenchmarkWorker(BaseWorker):
         while not board.is_game_over() and not self._is_stopped.is_set():
             wait_if_paused(self._is_paused)
             if board.turn == chess.WHITE:
-                move = self._get_move_our_model(board)
+                move = self._get_move_model1(board)
             else:
-                move = self._get_move_opponent(board)
+                move = self._get_move_model2(board)
             board.push(move)
             move_count += 1
         result = get_game_result(board)
         return result, move_count
 
-    def _get_move_our_model(self, board: chess.Board):
-        our_mcts = MCTS(
-            policy_value_fn=self._policy_value_fn_our_model,
+    def _get_move_model1(self, board: chess.Board):
+        mcts_model1 = MCTS(
+            policy_value_fn=self._policy_value_fn_model1,
             c_puct=1.4,
             n_simulations=self.default_mcts_simulations
         )
-        our_mcts.set_root_node(board.copy())
+        mcts_model1.set_root_node(board.copy())
         start_time = time.time()
         while (time.time() - start_time) < self.time_per_move:
             if board.is_game_over() or self._is_stopped.is_set():
                 break
             wait_if_paused(self._is_paused)
-            our_mcts.simulate()
-        move_probs = our_mcts.get_move_probs(temperature=1e-3)
+            mcts_model1.simulate()
+        move_probs = mcts_model1.get_move_probs(temperature=1e-3)
         if not move_probs:
             return chess.Move.null()
         best_move = max(move_probs, key=move_probs.get)
         return best_move
 
-    def _policy_value_fn_our_model(self, board: chess.Board):
+    def _policy_value_fn_model1(self, board: chess.Board):
         legal_moves = list(board.legal_moves)
         if not legal_moves:
             return {}, 0.0
@@ -101,26 +107,26 @@ class BenchmarkWorker(BaseWorker):
         leaf_value = 0.0
         return action_priors, leaf_value
 
-    def _get_move_opponent(self, board: chess.Board):
-        opponent_mcts = MCTS(
-            policy_value_fn=self._policy_value_fn_opponent_model,
+    def _get_move_model2(self, board: chess.Board):
+        mcts_model2 = MCTS(
+            policy_value_fn=self._policy_value_fn_model2,
             c_puct=1.4,
             n_simulations=self.default_mcts_simulations
         )
-        opponent_mcts.set_root_node(board.copy())
+        mcts_model2.set_root_node(board.copy())
         start_time = time.time()
         while (time.time() - start_time) < self.time_per_move:
             if board.is_game_over() or self._is_stopped.is_set():
                 break
             wait_if_paused(self._is_paused)
-            opponent_mcts.simulate()
-        move_probs = opponent_mcts.get_move_probs(temperature=1e-3)
+            mcts_model2.simulate()
+        move_probs = mcts_model2.get_move_probs(temperature=1e-3)
         if not move_probs:
             return chess.Move.null()
         best_move = max(move_probs, key=move_probs.get)
         return best_move
 
-    def _policy_value_fn_opponent_model(self, board: chess.Board):
+    def _policy_value_fn_model2(self, board: chess.Board):
         legal_moves = list(board.legal_moves)
         if not legal_moves:
             return {}, 0.0
