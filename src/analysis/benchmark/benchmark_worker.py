@@ -3,6 +3,7 @@ from src.base.base_worker import BaseWorker
 import time
 import os
 import chess
+import json
 from src.utils.mcts import MCTS
 from src.utils.chess_utils import get_game_result
 from src.utils.common_utils import wait_if_paused
@@ -10,145 +11,242 @@ from src.utils.common_utils import wait_if_paused
 class BenchmarkWorker(BaseWorker):
     benchmark_update = pyqtSignal(dict)
 
-    def __init__(self, model1_path: str, model2_path: str, num_games: int, time_per_move: float):
+    def __init__(
+        self,
+        bot1_path,
+        bot2_path,
+        num_games,
+        time_per_move,
+        bot1_file_type,
+        bot2_file_type,
+        bot1_use_mcts,
+        bot1_use_opening_book,
+        bot2_use_mcts,
+        bot2_use_opening_book
+    ):
         super().__init__()
-        self.model1_path = model1_path
-        self.model2_path = model2_path
+        self.bot1_path = bot1_path
+        self.bot2_path = bot2_path
         self.num_games = num_games
         self.time_per_move = time_per_move
+        self.bot1_file_type = bot1_file_type
+        self.bot2_file_type = bot2_file_type
+        self.bot1_use_mcts = bot1_use_mcts
+        self.bot1_use_opening_book = bot1_use_opening_book
+        self.bot2_use_mcts = bot2_use_mcts
+        self.bot2_use_opening_book = bot2_use_opening_book
         self.default_mcts_simulations = 200
+        self.opening_book = {}
+        book_path = os.path.join("data", "processed", "opening_book.json")
+        if os.path.exists(book_path):
+            try:
+                with open(book_path, "r", encoding="utf-8") as f:
+                    self.opening_book = json.load(f)
+            except:
+                pass
 
     def run_task(self):
-        if not os.path.exists(self.model1_path):
-            self.logger.error(f"Model1 file not found at {self.model1_path}. Benchmark aborted.")
+        if not os.path.exists(self.bot1_path):
             return
-        if not os.path.exists(self.model2_path):
-            self.logger.error(f"Model2 file not found at {self.model2_path}. Benchmark aborted.")
+        if not os.path.exists(self.bot2_path):
             return
-        self.logger.info("Starting benchmark worker.")
-        self.logger.info(f"Model1 path: {self.model1_path}")
-        self.logger.info(f"Model2 path: {self.model2_path}")
-        self.logger.info(f"Running {self.num_games} games with {self.time_per_move}s per move.")
         start_time = time.time()
         results = []
         for game_idx in range(self.num_games):
             if self._is_stopped.is_set():
-                self.logger.info("Benchmarking was stopped by user.")
                 return
             wait_if_paused(self._is_paused)
             board = chess.Board()
             game_result, move_count = self._play_single_game(board)
             if game_result > 0:
-                winner = "Model1"
+                winner = "Bot1"
             elif game_result < 0:
-                winner = "Model2"
+                winner = "Bot2"
             else:
                 winner = "Draw"
-            results.append({
-                'game_index': game_idx + 1,
-                'winner': winner,
-                'moves': move_count,
-            })
+            results.append({'game_index': game_idx + 1, 'winner': winner, 'moves': move_count})
             progress = int(((game_idx + 1) / self.num_games) * 100)
             self._update_progress(progress)
             elapsed = time.time() - start_time
             self._update_time_left(elapsed, game_idx + 1, self.num_games)
-        model1_wins = sum(g['winner'] == 'Model1' for g in results)
-        model2_wins = sum(g['winner'] == 'Model2' for g in results)
+        bot1_wins = sum(g['winner'] == 'Bot1' for g in results)
+        bot2_wins = sum(g['winner'] == 'Bot2' for g in results)
         draws = sum(g['winner'] == 'Draw' for g in results)
-        self.logger.info("Benchmark run complete.")
-        self.logger.info(f"Final results: Model1 wins: {model1_wins}, Model2 wins: {model2_wins}, Draws: {draws}")
         final_stats = {
-            'model1_wins': model1_wins,
-            'model2_wins': model2_wins,
+            'bot1_wins': bot1_wins,
+            'bot2_wins': bot2_wins,
             'draws': draws,
-            'total_games': self.num_games,
+            'total_games': self.num_games
         }
         self.benchmark_update.emit(final_stats)
 
-    def _play_single_game(self, board: chess.Board):
+    def _play_single_game(self, board):
         move_count = 0
         while not board.is_game_over() and not self._is_stopped.is_set():
             wait_if_paused(self._is_paused)
             if board.turn == chess.WHITE:
-                move = self._get_move_model1(board)
+                move = self._determine_move_bot1(board)
             else:
-                move = self._get_move_model2(board)
+                move = self._determine_move_bot2(board)
             board.push(move)
             move_count += 1
         result = get_game_result(board)
         return result, move_count
 
-    def _get_move_model1(self, board: chess.Board):
-        mcts_model1 = MCTS(
-            policy_value_fn=self._policy_value_fn_model1,
-            c_puct=1.4,
-            n_simulations=self.default_mcts_simulations
-        )
-        mcts_model1.set_root_node(board.copy())
+    def _determine_move_bot1(self, board):
+        if self.bot1_file_type == "Engine":
+            if self.bot1_use_mcts and self.bot1_use_opening_book:
+                return self._combo_move_engine(board, "bot1")
+            elif self.bot1_use_mcts:
+                return self._get_move_mcts(board, "bot1")
+            elif self.bot1_use_opening_book:
+                return self._get_move_opening_book(board, "bot1")
+            else:
+                return self._get_move_engine(board, "bot1")
+        else:
+            if self.bot1_use_mcts and self.bot1_use_opening_book:
+                return self._combo_move_pth(board, "bot1")
+            elif self.bot1_use_mcts:
+                return self._get_move_mcts(board, "bot1")
+            elif self.bot1_use_opening_book:
+                return self._get_move_opening_book(board, "bot1")
+            else:
+                return self._get_move_pth(board, "bot1")
+
+    def _determine_move_bot2(self, board):
+        if self.bot2_file_type == "Engine":
+            if self.bot2_use_mcts and self.bot2_use_opening_book:
+                return self._combo_move_engine(board, "bot2")
+            elif self.bot2_use_mcts:
+                return self._get_move_mcts(board, "bot2")
+            elif self.bot2_use_opening_book:
+                return self._get_move_opening_book(board, "bot2")
+            else:
+                return self._get_move_engine(board, "bot2")
+        else:
+            if self.bot2_use_mcts and self.bot2_use_opening_book:
+                return self._combo_move_pth(board, "bot2")
+            elif self.bot2_use_mcts:
+                return self._get_move_mcts(board, "bot2")
+            elif self.bot2_use_opening_book:
+                return self._get_move_opening_book(board, "bot2")
+            else:
+                return self._get_move_pth(board, "bot2")
+
+    def _combo_move_engine(self, board, bot_id):
+        opening_move = self._get_move_opening_book(board, bot_id)
+        if opening_move != chess.Move.null():
+            return opening_move
+        return self._get_move_mcts(board, bot_id)
+
+    def _combo_move_pth(self, board, bot_id):
+        opening_move = self._get_move_opening_book(board, bot_id)
+        if opening_move != chess.Move.null():
+            return opening_move
+        return self._get_move_mcts(board, bot_id)
+
+    def _get_move_engine(self, board, bot_id):
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
+            return chess.Move.null()
+        return legal_moves[0]
+
+    def _get_move_pth(self, board, bot_id):
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
+            return chess.Move.null()
+        return legal_moves[-1]
+
+    def _get_move_opening_book(self, board, bot_id):
+        if not self.opening_book:
+            return chess.Move.null()
+        fen = board.fen()
+        if fen not in self.opening_book:
+            return chess.Move.null()
+        moves_data = self.opening_book[fen]
+        best_move = None
+        best_score = -1
+        for algebraic_move, stats in moves_data.items():
+            w = stats.get("win", 0)
+            d = stats.get("draw", 0)
+            l = stats.get("loss", 0)
+            total = w + d + l
+            if total == 0:
+                continue
+            score = (w + 0.5 * d) / total
+            move_candidate = None
+            try:
+                move_candidate = chess.Move.from_uci(algebraic_move)
+            except:
+                continue
+            if move_candidate in board.legal_moves and score > best_score:
+                best_score = score
+                best_move = move_candidate
+        if best_move:
+            return best_move
+        return chess.Move.null()
+
+    def _get_move_mcts(self, board, bot_id):
+        if bot_id == "bot1":
+            return self._mcts_bot1(board)
+        return self._mcts_bot2(board)
+
+    def _mcts_bot1(self, board):
+        mcts_instance = MCTS(self._policy_value_fn_bot1, 1.4, self.default_mcts_simulations)
+        mcts_instance.set_root_node(board.copy())
         start_time = time.time()
         while (time.time() - start_time) < self.time_per_move:
             if board.is_game_over() or self._is_stopped.is_set():
                 break
             wait_if_paused(self._is_paused)
-            mcts_model1.simulate()
-        move_probs = mcts_model1.get_move_probs(temperature=1e-3)
+            mcts_instance.simulate()
+        move_probs = mcts_instance.get_move_probs(temperature=1e-3)
         if not move_probs:
             return chess.Move.null()
-        best_move = max(move_probs, key=move_probs.get)
-        return best_move
+        return max(move_probs, key=move_probs.get)
 
-    def _policy_value_fn_model1(self, board: chess.Board):
-        legal_moves = list(board.legal_moves)
-        if not legal_moves:
-            return {}, 0.0
-        p = 1.0 / float(len(legal_moves))
-        action_priors = {m: p for m in legal_moves}
-        leaf_value = 0.0
-        return action_priors, leaf_value
-
-    def _get_move_model2(self, board: chess.Board):
-        mcts_model2 = MCTS(
-            policy_value_fn=self._policy_value_fn_model2,
-            c_puct=1.4,
-            n_simulations=self.default_mcts_simulations
-        )
-        mcts_model2.set_root_node(board.copy())
+    def _mcts_bot2(self, board):
+        mcts_instance = MCTS(self._policy_value_fn_bot2, 1.4, self.default_mcts_simulations)
+        mcts_instance.set_root_node(board.copy())
         start_time = time.time()
         while (time.time() - start_time) < self.time_per_move:
             if board.is_game_over() or self._is_stopped.is_set():
                 break
             wait_if_paused(self._is_paused)
-            mcts_model2.simulate()
-        move_probs = mcts_model2.get_move_probs(temperature=1e-3)
+            mcts_instance.simulate()
+        move_probs = mcts_instance.get_move_probs(temperature=1e-3)
         if not move_probs:
             return chess.Move.null()
-        best_move = max(move_probs, key=move_probs.get)
-        return best_move
+        return max(move_probs, key=move_probs.get)
 
-    def _policy_value_fn_model2(self, board: chess.Board):
+    def _policy_value_fn_bot1(self, board):
         legal_moves = list(board.legal_moves)
         if not legal_moves:
             return {}, 0.0
         p = 1.0 / float(len(legal_moves))
-        action_priors = {m: p for m in legal_moves}
-        leaf_value = 0.0
-        return action_priors, leaf_value
+        return {m: p for m in legal_moves}, 0.0
 
-    def _update_progress(self, value: int):
+    def _policy_value_fn_bot2(self, board):
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
+            return {}, 0.0
+        p = 1.0 / float(len(legal_moves))
+        return {m: p for m in legal_moves}, 0.0
+
+    def _update_progress(self, value):
         if self.progress_update:
             self.progress_update.emit(value)
 
-    def _update_time_left(self, elapsed_time: float, steps_done: int, total_steps: int):
+    def _update_time_left(self, elapsed_time, steps_done, total_steps):
         if steps_done > 0 and self.time_left_update:
             estimated_total_time = (elapsed_time / steps_done) * total_steps
             time_left = max(0, estimated_total_time - elapsed_time)
             minutes, seconds = divmod(int(time_left), 60)
             hours, minutes = divmod(minutes, 60)
             if hours > 0:
-                time_left_str = f"{hours}h {minutes}m {seconds}s"
+                t = f"{hours}h {minutes}m {seconds}s"
             elif minutes > 0:
-                time_left_str = f"{minutes}m {seconds}s"
+                t = f"{minutes}m {seconds}s"
             else:
-                time_left_str = f"{seconds}s"
-            self.time_left_update.emit(time_left_str)
+                t = f"{seconds}s"
+            self.time_left_update.emit(t)

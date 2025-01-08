@@ -15,9 +15,9 @@ class BenchmarkVisualization(BaseVisualizationWidget):
         )
         self.add_text_to_axis('benchmark_results', 'No Benchmark Data Yet')
 
-    def update_benchmark_visualization(self, model1_wins, model2_wins, draws, total_games):
-        self.model1_wins = model1_wins
-        self.model2_wins = model2_wins
+    def update_benchmark_visualization(self, bot1_wins, bot2_wins, draws, total_games):
+        self.bot1_wins = bot1_wins
+        self.bot2_wins = bot2_wins
         self.draws = draws
         self.total_games = total_games
         self._update_bar_chart()
@@ -28,26 +28,18 @@ class BenchmarkVisualization(BaseVisualizationWidget):
         if self.total_games <= 0:
             self.add_text_to_axis('benchmark_results', 'No Benchmark Data Yet')
             return
-        labels = ['Model1 Wins', 'Model2 Wins', 'Draws']
-        values = [self.model1_wins, self.model2_wins, self.draws]
+        labels = ['Bot1 Wins', 'Bot2 Wins', 'Draws']
+        values = [self.bot1_wins, self.bot2_wins, self.draws]
         colors = ['#2ca02c', '#d62728', '#1f77b4']
         self.ax_benchmark.bar(labels, values, color=colors, alpha=0.8)
         self.ax_benchmark.set_ylim(0, max(values) + 1)
         for i, v in enumerate(values):
-            self.ax_benchmark.text(
-                i,
-                v + 0.1,
-                f"{v}",
-                ha='center',
-                fontsize=9,
-                fontweight='bold',
-                color='#333333'
-            )
+            self.ax_benchmark.text(i, v + 0.1, f"{v}", ha='center', fontsize=9, fontweight='bold', color='#333333')
         self.ax_benchmark.set_title(f"Benchmark Results (Total Games: {self.total_games})")
 
     def reset_visualization(self):
-        self.model1_wins = 0
-        self.model2_wins = 0
+        self.bot1_wins = 0
+        self.bot2_wins = 0
         self.draws = 0
         self.total_games = 0
         super().reset_visualization()

@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QGridLayout, QLineEdit, QPushButton, QMessageBox, QLabel, QSpinBox, QDoubleSpinBox
+from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QGridLayout, QLineEdit, QPushButton, QMessageBox, QLabel, QSpinBox, QDoubleSpinBox, QComboBox, QCheckBox
 from src.analysis.benchmark.benchmark_worker import BenchmarkWorker
 from src.analysis.benchmark.benchmark_visualization import BenchmarkVisualization
 from src.base.base_tab import BaseTab
@@ -14,7 +14,7 @@ class BenchmarkSubTab(BaseTab):
         main_layout = QVBoxLayout(self)
         self.setup_subtab(
             main_layout,
-            "Benchmark games between two custom models (Model1 vs Model2).",
+            "Benchmark games between two bots (Bot1 vs Bot2).",
             "Benchmark Progress",
             "Benchmark Logs",
             "Benchmark Visualization",
@@ -55,44 +55,84 @@ class BenchmarkSubTab(BaseTab):
     def create_benchmark_group(self):
         group = QGroupBox("Benchmark Configuration")
         layout = QGridLayout()
-        label_model1 = QLabel("Model1 Path:")
-        self.model1_path_input = QLineEdit("path/to/model1")
-        browse_model1_btn = QPushButton("Browse")
-        browse_model1_btn.clicked.connect(lambda: self.browse_file(self.model1_path_input, "Select Model1 File", "All Files (*.*)"))
-        label_model2 = QLabel("Model2 Path:")
-        self.model2_path_input = QLineEdit("path/to/model2")
-        browse_model2_btn = QPushButton("Browse")
-        browse_model2_btn.clicked.connect(lambda: self.browse_file(self.model2_path_input, "Select Model2 File", "All Files (*.*)"))
+
+        label_bot1 = QLabel("Bot1 Path:")
+        self.bot1_path_input = QLineEdit("path/to/bot1")
+        self.bot1_file_type_combo = QComboBox()
+        self.bot1_file_type_combo.addItems(["Engine", "PTH"])
+        self.bot1_use_mcts_checkbox = QCheckBox("Use MCTS")
+        self.bot1_use_opening_book_checkbox = QCheckBox("Use Opening Book")
+        browse_bot1_btn = QPushButton("Browse")
+        browse_bot1_btn.clicked.connect(
+            lambda: self.browse_file(
+                self.bot1_path_input,
+                "Select Bot1 File",
+                "All Files (*.*)"
+            )
+        )
+
+        label_bot2 = QLabel("Bot2 Path:")
+        self.bot2_path_input = QLineEdit("path/to/bot2")
+        self.bot2_file_type_combo = QComboBox()
+        self.bot2_file_type_combo.addItems(["Engine", "PTH"])
+        self.bot2_use_mcts_checkbox = QCheckBox("Use MCTS")
+        self.bot2_use_opening_book_checkbox = QCheckBox("Use Opening Book")
+        browse_bot2_btn = QPushButton("Browse")
+        browse_bot2_btn.clicked.connect(
+            lambda: self.browse_file(
+                self.bot2_path_input,
+                "Select Bot2 File",
+                "All Files (*.*)"
+            )
+        )
+
         label_num_games = QLabel("Number of Games:")
         self.num_games_spin = QSpinBox()
         self.num_games_spin.setRange(1, 10000)
         self.num_games_spin.setValue(10)
+
         label_time_per_move = QLabel("Time/Move (sec):")
         self.time_per_move_spin = QDoubleSpinBox()
         self.time_per_move_spin.setRange(0.1, 600.0)
         self.time_per_move_spin.setValue(1.0)
         self.time_per_move_spin.setSingleStep(0.1)
-        layout.addWidget(label_model1, 0, 0)
-        layout.addLayout(self.create_browse_layout(self.model1_path_input, browse_model1_btn), 0, 1, 1, 3)
-        layout.addWidget(label_model2, 1, 0)
-        layout.addLayout(self.create_browse_layout(self.model2_path_input, browse_model2_btn), 1, 1, 1, 3)
+
+        layout.addWidget(label_bot1, 0, 0)
+        layout.addLayout(self.create_browse_layout(self.bot1_path_input, browse_bot1_btn), 0, 1, 1, 2)
+        layout.addWidget(self.bot1_file_type_combo, 0, 3)
+        layout.addWidget(self.bot1_use_mcts_checkbox, 0, 4)
+        layout.addWidget(self.bot1_use_opening_book_checkbox, 0, 5)
+
+        layout.addWidget(label_bot2, 1, 0)
+        layout.addLayout(self.create_browse_layout(self.bot2_path_input, browse_bot2_btn), 1, 1, 1, 2)
+        layout.addWidget(self.bot2_file_type_combo, 1, 3)
+        layout.addWidget(self.bot2_use_mcts_checkbox, 1, 4)
+        layout.addWidget(self.bot2_use_opening_book_checkbox, 1, 5)
+
         layout.addWidget(label_num_games, 2, 0)
         layout.addWidget(self.num_games_spin, 2, 1)
         layout.addWidget(label_time_per_move, 3, 0)
         layout.addWidget(self.time_per_move_spin, 3, 1)
+
         group.setLayout(layout)
         return group
 
     def start_benchmark(self):
-        model1_path = self.model1_path_input.text()
-        model2_path = self.model2_path_input.text()
+        bot1_path = self.bot1_path_input.text()
+        bot2_path = self.bot2_path_input.text()
+        bot1_file_type = self.bot1_file_type_combo.currentText()
+        bot2_file_type = self.bot2_file_type_combo.currentText()
+        bot1_use_mcts = self.bot1_use_mcts_checkbox.isChecked()
+        bot1_use_opening_book = self.bot1_use_opening_book_checkbox.isChecked()
+        bot2_use_mcts = self.bot2_use_mcts_checkbox.isChecked()
+        bot2_use_opening_book = self.bot2_use_opening_book_checkbox.isChecked()
         num_games = self.num_games_spin.value()
         time_per_move = self.time_per_move_spin.value()
-        if not model1_path or not os.path.exists(model1_path):
-            QMessageBox.warning(self, "Error", "Model1 file does not exist.")
+        if not bot1_path or not os.path.exists(bot1_path):
+            QMessageBox.warning(self, "Error", "Bot1 file does not exist.")
             return
-        if not model2_path or not os.path.exists(model2_path):
-            QMessageBox.warning(self, "Error", "Model2 file does not exist.")
+        if not bot2_path or not os.path.exists(bot2_path):
+            QMessageBox.warning(self, "Error", "Bot2 file does not exist.")
             return
         self.start_button.setEnabled(False)
         if self.stop_button:
@@ -118,7 +158,19 @@ class BenchmarkSubTab(BaseTab):
         if self.start_new_button:
             self.start_new_button.setVisible(False)
         self.init_ui_state = False
-        started = self.start_worker(BenchmarkWorker, model1_path, model2_path, num_games, time_per_move)
+        started = self.start_worker(
+            BenchmarkWorker,
+            bot1_path,
+            bot2_path,
+            num_games,
+            time_per_move,
+            bot1_file_type,
+            bot2_file_type,
+            bot1_use_mcts,
+            bot1_use_opening_book,
+            bot2_use_mcts,
+            bot2_use_opening_book
+        )
         if started:
             self.worker.benchmark_update.connect(self.on_benchmark_update)
             self.worker.task_finished.connect(self.on_benchmark_finished)
@@ -147,18 +199,18 @@ class BenchmarkSubTab(BaseTab):
         self.progress_bar.setFormat("Resuming Benchmark...")
 
     def on_benchmark_update(self, stats_dict):
-        model1_wins = stats_dict.get("model1_wins", 0)
-        model2_wins = stats_dict.get("model2_wins", 0)
+        bot1_wins = stats_dict.get("bot1_wins", 0)
+        bot2_wins = stats_dict.get("bot2_wins", 0)
         draws = stats_dict.get("draws", 0)
         total = stats_dict.get("total_games", 0)
         self.log_text_edit.append(
             "=== BENCHMARK RESULTS ===\n"
-            f"Model1 wins: {model1_wins}\n"
-            f"Model2 wins: {model2_wins}\n"
+            f"Bot1 wins: {bot1_wins}\n"
+            f"Bot2 wins: {bot2_wins}\n"
             f"Draws: {draws}\n"
             f"Out of {total} games.\n"
         )
-        self.visualization.update_benchmark_visualization(model1_wins, model2_wins, draws, total)
+        self.visualization.update_benchmark_visualization(bot1_wins, bot2_wins, draws, total)
 
     def on_benchmark_finished(self):
         if self.start_button:
