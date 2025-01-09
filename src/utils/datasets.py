@@ -7,10 +7,10 @@ class H5Dataset(Dataset):
         self.indices = indices
         self.h5_file = None
 
-        with h5py.File(self.h5_file_path, 'r') as h5_file:
-            self.input_shape = h5_file['inputs'].shape[1:]
-            self.policy_shape = h5_file['policy_targets'].shape[1:] if len(h5_file['policy_targets'].shape) > 1 else ()
-            self.value_shape = h5_file['value_targets'].shape[1:] if len(h5_file['value_targets'].shape) > 1 else ()
+        with h5py.File(self.h5_file_path, 'r') as f:
+            self.input_shape = f['inputs'].shape[1:]
+            self.policy_shape = f['policy_targets'].shape[1:] if len(f['policy_targets'].shape) > 1 else ()
+            self.value_shape = f['value_targets'].shape[1:] if len(f['value_targets'].shape) > 1 else ()
 
     def __len__(self):
         return len(self.indices)
@@ -21,21 +21,21 @@ class H5Dataset(Dataset):
 
         try:
             actual_idx = self.indices[idx]
-            input_tensor = self.h5_file['inputs'][actual_idx]
-            policy_target = self.h5_file['policy_targets'][actual_idx]
-            value_target = self.h5_file['value_targets'][actual_idx]
+            inp = self.h5_file['inputs'][actual_idx]
+            pol = self.h5_file['policy_targets'][actual_idx]
+            val = self.h5_file['value_targets'][actual_idx]
 
-            if input_tensor.shape != self.input_shape:
+            if inp.shape != self.input_shape:
                 raise ValueError(f"Input shape mismatch at index {actual_idx}")
-            if policy_target.shape != self.policy_shape:
+            if pol.shape != self.policy_shape:
                 raise ValueError(f"Policy target shape mismatch at index {actual_idx}")
-            if value_target.shape != self.value_shape:
+            if val.shape != self.value_shape:
                 raise ValueError(f"Value target shape mismatch at index {actual_idx}")
 
-            input_tensor = torch.from_numpy(input_tensor).float()
-            policy_target = torch.tensor(policy_target).long()
-            value_target = torch.tensor(value_target).float()
-            return input_tensor, policy_target, value_target
+            inp_t = torch.from_numpy(inp).float()
+            pol_t = torch.tensor(pol).long()
+            val_t = torch.tensor(val).float()
+            return inp_t, pol_t, val_t
         except Exception as e:
             raise RuntimeError(f"Error loading data at index {idx}: {str(e)}")
 

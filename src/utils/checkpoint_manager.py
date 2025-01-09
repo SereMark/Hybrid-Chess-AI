@@ -19,14 +19,14 @@ class CheckpointManager:
 
     def save(self, checkpoint_data, prefix='checkpoint'):
         timestamp = time.strftime('%Y%m%d_%H%M%S')
-        checkpoint_name = f'{prefix}_{timestamp}.pth'
-        temp_path = os.path.join(self.checkpoint_dir, f'.temp_{checkpoint_name}')
-        final_path = os.path.join(self.checkpoint_dir, checkpoint_name)
+        name = f"{prefix}_{timestamp}.pth"
+        temp_path = os.path.join(self.checkpoint_dir, f".temp_{name}")
+        final_path = os.path.join(self.checkpoint_dir, name)
         try:
             torch.save(checkpoint_data, temp_path)
             os.replace(temp_path, final_path)
             if self.logger:
-                self.logger.info(f"Checkpoint saved: {checkpoint_name}")
+                self.logger.info(f"Checkpoint saved: {name}")
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Error saving checkpoint: {str(e)}")

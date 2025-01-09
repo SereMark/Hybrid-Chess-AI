@@ -1,15 +1,13 @@
 import torch, torch.nn as nn
 
-
 class ResidualUnit(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, stride: int = 1) -> None:
+    def __init__(self, in_channels: int, out_channels: int, stride: int = 1, inplace_relu=True) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
         self.norm1 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU(inplace=inplace_relu)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False)
         self.norm2 = nn.BatchNorm2d(out_channels)
-
         self.downsample = (
             nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
@@ -21,54 +19,44 @@ class ResidualUnit(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         identity = x
-
         out = self.conv1(x)
         out = self.norm1(out)
         out = self.relu(out)
-
         out = self.conv2(out)
         out = self.norm2(out)
-
         identity = self.downsample(identity)
-
         out += identity
         return self.relu(out)
 
-
 class ChessModel(nn.Module):
-    def __init__(self, num_moves: int, filters: int = 64, res_blocks: int = 5) -> None:
+    def __init__(self, num_moves: int, filters: int = 64, res_blocks: int = 5, inplace_relu=True) -> None:
         super().__init__()
         self.num_moves = num_moves
-
         self.initial_block = nn.Sequential(
             nn.Conv2d(20, filters, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(filters),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=inplace_relu),
         )
-
         self.residual_layers = nn.Sequential(
-            *(ResidualUnit(filters, filters) for _ in range(res_blocks))
+            *(ResidualUnit(filters, filters, inplace_relu=inplace_relu) for _ in range(res_blocks))
         )
-
         self.policy_head = nn.Sequential(
             nn.Conv2d(filters, 2, kernel_size=1, bias=False),
             nn.BatchNorm2d(2),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=inplace_relu),
             nn.Flatten(),
             nn.Linear(2 * 8 * 8, self.num_moves),
         )
-
         self.value_head = nn.Sequential(
             nn.Conv2d(filters, 1, kernel_size=1, bias=False),
             nn.BatchNorm2d(1),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=inplace_relu),
             nn.Flatten(),
             nn.Linear(1 * 8 * 8, 64),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=inplace_relu),
             nn.Linear(64, 1),
             nn.Tanh(),
         )
-
         self._initialize_weights()
 
     def _initialize_weights(self) -> None:

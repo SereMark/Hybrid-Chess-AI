@@ -1,110 +1,94 @@
 # **Hybrid Chess AI: Combining Neural Networks, MCTS, and Opening Book**
 
-## **Project Overview**
+## **Overview**
 
-This repository contains the implementation of a **Hybrid Chess AI** that merges advanced machine learning techniques with traditional chess algorithms. The AI integrates a **Convolutional Neural Network (CNN)** for board evaluation, **Monte Carlo Tree Search (MCTS)** for move selection in both self-play training and game against players, and an **opening book** for optimized early-game play. 
+This repository implements a **Hybrid Chess AI** that integrates:
+- A **Convolutional Neural Network (CNN)** for board evaluation (policy and value heads).
+- **Monte Carlo Tree Search (MCTS)** for move selection in both self-play (reinforcement training) and live gameplay.
+- An **opening book** for optimized early-game play.
 
-The application is equipped with a **Graphical User Interface (GUI)** built using PyQt5, enabling interactive gameplay, model training, evaluation, and visualization of AI decision-making processes.
+A **PyQt5 Graphical User Interface (GUI)** is provided for:
+- Interactive gameplay against the AI.
+- Data preparation from PGN files.
+- Supervised learning & reinforcement learning workflows.
+- Model evaluation and performance benchmarking.
+- Visualization of AI decision-making processes (loss curves, accuracy, etc.).
 
 ---
 
 ## **Key Features**
 
-1. **Modular Design**: 
-   - Structured into distinct components, such as data preparation, supervised training, self-play training, and evaluation.
-   - Scalable architecture for future enhancements and feature additions.
+1. **Modular & Scalable Architecture**  
+   - Clear separation of data preparation, training, evaluation, and inference modules.  
+   - Allows easy extension or customization (e.g., plugging in different neural network architectures).
 
-2. **Hybrid Approach**:
-   - Combines deep learning and classical algorithms for improved decision-making.
+2. **Hybrid AI Approach**  
+   - **Deep Learning** (via a CNN) for policy and value predictions.  
+   - **Classical Chess Techniques** (MCTS + opening book) for searching the game tree effectively.
 
-3. **Advanced Use of MCTS**:
-   - MCTS powers **AI decision-making during self-play training**, enabling reinforcement learning through simulated games.
-   - **During gameplay against users**, MCTS evaluates moves dynamically, providing robust and adaptive strategies.
+3. **Multiple Training Modes**  
+   - **Supervised Training** using human-labeled game data (PGN files).  
+   - **Reinforcement Learning** via self-play games, powered by MCTS.
 
-4. **Visualization Tools**:
-   - Real-time charts and plots to monitor training, evaluation, and game dynamics.
+4. **Visualization & GUI**  
+   - Interactive PyQt5 interface for launching worker threads, monitoring progress, and plotting metrics.  
+   - Real-time charts for loss, accuracy, confusion matrices, and other metrics.
 
-5. **Interactive GUI**:
-   - User-friendly interface to train models, configure parameters, and evaluate the models.
+5. **Flexible Configuration**  
+   - Automatic detection of GPU for accelerated training if available.
 
-6. **Educational Focus**:
-   - Developed for research and education, ideal for exploring chess AI methodologies.
+6. **Educational & Research Focus**  
+   - Demonstrates how neural networks, MCTS, and opening books can be combined in a chess engine.  
+   - Designed for exploring advanced AI methods in a well-known domain.
 
 ---
 
 ## **System Requirements**
 
-- **Git**
-- **Anaconda**
+- **Git** - to clone the repository
+- **Anaconda** - for isolated environment setup  
 
 ---
 
 ## **Installation and Setup**
 
-1. **Clone the Repository**:
+1. **Clone the Repository**  
    ```bash
    git clone <repository-url>
    cd <repository-folder>
    ```
 
-2. **Set Up the Environment**:
-   Create a conda environment with the required dependencies:
+2. **Create & Activate the Conda Environment**  
    ```bash
    conda env create -f environment.yml
    conda activate hybrid_chess_ai
    ```
 
-3. **Run the Application**:
-   Launch the GUI:
+3. **Launch the GUI Application**  
    ```bash
    python -m src.main
    ```
+   This opens the PyQt5 interface where you can configure data preparation, run training, evaluate models, or make the AI play against other AI.
 
 ---
 
-## **Application Architecture**
+### **Key Logic**
 
-### **1. Main Application**
-- Initializes the main GUI window and integrates tabs for all functionalities.
-- Tabs include **data preparation**, **training**, and **evaluation**.
+- **`src.data_processing`**  
+  - **`data_preparation_worker.py`**: Processes PGN files into HDF5 datasets for supervised training.  
+  - **`opening_book_worker.py`**: Builds an opening book from PGN data.
 
-### **2. Core Modules**
-- **Data Preparation**: Prepares datasets from chess game data, including PGN parsing and opening book generation.
-- **Supervised Training**: Trains neural networks using labeled datasets.
-- **Self-Play Training**: Implements reinforcement learning through self-play games powered by MCTS.
-- **Evaluation**: Assesses model performance with test datasets.
+- **`src.training`**  
+  - **`supervised_training_worker.py`**: Runs supervised learning on the processed HDF5 dataset.  
+  - **`reinforcement_training_worker.py`**: Performs self-play with MCTS, storing generated data for training.
 
-### **3. Visualization**
-- Provides real-time insights via charts and plots, such as:
-  - Training metrics (loss, accuracy)
-  - Evaluation results (confusion matrix, precision, recall)
-
-### **4. Core Logic**
-- **Model**: Implements a CNN architecture with policy and value heads.
-- **MCTS**: Integrates Monte Carlo Tree Search for both self-play training and real-time gameplay decisions.
-- **Opening Book**: Provides optimized moves for the early game.
+- **`src.analysis`**  
+  - **`evaluation_worker.py`**: Evaluates trained models using hold-out datasets.  
+  - **`benchmark_worker.py`**: Conducts matchups between two engines/bots (can be CNN-based or external engines).
 
 ---
 
-## **Usage**
+## **License**
 
-### **1. Data Preparation**
-Prepare data for training:
-- Input: Chess PGN files
-- Output: Processed datasets and opening books
-
-### **2. Training**
-Two modes of training are available:
-- **Supervised Training**: Train on pre-labeled datasets.
-- **Self-Play Training**: Reinforcement learning through self-play using MCTS for move selection.
-
-### **3. Evaluation**
-Evaluate trained models using test datasets:
-- Metrics include accuracy, precision, recall, and confusion matrix visualization.
-
----
-
-## **License and Disclaimer**
-
-- **License**: This project is licensed under a custom license for **non-commercial use only**.
-- **Disclaimer**: The code in this repository may not be used for commercial purposes or academic publications without explicit permission. Refer to the [LICENSE](LICENSE) file for detailed terms.
+This project is licensed under the [MIT License](LICENSE).  
+Please see the `LICENSE` file for details.

@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5 import NavigationToolbar2QT as NavigationToolbar
 
 class BasePlot:
     def __init__(
@@ -99,6 +100,8 @@ class BaseVisualizationWidget(QWidget):
         layout.setSpacing(0)
         layout.addWidget(self.canvas)
         self.setLayout(layout)
+        toolbar = NavigationToolbar(self.canvas, self)
+        layout.addWidget(toolbar)
         self.plots = {}
         self.init_visualization()
 

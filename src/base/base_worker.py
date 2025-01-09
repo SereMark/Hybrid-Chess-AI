@@ -27,8 +27,8 @@ class BaseWorker(QObject):
             else:
                 self.logger.info(f"Worker {self.__class__.__name__} stopped by user request.")
         except Exception as e:
-            error_msg = f"Error in worker {self.__class__.__name__}: {str(e)}\n{traceback.format_exc()}"
-            self.logger.error(error_msg)
+            msg = f"Error in worker {self.__class__.__name__}: {str(e)}\n{traceback.format_exc()}"
+            self.logger.error(msg)
         finally:
             self.finished.emit()
 

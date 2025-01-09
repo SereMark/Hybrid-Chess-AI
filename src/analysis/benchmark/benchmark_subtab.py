@@ -26,11 +26,11 @@ class BenchmarkSubTab(BaseTab):
                 "stop_callback": self.stop_benchmark,
                 "pause_text": "Pause Benchmark",
                 "resume_text": "Resume Benchmark",
-                "pause_callback": self.pause_worker,
-                "resume_callback": self.resume_worker,
+                "pause_callback": self.pause_benchmark,
+                "resume_callback": self.resume_benchmark,
                 "start_new_callback": self.reset_to_initial_state
             },
-            "Start New Benchmark",
+            "Configure Parameters",
             spacing=10
         )
         self.benchmark_group = self.create_benchmark_group()
@@ -55,7 +55,6 @@ class BenchmarkSubTab(BaseTab):
     def create_benchmark_group(self):
         group = QGroupBox("Benchmark Configuration")
         layout = QGridLayout()
-
         label_bot1 = QLabel("Bot1 Path:")
         self.bot1_path_input = QLineEdit("path/to/bot1")
         self.bot1_file_type_combo = QComboBox()
@@ -70,7 +69,6 @@ class BenchmarkSubTab(BaseTab):
                 "All Files (*.*)"
             )
         )
-
         label_bot2 = QLabel("Bot2 Path:")
         self.bot2_path_input = QLineEdit("path/to/bot2")
         self.bot2_file_type_combo = QComboBox()
@@ -85,35 +83,29 @@ class BenchmarkSubTab(BaseTab):
                 "All Files (*.*)"
             )
         )
-
         label_num_games = QLabel("Number of Games:")
         self.num_games_spin = QSpinBox()
         self.num_games_spin.setRange(1, 10000)
         self.num_games_spin.setValue(10)
-
         label_time_per_move = QLabel("Time/Move (sec):")
         self.time_per_move_spin = QDoubleSpinBox()
         self.time_per_move_spin.setRange(0.1, 600.0)
         self.time_per_move_spin.setValue(1.0)
         self.time_per_move_spin.setSingleStep(0.1)
-
         layout.addWidget(label_bot1, 0, 0)
         layout.addLayout(self.create_browse_layout(self.bot1_path_input, browse_bot1_btn), 0, 1, 1, 2)
         layout.addWidget(self.bot1_file_type_combo, 0, 3)
         layout.addWidget(self.bot1_use_mcts_checkbox, 0, 4)
         layout.addWidget(self.bot1_use_opening_book_checkbox, 0, 5)
-
         layout.addWidget(label_bot2, 1, 0)
         layout.addLayout(self.create_browse_layout(self.bot2_path_input, browse_bot2_btn), 1, 1, 1, 2)
         layout.addWidget(self.bot2_file_type_combo, 1, 3)
         layout.addWidget(self.bot2_use_mcts_checkbox, 1, 4)
         layout.addWidget(self.bot2_use_opening_book_checkbox, 1, 5)
-
         layout.addWidget(label_num_games, 2, 0)
         layout.addWidget(self.num_games_spin, 2, 1)
         layout.addWidget(label_time_per_move, 3, 0)
         layout.addWidget(self.time_per_move_spin, 3, 1)
-
         group.setLayout(layout)
         return group
 

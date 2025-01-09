@@ -30,21 +30,26 @@ class SupervisedTrainingSubTab(BaseTab):
                 "resume_callback": self.resume_worker,
                 "start_new_callback": self.reset_to_initial_state
             },
-            "Start New"
+            "Configure Parameters"
         )
+
         self.dataset_group = self.create_dataset_group()
         self.training_group = self.create_training_group()
         self.checkpoint_group = self.create_checkpoint_group()
+
         self.layout().insertWidget(1, self.dataset_group)
         self.layout().insertWidget(2, self.training_group)
         self.layout().insertWidget(3, self.checkpoint_group)
+
         self.setup_batch_size_control(self.automatic_batch_size_checkbox, self.batch_size_input)
+
         interval_widgets = {
             'epoch': self.epoch_interval_widget,
             'time': self.time_interval_widget,
             'batch': self.batch_interval_widget
         }
         self.setup_checkpoint_controls(self.save_checkpoints_checkbox, self.checkpoint_type_combo, interval_widgets)
+
         if self.stop_button:
             self.stop_button.setEnabled(False)
         if self.pause_button:
@@ -55,82 +60,134 @@ class SupervisedTrainingSubTab(BaseTab):
     def create_dataset_group(self):
         group = QGroupBox("Dataset Settings")
         layout = QGridLayout()
+
         label1 = QLabel("Dataset Path:")
         self.dataset_input = QLineEdit("data/processed/dataset.h5")
         dataset_browse_button = QPushButton("Browse")
         dataset_browse_button.clicked.connect(lambda: self.browse_file(self.dataset_input, "Select Dataset File", "HDF5 Files (*.h5 *.hdf5)"))
+
         label2 = QLabel("Train Indices Path:")
         self.train_indices_input = QLineEdit("data/processed/train_indices.npy")
         train_indices_browse_button = QPushButton("Browse")
         train_indices_browse_button.clicked.connect(lambda: self.browse_file(self.train_indices_input, "Select Train Indices File", "NumPy Files (*.npy)"))
+
         label3 = QLabel("Validation Indices Path:")
         self.val_indices_input = QLineEdit("data/processed/val_indices.npy")
         val_indices_browse_button = QPushButton("Browse")
         val_indices_browse_button.clicked.connect(lambda: self.browse_file(self.val_indices_input, "Select Validation Indices File", "NumPy Files (*.npy)"))
+
         layout.addWidget(label1, 0, 0)
         layout.addLayout(self.create_browse_layout(self.dataset_input, dataset_browse_button), 0, 1, 1, 3)
         layout.addWidget(label2, 1, 0)
         layout.addLayout(self.create_browse_layout(self.train_indices_input, train_indices_browse_button), 1, 1, 1, 3)
         layout.addWidget(label3, 2, 0)
         layout.addLayout(self.create_browse_layout(self.val_indices_input, val_indices_browse_button), 2, 1, 1, 3)
+
         group.setLayout(layout)
         return group
 
     def create_training_group(self):
         group = QGroupBox("Training Hyperparameters")
-        layout = QGridLayout()
+        layout = QVBoxLayout()
+
+        model_config_box = QGroupBox("Model Configuration")
+        model_config_layout = QGridLayout()
+
+        label_filters = QLabel("Filter Amount:")
+        self.filters_input = QLineEdit("64")
+
+        label_res_blocks = QLabel("Residual Blocks:")
+        self.res_blocks_input = QLineEdit("5")
+
+        label_inplace = QLabel("Inplace ReLU:")
+        self.inplace_checkbox = QCheckBox()
+        self.inplace_checkbox.setChecked(True)
+
+        model_config_layout.addWidget(label_filters, 0, 0)
+        model_config_layout.addWidget(self.filters_input, 0, 1)
+        model_config_layout.addWidget(label_res_blocks, 0, 2)
+        model_config_layout.addWidget(self.res_blocks_input, 0, 3)
+        model_config_layout.addWidget(label_inplace, 1, 0)
+        model_config_layout.addWidget(self.inplace_checkbox, 1, 1)
+
+        model_config_box.setLayout(model_config_layout)
+
+        main_params_box = QGroupBox("Main Hyperparameters")
+        main_params_layout = QGridLayout()
+
         label1 = QLabel("Epochs:")
         self.epochs_input = QLineEdit("25")
+
         label2 = QLabel("Batch Size:")
         self.batch_size_input = QLineEdit("128")
         self.automatic_batch_size_checkbox = QCheckBox("Automatic Batch Size")
         self.automatic_batch_size_checkbox.setChecked(True)
+
         label3 = QLabel("Learning Rate:")
         self.learning_rate_input = QLineEdit("0.0005")
+
         label4 = QLabel("Weight Decay:")
         self.weight_decay_input = QLineEdit("2e-4")
+
         label5 = QLabel("Optimizer Type:")
         self.optimizer_type_combo = QComboBox()
         self.optimizer_type_combo.addItems(["AdamW", "SGD"])
+
         label6 = QLabel("Scheduler Type:")
         self.scheduler_type_combo = QComboBox()
         self.scheduler_type_combo.addItems(["CosineAnnealingWarmRestarts", "StepLR"])
+
         label7 = QLabel("Number of Workers:")
         self.num_workers_input = QLineEdit("4")
+
         label8 = QLabel("Random Seed:")
         self.random_seed_input = QLineEdit("42")
+
         label9 = QLabel("Output Model Path:")
         self.output_model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
         output_model_browse_button = QPushButton("Browse")
         output_model_browse_button.clicked.connect(lambda: self.browse_file(self.output_model_path_input, "Select Output Model File", "PyTorch Files (*.pth *.pt)"))
-        layout.addWidget(label1, 0, 0)
-        layout.addWidget(self.epochs_input, 0, 1)
-        layout.addWidget(label2, 0, 2)
-        layout.addWidget(self.batch_size_input, 0, 3)
-        layout.addWidget(self.automatic_batch_size_checkbox, 0, 4)
-        layout.addWidget(label3, 1, 0)
-        layout.addWidget(self.learning_rate_input, 1, 1)
-        layout.addWidget(label4, 1, 2)
-        layout.addWidget(self.weight_decay_input, 1, 3)
-        layout.addWidget(label5, 2, 0)
-        layout.addWidget(self.optimizer_type_combo, 2, 1)
-        layout.addWidget(label6, 2, 2)
-        layout.addWidget(self.scheduler_type_combo, 2, 3)
-        layout.addWidget(label7, 3, 0)
-        layout.addWidget(self.num_workers_input, 3, 1)
-        layout.addWidget(label8, 4, 0)
-        layout.addWidget(self.random_seed_input, 4, 1)
-        layout.addWidget(label9, 5, 0)
-        layout.addLayout(self.create_browse_layout(self.output_model_path_input, output_model_browse_button), 5, 1, 1, 3)
+
+        main_params_layout.addWidget(label1, 0, 0)
+        main_params_layout.addWidget(self.epochs_input, 0, 1)
+        main_params_layout.addWidget(label2, 0, 2)
+        main_params_layout.addWidget(self.batch_size_input, 0, 3)
+        main_params_layout.addWidget(self.automatic_batch_size_checkbox, 0, 4)
+
+        main_params_layout.addWidget(label3, 1, 0)
+        main_params_layout.addWidget(self.learning_rate_input, 1, 1)
+        main_params_layout.addWidget(label4, 1, 2)
+        main_params_layout.addWidget(self.weight_decay_input, 1, 3)
+
+        main_params_layout.addWidget(label5, 2, 0)
+        main_params_layout.addWidget(self.optimizer_type_combo, 2, 1)
+        main_params_layout.addWidget(label6, 2, 2)
+        main_params_layout.addWidget(self.scheduler_type_combo, 2, 3)
+
+        main_params_layout.addWidget(label7, 3, 0)
+        main_params_layout.addWidget(self.num_workers_input, 3, 1)
+
+        main_params_layout.addWidget(label8, 4, 0)
+        main_params_layout.addWidget(self.random_seed_input, 4, 1)
+
+        main_params_layout.addWidget(label9, 5, 0)
+        main_params_layout.addLayout(self.create_browse_layout(self.output_model_path_input, output_model_browse_button), 5, 1, 1, 3)
+
+        main_params_box.setLayout(main_params_layout)
+
+        layout.addWidget(model_config_box)
+        layout.addWidget(main_params_box)
         group.setLayout(layout)
         return group
 
     def create_checkpoint_group(self):
         group = QGroupBox("Checkpoint Settings")
         layout = QVBoxLayout()
+
         self.save_checkpoints_checkbox = QCheckBox("Enable Checkpoints")
         self.save_checkpoints_checkbox.setChecked(True)
         layout.addWidget(self.save_checkpoints_checkbox)
+
         row1 = QHBoxLayout()
         label1 = QLabel("Save checkpoint by:")
         row1.addWidget(label1)
@@ -139,15 +196,19 @@ class SupervisedTrainingSubTab(BaseTab):
         row1.addWidget(self.checkpoint_type_combo)
         row1.addStretch()
         layout.addLayout(row1)
+
         self.checkpoint_interval_input = QLineEdit("1")
         self.checkpoint_interval_minutes_input = QLineEdit("30")
         self.checkpoint_batch_interval_input = QLineEdit("2000")
+
         self.epoch_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_input, "epochs")
         self.time_interval_widget = self.create_interval_widget("Every", self.checkpoint_interval_minutes_input, "minutes")
         self.batch_interval_widget = self.create_interval_widget("Every", self.checkpoint_batch_interval_input, "batches")
+
         layout.addWidget(self.epoch_interval_widget)
         layout.addWidget(self.time_interval_widget)
         layout.addWidget(self.batch_interval_widget)
+
         row2 = QHBoxLayout()
         label2 = QLabel("Resume from checkpoint:")
         row2.addWidget(label2)
@@ -156,6 +217,7 @@ class SupervisedTrainingSubTab(BaseTab):
         checkpoint_browse_button.clicked.connect(lambda: self.browse_file(self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"))
         row2.addLayout(self.create_browse_layout(self.checkpoint_path_input, checkpoint_browse_button))
         layout.addLayout(row2)
+
         group.setLayout(layout)
         return group
 
@@ -170,6 +232,7 @@ class SupervisedTrainingSubTab(BaseTab):
         except ValueError as e:
             QMessageBox.warning(self, "Input Error", str(e))
             return
+
         automatic_batch_size = self.automatic_batch_size_checkbox.isChecked()
         if automatic_batch_size:
             batch_size = None
@@ -182,6 +245,7 @@ class SupervisedTrainingSubTab(BaseTab):
             except ValueError as e:
                 QMessageBox.warning(self, "Input Error", str(e))
                 return
+
         optimizer_type = self.optimizer_type_combo.currentText().lower()
         scheduler_type = self.scheduler_type_combo.currentText().lower()
         dataset_path = self.dataset_input.text()
@@ -189,14 +253,17 @@ class SupervisedTrainingSubTab(BaseTab):
         val_indices_path = self.val_indices_input.text()
         checkpoint_path = self.checkpoint_path_input.text() if self.checkpoint_path_input.text() else None
         output_model_path = self.output_model_path_input.text()
+
         if not all(os.path.exists(p) for p in [dataset_path, train_indices_path, val_indices_path]):
             QMessageBox.warning(self, "Error", "Dataset or indices files do not exist.")
             return
+
         save_checkpoints = self.save_checkpoints_checkbox.isChecked()
         checkpoint_type = self.checkpoint_type_combo.currentText().lower()
         checkpoint_interval = None
         checkpoint_interval_minutes = None
         checkpoint_batch_interval = None
+
         if save_checkpoints:
             if checkpoint_type == "epoch":
                 try:
@@ -225,24 +292,29 @@ class SupervisedTrainingSubTab(BaseTab):
                 except ValueError as er:
                     QMessageBox.warning(self, "Input Error", str(er))
                     return
+
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         if self.pause_button:
             self.pause_button.setEnabled(True)
         if self.resume_button:
             self.resume_button.setEnabled(False)
+
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
         self.remaining_time_label.setText("Time Left: Calculating...")
         self.log_text_edit.clear()
+
         if not os.path.exists(os.path.dirname(output_model_path)):
             os.makedirs(os.path.dirname(output_model_path), exist_ok=True)
+
         self.dataset_group.setVisible(False)
         self.training_group.setVisible(False)
         self.checkpoint_group.setVisible(False)
         self.progress_group.setVisible(True)
         self.control_group.setVisible(True)
         self.log_group.setVisible(True)
+
         if self.visualization_group:
             self.visualization_group.setVisible(False)
         if self.show_logs_button:
@@ -251,13 +323,26 @@ class SupervisedTrainingSubTab(BaseTab):
             self.show_graphs_button.setVisible(True)
         if self.start_new_button:
             self.start_new_button.setVisible(False)
+
         self.init_ui_state = False
+
         try:
             random_seed = int(self.random_seed_input.text())
         except ValueError:
             QMessageBox.warning(self, "Input Error", "Random Seed must be an integer.")
             self.reset_to_initial_state()
             return
+
+        try:
+            filter_amount = int(self.filters_input.text())
+            res_blocks = int(self.res_blocks_input.text())
+        except ValueError as e:
+            QMessageBox.warning(self, "Input Error", "Filter Amount and Residual Blocks must be integers.")
+            self.reset_to_initial_state()
+            return
+
+        inplace_relu = self.inplace_checkbox.isChecked()
+
         started = self.start_worker(
             SupervisedWorker,
             epochs=epochs,
@@ -278,8 +363,12 @@ class SupervisedTrainingSubTab(BaseTab):
             scheduler_type=scheduler_type,
             output_model_path=output_model_path,
             num_workers=num_workers,
-            random_seed=random_seed
+            random_seed=random_seed,
+            filters=filter_amount,
+            res_blocks=res_blocks,
+            inplace_relu=inplace_relu
         )
+
         if started:
             self.worker.batch_loss_update.connect(self.visualization.update_loss_plots)
             self.worker.batch_accuracy_update.connect(self.visualization.update_accuracy_plot)
@@ -289,6 +378,7 @@ class SupervisedTrainingSubTab(BaseTab):
             self.worker.progress_update.connect(self.update_progress)
         else:
             self.reset_to_initial_state()
+
         if not self.checkpoint_path_input.text():
             self.visualization.reset_visualization()
 
@@ -305,6 +395,7 @@ class SupervisedTrainingSubTab(BaseTab):
             self.pause_button.setEnabled(False)
         if self.resume_button:
             self.resume_button.setEnabled(False)
+
         self.progress_bar.setFormat("Training Finished")
         self.remaining_time_label.setText("Time Left: N/A")
         if self.start_new_button:
@@ -316,6 +407,7 @@ class SupervisedTrainingSubTab(BaseTab):
         self.checkpoint_group.setVisible(True)
         self.progress_group.setVisible(False)
         self.log_group.setVisible(False)
+
         if self.visualization_group:
             self.visualization_group.setVisible(False)
         if self.start_new_button:
@@ -328,11 +420,13 @@ class SupervisedTrainingSubTab(BaseTab):
             self.show_logs_button.setChecked(True)
         if self.show_graphs_button:
             self.show_graphs_button.setChecked(False)
+
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Idle")
         self.remaining_time_label.setText("Time Left: N/A")
         self.log_text_edit.clear()
         self.visualization.reset_visualization()
+
         if self.start_button:
             self.start_button.setEnabled(True)
         if self.stop_button:
@@ -341,6 +435,7 @@ class SupervisedTrainingSubTab(BaseTab):
             self.pause_button.setEnabled(False)
         if self.resume_button:
             self.resume_button.setEnabled(False)
+
         self.init_ui_state = True
 
     def show_logs_view(self):

@@ -18,7 +18,7 @@ class SupervisedWorker(BaseWorker):
     initial_batches_processed = pyqtSignal(int)
     lr_update = pyqtSignal(int, float)
 
-    def __init__(self,epochs,batch_size,learning_rate,weight_decay,save_checkpoints,checkpoint_interval,dataset_path,train_indices_path,val_indices_path,checkpoint_path=None,automatic_batch_size=False,checkpoint_type='epoch',checkpoint_interval_minutes=60,checkpoint_batch_interval=1000,optimizer_type='adamw',scheduler_type='cosineannealingwarmrestarts',output_model_path='models/saved_models/pre_trained_model.pth',num_workers=4,random_seed=42):
+    def __init__(self, epochs, batch_size, learning_rate, weight_decay, save_checkpoints, checkpoint_interval, dataset_path, train_indices_path, val_indices_path, checkpoint_path=None, automatic_batch_size=False, checkpoint_type='epoch', checkpoint_interval_minutes=60, checkpoint_batch_interval=1000, optimizer_type='adamw', scheduler_type='cosineannealingwarmrestarts', output_model_path='models/saved_models/pre_trained_model.pth', num_workers=4, random_seed=42, filters=64, res_blocks=5, inplace_relu=True):
         super().__init__()
         self.save_checkpoints = save_checkpoints
         self.checkpoint_interval = checkpoint_interval
@@ -51,12 +51,35 @@ class SupervisedWorker(BaseWorker):
         self.initial_batches_processed_callback = self.initial_batches_processed.emit
         self.lock = threading.Lock()
         self.total_batches_processed = 0
-        self.model, inferred_batch_size = initialize_model(ChessModel, num_moves=get_total_moves(), device=self.device, automatic_batch_size=self.automatic_batch_size, logger=self.logger)
+        self.filters = filters
+        self.res_blocks = res_blocks
+        self.inplace_relu = inplace_relu
+        self.model, inferred_batch_size = initialize_model(
+            ChessModel,
+            get_total_moves(),
+            device=self.device,
+            automatic_batch_size=self.automatic_batch_size,
+            logger=self.logger,
+            filters=self.filters,
+            res_blocks=self.res_blocks,
+            inplace_relu=self.inplace_relu
+        )
         if inferred_batch_size:
             self.batch_size = inferred_batch_size
-        self.optimizer = initialize_optimizer(self.model,self.optimizer_type,self.learning_rate,self.weight_decay,logger=self.logger)
+        self.optimizer = initialize_optimizer(
+            self.model,
+            self.optimizer_type,
+            self.learning_rate,
+            self.weight_decay,
+            logger=self.logger
+        )
         self.scheduler = None
-        self.checkpoint_manager = CheckpointManager(checkpoint_dir=self.checkpoint_dir,checkpoint_type=self.checkpoint_type,checkpoint_interval=self.checkpoint_interval,logger=self.logger)
+        self.checkpoint_manager = CheckpointManager(
+            checkpoint_dir=self.checkpoint_dir,
+            checkpoint_type=self.checkpoint_type,
+            checkpoint_interval=self.checkpoint_interval,
+            logger=self.logger
+        )
 
     def run_task(self):
         self.logger.info("Starting supervised training worker.")
@@ -78,25 +101,48 @@ class SupervisedWorker(BaseWorker):
             train_dataset = H5Dataset(self.dataset_path, train_indices)
             val_dataset = H5Dataset(self.dataset_path, val_indices)
             self.logger.info(f"Training dataset size: {len(train_dataset)}, Validation dataset size: {len(val_dataset)}.")
-            train_loader = DataLoader(train_dataset,batch_size=self.batch_size,shuffle=True,num_workers=self.num_workers,pin_memory=True)
-            val_loader = DataLoader(val_dataset,batch_size=self.batch_size,shuffle=False,num_workers=self.num_workers,pin_memory=True)
+            train_loader = DataLoader(
+                train_dataset,
+                batch_size=self.batch_size,
+                shuffle=True,
+                num_workers=self.num_workers,
+                pin_memory=True
+            )
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.num_workers,
+                pin_memory=True
+            )
             total_steps = self.epochs * len(train_loader)
             try:
-                self.scheduler = initialize_scheduler(self.optimizer,self.scheduler_type,total_steps=total_steps,logger=self.logger)
+                self.scheduler = initialize_scheduler(
+                    self.optimizer,
+                    self.scheduler_type,
+                    total_steps=total_steps,
+                    logger=self.logger
+                )
             except ValueError as ve:
                 self.logger.error(f"Scheduler initialization error: {str(ve)}")
                 self.scheduler = None
             start_epoch = 1
             skip_batches = 0
             if self.checkpoint_path and os.path.exists(self.checkpoint_path):
-                checkpoint = self.checkpoint_manager.load(self.checkpoint_path, self.device, self.model, self.optimizer, self.scheduler)
+                checkpoint = self.checkpoint_manager.load(
+                    self.checkpoint_path, self.device, self.model, self.optimizer, self.scheduler
+                )
                 if checkpoint:
                     if 'epoch' in checkpoint:
                         start_epoch = checkpoint['epoch'] + 1
                         skip_batches = checkpoint.get('batch_idx', 0) or 0
-                        self.logger.info(f"Resuming training from epoch {start_epoch - 1}, batch {skip_batches}.")
+                        self.total_batches_processed = skip_batches
+                        self.filters = checkpoint.get('filters', self.filters)
+                        self.res_blocks = checkpoint.get('res_blocks', self.res_blocks)
+                        self.inplace_relu = checkpoint.get('inplace_relu', self.inplace_relu)
+                        self.logger.info(f"Resuming from epoch {start_epoch - 1}, batch {skip_batches}.")
                     else:
-                        self.logger.warning("Epoch info not found in checkpoint. Starting from epoch 1.")
+                        self.logger.warning("No epoch info in checkpoint. Starting from epoch 1.")
             else:
                 self.logger.info("No valid checkpoint found. Training from scratch.")
             if self.initial_batches_processed_callback:
@@ -110,44 +156,61 @@ class SupervisedWorker(BaseWorker):
                 epoch_start_time = time.time()
                 self.logger.info(f"Beginning epoch {epoch}/{self.epochs}.")
                 self.model.train()
-                train_metrics = self._train_epoch(train_loader,epoch,device,total_steps,scaler,accumulation_steps,skip_batches if epoch == start_epoch else 0)
+                train_metrics = self._train_epoch(
+                    train_loader,
+                    epoch,
+                    device,
+                    total_steps,
+                    scaler,
+                    accumulation_steps,
+                    skip_batches if epoch == start_epoch else 0
+                )
+                skip_batches = 0
                 if self._is_stopped.is_set():
                     break
                 self.model.eval()
-                val_metrics = self._validate_epoch(val_loader,epoch,device,train_metrics['accuracy'])
+                val_metrics = self._validate_epoch(val_loader, epoch, device, train_metrics['accuracy'])
                 total_train_loss = train_metrics['policy_loss'] + train_metrics['value_loss']
                 total_val_loss = val_metrics['policy_loss'] + val_metrics['value_loss']
                 epoch_duration = time.time() - epoch_start_time
-                self.logger.info(f"Epoch {epoch}/{self.epochs} done in {format_time_left(epoch_duration)}. Training Loss: {total_train_loss:.4f}, Validation Loss: {total_val_loss:.4f}, Training Acc: {train_metrics['accuracy']*100:.2f}%, Validation Acc: {val_metrics['accuracy']*100:.2f}%.")
+                self.logger.info(
+                    f"Epoch {epoch}/{self.epochs} in {format_time_left(epoch_duration)}. "
+                    f"Train Loss: {total_train_loss:.4f}, Val Loss: {total_val_loss:.4f}, "
+                    f"Train Acc: {train_metrics['accuracy']*100:.2f}%, Val Acc: {val_metrics['accuracy']*100:.2f}%."
+                )
                 if self.save_checkpoints and self.checkpoint_type == 'epoch' and self.checkpoint_manager.should_save(epoch=epoch):
                     checkpoint_data = {
-                        'model_state_dict': self.model.state_dict(),
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
+                        'model_state_dict': {k: v.cpu() for k, v in self.model.state_dict().items()},
+                        'optimizer_state_dict': {k: v for k, v in self.optimizer.state_dict().items()},
+                        'scheduler_state_dict': {k: v for k, v in self.scheduler.state_dict().items()} if self.scheduler else None,
                         'epoch': epoch,
-                        'batch_idx': None,
+                        'batch_idx': self.total_batches_processed,
                         'iteration': None,
-                        'training_stats': {}
+                        'training_stats': {},
+                        'filters': self.filters,
+                        'res_blocks': self.res_blocks,
+                        'inplace_relu': self.inplace_relu
                     }
                     self.checkpoint_manager.save(checkpoint_data)
                 if isinstance(self.scheduler, optim.lr_scheduler.StepLR):
                     self.scheduler.step()
             if not self._is_stopped.is_set():
-                self.logger.info("Supervised training finished successfully.")
                 try:
                     checkpoint = {
                         "model_state_dict": self.model.state_dict(),
                         "optimizer_state_dict": self.optimizer.state_dict(),
                         "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler else None,
                         "epoch": epoch,
-                        "batch_idx": self.total_batches_processed
+                        "batch_idx": self.total_batches_processed,
+                        "training_stats": {},
+                        "filters": self.filters,
+                        "res_blocks": self.res_blocks,
+                        "inplace_relu": self.inplace_relu
                     }
                     torch.save(checkpoint, self.output_model_path)
-                    self.logger.info(f"Final model checkpoint saved at {self.output_model_path}")
+                    self.logger.info(f"Final model saved at {self.output_model_path}")
                 except Exception as e:
-                    self.logger.error(f"Error saving final model checkpoint: {str(e)}")
-            else:
-                self.logger.info("Training was stopped by user before completion.")
+                    self.logger.error(f"Error saving final model: {str(e)}")
         except Exception as e:
             self.logger.error(f"Error in SupervisedWorker: {str(e)}")
         self.task_finished.emit()
@@ -159,10 +222,11 @@ class SupervisedWorker(BaseWorker):
         correct_predictions = 0
         total_predictions = 0
         local_steps = 0
+        accumulate_count = 0
         try:
             start_time = time.time()
             if skip_batches:
-                self.logger.info(f"Skipping the first {skip_batches} batch(es) from previous checkpoint.")
+                self.logger.info(f"Skipping {skip_batches} batch(es) from checkpoint.")
             for batch_idx, (inputs, policy_targets, value_targets) in enumerate(train_loader, 1):
                 if self._is_stopped.is_set():
                     break
@@ -185,10 +249,12 @@ class SupervisedWorker(BaseWorker):
                     value_loss = F.mse_loss(value_preds.view(-1), value_targets)
                     loss = (policy_loss + value_loss) / accumulation_steps
                 scaler.scale(loss).backward()
-                if (batch_idx % accumulation_steps == 0) or (batch_idx == len(train_loader)):
+                accumulate_count += 1
+                if (accumulate_count % accumulation_steps == 0) or (batch_idx == len(train_loader)):
                     scaler.step(self.optimizer)
                     scaler.update()
                     self.optimizer.zero_grad()
+                    accumulate_count = 0
                 if isinstance(self.scheduler, (optim.lr_scheduler.CosineAnnealingWarmRestarts, optim.lr_scheduler.OneCycleLR)):
                     self.scheduler.step(epoch - 1 + batch_idx / len(train_loader))
                 total_policy_loss += policy_loss.item() * inputs.size(0)
@@ -214,25 +280,37 @@ class SupervisedWorker(BaseWorker):
                     elapsed_time = time.time() - start_time
                     if local_steps > 0:
                         estimated_total_time = (elapsed_time / local_steps) * (total_steps - self.total_batches_processed)
-                        time_left = estimated_total_time - elapsed_time
-                        time_left = max(0, time_left)
+                        time_left = max(0, estimated_total_time - elapsed_time)
                         time_left_str = format_time_left(time_left)
                         self.time_left_update.emit(time_left_str)
                     else:
                         self.time_left_update.emit("Calculating...")
-                if self.save_checkpoints and self.checkpoint_type in ['batch', 'iteration'] and self.checkpoint_manager.should_save(batch_idx=self.total_batches_processed):
+                if self.save_checkpoints and self.checkpoint_type == 'batch' and self.checkpoint_manager.should_save(batch_idx=self.total_batches_processed):
                     checkpoint_data = {
                         "model_state_dict": {k: v.cpu() for k, v in self.model.state_dict().items()},
-                        "optimizer_state_dict": self.optimizer.state_dict(),
-                        "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler else None,
+                        "optimizer_state_dict": {k: v for k, v in self.optimizer.state_dict().items()},
+                        "scheduler_state_dict": {k: v for k, v in self.scheduler.state_dict().items()} if self.scheduler else None,
                         "epoch": epoch,
                         "batch_idx": self.total_batches_processed,
                         "iteration": None,
-                        "training_stats": {
-                            "total_games_played": 0,
-                            "results": [],
-                            "game_lengths": []
-                        }
+                        "training_stats": {},
+                        "filters": self.filters,
+                        "res_blocks": self.res_blocks,
+                        "inplace_relu": self.inplace_relu
+                    }
+                    self.checkpoint_manager.save(checkpoint_data)
+                if self.save_checkpoints and self.checkpoint_type == 'iteration' and self.checkpoint_manager.should_save(iteration=self.total_batches_processed):
+                    checkpoint_data = {
+                        "model_state_dict": {k: v.cpu() for k, v in self.model.state_dict().items()},
+                        "optimizer_state_dict": {k: v for k, v in self.optimizer.state_dict().items()},
+                        "scheduler_state_dict": {k: v for k, v in self.scheduler.state_dict().items()} if self.scheduler else None,
+                        "epoch": epoch,
+                        "batch_idx": self.total_batches_processed,
+                        "iteration": self.total_batches_processed,
+                        "training_stats": {},
+                        "filters": self.filters,
+                        "res_blocks": self.res_blocks,
+                        "inplace_relu": self.inplace_relu
                     }
                     self.checkpoint_manager.save(checkpoint_data)
                 del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
@@ -241,7 +319,7 @@ class SupervisedWorker(BaseWorker):
             metrics['policy_loss'] = total_policy_loss / total_predictions if total_predictions > 0 else float('inf')
             metrics['value_loss'] = total_value_loss / total_predictions if total_predictions > 0 else float('inf')
             metrics['accuracy'] = correct_predictions / total_predictions if total_predictions > 0 else 0.0
-            self.logger.info(f"Epoch {epoch}: Training Accuracy {metrics['accuracy']*100:.2f}%.")
+            self.logger.info(f"Epoch {epoch}: Training Acc {metrics['accuracy']*100:.2f}%.")
             if self.loss_fn:
                 self.loss_fn(epoch, {'policy': metrics['policy_loss'], 'value': metrics['value_loss']})
             return metrics
@@ -287,7 +365,10 @@ class SupervisedWorker(BaseWorker):
                 self.val_loss_fn(epoch, {'policy': metrics['policy_loss'], 'value': metrics['value_loss']})
             if self.accuracy_fn:
                 self.accuracy_fn(epoch, training_accuracy, metrics['accuracy'])
-            self.logger.info(f"Epoch {epoch}: Validation Policy Loss {metrics['policy_loss']:.4f}, Value Loss {metrics['value_loss']:.4f}, Accuracy {metrics['accuracy']*100:.2f}%.")
+            self.logger.info(
+                f"Epoch {epoch}: Validation Policy Loss {metrics['policy_loss']:.4f}, "
+                f"Value Loss {metrics['value_loss']:.4f}, Accuracy {metrics['accuracy']*100:.2f}%."
+            )
             return metrics
         except Exception as e:
             self.logger.error(f"Error during validation for epoch {epoch}: {str(e)}")

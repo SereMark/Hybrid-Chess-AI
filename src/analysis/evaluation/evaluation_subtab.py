@@ -26,11 +26,11 @@ class EvaluationSubTab(BaseTab):
                 "stop_callback": self.stop_evaluation,
                 "pause_text": "Pause Evaluation",
                 "resume_text": "Resume Evaluation",
-                "pause_callback": self.pause_worker,
-                "resume_callback": self.resume_worker,
+                "pause_callback": self.pause_evaluation,
+                "resume_callback": self.resume_evaluation,
                 "start_new_callback": self.reset_to_initial_state
             },
-            "Start New Evaluation",
+            "Configure Parameters",
             spacing=10
         )
         self.paths_group = self.create_paths_group()

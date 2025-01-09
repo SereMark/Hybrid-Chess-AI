@@ -1,6 +1,4 @@
-import datetime
-import threading
-import traceback
+import datetime, traceback, threading
 from PyQt5.QtCore import QObject, pyqtSignal
 
 class Logger(QObject):
@@ -22,21 +20,21 @@ class Logger(QObject):
                 self.log_to_file = False
                 self.error(f"Failed to open log file {self.file_path}: {e}")
 
+    def _should_log(self, level):
+        return self.LOG_LEVELS.get(level.upper(), 20) >= self.log_level
+
     def _log_internal(self, level, message):
         now = datetime.datetime.now().strftime(self.timestamp_format)
         thread_name = threading.current_thread().name
-        formatted_message = f"[{now}] [{thread_name}] [{level}] {message}"
-        self.log_signal.emit(level, formatted_message)
+        formatted = f"[{now}] [{thread_name}] [{level}] {message}"
+        self.log_signal.emit(level, formatted)
         if self.log_to_file:
             with self.lock:
                 try:
-                    self.file.write(formatted_message + '\n')
+                    self.file.write(formatted + '\n')
                     self.file.flush()
                 except Exception as e:
                     self.log_signal.emit('ERROR', f"Failed to write to log file: {e}")
-
-    def _should_log(self, level):
-        return self.LOG_LEVELS.get(level.upper(), 20) >= self.log_level
 
     def log(self, level, message):
         if self._should_log(level):
@@ -59,8 +57,8 @@ class Logger(QObject):
 
     def exception(self, message):
         exc_info = traceback.format_exc()
-        full_message = f"{message}\nException Traceback:\n{exc_info}"
-        self.error(full_message)
+        full_msg = f"{message}\nException Traceback:\n{exc_info}"
+        self.error(full_msg)
 
     def set_log_level(self, level):
         self.log_level = self.LOG_LEVELS.get(level.upper(), 20)

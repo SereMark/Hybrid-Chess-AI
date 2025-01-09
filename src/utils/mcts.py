@@ -1,4 +1,4 @@
-import math, chess, numpy as np, threading
+import math, numpy as np, threading
 from src.utils.chess_utils import get_game_result
 
 class TreeNode:
@@ -13,21 +13,21 @@ class TreeNode:
         self.move = move
 
     def expand(self, action_priors):
-        for move, prob in action_priors.items():
-            if move not in self.children and prob > 0:
-                next_board = self.board.copy()
-                next_board.push(move)
-                self.children[move] = TreeNode(self, prob, next_board, move)
+        for mv, prob in action_priors.items():
+            if mv not in self.children and prob > 0:
+                nxt_board = self.board.copy()
+                nxt_board.push(mv)
+                self.children[mv] = TreeNode(self, prob, nxt_board, mv)
 
     def select(self, c_puct):
         max_value = float('-inf')
         best_move = None
         best_child = None
-        for move, child in self.children.items():
-            value = child.get_value(c_puct)
-            if value > max_value:
-                max_value = value
-                best_move = move
+        for mv, child in self.children.items():
+            val = child.get_value(c_puct)
+            if val > max_value:
+                max_value = val
+                best_move = mv
                 best_child = child
         return best_move, best_child
 
@@ -55,7 +55,7 @@ class MCTS:
         self.n_simulations = n_simulations
         self.tree_lock = threading.Lock()
 
-    def set_root_node(self, board: chess.Board):
+    def set_root_node(self, board):
         self.root = TreeNode(None, 1.0, board.copy(), None)
         action_probs, _ = self.policy_value_fn(board)
         self.root.expand(action_probs)
@@ -65,7 +65,7 @@ class MCTS:
         while True:
             if node.is_leaf():
                 break
-            move, node = node.select(self.c_puct)
+            _, node = node.select(self.c_puct)
         action_probs, leaf_value = self.policy_value_fn(node.board)
         if not node.board.is_game_over():
             node.expand(action_probs)
@@ -76,26 +76,24 @@ class MCTS:
     def get_move_probs(self, temperature=1e-3):
         for _ in range(self.n_simulations):
             self.simulate()
-        move_visits = [(move, child.n_visits) for move, child in self.root.children.items()]
+        move_visits = [(mv, child.n_visits) for mv, child in self.root.children.items()]
         if not move_visits:
             return {}
+
         moves, visits = zip(*move_visits)
         visits = np.array(visits, dtype=np.float32)
-        
         if temperature <= 1e-3:
             probs = np.zeros_like(visits)
             probs[np.argmax(visits)] = 1.0
         else:
             exponent = visits / temperature
-            max_exponent = np.max(exponent)
-            exponent = exponent - max_exponent
+            exponent -= np.max(exponent)
             visits_exp = np.exp(exponent)
-            total = np.sum(visits_exp)
-            if total > 0:
-                probs = visits_exp / total
+            total_sum = np.sum(visits_exp)
+            if total_sum > 0:
+                probs = visits_exp / total_sum
             else:
                 probs = np.ones_like(visits) / len(visits)
-        
         return dict(zip(moves, probs))
 
     def update_with_move(self, last_move):
@@ -103,31 +101,31 @@ class MCTS:
             self.root = self.root.children[last_move]
             self.root.parent = None
         else:
-            board = self.root.board.copy()
-            board.push(last_move)
-            self.set_root_node(board)
+            new_board = self.root.board.copy()
+            new_board.push(last_move)
+            self.set_root_node(new_board)
 
     def get_tree_data(self, max_depth=3):
         nodes = []
         edges = []
         visited = set()
 
-        def recurse(node, depth=0):
+        def recurse(nd, depth=0):
             if depth > max_depth:
                 return
-            node_id = id(node)
-            if node_id in visited:
+            nid = id(nd)
+            if nid in visited:
                 return
-            visited.add(node_id)
-            nodes.append((node_id, {
-                'Q': node.Q,
-                'n_visits': node.n_visits,
-                'move': str(node.move),
-                'parent': id(node.parent) if node.parent else None
+            visited.add(nid)
+            nodes.append((nid, {
+                'Q': nd.Q,
+                'n_visits': nd.n_visits,
+                'move': str(nd.move),
+                'parent': id(nd.parent) if nd.parent else None
             }))
-            for child in node.children.values():
-                edges.append((node_id, id(child)))
-                recurse(child, depth + 1)
+            for c in nd.children.values():
+                edges.append((nid, id(c)))
+                recurse(c, depth + 1)
 
         with self.tree_lock:
             if self.root:
