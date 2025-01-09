@@ -33,7 +33,7 @@ class BasePlot:
         self.apply_settings()
 
     def apply_settings(self):
-        self.ax.figure.set_facecolor('#fafafa')
+        self.ax.figure.set_facecolor('#f0f2f5')
         self.ax.set_facecolor('#ffffff')
         self.ax.set_title(
             self.title,
@@ -60,7 +60,7 @@ class BasePlot:
         self.ax.tick_params(axis='both', which='major', labelsize=self.tick_labelsize, colors='#333333')
         for spine in self.ax.spines.values():
             spine.set_color('#333333')
-            spine.set_linewidth(1.2)
+            spine.set_linewidth(1.0)
         self.ax.grid(True, which='both', linestyle='--', linewidth=0.6, alpha=self.grid_alpha, color=self.grid_color)
         if self.invert_y:
             self.ax.invert_yaxis()
@@ -89,11 +89,10 @@ class BasePlot:
         if label:
             self.ax.legend(fontsize=self.tick_labelsize, frameon=False, loc='best')
 
-
 class BaseVisualizationWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.figure = Figure(figsize=(10, 8), facecolor='#fafafa')
+        self.figure = Figure(figsize=(10, 8), facecolor='#f5f7f8')
         self.canvas = FigureCanvas(self.figure)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

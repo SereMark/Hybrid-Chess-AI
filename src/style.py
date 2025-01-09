@@ -1,23 +1,23 @@
 stylesheet = """
 QMainWindow {
-    background-color: #f5f7f8;
+    background-color: #f3f5f7;
     font-family: 'Segoe UI', sans-serif;
-    font-size: 10pt;
+    font-size: 11pt;
 }
 
 QTabWidget::pane {
-    border: 1px solid #d3d3d3;
+    border: none;
     background: #ffffff;
-    border-radius: 6px;
+    border-radius: 8px;
     margin: 4px;
     padding: 4px;
 }
 QTabBar::tab {
-    background: #ececec;
-    border: 1px solid #d3d3d3;
-    border-bottom-color: #d3d3d3;
+    background: #e9ecef;
+    border: none;
+    border-bottom: 2px solid #d3d3d3;
     padding: 8px 16px;
-    margin-right: -1px;
+    margin-right: 0px;
     min-width: 120px;
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
@@ -26,7 +26,7 @@ QTabBar::tab {
 QTabBar::tab:selected,
 QTabBar::tab:hover {
     background: #ffffff;
-    border-bottom: none;
+    border-bottom: 2px solid #0078d4;
 }
 QTabBar::tab:selected {
     color: #0078d4;
@@ -35,14 +35,14 @@ QTabBar::tab:selected {
 
 QGroupBox {
     border: 1px solid #d3d3d3;
-    border-radius: 6px;
+    border-radius: 8px;
     margin-top: 20px;
     background-color: #ffffff;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    padding: 4px 10px;
+    padding: 6px 10px;
     color: #333333;
     font-weight: 600;
     background: transparent;
@@ -64,10 +64,10 @@ QProgressBar {
     border-radius: 6px;
     background: #f2f2f2;
     text-align: center;
-    height: 16px;
+    height: 18px;
 }
 QProgressBar::chunk {
-    background-color: #2196f3;
+    background-color: #0078d4;
     margin: 1px;
     border-radius: 5px;
 }
@@ -114,7 +114,7 @@ QCheckBox {
 QComboBox::drop-down {
     subcontrol-origin: padding;
     subcontrol-position: top right;
-    width: 30px;
+    width: 28px;
     border-left: 1px solid #d3d3d3;
     border-top-right-radius: 6px;
     border-bottom-right-radius: 6px;
