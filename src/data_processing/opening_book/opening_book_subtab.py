@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import QVBoxLayout, QLabel, QGridLayout, QLineEdit, QPushBu
 from src.data_processing.opening_book.opening_book_worker import OpeningBookWorker
 from src.data_processing.opening_book.opening_book_visualization import OpeningBookVisualization
 from src.base.base_tab import BaseTab
-import os
+import os, json
 
 class OpeningBookSubTab(BaseTab):
     def __init__(self, parent=None, processed_data_dir_default="data/processed"):
@@ -58,6 +58,12 @@ class OpeningBookSubTab(BaseTab):
         self.ob_processed_data_dir_input = QLineEdit(self.processed_data_dir_default)
         ob_processed_browse_button = QPushButton("Browse")
         ob_processed_browse_button.clicked.connect(lambda: self.browse_dir(self.ob_processed_data_dir_input, "Select Processed Data Directory"))
+        label6 = QLabel("Opening Book JSON:")
+        self.ob_json_input = QLineEdit("data/processed/opening_book.json")
+        ob_json_browse_button = QPushButton("Browse")
+        ob_json_browse_button.clicked.connect(lambda: self.browse_file(self.ob_json_input, "Select JSON File", "JSON Files (*.json)"))
+        ob_json_load_button = QPushButton("Load")
+        ob_json_load_button.clicked.connect(self.load_opening_book_json)
         layout.addWidget(label1, 0, 0)
         layout.addLayout(self.create_browse_layout(self.pgn_file_input, pgn_browse_button), 0, 1, 1, 3)
         layout.addWidget(label2, 1, 0)
@@ -68,8 +74,35 @@ class OpeningBookSubTab(BaseTab):
         layout.addWidget(self.ob_max_opening_moves_input, 2, 1)
         layout.addWidget(label5, 3, 0)
         layout.addLayout(self.create_browse_layout(self.ob_processed_data_dir_input, ob_processed_browse_button), 3, 1, 1, 3)
+        layout.addWidget(label6, 4, 0)
+        layout.addLayout(self.create_browse_layout(self.ob_json_input, ob_json_browse_button), 4, 1)
+        layout.addWidget(ob_json_load_button, 4, 3)
         group.setLayout(layout)
         return group
+
+    def load_opening_book_json(self):
+        json_file_path = self.ob_json_input.text()
+        if not os.path.isfile(json_file_path):
+            QMessageBox.warning(self, "File Error", "The specified JSON file does not exist.")
+            return
+        try:
+            with open(json_file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            QMessageBox.critical(self, "JSON Error", f"Could not load JSON: {str(e)}")
+            return
+        if not isinstance(data, dict):
+            QMessageBox.warning(self, "Format Error", "Invalid JSON format for opening book.")
+            return
+        self.visualization.update_opening_book({"positions": data})
+        if self.visualization_group:
+            self.visualization_group.setVisible(True)
+        if self.show_graphs_button:
+            self.show_graphs_button.setVisible(True)
+            self.show_graphs_button.setChecked(True)
+        if self.show_logs_button:
+            self.show_logs_button.setChecked(False)
+        QMessageBox.information(self, "Success", "Opening Book JSON loaded successfully.")
 
     def start_process(self):
         try:
