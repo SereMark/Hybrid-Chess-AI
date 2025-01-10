@@ -282,6 +282,7 @@ class ReinforcementWorker(BaseWorker):
                 res_blocks=loaded_architecture["res_blocks"],
                 inplace_relu=loaded_architecture["inplace_relu"],
             )
+            self.logger.info(f"Model initialized with filters={loaded_architecture["filters"]}, res_blocks={loaded_architecture["res_blocks"]}, inplace_relu={loaded_architecture["inplace_relu"]}")
             try:
                 model.load_state_dict(model_state)
                 self.logger.info("Model state_dict loaded successfully.")
