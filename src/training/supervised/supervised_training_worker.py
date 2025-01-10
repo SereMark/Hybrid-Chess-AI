@@ -18,7 +18,7 @@ class SupervisedWorker(BaseWorker):
     initial_batches_processed = pyqtSignal(int)
     lr_update = pyqtSignal(int, float)
 
-    def __init__(self, epochs, batch_size, learning_rate, weight_decay, save_checkpoints, checkpoint_interval, dataset_path, train_indices_path, val_indices_path, checkpoint_path=None, automatic_batch_size=False, checkpoint_type='epoch', checkpoint_interval_minutes=60, checkpoint_batch_interval=1000, optimizer_type='adamw', scheduler_type='cosineannealingwarmrestarts', output_model_path='models/saved_models/pre_trained_model.pth', num_workers=4, random_seed=42, filters=64, res_blocks=5, inplace_relu=True):
+    def __init__(self, epochs, batch_size, learning_rate, weight_decay, save_checkpoints, checkpoint_interval, dataset_path, train_indices_path, val_indices_path, model_path=None, automatic_batch_size=False, checkpoint_type='epoch', checkpoint_interval_minutes=60, checkpoint_batch_interval=1000, optimizer_type='adamw', scheduler_type='cosineannealingwarmrestarts', output_model_path='models/saved_models/pre_trained_model.pth', num_workers=4, random_seed=42, filters=64, res_blocks=5, inplace_relu=True):
         super().__init__()
         self.save_checkpoints = save_checkpoints
         self.checkpoint_interval = checkpoint_interval
@@ -40,7 +40,7 @@ class SupervisedWorker(BaseWorker):
         self.dataset_path = dataset_path
         self.train_indices_path = train_indices_path
         self.val_indices_path = val_indices_path
-        self.checkpoint_path = checkpoint_path
+        self.model_path = model_path
         self.output_model_path = output_model_path
         self.loss_fn = self.epoch_loss_update.emit
         self.val_loss_fn = self.val_loss_update.emit
@@ -54,16 +54,7 @@ class SupervisedWorker(BaseWorker):
         self.filters = filters
         self.res_blocks = res_blocks
         self.inplace_relu = inplace_relu
-        self.model, inferred_batch_size = initialize_model(
-            ChessModel,
-            get_total_moves(),
-            device=self.device,
-            automatic_batch_size=self.automatic_batch_size,
-            logger=self.logger,
-            filters=self.filters,
-            res_blocks=self.res_blocks,
-            inplace_relu=self.inplace_relu
-        )
+        self.model, inferred_batch_size, loaded_architecture = self._init_model()
         if inferred_batch_size:
             self.batch_size = inferred_batch_size
         self.optimizer = initialize_optimizer(
@@ -80,6 +71,69 @@ class SupervisedWorker(BaseWorker):
             checkpoint_interval=self.checkpoint_interval,
             logger=self.logger
         )
+        if loaded_architecture:
+            self.filters = loaded_architecture["filters"]
+            self.res_blocks = loaded_architecture["res_blocks"]
+            self.inplace_relu = loaded_architecture["inplace_relu"]
+
+    def _init_model(self):
+        loaded_architecture = None
+        if self.model_path and os.path.exists(self.model_path):
+            self.logger.info(f"Loading pretrained model from {self.model_path}")
+            checkpoint = torch.load(self.model_path, map_location=self.device)
+
+            if isinstance(checkpoint, dict):
+                model_state = checkpoint.get("model_state_dict", checkpoint)
+                filters = checkpoint.get("filters", 64)
+                res_blocks = checkpoint.get("res_blocks", 5)
+                inplace_relu = checkpoint.get("inplace_relu", True)
+                loaded_architecture = {
+                    "filters": filters,
+                    "res_blocks": res_blocks,
+                    "inplace_relu": inplace_relu,
+                }
+            else:
+                model_state = checkpoint
+                loaded_architecture = {
+                    "filters": 64,
+                    "res_blocks": 5,
+                    "inplace_relu": True,
+                }
+
+            model, inferred_batch_size = initialize_model(
+                ChessModel,
+                get_total_moves(),
+                device=self.device,
+                automatic_batch_size=self.automatic_batch_size,
+                logger=self.logger,
+                filters=loaded_architecture["filters"],
+                res_blocks=loaded_architecture["res_blocks"],
+                inplace_relu=loaded_architecture["inplace_relu"],
+            )
+            self.logger.info(
+                f"Model initialized with filters={loaded_architecture['filters']}, "
+                f"res_blocks={loaded_architecture['res_blocks']}, inplace_relu={loaded_architecture['inplace_relu']}"
+            )
+            try:
+                model.load_state_dict(model_state)
+                self.logger.info("Model state_dict loaded successfully.")
+            except Exception as e:
+                self.logger.error(f"Failed to load state_dict into model: {str(e)}")
+                raise ValueError("Model loading failed.")
+            return model, inferred_batch_size, loaded_architecture
+        else:
+            self.logger.info("No existing model found. Creating new model with specified configuration.")
+            model, inferred_batch_size = initialize_model(
+                ChessModel,
+                get_total_moves(),
+                device=self.device,
+                automatic_batch_size=self.automatic_batch_size,
+                logger=self.logger,
+                filters=self.filters,
+                res_blocks=self.res_blocks,
+                inplace_relu=self.inplace_relu,
+            )
+            return model, inferred_batch_size, loaded_architecture
 
     def run_task(self):
         self.logger.info("Starting supervised training worker.")
@@ -128,10 +182,8 @@ class SupervisedWorker(BaseWorker):
                 self.scheduler = None
             start_epoch = 1
             skip_batches = 0
-            if self.checkpoint_path and os.path.exists(self.checkpoint_path):
-                checkpoint = self.checkpoint_manager.load(
-                    self.checkpoint_path, self.device, self.model, self.optimizer, self.scheduler
-                )
+            if self.model_path and os.path.exists(self.model_path):
+                checkpoint = self.checkpoint_manager.load(self.model_path, self.device, self.model, self.optimizer, self.scheduler)
                 if checkpoint:
                     if 'epoch' in checkpoint:
                         start_epoch = checkpoint['epoch'] + 1

@@ -33,13 +33,15 @@ class SupervisedTrainingSubTab(BaseTab):
             "Configure Parameters"
         )
 
+        self.input_settings_group = self.create_input_settings_group()
         self.dataset_group = self.create_dataset_group()
         self.training_group = self.create_training_group()
         self.checkpoint_group = self.create_checkpoint_group()
 
-        self.layout().insertWidget(1, self.dataset_group)
-        self.layout().insertWidget(2, self.training_group)
-        self.layout().insertWidget(3, self.checkpoint_group)
+        self.layout().insertWidget(1, self.input_settings_group)
+        self.layout().insertWidget(2, self.dataset_group)
+        self.layout().insertWidget(3, self.training_group)
+        self.layout().insertWidget(4, self.checkpoint_group)
 
         self.setup_batch_size_control(self.automatic_batch_size_checkbox, self.batch_size_input)
 
@@ -56,6 +58,47 @@ class SupervisedTrainingSubTab(BaseTab):
             self.pause_button.setEnabled(False)
         if self.resume_button:
             self.resume_button.setEnabled(False)
+
+    def create_input_settings_group(self):
+        group = QGroupBox("Input Settings")
+        layout = QGridLayout()
+
+        label_model_path = QLabel("Model Path (optional):")
+        self.model_path_input = QLineEdit("")
+        model_browse_button = QPushButton("Browse")
+        model_browse_button.clicked.connect(lambda: self.browse_file(self.model_path_input, "Select Model File", "PyTorch Files (*.pth *.pt)"))
+        layout.addWidget(label_model_path, 0, 0)
+        layout.addLayout(self.create_browse_layout(self.model_path_input, model_browse_button), 0, 1, 1, 3)
+
+        label_filters = QLabel("Filter Amount:")
+        self.filters_input = QLineEdit("64")
+
+        label_res_blocks = QLabel("Residual Blocks:")
+        self.res_blocks_input = QLineEdit("5")
+
+        label_inplace = QLabel("Inplace ReLU:")
+        self.inplace_checkbox = QCheckBox()
+        self.inplace_checkbox.setChecked(True)
+
+        layout.addWidget(label_filters, 1, 0)
+        layout.addWidget(self.filters_input, 1, 1)
+        layout.addWidget(label_res_blocks, 1, 2)
+        layout.addWidget(self.res_blocks_input, 1, 3)
+        layout.addWidget(label_inplace, 2, 0)
+        layout.addWidget(self.inplace_checkbox, 2, 1)
+
+        group.setLayout(layout)
+
+        self.model_path_input.textChanged.connect(self.on_model_path_changed)
+        self.on_model_path_changed(self.model_path_input.text())
+
+        return group
+
+    def on_model_path_changed(self, text):
+        has_model_path = bool(text.strip())
+        self.filters_input.setEnabled(not has_model_path)
+        self.res_blocks_input.setEnabled(not has_model_path)
+        self.inplace_checkbox.setEnabled(not has_model_path)
 
     def create_dataset_group(self):
         group = QGroupBox("Dataset Settings")
@@ -89,28 +132,6 @@ class SupervisedTrainingSubTab(BaseTab):
     def create_training_group(self):
         group = QGroupBox("Training Hyperparameters")
         layout = QVBoxLayout()
-
-        model_config_box = QGroupBox("Model Configuration")
-        model_config_layout = QGridLayout()
-
-        label_filters = QLabel("Filter Amount:")
-        self.filters_input = QLineEdit("64")
-
-        label_res_blocks = QLabel("Residual Blocks:")
-        self.res_blocks_input = QLineEdit("5")
-
-        label_inplace = QLabel("Inplace ReLU:")
-        self.inplace_checkbox = QCheckBox()
-        self.inplace_checkbox.setChecked(True)
-
-        model_config_layout.addWidget(label_filters, 0, 0)
-        model_config_layout.addWidget(self.filters_input, 0, 1)
-        model_config_layout.addWidget(label_res_blocks, 0, 2)
-        model_config_layout.addWidget(self.res_blocks_input, 0, 3)
-        model_config_layout.addWidget(label_inplace, 1, 0)
-        model_config_layout.addWidget(self.inplace_checkbox, 1, 1)
-
-        model_config_box.setLayout(model_config_layout)
 
         main_params_box = QGroupBox("Main Hyperparameters")
         main_params_layout = QGridLayout()
@@ -175,7 +196,6 @@ class SupervisedTrainingSubTab(BaseTab):
 
         main_params_box.setLayout(main_params_layout)
 
-        layout.addWidget(model_config_box)
         layout.addWidget(main_params_box)
         group.setLayout(layout)
         return group
@@ -208,15 +228,6 @@ class SupervisedTrainingSubTab(BaseTab):
         layout.addWidget(self.epoch_interval_widget)
         layout.addWidget(self.time_interval_widget)
         layout.addWidget(self.batch_interval_widget)
-
-        row2 = QHBoxLayout()
-        label2 = QLabel("Resume from checkpoint:")
-        row2.addWidget(label2)
-        self.checkpoint_path_input = QLineEdit("")
-        checkpoint_browse_button = QPushButton("Browse")
-        checkpoint_browse_button.clicked.connect(lambda: self.browse_file(self.checkpoint_path_input, "Select Checkpoint File", "PyTorch Files (*.pth *.pt)"))
-        row2.addLayout(self.create_browse_layout(self.checkpoint_path_input, checkpoint_browse_button))
-        layout.addLayout(row2)
 
         group.setLayout(layout)
         return group
@@ -251,7 +262,7 @@ class SupervisedTrainingSubTab(BaseTab):
         dataset_path = self.dataset_input.text()
         train_indices_path = self.train_indices_input.text()
         val_indices_path = self.val_indices_input.text()
-        checkpoint_path = self.checkpoint_path_input.text() if self.checkpoint_path_input.text() else None
+        model_path = self.model_path_input.text().strip() if self.model_path_input.text().strip() else None
         output_model_path = self.output_model_path_input.text()
 
         if not all(os.path.exists(p) for p in [dataset_path, train_indices_path, val_indices_path]):
@@ -308,6 +319,7 @@ class SupervisedTrainingSubTab(BaseTab):
         if not os.path.exists(os.path.dirname(output_model_path)):
             os.makedirs(os.path.dirname(output_model_path), exist_ok=True)
 
+        self.input_settings_group.setVisible(False)
         self.dataset_group.setVisible(False)
         self.training_group.setVisible(False)
         self.checkpoint_group.setVisible(False)
@@ -333,15 +345,19 @@ class SupervisedTrainingSubTab(BaseTab):
             self.reset_to_initial_state()
             return
 
-        try:
-            filter_amount = int(self.filters_input.text())
-            res_blocks = int(self.res_blocks_input.text())
-        except ValueError as e:
-            QMessageBox.warning(self, "Input Error", "Filter Amount and Residual Blocks must be integers.")
-            self.reset_to_initial_state()
-            return
-
-        inplace_relu = self.inplace_checkbox.isChecked()
+        if model_path and os.path.isfile(model_path):
+            filters = None
+            res_blocks = None
+            inplace_relu = None
+        else:
+            try:
+                filters = int(self.filters_input.text())
+                res_blocks = int(self.res_blocks_input.text())
+            except ValueError:
+                QMessageBox.warning(self, "Input Error", "Filter Amount and Residual Blocks must be integers.")
+                self.reset_to_initial_state()
+                return
+            inplace_relu = self.inplace_checkbox.isChecked()
 
         started = self.start_worker(
             SupervisedWorker,
@@ -354,7 +370,7 @@ class SupervisedTrainingSubTab(BaseTab):
             dataset_path=dataset_path,
             train_indices_path=train_indices_path,
             val_indices_path=val_indices_path,
-            checkpoint_path=checkpoint_path,
+            model_path=model_path,
             automatic_batch_size=automatic_batch_size,
             checkpoint_type=checkpoint_type,
             checkpoint_interval_minutes=checkpoint_interval_minutes,
@@ -364,7 +380,7 @@ class SupervisedTrainingSubTab(BaseTab):
             output_model_path=output_model_path,
             num_workers=num_workers,
             random_seed=random_seed,
-            filters=filter_amount,
+            filters=filters,
             res_blocks=res_blocks,
             inplace_relu=inplace_relu
         )
@@ -379,7 +395,7 @@ class SupervisedTrainingSubTab(BaseTab):
         else:
             self.reset_to_initial_state()
 
-        if not self.checkpoint_path_input.text():
+        if not model_path:
             self.visualization.reset_visualization()
 
     def stop_training(self):
@@ -402,6 +418,7 @@ class SupervisedTrainingSubTab(BaseTab):
             self.start_new_button.setVisible(True)
 
     def reset_to_initial_state(self):
+        self.input_settings_group.setVisible(True)
         self.dataset_group.setVisible(True)
         self.training_group.setVisible(True)
         self.checkpoint_group.setVisible(True)

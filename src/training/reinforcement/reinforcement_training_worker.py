@@ -174,8 +174,8 @@ class ReinforcementWorker(BaseWorker):
         checkpoint_path=None,
         random_seed=42,
         optimizer_type="adamw",
-        learning_rate=0.0005,
-        weight_decay=2e-4,
+        learning_rate=0.0001,
+        weight_decay=1e-4,
         scheduler_type="cosineannealingwarmrestarts",
         filters=64,
         res_blocks=5,
@@ -241,7 +241,6 @@ class ReinforcementWorker(BaseWorker):
             logger=self.logger,
         )
         self.total_batches_processed = 0
-        self.total_steps = 0
         self._compute_total_steps()
         if loaded_architecture:
             self.filters = loaded_architecture["filters"]
@@ -256,9 +255,9 @@ class ReinforcementWorker(BaseWorker):
 
             if isinstance(checkpoint, dict):
                 model_state = checkpoint.get("model_state_dict", checkpoint)
-                filters = checkpoint.get("filters", 64)
-                res_blocks = checkpoint.get("res_blocks", 5)
-                inplace_relu = checkpoint.get("inplace_relu", True)
+                filters = checkpoint.get("filters", self.filters)
+                res_blocks = checkpoint.get("res_blocks", self.res_blocks)
+                inplace_relu = checkpoint.get("inplace_relu", self.inplace_relu)
                 loaded_architecture = {
                     "filters": filters,
                     "res_blocks": res_blocks,
@@ -267,28 +266,31 @@ class ReinforcementWorker(BaseWorker):
             else:
                 model_state = checkpoint
                 loaded_architecture = {
-                    "filters": 64,
-                    "res_blocks": 5,
-                    "inplace_relu": True,
+                    "filters": self.filters,
+                    "res_blocks": self.res_blocks,
+                    "inplace_relu": self.inplace_relu,
                 }
 
+            self.filters = loaded_architecture["filters"]
+            self.res_blocks = loaded_architecture["res_blocks"]
+            self.inplace_relu = loaded_architecture["inplace_relu"]
             model, inferred_batch_size = initialize_model(
                 ChessModel,
                 num_moves=self.total_moves,
                 device=self.device,
                 automatic_batch_size=self.automatic_batch_size,
                 logger=self.logger,
-                filters=loaded_architecture["filters"],
-                res_blocks=loaded_architecture["res_blocks"],
-                inplace_relu=loaded_architecture["inplace_relu"],
+                filters=self.filters,
+                res_blocks=self.res_blocks,
+                inplace_relu=self.inplace_relu
             )
-            self.logger.info(f"Model initialized with filters={loaded_architecture["filters"]}, res_blocks={loaded_architecture["res_blocks"]}, inplace_relu={loaded_architecture["inplace_relu"]}")
+            self.logger.info(f"Model initialized with filters={self.filters}, res_blocks={self.res_blocks}, inplace_relu={self.inplace_relu}")
             try:
                 model.load_state_dict(model_state)
                 self.logger.info("Model state_dict loaded successfully.")
             except Exception as e:
                 self.logger.error(f"Failed to load state_dict into model: {str(e)}")
-                return None, None, None
+                raise ValueError("Model loading failed due to architecture mismatch.")
             return model, inferred_batch_size, loaded_architecture
         else:
             self.logger.info("No existing model found. Creating new model with specified configuration.")
@@ -300,16 +302,18 @@ class ReinforcementWorker(BaseWorker):
                 logger=self.logger,
                 filters=self.filters,
                 res_blocks=self.res_blocks,
-                inplace_relu=self.inplace_relu,
+                inplace_relu=self.inplace_relu
             )
             return model, inferred_batch_size, loaded_architecture
 
     def _compute_total_steps(self):
-        self.total_steps = self.num_iterations * self.num_games_per_iteration + (
-            self.num_iterations * self.num_epochs * max(
-                self.num_iterations * self.num_games_per_iteration // self.batch_size if self.batch_size else 128, 1
-            )
-        )
+        games_per_iteration = self.num_games_per_iteration
+        epochs = self.num_epochs
+        if self.batch_size:
+            batches_per_epoch = (games_per_iteration // self.batch_size) * epochs
+        else:
+            batches_per_epoch = (games_per_iteration // 128) * epochs
+        self.total_steps = self.num_iterations * games_per_iteration + self.num_iterations * batches_per_epoch
 
     def run_task(self):
         self.logger.info("Initializing reinforcement worker with model and optimizer.")
@@ -329,6 +333,12 @@ class ReinforcementWorker(BaseWorker):
                 self.res_blocks = checkpoint.get("res_blocks", self.res_blocks)
                 self.inplace_relu = checkpoint.get("inplace_relu", self.inplace_relu)
                 self.logger.info(f"Resuming training from iteration {self.start_iteration}.")
+                if self.scheduler and checkpoint.get("scheduler_state_dict"):
+                    try:
+                        self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+                        self.logger.info("Scheduler state_dict loaded successfully.")
+                    except Exception as e:
+                        self.logger.error(f"Failed to load scheduler state_dict: {str(e)}")
             else:
                 self.logger.warning("No valid checkpoint data found. Starting from scratch.")
                 self.start_iteration = 0
@@ -349,23 +359,22 @@ class ReinforcementWorker(BaseWorker):
             self_play_data = self._generate_self_play_data()
             self.model.train()
             self._train_on_self_play_data(self_play_data, iteration)
-            self.batch_idx = None
             if self.save_checkpoints:
                 checkpoint_data = {
-                    "model_state_dict": {k: v.cpu() for k, v in self.model.state_dict().items()},
-                    "optimizer_state_dict": {k: v for k, v in self.optimizer.state_dict().items()},
-                    "scheduler_state_dict": {k: v for k, v in self.scheduler.state_dict().items()} if self.scheduler else None,
-                    "iteration": iteration + 1,
-                    "training_stats": {
-                        "total_games_played": self.total_games_played,
-                        "results": self.results,
-                        "game_lengths": self.game_lengths,
+                    'model_state_dict': {k: v.cpu() for k, v in self.model.state_dict().items()},
+                    'optimizer_state_dict': {k: v for k, v in self.optimizer.state_dict().items()},
+                    'scheduler_state_dict': {k: v for k, v in self.scheduler.state_dict().items()} if self.scheduler else None,
+                    'iteration': iteration + 1,
+                    'training_stats': {
+                        'total_games_played': self.total_games_played,
+                        'results': self.results,
+                        'game_lengths': self.game_lengths
                     },
-                    "batch_idx": self.total_batches_processed,
-                    "epoch": self.current_epoch,
-                    "filters": self.filters,
-                    "res_blocks": self.res_blocks,
-                    "inplace_relu": self.inplace_relu
+                    'batch_idx': self.total_batches_processed,
+                    'epoch': self.current_epoch,
+                    'filters': self.filters,
+                    'res_blocks': self.res_blocks,
+                    'inplace_relu': self.inplace_relu
                 }
                 if self.checkpoint_type == "iteration" and self.checkpoint_manager.should_save(iteration=iteration + 1):
                     self.checkpoint_manager.save(checkpoint_data)
@@ -405,7 +414,7 @@ class ReinforcementWorker(BaseWorker):
         self.finished.emit()
 
     def _generate_self_play_data(self):
-        num_processes = min(self.num_workers, cpu_count())
+        num_processes = min(self.num_threads, cpu_count())
         games_per_process = self.num_games_per_iteration // num_processes
         remainder = self.num_games_per_iteration % num_processes
         manager = Manager()
@@ -511,6 +520,8 @@ class ReinforcementWorker(BaseWorker):
             self.scheduler = None
         start_epoch = self.current_epoch
         epoch_start = time.time()
+        accumulation_steps = max(256 // self.batch_size, 1)
+        accumulate_count = 0
         for epoch in range(start_epoch, self.num_epochs + 1):
             if self._is_stopped.is_set():
                 break
@@ -529,30 +540,47 @@ class ReinforcementWorker(BaseWorker):
             total_loss = 0.0
             local_steps = 0
             inner_start = time.time()
-            for batch_idx, (batch_inputs, batch_policy_targets, batch_value_targets) in enumerate(
-                train_iterator, 1
-            ):
+            for batch_idx, (batch_inputs, batch_policy_targets, batch_value_targets) in enumerate(train_iterator, 1):
                 if self._is_stopped.is_set():
                     break
                 wait_if_paused(self._is_paused)
                 batch_inputs = batch_inputs.to(self.device, non_blocking=True)
                 batch_policy_targets = batch_policy_targets.to(self.device, non_blocking=True)
                 batch_value_targets = batch_value_targets.to(self.device, non_blocking=True)
+                smoothing = 0.1
+                confidence = 1.0 - smoothing
+                n_classes = batch_policy_targets.size(1)
+                smoothed_labels = batch_policy_targets * confidence + (1 - batch_policy_targets) * (smoothing / (n_classes - 1))
                 with autocast(device_type=self.device.type):
                     policy_preds, value_preds = self.model(batch_inputs)
-                    pol_loss = -(batch_policy_targets * torch.log_softmax(policy_preds, dim=1)).mean()
+                    pol_loss = -(smoothed_labels * torch.log_softmax(policy_preds, dim=1)).mean()
                     val_loss = F.mse_loss(value_preds.view(-1), batch_value_targets)
-                    loss = pol_loss + val_loss
+                    loss = (pol_loss + val_loss) / accumulation_steps
+
                 self.scaler.scale(loss).backward()
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-                self.optimizer.zero_grad()
-                total_loss += loss.item()
-                del batch_inputs, batch_policy_targets, batch_value_targets
-                torch.cuda.empty_cache()
-                self.batch_idx = batch_idx
+                accumulate_count += 1
+
+                if (accumulate_count % accumulation_steps == 0) or (batch_idx == len(loader)):
+                    total_norm = 0
+                    for p in self.model.parameters():
+                        if p.grad is not None:
+                            param_norm = p.grad.data.norm(2)
+                            total_norm += param_norm.item() ** 2
+                    total_norm = total_norm ** 0.5
+                    self.logger.info(f"Batch {batch_idx}: Gradient Norm = {total_norm:.4f}")
+
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad()
+                    accumulate_count = 0
                 if self.scheduler:
                     self.scheduler.step(epoch - 1 + batch_idx / len(loader))
+
+                total_loss += (pol_loss.item() + val_loss.item()) * batch_inputs.size(0)
+                del batch_inputs, batch_policy_targets, batch_value_targets, policy_preds, value_preds, loss
+                torch.cuda.empty_cache()
+
+                self.batch_idx = batch_idx
                 with self.lock:
                     self.total_batches_processed += 1
                     local_steps += 1
@@ -569,24 +597,20 @@ class ReinforcementWorker(BaseWorker):
                     and self.checkpoint_manager.should_save(batch_idx=self.total_batches_processed)
                 ):
                     checkpoint_data = {
-                        "model_state_dict": {k: v.cpu() for k, v in self.model.state_dict().items()},
-                        "optimizer_state_dict": {k: v for k, v in self.optimizer.state_dict().items()},
-                        "scheduler_state_dict": {
-                            k: v for k, v in self.scheduler.state_dict().items()
-                        }
-                        if self.scheduler
-                        else None,
-                        "epoch": epoch,
-                        "batch_idx": self.total_batches_processed,
-                        "iteration": iteration + 1,
-                        "training_stats": {
-                            "total_games_played": self.total_games_played,
-                            "results": self.results,
-                            "game_lengths": self.game_lengths,
+                        'model_state_dict': {k: v.cpu() for k, v in self.model.state_dict().items()},
+                        'optimizer_state_dict': {k: v for k, v in self.optimizer.state_dict().items()},
+                        'scheduler_state_dict': {k: v for k, v in self.scheduler.state_dict().items()} if self.scheduler else None,
+                        'epoch': epoch,
+                        'batch_idx': self.total_batches_processed,
+                        'iteration': iteration + 1,
+                        'training_stats': {
+                            'total_games_played': self.total_games_played,
+                            'results': self.results,
+                            'game_lengths': self.game_lengths,
                         },
-                        "filters": self.filters,
-                        "res_blocks": self.res_blocks,
-                        "inplace_relu": self.inplace_relu
+                        'filters': self.filters,
+                        'res_blocks': self.res_blocks,
+                        'inplace_relu': self.inplace_relu
                     }
                     self.checkpoint_manager.save(checkpoint_data)
                 if (
@@ -595,31 +619,25 @@ class ReinforcementWorker(BaseWorker):
                     and self.checkpoint_manager.should_save(iteration=self.total_batches_processed)
                 ):
                     checkpoint_data = {
-                        "model_state_dict": {k: v.cpu() for k, v in self.model.state_dict().items()},
-                        "optimizer_state_dict": {k: v for k, v in self.optimizer.state_dict().items()},
-                        "scheduler_state_dict": {
-                            k: v for k, v in self.scheduler.state_dict().items()
-                        }
-                        if self.scheduler
-                        else None,
-                        "epoch": epoch,
-                        "batch_idx": self.total_batches_processed,
-                        "iteration": self.total_batches_processed,
-                        "training_stats": {
-                            "total_games_played": self.total_games_played,
-                            "results": self.results,
-                            "game_lengths": self.game_lengths,
+                        'model_state_dict': {k: v.cpu() for k, v in self.model.state_dict().items()},
+                        'optimizer_state_dict': {k: v for k, v in self.optimizer.state_dict().items()},
+                        'scheduler_state_dict': {k: v for k, v in self.scheduler.state_dict().items()} if self.scheduler else None,
+                        'epoch': epoch,
+                        'batch_idx': self.total_batches_processed,
+                        'iteration': self.total_batches_processed,
+                        'training_stats': {
+                            'total_games_played': self.total_games_played,
+                            'results': self.results,
+                            'game_lengths': self.game_lengths,
                         },
-                        "filters": self.filters,
-                        "res_blocks": self.res_blocks,
-                        "inplace_relu": self.inplace_relu
+                        'filters': self.filters,
+                        'res_blocks': self.res_blocks,
+                        'inplace_relu': self.inplace_relu
                     }
                     self.checkpoint_manager.save(checkpoint_data)
-            avg_loss = total_loss / len(loader) if len(loader) > 0 else 0.0
+            avg_loss = total_loss / len(loader.dataset) if len(loader.dataset) > 0 else 0.0
             duration = time.time() - epoch_start
-            self.logger.info(
-                f"Epoch {epoch}/{self.num_epochs} average loss: {avg_loss:.4f} in {format_time_left(duration)}."
-            )
+            self.logger.info(f"Epoch {epoch}/{self.num_epochs} average loss: {avg_loss:.4f} in {format_time_left(duration)}.")
             if self.stats_fn:
                 self.stats_fn(
                     {
