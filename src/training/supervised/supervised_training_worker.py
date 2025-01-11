@@ -5,7 +5,7 @@ from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 from src.models.model import ChessModel
 from src.utils.datasets import H5Dataset
-from src.utils.common_utils import format_time_left, wait_if_paused, initialize_model, initialize_optimizer, initialize_scheduler, initialize_random_seeds
+from src.utils.common_utils import format_time_left, wait_if_paused, initialize_optimizer, initialize_scheduler, initialize_random_seeds
 from src.utils.chess_utils import get_total_moves
 from src.utils.checkpoint_manager import CheckpointManager
 
@@ -18,7 +18,7 @@ class SupervisedWorker(BaseWorker):
     initial_batches_processed = pyqtSignal(int)
     lr_update = pyqtSignal(int, float)
 
-    def __init__(self, epochs, batch_size, learning_rate, weight_decay, save_checkpoints, checkpoint_interval, dataset_path, train_indices_path, val_indices_path, model_path=None, automatic_batch_size=False, checkpoint_type='epoch', checkpoint_interval_minutes=60, checkpoint_batch_interval=1000, optimizer_type='adamw', scheduler_type='cosineannealingwarmrestarts', output_model_path='models/saved_models/pre_trained_model.pth', num_workers=4, random_seed=42, filters=64, res_blocks=5, inplace_relu=True):
+    def __init__(self, epochs, batch_size, learning_rate, weight_decay, save_checkpoints, checkpoint_interval, dataset_path, train_indices_path, val_indices_path, model_path=None, checkpoint_type='epoch', checkpoint_interval_minutes=60, checkpoint_batch_interval=1000, optimizer_type='adamw', scheduler_type='cosineannealingwarmrestarts', num_workers=4, random_seed=42):
         super().__init__()
         self.save_checkpoints = save_checkpoints
         self.checkpoint_interval = checkpoint_interval
@@ -27,7 +27,6 @@ class SupervisedWorker(BaseWorker):
         self.checkpoint_batch_interval = checkpoint_batch_interval
         self.checkpoint_dir = os.path.join('models', 'checkpoints', 'supervised')
         self.random_seed = random_seed
-        self.automatic_batch_size = automatic_batch_size
         self.batch_size = batch_size
         self.optimizer_type = optimizer_type
         self.learning_rate = learning_rate
@@ -41,7 +40,6 @@ class SupervisedWorker(BaseWorker):
         self.train_indices_path = train_indices_path
         self.val_indices_path = val_indices_path
         self.model_path = model_path
-        self.output_model_path = output_model_path
         self.loss_fn = self.epoch_loss_update.emit
         self.val_loss_fn = self.val_loss_update.emit
         self.accuracy_fn = self.epoch_accuracy_update.emit
@@ -51,12 +49,7 @@ class SupervisedWorker(BaseWorker):
         self.initial_batches_processed_callback = self.initial_batches_processed.emit
         self.lock = threading.Lock()
         self.total_batches_processed = 0
-        self.filters = filters
-        self.res_blocks = res_blocks
-        self.inplace_relu = inplace_relu
-        self.model, inferred_batch_size, loaded_architecture = self._init_model()
-        if inferred_batch_size:
-            self.batch_size = inferred_batch_size
+        self.model = ChessModel(get_total_moves()).to(self.device)
         self.optimizer = initialize_optimizer(
             self.model,
             self.optimizer_type,
@@ -71,69 +64,6 @@ class SupervisedWorker(BaseWorker):
             checkpoint_interval=self.checkpoint_interval,
             logger=self.logger
         )
-        if loaded_architecture:
-            self.filters = loaded_architecture["filters"]
-            self.res_blocks = loaded_architecture["res_blocks"]
-            self.inplace_relu = loaded_architecture["inplace_relu"]
-
-    def _init_model(self):
-        loaded_architecture = None
-        if self.model_path and os.path.exists(self.model_path):
-            self.logger.info(f"Loading pretrained model from {self.model_path}")
-            checkpoint = torch.load(self.model_path, map_location=self.device)
-
-            if isinstance(checkpoint, dict):
-                model_state = checkpoint.get("model_state_dict", checkpoint)
-                filters = checkpoint.get("filters", 64)
-                res_blocks = checkpoint.get("res_blocks", 5)
-                inplace_relu = checkpoint.get("inplace_relu", True)
-                loaded_architecture = {
-                    "filters": filters,
-                    "res_blocks": res_blocks,
-                    "inplace_relu": inplace_relu,
-                }
-            else:
-                model_state = checkpoint
-                loaded_architecture = {
-                    "filters": 64,
-                    "res_blocks": 5,
-                    "inplace_relu": True,
-                }
-
-            model, inferred_batch_size = initialize_model(
-                ChessModel,
-                get_total_moves(),
-                device=self.device,
-                automatic_batch_size=self.automatic_batch_size,
-                logger=self.logger,
-                filters=loaded_architecture["filters"],
-                res_blocks=loaded_architecture["res_blocks"],
-                inplace_relu=loaded_architecture["inplace_relu"],
-            )
-            self.logger.info(
-                f"Model initialized with filters={loaded_architecture['filters']}, "
-                f"res_blocks={loaded_architecture['res_blocks']}, inplace_relu={loaded_architecture['inplace_relu']}"
-            )
-            try:
-                model.load_state_dict(model_state)
-                self.logger.info("Model state_dict loaded successfully.")
-            except Exception as e:
-                self.logger.error(f"Failed to load state_dict into model: {str(e)}")
-                raise ValueError("Model loading failed.")
-            return model, inferred_batch_size, loaded_architecture
-        else:
-            self.logger.info("No existing model found. Creating new model with specified configuration.")
-            model, inferred_batch_size = initialize_model(
-                ChessModel,
-                get_total_moves(),
-                device=self.device,
-                automatic_batch_size=self.automatic_batch_size,
-                logger=self.logger,
-                filters=self.filters,
-                res_blocks=self.res_blocks,
-                inplace_relu=self.inplace_relu,
-            )
-            return model, inferred_batch_size, loaded_architecture
 
     def run_task(self):
         self.logger.info("Starting supervised training worker.")
@@ -189,9 +119,6 @@ class SupervisedWorker(BaseWorker):
                         start_epoch = checkpoint['epoch'] + 1
                         skip_batches = checkpoint.get('batch_idx', 0) or 0
                         self.total_batches_processed = skip_batches
-                        self.filters = checkpoint.get('filters', self.filters)
-                        self.res_blocks = checkpoint.get('res_blocks', self.res_blocks)
-                        self.inplace_relu = checkpoint.get('inplace_relu', self.inplace_relu)
                         self.logger.info(f"Resuming from epoch {start_epoch - 1}, batch {skip_batches}.")
                     else:
                         self.logger.warning("No epoch info in checkpoint. Starting from epoch 1.")
@@ -238,29 +165,26 @@ class SupervisedWorker(BaseWorker):
                         'epoch': epoch,
                         'batch_idx': self.total_batches_processed,
                         'iteration': None,
-                        'training_stats': {},
-                        'filters': self.filters,
-                        'res_blocks': self.res_blocks,
-                        'inplace_relu': self.inplace_relu
+                        'training_stats': {}
                     }
                     self.checkpoint_manager.save(checkpoint_data)
                 if isinstance(self.scheduler, optim.lr_scheduler.StepLR):
                     self.scheduler.step()
             if not self._is_stopped.is_set():
                 try:
+                    final_dir = os.path.join("models", "saved_models")
+                    final_path = os.path.join(final_dir, "pre_trained_model.pth")
+                    os.makedirs(final_dir, exist_ok=True)
                     checkpoint = {
                         "model_state_dict": self.model.state_dict(),
                         "optimizer_state_dict": self.optimizer.state_dict(),
                         "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler else None,
                         "epoch": epoch,
                         "batch_idx": self.total_batches_processed,
-                        "training_stats": {},
-                        "filters": self.filters,
-                        "res_blocks": self.res_blocks,
-                        "inplace_relu": self.inplace_relu
+                        "training_stats": {}
                     }
-                    torch.save(checkpoint, self.output_model_path)
-                    self.logger.info(f"Final model saved at {self.output_model_path}")
+                    torch.save(checkpoint, final_path)
+                    self.logger.info(f"Final model saved at {final_path}")
                 except Exception as e:
                     self.logger.error(f"Error saving final model: {str(e)}")
         except Exception as e:
@@ -345,10 +269,7 @@ class SupervisedWorker(BaseWorker):
                         "epoch": epoch,
                         "batch_idx": self.total_batches_processed,
                         "iteration": None,
-                        "training_stats": {},
-                        "filters": self.filters,
-                        "res_blocks": self.res_blocks,
-                        "inplace_relu": self.inplace_relu
+                        "training_stats": {}
                     }
                     self.checkpoint_manager.save(checkpoint_data)
                 if self.save_checkpoints and self.checkpoint_type == 'iteration' and self.checkpoint_manager.should_save(iteration=self.total_batches_processed):
@@ -359,10 +280,7 @@ class SupervisedWorker(BaseWorker):
                         "epoch": epoch,
                         "batch_idx": self.total_batches_processed,
                         "iteration": self.total_batches_processed,
-                        "training_stats": {},
-                        "filters": self.filters,
-                        "res_blocks": self.res_blocks,
-                        "inplace_relu": self.inplace_relu
+                        "training_stats": {}
                     }
                     self.checkpoint_manager.save(checkpoint_data)
                 del inputs, policy_targets, value_targets, policy_preds, value_preds, loss

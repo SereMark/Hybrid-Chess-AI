@@ -235,10 +235,6 @@ class BaseTab(QWidget):
     def update_time_left(self, time_left_str):
         self.remaining_time_label.setText(f"Time Left: {time_left_str}")
 
-    def setup_batch_size_control(self, automatic_batch_size_checkbox, batch_size_input):
-        automatic_batch_size_checkbox.toggled.connect(lambda checked: self.toggle_widget_state([batch_size_input], state=not checked, attribute="enabled"))
-        self.toggle_widget_state([batch_size_input], state=not automatic_batch_size_checkbox.isChecked(), attribute="enabled")
-
     def setup_checkpoint_controls(self, save_checkpoints_checkbox, checkpoint_type_combo, interval_widgets):
         self.save_checkpoints_checkbox = save_checkpoints_checkbox
         save_checkpoints_checkbox.stateChanged.connect(lambda state: self.on_checkpoint_enabled_changed(state, checkpoint_type_combo, interval_widgets))

@@ -42,8 +42,6 @@ class SupervisedTrainingSubTab(BaseTab):
         self.layout().insertWidget(3, self.training_group)
         self.layout().insertWidget(4, self.checkpoint_group)
 
-        self.setup_batch_size_control(self.automatic_batch_size_checkbox, self.batch_size_input)
-
         interval_widgets = {
             'epoch': self.epoch_interval_widget,
             'time': self.time_interval_widget,
@@ -69,35 +67,9 @@ class SupervisedTrainingSubTab(BaseTab):
         layout.addWidget(label_model_path, 0, 0)
         layout.addLayout(self.create_browse_layout(self.model_path_input, model_browse_button), 0, 1, 1, 3)
 
-        label_filters = QLabel("Filter Amount:")
-        self.filters_input = QLineEdit("64")
-
-        label_res_blocks = QLabel("Residual Blocks:")
-        self.res_blocks_input = QLineEdit("5")
-
-        label_inplace = QLabel("Inplace ReLU:")
-        self.inplace_checkbox = QCheckBox()
-        self.inplace_checkbox.setChecked(True)
-
-        layout.addWidget(label_filters, 1, 0)
-        layout.addWidget(self.filters_input, 1, 1)
-        layout.addWidget(label_res_blocks, 1, 2)
-        layout.addWidget(self.res_blocks_input, 1, 3)
-        layout.addWidget(label_inplace, 2, 0)
-        layout.addWidget(self.inplace_checkbox, 2, 1)
-
         group.setLayout(layout)
 
-        self.model_path_input.textChanged.connect(self.on_model_path_changed)
-        self.on_model_path_changed(self.model_path_input.text())
-
         return group
-
-    def on_model_path_changed(self, text):
-        has_model_path = bool(text.strip())
-        self.filters_input.setEnabled(not has_model_path)
-        self.res_blocks_input.setEnabled(not has_model_path)
-        self.inplace_checkbox.setEnabled(not has_model_path)
 
     def create_dataset_group(self):
         group = QGroupBox("Dataset Settings")
@@ -140,8 +112,6 @@ class SupervisedTrainingSubTab(BaseTab):
 
         label2 = QLabel("Batch Size:")
         self.batch_size_input = QLineEdit("128")
-        self.automatic_batch_size_checkbox = QCheckBox("Automatic Batch Size")
-        self.automatic_batch_size_checkbox.setChecked(True)
 
         label3 = QLabel("Learning Rate:")
         self.learning_rate_input = QLineEdit("0.0005")
@@ -163,16 +133,10 @@ class SupervisedTrainingSubTab(BaseTab):
         label8 = QLabel("Random Seed:")
         self.random_seed_input = QLineEdit("42")
 
-        label9 = QLabel("Output Model Path:")
-        self.output_model_path_input = QLineEdit("models/saved_models/pre_trained_model.pth")
-        output_model_browse_button = QPushButton("Browse")
-        output_model_browse_button.clicked.connect(lambda: self.browse_file(self.output_model_path_input, "Select Output Model File", "PyTorch Files (*.pth *.pt)"))
-
         main_params_layout.addWidget(label1, 0, 0)
         main_params_layout.addWidget(self.epochs_input, 0, 1)
         main_params_layout.addWidget(label2, 0, 2)
         main_params_layout.addWidget(self.batch_size_input, 0, 3)
-        main_params_layout.addWidget(self.automatic_batch_size_checkbox, 0, 4)
 
         main_params_layout.addWidget(label3, 1, 0)
         main_params_layout.addWidget(self.learning_rate_input, 1, 1)
@@ -189,9 +153,6 @@ class SupervisedTrainingSubTab(BaseTab):
 
         main_params_layout.addWidget(label8, 4, 0)
         main_params_layout.addWidget(self.random_seed_input, 4, 1)
-
-        main_params_layout.addWidget(label9, 5, 0)
-        main_params_layout.addLayout(self.create_browse_layout(self.output_model_path_input, output_model_browse_button), 5, 1, 1, 3)
 
         main_params_box.setLayout(main_params_layout)
 
@@ -243,18 +204,14 @@ class SupervisedTrainingSubTab(BaseTab):
             QMessageBox.warning(self, "Input Error", str(e))
             return
 
-        automatic_batch_size = self.automatic_batch_size_checkbox.isChecked()
-        if automatic_batch_size:
-            batch_size = None
-        else:
-            try:
-                b = int(self.batch_size_input.text())
-                if b <= 0:
-                    raise ValueError("Batch Size must be a positive integer.")
-                batch_size = b
-            except ValueError as e:
-                QMessageBox.warning(self, "Input Error", str(e))
-                return
+        try:
+            b = int(self.batch_size_input.text())
+            if b <= 0:
+                raise ValueError("Batch Size must be a positive integer.")
+            batch_size = b
+        except ValueError as e:
+            QMessageBox.warning(self, "Input Error", str(e))
+            return
 
         optimizer_type = self.optimizer_type_combo.currentText().lower()
         scheduler_type = self.scheduler_type_combo.currentText().lower()
@@ -262,7 +219,6 @@ class SupervisedTrainingSubTab(BaseTab):
         train_indices_path = self.train_indices_input.text()
         val_indices_path = self.val_indices_input.text()
         model_path = self.model_path_input.text().strip() if self.model_path_input.text().strip() else None
-        output_model_path = self.output_model_path_input.text()
 
         if not all(os.path.exists(p) for p in [dataset_path, train_indices_path, val_indices_path]):
             QMessageBox.warning(self, "Error", "Dataset or indices files do not exist.")
@@ -315,9 +271,6 @@ class SupervisedTrainingSubTab(BaseTab):
         self.remaining_time_label.setText("Time Left: Calculating...")
         self.log_text_edit.clear()
 
-        if not os.path.exists(os.path.dirname(output_model_path)):
-            os.makedirs(os.path.dirname(output_model_path), exist_ok=True)
-
         self.input_settings_group.setVisible(False)
         self.dataset_group.setVisible(False)
         self.training_group.setVisible(False)
@@ -344,20 +297,6 @@ class SupervisedTrainingSubTab(BaseTab):
             self.reset_to_initial_state()
             return
 
-        if model_path and os.path.isfile(model_path):
-            filters = None
-            res_blocks = None
-            inplace_relu = None
-        else:
-            try:
-                filters = int(self.filters_input.text())
-                res_blocks = int(self.res_blocks_input.text())
-            except ValueError:
-                QMessageBox.warning(self, "Input Error", "Filter Amount and Residual Blocks must be integers.")
-                self.reset_to_initial_state()
-                return
-            inplace_relu = self.inplace_checkbox.isChecked()
-
         started = self.start_worker(
             SupervisedWorker,
             epochs=epochs,
@@ -370,18 +309,13 @@ class SupervisedTrainingSubTab(BaseTab):
             train_indices_path=train_indices_path,
             val_indices_path=val_indices_path,
             model_path=model_path,
-            automatic_batch_size=automatic_batch_size,
             checkpoint_type=checkpoint_type,
             checkpoint_interval_minutes=checkpoint_interval_minutes,
             checkpoint_batch_interval=checkpoint_batch_interval,
             optimizer_type=optimizer_type,
             scheduler_type=scheduler_type,
-            output_model_path=output_model_path,
             num_workers=num_workers,
-            random_seed=random_seed,
-            filters=filters,
-            res_blocks=res_blocks,
-            inplace_relu=inplace_relu
+            random_seed=random_seed
         )
 
         if started:

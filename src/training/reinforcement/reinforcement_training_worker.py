@@ -6,26 +6,16 @@ from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 from src.models.model import ChessModel
 from src.utils.chess_utils import get_total_moves, get_move_mapping, convert_board_to_tensor, get_game_result
-from src.utils.common_utils import initialize_random_seeds, format_time_left, wait_if_paused, initialize_model, initialize_optimizer, initialize_scheduler, update_progress_time_left
+from src.utils.common_utils import initialize_random_seeds, format_time_left, wait_if_paused, initialize_optimizer, initialize_scheduler, update_progress_time_left
 from src.utils.mcts import MCTS
 from src.utils.checkpoint_manager import CheckpointManager
 
 def play_and_collect_wrapper(args):
-    (
-        model_state_dict, device_type, simulations, c_puct, temperature,
-        games_per_process, stop_event, pause_event, seed, stats_queue,
-        move_mapping, total_moves, filters, res_blocks, inplace_relu
-    ) = args
+    (model_state_dict, device_type, simulations, c_puct, temperature, games_per_process, stop_event, pause_event, seed, stats_queue, move_mapping, total_moves) = args
 
     initialize_random_seeds(seed)
     device = torch.device(device_type)
-    
-    model = ChessModel(
-        num_moves=total_moves,
-        filters=filters,
-        res_blocks=res_blocks,
-        inplace_relu=inplace_relu
-    )
+    model = ChessModel(total_moves).to(device)
     try:
         model.load_state_dict(model_state_dict)
     except Exception as e:
@@ -154,33 +144,7 @@ def play_and_collect_wrapper(args):
 class ReinforcementWorker(BaseWorker):
     stats_update = pyqtSignal(dict)
 
-    def __init__(
-        self,
-        model_path,
-        num_iterations,
-        num_games_per_iteration,
-        simulations,
-        c_puct,
-        temperature,
-        num_epochs,
-        batch_size,
-        automatic_batch_size,
-        num_threads,
-        save_checkpoints,
-        checkpoint_interval,
-        checkpoint_type,
-        checkpoint_interval_minutes,
-        checkpoint_batch_interval,
-        checkpoint_path=None,
-        random_seed=42,
-        optimizer_type="adamw",
-        learning_rate=0.0001,
-        weight_decay=1e-4,
-        scheduler_type="cosineannealingwarmrestarts",
-        filters=64,
-        res_blocks=5,
-        inplace_relu=True,
-    ):
+    def __init__(self, model_path, num_iterations, num_games_per_iteration, simulations, c_puct, temperature, num_epochs, batch_size, num_threads, save_checkpoints, checkpoint_interval, checkpoint_type, checkpoint_interval_minutes, checkpoint_batch_interval, random_seed=42, optimizer_type="adamw", learning_rate=0.0001, weight_decay=1e-4, scheduler_type="cosineannealingwarmrestarts"):
         super().__init__()
         self.save_checkpoints = save_checkpoints
         self.checkpoint_interval = checkpoint_interval
@@ -189,7 +153,6 @@ class ReinforcementWorker(BaseWorker):
         self.checkpoint_batch_interval = checkpoint_batch_interval
         self.checkpoint_dir = os.path.join("models", "checkpoints", "reinforcement")
         self.random_seed = random_seed
-        self.automatic_batch_size = automatic_batch_size
         self.batch_size = batch_size
         self.optimizer_type = optimizer_type
         self.learning_rate = learning_rate
@@ -206,26 +169,18 @@ class ReinforcementWorker(BaseWorker):
         self.temperature = temperature
         self.num_epochs = num_epochs
         self.num_threads = num_threads
-        self.checkpoint_path = checkpoint_path
         self.stats_fn = self.stats_update.emit
         self.lock = threading.Lock()
         self.results = []
         self.game_lengths = []
         self.total_games_played = 0
-        self.scaler = (
-            GradScaler(device="cuda") if self.device.type == "cuda" else GradScaler()
-        )
+        self.scaler = (GradScaler(device="cuda") if self.device.type == "cuda" else GradScaler())
         self.current_epoch = 1
         self.batch_idx = None
         self.start_iteration = 0
         self.move_mapping = get_move_mapping()
         self.total_moves = get_total_moves()
-        self.filters = filters
-        self.res_blocks = res_blocks
-        self.inplace_relu = inplace_relu
-        self.model, inferred_batch_size, loaded_architecture = self._init_model()
-        if inferred_batch_size:
-            self.batch_size = inferred_batch_size
+        self.model = ChessModel(self.total_moves).to(self.device)
         self.optimizer = initialize_optimizer(
             self.model,
             self.optimizer_type,
@@ -241,70 +196,8 @@ class ReinforcementWorker(BaseWorker):
             logger=self.logger,
         )
         self.total_batches_processed = 0
+        self.model_state_dict = None
         self._compute_total_steps()
-        if loaded_architecture:
-            self.filters = loaded_architecture["filters"]
-            self.res_blocks = loaded_architecture["res_blocks"]
-            self.inplace_relu = loaded_architecture["inplace_relu"]
-
-    def _init_model(self):
-        loaded_architecture = None
-        if self.model_path and os.path.exists(self.model_path):
-            self.logger.info(f"Loading pretrained model from {self.model_path}")
-            checkpoint = torch.load(self.model_path, map_location=self.device)
-
-            if isinstance(checkpoint, dict):
-                model_state = checkpoint.get("model_state_dict", checkpoint)
-                filters = checkpoint.get("filters", self.filters)
-                res_blocks = checkpoint.get("res_blocks", self.res_blocks)
-                inplace_relu = checkpoint.get("inplace_relu", self.inplace_relu)
-                loaded_architecture = {
-                    "filters": filters,
-                    "res_blocks": res_blocks,
-                    "inplace_relu": inplace_relu,
-                }
-            else:
-                model_state = checkpoint
-                loaded_architecture = {
-                    "filters": self.filters,
-                    "res_blocks": self.res_blocks,
-                    "inplace_relu": self.inplace_relu,
-                }
-
-            self.filters = loaded_architecture["filters"]
-            self.res_blocks = loaded_architecture["res_blocks"]
-            self.inplace_relu = loaded_architecture["inplace_relu"]
-            model, inferred_batch_size = initialize_model(
-                ChessModel,
-                num_moves=self.total_moves,
-                device=self.device,
-                automatic_batch_size=self.automatic_batch_size,
-                logger=self.logger,
-                filters=self.filters,
-                res_blocks=self.res_blocks,
-                inplace_relu=self.inplace_relu
-            )
-            self.logger.info(f"Model initialized with filters={self.filters}, res_blocks={self.res_blocks}, inplace_relu={self.inplace_relu}")
-            try:
-                model.load_state_dict(model_state)
-                self.logger.info("Model state_dict loaded successfully.")
-            except Exception as e:
-                self.logger.error(f"Failed to load state_dict into model: {str(e)}")
-                raise ValueError("Model loading failed due to architecture mismatch.")
-            return model, inferred_batch_size, loaded_architecture
-        else:
-            self.logger.info("No existing model found. Creating new model with specified configuration.")
-            model, inferred_batch_size = initialize_model(
-                ChessModel,
-                num_moves=self.total_moves,
-                device=self.device,
-                automatic_batch_size=self.automatic_batch_size,
-                logger=self.logger,
-                filters=self.filters,
-                res_blocks=self.res_blocks,
-                inplace_relu=self.inplace_relu
-            )
-            return model, inferred_batch_size, loaded_architecture
 
     def _compute_total_steps(self):
         games_per_iteration = self.num_games_per_iteration
@@ -317,38 +210,22 @@ class ReinforcementWorker(BaseWorker):
 
     def run_task(self):
         self.logger.info("Initializing reinforcement worker with model and optimizer.")
-        if self.checkpoint_path and os.path.exists(self.checkpoint_path):
-            checkpoint = self.checkpoint_manager.load(
-                self.checkpoint_path, self.device, self.model, self.optimizer, self.scheduler
-            )
+        if self.model_path and os.path.exists(self.model_path):
+            checkpoint = self.checkpoint_manager.load(self.model_path, self.device, self.model, self.optimizer, self.scheduler)
             if checkpoint:
-                self.start_iteration = checkpoint.get("iteration", 0)
-                training_stats = checkpoint.get("training_stats", {})
-                self.total_games_played = training_stats.get("total_games_played", 0)
-                self.results = training_stats.get("results", [])
-                self.game_lengths = training_stats.get("game_lengths", [])
-                batch_in_ckpt = checkpoint.get("batch_idx", 0)
-                self.total_batches_processed = batch_in_ckpt
-                self.filters = checkpoint.get("filters", self.filters)
-                self.res_blocks = checkpoint.get("res_blocks", self.res_blocks)
-                self.inplace_relu = checkpoint.get("inplace_relu", self.inplace_relu)
-                self.logger.info(f"Resuming training from iteration {self.start_iteration}.")
-                if self.scheduler and checkpoint.get("scheduler_state_dict"):
-                    try:
-                        self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-                        self.logger.info("Scheduler state_dict loaded successfully.")
-                    except Exception as e:
-                        self.logger.error(f"Failed to load scheduler state_dict: {str(e)}")
+                self.start_iteration = checkpoint.get('iteration', 0)
+                self.current_epoch = checkpoint.get('epoch', 1)
+                self.batch_idx = checkpoint.get('batch_idx', None)
+                self.results = checkpoint.get('training_stats', {}).get('results', [])
+                self.game_lengths = checkpoint.get('training_stats', {}).get('game_lengths', [])
+                self.total_games_played = checkpoint.get('training_stats', {}).get('total_games_played', 0)
+                self.total_batches_processed = checkpoint.get('batch_idx', 0)
+                self.logger.info(f"Resuming from iteration {self.start_iteration}, epoch {self.current_epoch}, batch {self.batch_idx}.")
             else:
-                self.logger.warning("No valid checkpoint data found. Starting from scratch.")
-                self.start_iteration = 0
-                self.current_epoch = 1
+                self.logger.info("No valid checkpoint found. Starting from scratch.")
         else:
-            self.logger.info("No checkpoint found. Training from scratch.")
-            self.start_iteration = 0
-            self.current_epoch = 1
+            self.logger.info("No checkpoint path provided or file does not exist. Starting from scratch.")
         self.start_time = time.time()
-        self.model_state_dict = {k: v.cpu() for k, v in self.model.state_dict().items()}
         for iteration in range(self.start_iteration, self.num_iterations):
             if self._is_stopped.is_set():
                 break
@@ -371,10 +248,7 @@ class ReinforcementWorker(BaseWorker):
                         'game_lengths': self.game_lengths
                     },
                     'batch_idx': self.total_batches_processed,
-                    'epoch': self.current_epoch,
-                    'filters': self.filters,
-                    'res_blocks': self.res_blocks,
-                    'inplace_relu': self.inplace_relu
+                    'epoch': self.current_epoch
                 }
                 if self.checkpoint_type == "iteration" and self.checkpoint_manager.should_save(iteration=iteration + 1):
                     self.checkpoint_manager.save(checkpoint_data)
@@ -400,14 +274,11 @@ class ReinforcementWorker(BaseWorker):
                 "total_games_played": self.total_games_played,
                 "results": self.results,
                 "game_lengths": self.game_lengths,
-            },
-            "filters": self.filters,
-            "res_blocks": self.res_blocks,
-            "inplace_relu": self.inplace_relu
+            }
         }
         try:
             torch.save(checkpoint, final_path)
-            self.logger.info("Reinforcement training completed. Final model saved.")
+            self.logger.info(f"Final model saved at {final_path}")
         except Exception as e:
             self.logger.error(f"Error saving final model: {str(e)}")
         self.task_finished.emit()
@@ -433,7 +304,7 @@ class ReinforcementWorker(BaseWorker):
             gpp = games_per_process + (1 if i < remainder else 0)
             args.append(
                 (
-                    self.model_state_dict,
+                    self.model_state_dict if self.model_state_dict else {k: v.cpu() for k, v in self.model.state_dict().items()},
                     self.device.type,
                     self.simulations,
                     self.c_puct,
@@ -444,10 +315,7 @@ class ReinforcementWorker(BaseWorker):
                     seeds[i],
                     stats_queue,
                     self.move_mapping,
-                    self.total_moves,
-                    self.filters,
-                    self.res_blocks,
-                    self.inplace_relu
+                    self.total_moves
                 )
             )
         with Pool(processes=num_processes) as pool:
@@ -607,10 +475,7 @@ class ReinforcementWorker(BaseWorker):
                             'total_games_played': self.total_games_played,
                             'results': self.results,
                             'game_lengths': self.game_lengths,
-                        },
-                        'filters': self.filters,
-                        'res_blocks': self.res_blocks,
-                        'inplace_relu': self.inplace_relu
+                        }
                     }
                     self.checkpoint_manager.save(checkpoint_data)
                 if (
@@ -629,10 +494,7 @@ class ReinforcementWorker(BaseWorker):
                             'total_games_played': self.total_games_played,
                             'results': self.results,
                             'game_lengths': self.game_lengths,
-                        },
-                        'filters': self.filters,
-                        'res_blocks': self.res_blocks,
-                        'inplace_relu': self.inplace_relu
+                        }
                     }
                     self.checkpoint_manager.save(checkpoint_data)
             avg_loss = total_loss / len(loader.dataset) if len(loader.dataset) > 0 else 0.0

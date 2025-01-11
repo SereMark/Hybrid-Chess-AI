@@ -75,41 +75,15 @@ class EvaluationWorker(BaseWorker):
 
         if isinstance(checkpoint, dict):
             state_dict = checkpoint.get("model_state_dict", checkpoint)
-            filters = checkpoint.get("filters", None)
-            res_blocks = checkpoint.get("res_blocks", None)
-            inplace_relu = checkpoint.get("inplace_relu", True)
-
-            if filters is None:
-                try:
-                    initial_weight = state_dict['initial_block.0.weight']
-                    filters = initial_weight.shape[0]
-                    self.logger.info(f"Inferred filters={filters} from initial_block.0.weight")
-                except KeyError:
-                    self.logger.error("Could not infer 'filters' from checkpoint.")
-                    return None
-
-            if res_blocks is None:
-                res_layers = [k for k in state_dict.keys() if k.startswith('residual_layers.') and k.endswith('.conv1.weight')]
-                res_blocks = len(res_layers)
-                self.logger.info(f"Inferred res_blocks={res_blocks} from residual_layers")
         else:
             state_dict = checkpoint
-            filters = 64
-            res_blocks = 5
-            inplace_relu = True
             self.logger.warning("Checkpoint does not contain architecture parameters. Using default settings.")
 
         try:
-            model = ChessModel(
-                num_moves=get_total_moves(),
-                filters=filters,
-                res_blocks=res_blocks,
-                inplace_relu=inplace_relu
-            )
+            model = ChessModel(num_moves=get_total_moves())
             model.load_state_dict(state_dict)
             model.to(self.device)
             model.eval()
-            self.logger.info(f"Model initialized with filters={filters}, res_blocks={res_blocks}, inplace_relu={inplace_relu}")
             return model
         except Exception as e:
             self.logger.error(f"Failed to load state_dict into model: {str(e)}")

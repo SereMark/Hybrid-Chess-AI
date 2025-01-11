@@ -40,8 +40,6 @@ class ReinforcementTrainingSubTab(BaseTab):
         self.layout().insertWidget(2, self.parameters_group)
         self.layout().insertWidget(3, self.checkpoint_group)
 
-        self.setup_batch_size_control(self.automatic_batch_size_checkbox, self.batch_size_input)
-
         self.setup_checkpoint_controls(
             self.save_checkpoints_checkbox,
             self.checkpoint_type_combo,
@@ -80,33 +78,9 @@ class ReinforcementTrainingSubTab(BaseTab):
         layout.addWidget(label_model_path, 0, 0)
         layout.addLayout(self.create_browse_layout(self.model_path_input, model_browse_button), 0, 1, 1, 3)
 
-        label_filters = QLabel("Filter Amount:")
-        self.filters_input = QLineEdit("64")
-        label_res_blocks = QLabel("Residual Blocks:")
-        self.res_blocks_input = QLineEdit("5")
-        label_inplace = QLabel("Inplace ReLU:")
-        self.inplace_checkbox = QCheckBox()
-        self.inplace_checkbox.setChecked(True)
-
-        layout.addWidget(label_filters, 1, 0)
-        layout.addWidget(self.filters_input, 1, 1)
-        layout.addWidget(label_res_blocks, 1, 2)
-        layout.addWidget(self.res_blocks_input, 1, 3)
-        layout.addWidget(label_inplace, 2, 0)
-        layout.addWidget(self.inplace_checkbox, 2, 1)
-
         group.setLayout(layout)
 
-        self.model_path_input.textChanged.connect(self.on_model_path_changed)
-        self.on_model_path_changed(self.model_path_input.text())
-
         return group
-
-    def on_model_path_changed(self, text):
-        has_model_path = bool(text.strip())
-        self.filters_input.setEnabled(not has_model_path)
-        self.res_blocks_input.setEnabled(not has_model_path)
-        self.inplace_checkbox.setEnabled(not has_model_path)
 
     def create_parameters_group(self):
         group = QGroupBox("Self-Play Parameters")
@@ -127,8 +101,6 @@ class ReinforcementTrainingSubTab(BaseTab):
 
         label7 = QLabel("Batch Size:")
         self.batch_size_input = QLineEdit("128")
-        self.automatic_batch_size_checkbox = QCheckBox("Automatic Batch Size")
-        self.automatic_batch_size_checkbox.setChecked(True)
 
         label8 = QLabel("Number of Threads:")
         self.num_threads_input = QLineEdit("4")
@@ -166,22 +138,21 @@ class ReinforcementTrainingSubTab(BaseTab):
 
         layout.addWidget(label7, 3, 0)
         layout.addWidget(self.batch_size_input, 3, 1)
-        layout.addWidget(self.automatic_batch_size_checkbox, 3, 2)
+        layout.addWidget(label8, 3, 2)
+        layout.addWidget(self.num_threads_input, 3, 3)
 
-        layout.addWidget(label8, 4, 0)
-        layout.addWidget(self.num_threads_input, 4, 1)
-        layout.addWidget(label9, 4, 2)
-        layout.addWidget(self.random_seed_input, 4, 3)
+        layout.addWidget(label9, 4, 0)
+        layout.addWidget(self.random_seed_input, 4, 1)
+        layout.addWidget(label10, 4, 2)
+        layout.addWidget(self.optimizer_type_combo, 4, 3)
 
-        layout.addWidget(label10, 5, 0)
-        layout.addWidget(self.optimizer_type_combo, 5, 1)
-        layout.addWidget(label11, 5, 2)
-        layout.addWidget(self.learning_rate_input, 5, 3)
+        layout.addWidget(label11, 5, 0)
+        layout.addWidget(self.learning_rate_input, 5, 1)
+        layout.addWidget(label12, 5, 2)
+        layout.addWidget(self.weight_decay_input, 5, 3)
 
-        layout.addWidget(label12, 6, 0)
-        layout.addWidget(self.weight_decay_input, 6, 1)
-        layout.addWidget(label13, 6, 2)
-        layout.addWidget(self.scheduler_type_combo, 6, 3)
+        layout.addWidget(label13, 6, 0)
+        layout.addWidget(self.scheduler_type_combo, 6, 1)
 
         group.setLayout(layout)
         return group
@@ -218,21 +189,6 @@ class ReinforcementTrainingSubTab(BaseTab):
         layout.addWidget(self.time_interval_widget)
         layout.addWidget(self.batch_interval_widget)
 
-        row2 = QHBoxLayout()
-        label2 = QLabel("Resume from Checkpoint:")
-        row2.addWidget(label2)
-        self.checkpoint_path_input = QLineEdit("")
-        checkpoint_browse_button = QPushButton("Browse")
-        checkpoint_browse_button.clicked.connect(
-            lambda: self.browse_file(
-                self.checkpoint_path_input, 
-                "Select Checkpoint File", 
-                "PyTorch Files (*.pth *.pt)"
-            )
-        )
-        row2.addLayout(self.create_browse_layout(self.checkpoint_path_input, checkpoint_browse_button))
-        layout.addLayout(row2)
-
         group.setLayout(layout)
         return group
 
@@ -268,23 +224,18 @@ class ReinforcementTrainingSubTab(BaseTab):
             QMessageBox.warning(self, "Input Error", f"Invalid hyperparameter value: {str(e)}")
             return
 
-        automatic_batch_size = self.automatic_batch_size_checkbox.isChecked()
-        if automatic_batch_size:
-            batch_size = None
-        else:
-            try:
-                bs = int(self.batch_size_input.text())
-                if bs <= 0:
-                    raise ValueError("Batch Size must be a positive integer.")
-                batch_size = bs
-            except ValueError as e:
-                QMessageBox.warning(self, "Input Error", str(e))
-                return
+        try:
+            bs = int(self.batch_size_input.text())
+            if bs <= 0:
+                raise ValueError("Batch Size must be a positive integer.")
+            batch_size = bs
+        except ValueError as e:
+            QMessageBox.warning(self, "Input Error", str(e))
+            return
 
         opt_type = self.optimizer_type_combo.currentText().lower()
         sched_type = self.scheduler_type_combo.currentText()
         model_path = self.model_path_input.text().strip() if self.model_path_input.text().strip() else None
-        checkpoint_path = self.checkpoint_path_input.text().strip() if self.checkpoint_path_input.text().strip() else None
         save_checkpoints = self.save_checkpoints_checkbox.isChecked()
         ctype = self.checkpoint_type_combo.currentText().lower()
         ci = None
@@ -362,20 +313,6 @@ class ReinforcementTrainingSubTab(BaseTab):
 
         self.init_ui_state = False
 
-        if model_path and os.path.isfile(model_path):
-            filters = None
-            res_blocks = None
-            inplace_relu = None
-        else:
-            try:
-                filters = int(self.filters_input.text())
-                res_blocks = int(self.res_blocks_input.text())
-            except ValueError:
-                QMessageBox.warning(self, "Input Error", "Filter Amount and Residual Blocks must be integers.")
-                self.reset_to_initial_state()
-                return
-            inplace_relu = self.inplace_checkbox.isChecked()
-
         started = self.start_worker(
             ReinforcementWorker,
             model_path=model_path,
@@ -386,22 +323,17 @@ class ReinforcementTrainingSubTab(BaseTab):
             temperature=temp,
             num_epochs=ne,
             batch_size=batch_size,
-            automatic_batch_size=automatic_batch_size,
             num_threads=nt,
             save_checkpoints=save_checkpoints,
             checkpoint_interval=ci,
             checkpoint_type=ctype,
             checkpoint_interval_minutes=ci_m,
             checkpoint_batch_interval=ci_b,
-            checkpoint_path=checkpoint_path,
             random_seed=random_seed,
             optimizer_type=opt_type,
             learning_rate=lr,
             weight_decay=wd,
-            scheduler_type=sched_type,
-            filters=filters if not model_path else 64,
-            res_blocks=res_blocks if not model_path else 5,
-            inplace_relu=inplace_relu if not model_path else True
+            scheduler_type=sched_type
         )
 
         if started:
@@ -410,9 +342,6 @@ class ReinforcementTrainingSubTab(BaseTab):
             self.worker.progress_update.connect(self.update_progress)
         else:
             self.reset_to_initial_state()
-
-        if not checkpoint_path:
-            self.visualization.reset_visualization()
 
     def stop_self_play(self):
         self.stop_worker()

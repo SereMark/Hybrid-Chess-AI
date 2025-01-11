@@ -29,31 +29,31 @@ class ResidualUnit(nn.Module):
         return self.relu(out)
 
 class ChessModel(nn.Module):
-    def __init__(self, num_moves: int, filters: int = 64, res_blocks: int = 5, inplace_relu=True) -> None:
+    def __init__(self, num_moves: int) -> None:
         super().__init__()
         self.num_moves = num_moves
         self.initial_block = nn.Sequential(
-            nn.Conv2d(20, filters, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(filters),
-            nn.ReLU(inplace=inplace_relu),
+            nn.Conv2d(20, 48, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(48),
+            nn.ReLU(inplace=True),
         )
         self.residual_layers = nn.Sequential(
-            *(ResidualUnit(filters, filters, inplace_relu=inplace_relu) for _ in range(res_blocks))
+            *(ResidualUnit(48, 48, inplace_relu=True) for _ in range(3))
         )
         self.policy_head = nn.Sequential(
-            nn.Conv2d(filters, 2, kernel_size=1, bias=False),
+            nn.Conv2d(48, 2, kernel_size=1, bias=False),
             nn.BatchNorm2d(2),
-            nn.ReLU(inplace=inplace_relu),
+            nn.ReLU(inplace=True),
             nn.Flatten(),
             nn.Linear(2 * 8 * 8, self.num_moves),
         )
         self.value_head = nn.Sequential(
-            nn.Conv2d(filters, 1, kernel_size=1, bias=False),
+            nn.Conv2d(48, 1, kernel_size=1, bias=False),
             nn.BatchNorm2d(1),
-            nn.ReLU(inplace=inplace_relu),
+            nn.ReLU(inplace=True),
             nn.Flatten(),
             nn.Linear(1 * 8 * 8, 64),
-            nn.ReLU(inplace=inplace_relu),
+            nn.ReLU(inplace=True),
             nn.Linear(64, 1),
             nn.Tanh(),
         )

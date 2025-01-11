@@ -5,9 +5,6 @@ class MoveMapping:
         self.MOVE_MAPPING = {}
         self.INDEX_MAPPING = {}
         self.TOTAL_MOVES = 0
-        self._initialize_move_mappings()
-
-    def _initialize_move_mappings(self):
         idx = 0
         for from_sq in range(64):
             for to_sq in range(64):

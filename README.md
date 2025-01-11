@@ -58,13 +58,16 @@ A **PyQt5 Graphical User Interface (GUI)** is provided for:
    cd <repository-folder>
    ```
 
-2. **Create & Activate the Conda Environment**  
+2. **Download raw data**  
+   Download last month's chess games from the Lichess Database, and extract the ZIP into the "data/raw" directory. Now you should have the raw PGN file in the correct directory for training.
+
+3. **Create & Activate the Conda Environment**  
    ```bash
    conda env create -f environment.yml
    conda activate hybrid_chess_ai
    ```
 
-3. **Launch the GUI Application**  
+4. **Launch the GUI Application**  
    ```bash
    python -m src.main
    ```
@@ -75,8 +78,8 @@ A **PyQt5 Graphical User Interface (GUI)** is provided for:
 ### **Key Logic**
 
 - **`src.data_processing`**  
-  - **`data_preparation_worker.py`**: Processes PGN files into HDF5 datasets for supervised training.  
-  - **`opening_book_worker.py`**: Builds an opening book from PGN data.
+  - **`data_preparation_worker.py`**: Processes the raw PGN files into HDF5 datasets for supervised training.  
+  - **`opening_book_worker.py`**: Builds an opening book from the raw PGN data.
 
 - **`src.training`**  
   - **`supervised_training_worker.py`**: Runs supervised learning on the processed HDF5 dataset.  

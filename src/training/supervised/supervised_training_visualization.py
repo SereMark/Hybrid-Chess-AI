@@ -7,55 +7,68 @@ class SupervisedVisualization(BaseVisualizationWidget):
         self.reset_visualization()
 
     def init_visualization(self):
-        gs = self.figure.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
-        self.ax_policy_loss = self.figure.add_subplot(gs[0, 0])
-        self.ax_value_loss = self.figure.add_subplot(gs[0, 1])
-        self.ax_accuracy = self.figure.add_subplot(gs[1, 0])
-        self.ax_val_loss = self.figure.add_subplot(gs[1, 1])
+        grid_spec = self.figure.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
+
+        # Subplots
+        self.ax_policy_loss = self.figure.add_subplot(grid_spec[0, 0])
+        self.ax_value_loss = self.figure.add_subplot(grid_spec[0, 1])
+        self.ax_accuracy = self.figure.add_subplot(grid_spec[1, 0])
+        self.ax_val_loss = self.figure.add_subplot(grid_spec[1, 1])
+
+        # Plot configuration
         self.plots['policy_loss'] = BasePlot(self.ax_policy_loss, title='Policy Loss', xlabel='Batch', ylabel='Loss')
         self.plots['value_loss'] = BasePlot(self.ax_value_loss, title='Value Loss', xlabel='Batch', ylabel='Loss')
         self.plots['accuracy'] = BasePlot(self.ax_accuracy, title='Accuracy', xlabel='Batch', ylabel='Accuracy (%)')
         self.plots['val_loss'] = BasePlot(self.ax_val_loss, title='Validation Loss', xlabel='Epoch', ylabel='Loss')
+
+        # Lines for plotting
         self.line_policy_loss_train, = self.ax_policy_loss.plot([], [], label='Train Policy', color='blue', alpha=0.8)
         self.line_value_loss_train, = self.ax_value_loss.plot([], [], label='Train Value', color='blue', alpha=0.8)
         self.line_accuracy_train, = self.ax_accuracy.plot([], [], label='Train Accuracy', color='blue', alpha=0.8)
         self.line_policy_loss_val, = self.ax_val_loss.plot([], [], label='Val Policy', color='orange', alpha=0.8)
         self.line_value_loss_val, = self.ax_val_loss.plot([], [], label='Val Value', color='green', alpha=0.8)
-        self.line_total_loss_train = None
-        self.line_total_loss_val = None
+
+        # Add legends
         self.ax_policy_loss.legend(frameon=False, fontsize=10)
         self.ax_value_loss.legend(frameon=False, fontsize=10)
         self.ax_accuracy.legend(frameon=False, fontsize=10)
         self.ax_val_loss.legend(frameon=False, fontsize=10)
 
     def update_loss_plots(self, batch_idx, losses):
-        if not all(isinstance(v, (float, int)) and not np.isnan(v) and np.isfinite(v) for v in losses.values()):
+        if not all(isinstance(v, (float, int)) and np.isfinite(v) for v in losses.values()):
             return
+
         self.loss_batches.append(batch_idx)
         self.policy_losses_train.append(losses['policy'])
         self.value_losses_train.append(losses['value'])
+
         self.update_plot(self.line_policy_loss_train, self.loss_batches, self.policy_losses_train, 'policy_loss')
         self.update_plot(self.line_value_loss_train, self.loss_batches, self.value_losses_train, 'value_loss')
 
     def update_accuracy_plot(self, batch_idx, accuracy):
-        if not isinstance(accuracy, (float, int)) or np.isnan(accuracy) or not np.isfinite(accuracy):
+        if not isinstance(accuracy, (float, int)) and np.isfinite(accuracy):
             return
+
         self.accuracy_batches.append(batch_idx)
         self.accuracies_train.append(accuracy * 100)
+
         self.update_plot(self.line_accuracy_train, self.accuracy_batches, self.accuracies_train, 'accuracy')
 
     def update_validation_loss_plots(self, epoch_idx, losses):
-        if not all(isinstance(v, (float, int)) and not np.isnan(v) and np.isfinite(v) for v in losses.values()):
+        if not all(isinstance(v, (float, int)) and np.isfinite(v) for v in losses.values()):
             return
+
         self.epochs.append(epoch_idx)
         self.policy_losses_val.append(losses['policy'])
         self.value_losses_val.append(losses['value'])
+
         self.update_plot(self.line_policy_loss_val, self.epochs, self.policy_losses_val, 'val_loss')
         self.update_plot(self.line_value_loss_val, self.epochs, self.value_losses_val, 'val_loss')
 
     def update_validation_accuracy_plot(self, epoch_idx, accuracy):
-        if not isinstance(accuracy, (float, int)) or np.isnan(accuracy) or not np.isfinite(accuracy):
+        if not isinstance(accuracy, (float, int)) and np.isfinite(accuracy):
             return
+
         self.accuracy_epochs.append(epoch_idx)
         self.accuracies_val.append(accuracy * 100)
 
@@ -78,6 +91,4 @@ class SupervisedVisualization(BaseVisualizationWidget):
         self.policy_losses_val = []
         self.value_losses_val = []
         self.accuracies_val = []
-        self.total_losses_train = []
-        self.total_losses_val = []
         super().reset_visualization()
