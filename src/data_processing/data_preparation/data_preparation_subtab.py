@@ -29,8 +29,7 @@ class DataPreparationSubTab(BaseTab):
                 "pause_callback": self.pause_worker,
                 "resume_callback": self.resume_worker,
                 "start_new_callback": self.reset_to_initial_state
-            },
-            "Configure Parameters"
+            }
         )
         self.parameters_group = self.create_parameters_group()
         self.directories_group = self.create_directories_group()

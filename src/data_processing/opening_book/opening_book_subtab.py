@@ -30,8 +30,7 @@ class OpeningBookSubTab(BaseTab):
                 "pause_callback": self.pause_worker,
                 "resume_callback": self.resume_worker,
                 "start_new_callback": self.reset_to_initial_state
-            },
-            "Configure Parameters"
+            }
         )
         self.opening_book_group = self.create_opening_book_group()
         self.layout().insertWidget(1, self.opening_book_group)

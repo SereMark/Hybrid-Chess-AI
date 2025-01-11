@@ -29,9 +29,7 @@ class BenchmarkSubTab(BaseTab):
                 "pause_callback": self.pause_benchmark,
                 "resume_callback": self.resume_benchmark,
                 "start_new_callback": self.reset_to_initial_state
-            },
-            "Configure Parameters",
-            spacing=10
+            }
         )
         self.benchmark_group = self.create_benchmark_group()
         self.layout().insertWidget(1, self.benchmark_group)

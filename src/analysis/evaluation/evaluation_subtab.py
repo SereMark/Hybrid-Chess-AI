@@ -29,9 +29,7 @@ class EvaluationSubTab(BaseTab):
                 "pause_callback": self.pause_evaluation,
                 "resume_callback": self.resume_evaluation,
                 "start_new_callback": self.reset_to_initial_state
-            },
-            "Configure Parameters",
-            spacing=10
+            }
         )
         self.paths_group = self.create_paths_group()
         self.layout().insertWidget(1, self.paths_group)

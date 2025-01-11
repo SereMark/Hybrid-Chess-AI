@@ -1,45 +1,36 @@
-import datetime, traceback, threading
+import datetime
+import traceback
+import threading
 from PyQt5.QtCore import QObject, pyqtSignal
 
 class Logger(QObject):
+    # Signals
     log_signal = pyqtSignal(str, str)
+
+    # Log Levels
     LOG_LEVELS = {'DEBUG': 10, 'INFO': 20, 'WARNING': 30, 'ERROR': 40, 'CRITICAL': 50}
 
-    def __init__(self, log_signal=None, level='INFO', log_to_file=False, file_path='app.log', timestamp_format="%Y-%m-%d %H:%M:%S"):
+    def __init__(self, log_signal=None, level='INFO'):
         super().__init__()
+
+        # Configuration
         self.log_level = self.LOG_LEVELS.get(level.upper(), 20)
-        self.timestamp_format = timestamp_format
-        self.log_to_file = log_to_file
-        self.file_path = file_path
         self.lock = threading.Lock()
+
+        # Signal Setup
         self.log_signal = log_signal if log_signal else self.log_signal
-        if self.log_to_file:
-            try:
-                self.file = open(self.file_path, 'a', encoding='utf-8')
-            except Exception as e:
-                self.log_to_file = False
-                self.error(f"Failed to open log file {self.file_path}: {e}")
-
-    def _should_log(self, level):
-        return self.LOG_LEVELS.get(level.upper(), 20) >= self.log_level
-
-    def _log_internal(self, level, message):
-        now = datetime.datetime.now().strftime(self.timestamp_format)
-        thread_name = threading.current_thread().name
-        formatted = f"[{now}] [{thread_name}] [{level}] {message}"
-        self.log_signal.emit(level, formatted)
-        if self.log_to_file:
-            with self.lock:
-                try:
-                    self.file.write(formatted + '\n')
-                    self.file.flush()
-                except Exception as e:
-                    self.log_signal.emit('ERROR', f"Failed to write to log file: {e}")
 
     def log(self, level, message):
-        if self._should_log(level):
-            self._log_internal(level, message)
+        # Decide if we should log
+        if self.LOG_LEVELS.get(level.upper(), 20) >= self.log_level:
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            thread_name = threading.current_thread().name
+            formatted = f"[{now}] [{thread_name}] [{level}] {message}"
 
+            # Emit to signal
+            self.log_signal.emit(level, formatted)
+
+    # Convenience Methods for Common Log Levels
     def debug(self, message):
         self.log('DEBUG', message)
 
@@ -62,13 +53,3 @@ class Logger(QObject):
 
     def set_log_level(self, level):
         self.log_level = self.LOG_LEVELS.get(level.upper(), 20)
-
-    def close(self):
-        if self.log_to_file and hasattr(self, 'file') and not self.file.closed:
-            try:
-                self.file.close()
-            except Exception as e:
-                self.log('ERROR', f"Failed to close log file: {e}")
-
-    def __del__(self):
-        self.close()

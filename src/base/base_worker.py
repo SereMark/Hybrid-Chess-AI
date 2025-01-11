@@ -1,8 +1,10 @@
-import threading, traceback
-from PyQt5.QtCore import QObject, pyqtSignal
+import threading
+import traceback
 from src.utils.logger import Logger
+from PyQt5.QtCore import QObject, pyqtSignal
 
 class BaseWorker(QObject):
+    # Signals
     log_update = pyqtSignal(str, str)
     progress_update = pyqtSignal(int)
     time_left_update = pyqtSignal(str)
@@ -12,9 +14,13 @@ class BaseWorker(QObject):
 
     def __init__(self):
         super().__init__()
+
+        # Threading Events
         self._is_stopped = threading.Event()
         self._is_paused = threading.Event()
-        self._is_paused.set()
+        self._is_paused.set()  # Initially not paused
+
+        # Logger Setup
         self.logger = Logger(log_signal=self.log_update)
 
     def run(self):
@@ -52,3 +58,6 @@ class BaseWorker(QObject):
         self.logger.info(f"Worker {self.__class__.__name__} stopped.")
         self.task_finished.emit()
         self.paused.emit(False)
+
+    def run_task(self):
+        raise NotImplementedError("Subclasses must implement the 'run_task' method.")
