@@ -121,7 +121,7 @@ class SupervisedWorker(BaseWorker):
                 else:
                     self.logger.warning("No valid checkpoint found. Starting from epoch 1.")
             else:
-                self.logger.info("Checkpoint does not exist. Training from scratch.")
+                self.logger.info("No checkpoint path provided or checkpoint does not exist. Training from scratch.")
 
             # Emit initial batches processed
             self.initial_batches_processed.emit(self.total_batches_processed)
