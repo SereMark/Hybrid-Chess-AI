@@ -169,7 +169,6 @@ class ReinforcementWorker(BaseWorker):
         self.temperature = temperature
         self.num_epochs = num_epochs
         self.num_threads = num_threads
-        self.stats_fn = self.stats_update.emit
         self.lock = threading.Lock()
         self.results = []
         self.game_lengths = []
@@ -256,8 +255,8 @@ class ReinforcementWorker(BaseWorker):
                     self.checkpoint_manager.save(checkpoint_data)
             iteration_time = time.time() - iteration_start
             self.logger.info(f"Iteration {iteration + 1} finished in {format_time_left(iteration_time)}.")
-            if self.stats_fn:
-                self.stats_fn(
+            if self.stats_update.emit:
+                self.stats_update.emit(
                     {
                         "iteration": iteration + 1,
                         "total_games_played": self.total_games_played,
@@ -325,8 +324,8 @@ class ReinforcementWorker(BaseWorker):
             if "error" in st:
                 self.logger.error(st["error"])
                 continue
-            if self.stats_fn:
-                self.stats_fn(st)
+            if self.stats_update.emit:
+                self.stats_update.emit(st)
             with self.lock:
                 self.total_batches_processed += st.get("total_games", 0)
             update_progress_time_left(
@@ -500,8 +499,8 @@ class ReinforcementWorker(BaseWorker):
             avg_loss = total_loss / len(loader.dataset) if len(loader.dataset) > 0 else 0.0
             duration = time.time() - epoch_start
             self.logger.info(f"Epoch {epoch}/{self.num_epochs} average loss: {avg_loss:.4f} in {format_time_left(duration)}.")
-            if self.stats_fn:
-                self.stats_fn(
+            if self.stats_update.emit:
+                self.stats_update.emit(
                     {
                         "iteration": iteration + 1,
                         "epoch": epoch,
