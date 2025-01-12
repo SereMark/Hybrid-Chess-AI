@@ -41,77 +41,81 @@ def play_and_collect_wrapper(args: Tuple) -> Tuple[List[np.ndarray], List[np.nda
     game_lengths_list: List[int] = []
     avg_mcts_visits_list: List[float] = []
 
-    for _ in range(games_per_process):
-        if stop_event.is_set():
-            break
-        wait_if_paused(pause_event)
-
-        board = chess.Board()
-        mcts = MCTS(lambda board: policy_value_fn(board, model, device), c_puct, simulations)
-        mcts.set_root_node(board)
-        states: List[np.ndarray] = []
-        mcts_probs: List[np.ndarray] = []
-        current_players: List[bool] = []
-        move_count = 0
-        max_moves = 200
-        total_visits = 0
-        num_moves = 0
-
-        while not board.is_game_over() and move_count < max_moves:
-            action_probs = mcts.get_move_probs(temperature)
-            if not action_probs:
+    try:
+        for _ in range(games_per_process):
+            if stop_event.is_set():
                 break
+            wait_if_paused(pause_event)
 
-            moves_list = list(action_probs.keys())
-            probs_array = np.array(list(action_probs.values()), dtype=np.float32)
-            probs_array /= np.sum(probs_array)
-            chosen_move = np.random.choice(moves_list, p=probs_array)
+            board = chess.Board()
+            mcts = MCTS(lambda board: policy_value_fn(board, model, device), c_puct, simulations)
+            mcts.set_root_node(board)
+            states: List[np.ndarray] = []
+            mcts_probs: List[np.ndarray] = []
+            current_players: List[bool] = []
+            move_count = 0
+            max_moves = 200
+            total_visits = 0
+            num_moves = 0
 
-            board_tensor = convert_board_to_tensor(board)
-            states.append(board_tensor)
+            while not board.is_game_over() and move_count < max_moves:
+                action_probs = mcts.get_move_probs(temperature)
+                if not action_probs:
+                    break
 
-            prob_arr = np.zeros(total_moves, dtype=np.float32)
-            for move, prob in action_probs.items():
-                idx = move_mapping.get_index_by_move(move)
-                if idx is not None and 0 <= idx < total_moves:
-                    prob_arr[idx] = prob
-            mcts_probs.append(prob_arr)
+                moves_list = list(action_probs.keys())
+                probs_array = np.array(list(action_probs.values()), dtype=np.float32)
+                probs_array /= np.sum(probs_array)
+                chosen_move = np.random.choice(moves_list, p=probs_array)
 
-            current_players.append(board.turn)
-            board.push(chosen_move)
-            mcts.update_with_move(chosen_move)
+                board_tensor = convert_board_to_tensor(board)
+                states.append(board_tensor)
 
-            if mcts.root:
-                total_visits += mcts.root.n_visits
-                num_moves += 1
+                prob_arr = np.zeros(total_moves, dtype=np.float32)
+                for move, prob in action_probs.items():
+                    idx = move_mapping.get_index_by_move(move)
+                    if idx is not None and 0 <= idx < total_moves:
+                        prob_arr[idx] = prob
+                mcts_probs.append(prob_arr)
 
-            move_count += 1
+                current_players.append(board.turn)
+                board.push(chosen_move)
+                mcts.update_with_move(chosen_move)
 
-        result = get_game_result(board)
-        if board.is_checkmate():
-            last_player = not board.turn
-            winners = [result if player == last_player else -result for player in current_players]
-        else:
-            winners = [0.0 for _ in current_players]
+                if mcts.root:
+                    total_visits += mcts.root.n_visits
+                    num_moves += 1
 
-        game_length = len(states)
-        visits_avg = (total_visits / num_moves) if num_moves > 0 else 0.0
+                move_count += 1
 
-        inputs_list.extend(states)
-        policy_targets_list.extend(mcts_probs)
-        value_targets_list.extend(winners)
-        results_list.append(result)
-        game_lengths_list.append(game_length)
-        avg_mcts_visits_list.append(visits_avg)
+            result = get_game_result(board)
+            if board.is_checkmate():
+                last_player = not board.turn
+                winners = [result if player == last_player else -result for player in current_players]
+            else:
+                winners = [0.0 for _ in current_players]
 
-    total_games = len(results_list)
-    wins = results_list.count(1.0)
-    losses = results_list.count(-1.0)
-    draws = results_list.count(0.0)
-    avg_length = (sum(game_lengths_list) / len(game_lengths_list)) if game_lengths_list else 0.0
-    avg_visits = (sum(avg_mcts_visits_list) / len(avg_mcts_visits_list)) if avg_mcts_visits_list else 0.0
+            game_length = len(states)
+            visits_avg = (total_visits / num_moves) if num_moves > 0 else 0.0
 
-    stats_queue.put({"total_games": total_games, "wins": wins, "losses": losses, "draws": draws, "avg_game_length": avg_length, "avg_mcts_visits": avg_visits})
+            inputs_list.extend(states)
+            policy_targets_list.extend(mcts_probs)
+            value_targets_list.extend(winners)
+            results_list.append(result)
+            game_lengths_list.append(game_length)
+            avg_mcts_visits_list.append(visits_avg)
+
+        total_games = len(results_list)
+        wins = results_list.count(1.0)
+        losses = results_list.count(-1.0)
+        draws = results_list.count(0.0)
+        avg_length = (sum(game_lengths_list) / len(game_lengths_list)) if game_lengths_list else 0.0
+        avg_visits = (sum(avg_mcts_visits_list) / len(avg_mcts_visits_list)) if avg_mcts_visits_list else 0.0
+
+        stats_queue.put({"total_games": total_games, "wins": wins, "losses": losses, "draws": draws, "avg_game_length": avg_length, "avg_mcts_visits": avg_visits})
+
+    except Exception as e:
+        stats_queue.put({"error": f"Exception in play_and_collect_wrapper: {str(e)}"})
 
     return (inputs_list, policy_targets_list, value_targets_list, results_list, game_lengths_list)
 
@@ -124,10 +128,11 @@ class ReinforcementWorker(BaseWorker):
         # Checkpoint settings
         self.save_checkpoints = save_checkpoints
         self.checkpoint_interval = checkpoint_interval
-        self.checkpoint_type = checkpoint_type
+        self.checkpoint_type = checkpoint_type.lower()
         self.checkpoint_interval_minutes = checkpoint_interval_minutes
         self.checkpoint_batch_interval = checkpoint_batch_interval
         self.checkpoint_dir = os.path.join("models", "checkpoints", "reinforcement")
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
 
         # General settings
         self.model_path = model_path
@@ -213,8 +218,8 @@ class ReinforcementWorker(BaseWorker):
             # Train on self-play data
             self._train_on_self_play_data(self_play_data, iteration)
 
-            # Save checkpoint if required
-            if self.save_checkpoints:
+            # Save checkpoint if required (Iteration Checkpoint)
+            if self.save_checkpoints and self.checkpoint_type == "iteration":
                 checkpoint_data = {
                     'model_state_dict': {k: v.cpu() for k, v in self.model.state_dict().items()},
                     'optimizer_state_dict': self.optimizer.state_dict(),
@@ -224,10 +229,10 @@ class ReinforcementWorker(BaseWorker):
                     'batch_idx': self.total_batches_processed,
                     'epoch': self.current_epoch,
                 }
-                if self.checkpoint_type == "iteration" and self.checkpoint_manager.should_save(iteration=iteration + 1):
-                    self.checkpoint_manager.save(checkpoint_data)
-                if self.checkpoint_type == "batch" and self.checkpoint_manager.should_save(batch_idx=self.total_batches_processed):
-                    self.checkpoint_manager.save(checkpoint_data)
+                if self.checkpoint_manager.should_save(iteration=iteration + 1):
+                    with self.lock:
+                        self.checkpoint_manager.save(checkpoint_data)
+                    self.logger.info(f"Checkpoint saved at iteration {iteration + 1}.")
 
             iteration_time = time.time() - iteration_start
             self.logger.info(f"Iteration {iteration + 1} finished in {format_time_left(iteration_time)}.")
@@ -309,7 +314,7 @@ class ReinforcementWorker(BaseWorker):
 
         total_positions = len(inputs_list)
         if total_positions == 0:
-            self.logger.warning("No self-play data generated this iteration.")
+            self.logger.warning("No self-play data generated this iteration. Skipping training.")
             return (torch.empty(0, device=self.device), torch.empty(0, device=self.device), torch.empty(0, device=self.device))
 
         self.total_games_played += self.num_games_per_iteration
@@ -329,7 +334,8 @@ class ReinforcementWorker(BaseWorker):
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, pin_memory=(self.device.type == "cuda"), num_workers=min(os.cpu_count(), 8))
 
         try:
-            self.scheduler = initialize_scheduler(self.optimizer, self.scheduler_type, total_steps=self.num_epochs * len(loader), logger=self.logger)
+            if self.scheduler is None:
+                self.scheduler = initialize_scheduler(self.optimizer, self.scheduler_type, total_steps=self.num_epochs * len(loader), logger=self.logger)
         except ValueError as ve:
             self.logger.error(f"Scheduler initialization error: {str(ve)}")
             self.scheduler = None
@@ -416,10 +422,8 @@ class ReinforcementWorker(BaseWorker):
                 update_progress_time_left(self.progress_update, self.time_left_update, self.start_time, self.total_batches_processed, self.total_steps)
 
                 # Save checkpoints based on type
-                if self.save_checkpoints:
-                    if self.checkpoint_type == "batch" and self.checkpoint_manager.should_save(batch_idx=self.total_batches_processed):
-                        self._save_checkpoint(iteration=iteration + 1)
-                    elif self.checkpoint_type == "iteration" and self.checkpoint_manager.should_save(iteration=self.total_batches_processed):
+                if self.save_checkpoints and self.checkpoint_type == "batch":
+                    if self.checkpoint_manager.should_save(batch_idx=self.total_batches_processed):
                         self._save_checkpoint(iteration=iteration + 1)
 
             # Calculate average loss for the epoch
@@ -434,14 +438,15 @@ class ReinforcementWorker(BaseWorker):
             epoch_start = time.time()
 
     def _save_checkpoint(self, iteration: int):
-        checkpoint_data = {
-            'model_state_dict': {k: v.cpu() for k, v in self.model.state_dict().items()},
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
-            'epoch': self.current_epoch,
-            'batch_idx': self.total_batches_processed,
-            'iteration': iteration,
-            'training_stats': {'total_games_played': self.total_games_played, 'results': self.results, 'game_lengths': self.game_lengths},
-        }
-        self.checkpoint_manager.save(checkpoint_data)
-        self.logger.info(f"Checkpoint saved at iteration {iteration}.")
+        with self.lock:
+            checkpoint_data = {
+                'model_state_dict': {k: v.cpu() for k, v in self.model.state_dict().items()},
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
+                'epoch': self.current_epoch,
+                'batch_idx': self.total_batches_processed,
+                'iteration': iteration,
+                'training_stats': {'total_games_played': self.total_games_played, 'results': self.results, 'game_lengths': self.game_lengths},
+            }
+            self.checkpoint_manager.save(checkpoint_data)
+            self.logger.info(f"Checkpoint saved at iteration {iteration}.")
