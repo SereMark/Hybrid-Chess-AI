@@ -1,7 +1,7 @@
 import math
 import numpy as np
 import threading
-from src.utils.chess_utils import get_game_result
+from src.utils.common_utils import get_game_result
 
 class TreeNode:
     def __init__(self, parent, prior_p, board, move):

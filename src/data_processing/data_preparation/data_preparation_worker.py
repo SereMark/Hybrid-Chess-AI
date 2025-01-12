@@ -7,8 +7,8 @@ import h5py
 import numpy as np
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.utils.chess_utils import convert_board_to_tensor, flip_board, flip_move, get_move_mapping, parse_game_result
-from src.utils.common_utils import estimate_total_games, update_progress_time_left, wait_if_paused
+from src.utils.chess_utils import convert_board_to_tensor, flip_board, flip_move, get_move_mapping
+from src.utils.common_utils import estimate_total_games, update_progress_time_left, wait_if_paused, parse_game_result
 
 class DataPreparationWorker(BaseWorker):
     stats_update = pyqtSignal(dict)

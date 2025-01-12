@@ -5,8 +5,7 @@ from collections import defaultdict
 import chess.pgn
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.utils.chess_utils import determine_outcome
-from src.utils.common_utils import estimate_total_games, update_progress_time_left, wait_if_paused
+from src.utils.common_utils import estimate_total_games, update_progress_time_left, wait_if_paused, determine_outcome
 
 class OpeningBookWorker(BaseWorker):
     positions_update = pyqtSignal(dict)

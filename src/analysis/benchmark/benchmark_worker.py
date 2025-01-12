@@ -7,8 +7,8 @@ import torch
 import numpy as np
 from src.base.base_worker import BaseWorker
 from src.utils.mcts import MCTS
-from src.utils.chess_utils import get_game_result, policy_value_fn, get_total_moves
-from src.utils.common_utils import wait_if_paused, update_progress_time_left
+from src.utils.chess_utils import policy_value_fn, get_total_moves
+from src.utils.common_utils import wait_if_paused, update_progress_time_left, get_game_result
 from src.models.model import ChessModel
 
 class BenchmarkWorker(BaseWorker):

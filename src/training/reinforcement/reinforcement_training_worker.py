@@ -14,8 +14,8 @@ import chess
 import chess.pgn
 from src.base.base_worker import BaseWorker
 from src.models.model import ChessModel
-from src.utils.chess_utils import convert_board_to_tensor, get_game_result, get_move_mapping, get_total_moves, policy_value_fn
-from src.utils.common_utils import format_time_left, initialize_optimizer, initialize_random_seeds, initialize_scheduler, update_progress_time_left, wait_if_paused
+from src.utils.chess_utils import convert_board_to_tensor, get_move_mapping, get_total_moves, policy_value_fn
+from src.utils.common_utils import format_time_left, initialize_optimizer, initialize_random_seeds, initialize_scheduler, update_progress_time_left, wait_if_paused, get_game_result
 from src.utils.mcts import MCTS
 from src.utils.checkpoint_manager import CheckpointManager
 

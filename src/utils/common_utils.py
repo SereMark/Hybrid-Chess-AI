@@ -110,3 +110,15 @@ def estimate_total_games(file_paths, avg_game_size=5000, max_games=None, logger=
     if max_games is not None:
         return min(total_games, max_games)
     return total_games
+
+def get_game_result(board):
+    result_map = {'1-0': 1.0, '0-1': -1.0, '1/2-1/2': 0.0}
+    return result_map.get(board.result(), 0.0)
+
+def parse_game_result(result):
+    result_map = {"1-0": 1.0, "0-1": -1.0, "1/2-1/2": 0.0}
+    return result_map.get(result, None)
+
+def determine_outcome(result):
+    outcome_map = {'1-0': 'win', '0-1': 'loss', '1/2-1/2': 'draw'}
+    return outcome_map.get(result)

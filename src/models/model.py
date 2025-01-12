@@ -11,7 +11,7 @@ class ResidualUnit(nn.Module):
         self.downsample = (
             nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(out_channels),
+                nn.BatchNorm2d(out_channels)
             )
             if stride != 1 or in_channels != out_channels
             else nn.Identity()
@@ -35,7 +35,7 @@ class ChessModel(nn.Module):
         self.initial_block = nn.Sequential(
             nn.Conv2d(20, 48, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(48),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=True)
         )
         self.residual_layers = nn.Sequential(
             *(ResidualUnit(48, 48, inplace_relu=True) for _ in range(3))
@@ -45,7 +45,7 @@ class ChessModel(nn.Module):
             nn.BatchNorm2d(2),
             nn.ReLU(inplace=True),
             nn.Flatten(),
-            nn.Linear(2 * 8 * 8, self.num_moves),
+            nn.Linear(2 * 8 * 8, self.num_moves)
         )
         self.value_head = nn.Sequential(
             nn.Conv2d(48, 1, kernel_size=1, bias=False),
@@ -55,7 +55,7 @@ class ChessModel(nn.Module):
             nn.Linear(1 * 8 * 8, 64),
             nn.ReLU(inplace=True),
             nn.Linear(64, 1),
-            nn.Tanh(),
+            nn.Tanh()
         )
         self._initialize_weights()
 

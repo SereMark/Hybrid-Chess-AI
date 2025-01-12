@@ -126,15 +126,3 @@ def policy_value_fn(board: chess.Board, model, device) -> Tuple[Dict[chess.Move,
             action_probs[move] = uniform_prob
 
     return action_probs, value_float
-
-def get_game_result(board):
-    result_map = {'1-0': 1.0, '0-1': -1.0, '1/2-1/2': 0.0}
-    return result_map.get(board.result(), 0.0)
-
-def parse_game_result(result):
-    result_map = {"1-0": 1.0, "0-1": -1.0, "1/2-1/2": 0.0}
-    return result_map.get(result, None)
-
-def determine_outcome(result):
-    outcome_map = {'1-0': 'win', '0-1': 'loss', '1/2-1/2': 'draw'}
-    return outcome_map.get(result)

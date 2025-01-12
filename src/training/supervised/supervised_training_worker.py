@@ -67,15 +67,6 @@ class SupervisedWorker(BaseWorker):
         # Initialize GradScaler for mixed precision
         self.scaler = GradScaler(device='cuda') if self.device.type == 'cuda' else GradScaler()
 
-        # Callback functions for emitting signals
-        self.loss_fn = self.epoch_loss_update.emit
-        self.val_loss_fn = self.val_loss_update.emit
-        self.accuracy_fn = self.epoch_accuracy_update.emit
-        self.batch_loss_fn = self.batch_loss_update.emit
-        self.batch_accuracy_fn = self.batch_accuracy_update.emit
-        self.lr_fn = self.lr_update.emit
-        self.initial_batches_processed_callback = self.initial_batches_processed.emit
-
         # Threading lock for thread-safe operations
         self.lock = threading.Lock()
 
@@ -120,7 +111,7 @@ class SupervisedWorker(BaseWorker):
             # Load checkpoint if available
             start_epoch = 1
             skip_batches = 0
-            if self.model_path and os.path.exists(self.model_path):
+            if os.path.exists(self.model_path):
                 checkpoint = self.checkpoint_manager.load(self.model_path, self.device, self.model, self.optimizer, self.scheduler)
                 if checkpoint:
                     start_epoch = checkpoint.get('epoch', 0) + 1
@@ -130,11 +121,10 @@ class SupervisedWorker(BaseWorker):
                 else:
                     self.logger.warning("No valid checkpoint found. Starting from epoch 1.")
             else:
-                self.logger.info("No checkpoint path provided or checkpoint does not exist. Training from scratch.")
+                self.logger.info("Checkpoint does not exist. Training from scratch.")
 
             # Emit initial batches processed
-            if self.initial_batches_processed_callback:
-                self.initial_batches_processed_callback(self.total_batches_processed)
+            self.initial_batches_processed.emit(self.total_batches_processed)
 
             # Training loop
             for epoch in range(start_epoch, self.epochs + 1):
@@ -169,10 +159,8 @@ class SupervisedWorker(BaseWorker):
                 )
 
                 # Emit epoch metrics
-                if self.loss_fn:
-                    self.loss_fn(epoch, {'policy': train_metrics['policy_loss'], 'value': train_metrics['value_loss']})
-                if self.accuracy_fn:
-                    self.accuracy_fn(epoch, train_metrics['accuracy'], val_metrics['accuracy'])
+                self.epoch_loss_update.emit(epoch, {'policy': train_metrics['policy_loss'], 'value': train_metrics['value_loss']})
+                self.epoch_accuracy_update.emit(epoch, train_metrics['accuracy'], val_metrics['accuracy'])
 
                 # Save checkpoint if required
                 if self.save_checkpoints and self.checkpoint_type == 'epoch' and self.checkpoint_manager.should_save(epoch=epoch):
@@ -291,22 +279,19 @@ class SupervisedWorker(BaseWorker):
                 with self.lock:
                     self.total_batches_processed += 1
 
-                # Emit batch metrics
-                if self.batch_loss_fn:
-                    self.batch_loss_fn(self.total_batches_processed, {'policy': policy_loss.item(), 'value': value_loss.item()})
-                if self.batch_accuracy_fn:
-                    self.batch_accuracy_fn(self.total_batches_processed, batch_accuracy)
-                if self.lr_fn:
+                # Emit batch metrics and progress updates every 100 batches
+                if self.total_batches_processed % 100 == 0:
+                    # Emit batch metrics
+                    self.batch_loss_update.emit(self.total_batches_processed, {'policy': policy_loss.item(), 'value': value_loss.item()})
+                    self.batch_accuracy_update.emit(self.total_batches_processed, batch_accuracy)
                     current_lr = self.optimizer.param_groups[0]['lr']
-                    self.lr_fn(self.total_batches_processed, current_lr)
+                    self.lr_update.emit(self.total_batches_processed, current_lr)
 
-                # Emit progress
-                if self.progress_update:
+                    # Emit progress
                     current_progress = min(int((self.total_batches_processed / (self.epochs * len(train_loader))) * 100), 100)
                     self.progress_update.emit(current_progress)
 
-                # Estimate and emit time left
-                if self.time_left_update:
+                    # Estimate and emit time left
                     elapsed_time = time.time() - start_time
                     if self.total_batches_processed > 0:
                         estimated_total_time = (elapsed_time / self.total_batches_processed) * (self.epochs * len(train_loader) - self.total_batches_processed)
@@ -316,11 +301,10 @@ class SupervisedWorker(BaseWorker):
                         self.time_left_update.emit("Calculating...")
 
                 # Save checkpoint based on batch interval or iteration
-                if self.save_checkpoints:
-                    if self.checkpoint_type == 'batch' and self.checkpoint_manager.should_save(batch_idx=self.total_batches_processed):
-                        self._save_checkpoint(epoch)
-                    elif self.checkpoint_type == 'iteration' and self.checkpoint_manager.should_save(iteration=self.total_batches_processed):
-                        self._save_checkpoint(epoch)
+                if self.checkpoint_type == 'batch' and self.checkpoint_manager.should_save(batch_idx=self.total_batches_processed):
+                    self._save_checkpoint(epoch)
+                elif self.checkpoint_type == 'iteration' and self.checkpoint_manager.should_save(iteration=self.total_batches_processed):
+                    self._save_checkpoint(epoch)
 
                 # Clean up to free memory
                 del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
@@ -332,8 +316,7 @@ class SupervisedWorker(BaseWorker):
             self.logger.info(f"Epoch {epoch}: Training Accuracy {metrics['accuracy']*100:.2f}%.")
 
             # Emit epoch metrics
-            if self.loss_fn:
-                self.loss_fn(epoch, {'policy': metrics['policy_loss'], 'value': metrics['value_loss']})
+            self.epoch_loss_update.emit(epoch, {'policy': metrics['policy_loss'], 'value': metrics['value_loss']})
             return metrics
         except Exception as e:
             self.logger.error(f"Error during training for epoch {epoch}: {str(e)}")
@@ -387,10 +370,8 @@ class SupervisedWorker(BaseWorker):
                 metrics = {'policy_loss': float('inf'), 'value_loss': float('inf'), 'accuracy': 0.0}
 
             # Emit validation metrics
-            if self.val_loss_fn:
-                self.val_loss_fn(epoch, {'policy': metrics['policy_loss'], 'value': metrics['value_loss']})
-            if self.accuracy_fn:
-                self.accuracy_fn(epoch, training_accuracy, metrics['accuracy'])
+            self.val_loss_update.emit(epoch, {'policy': metrics['policy_loss'], 'value': metrics['value_loss']})
+            self.epoch_accuracy_update.emit(epoch, training_accuracy, metrics['accuracy'])
 
             self.logger.info(f"Epoch {epoch}: Validation Policy Loss {metrics['policy_loss']:.4f}, "f"Value Loss {metrics['value_loss']:.4f}, Accuracy {metrics['accuracy']*100:.2f}%.")
 
