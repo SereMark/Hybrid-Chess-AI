@@ -111,7 +111,7 @@ class SupervisedWorker(BaseWorker):
             # Load checkpoint if available
             start_epoch = 1
             skip_batches = 0
-            if os.path.exists(self.model_path):
+            if self.model_path and os.path.exists(self.model_path):
                 checkpoint = self.checkpoint_manager.load(self.model_path, self.device, self.model, self.optimizer, self.scheduler)
                 if checkpoint:
                     start_epoch = checkpoint.get('epoch', 0) + 1
