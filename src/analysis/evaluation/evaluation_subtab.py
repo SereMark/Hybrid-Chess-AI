@@ -54,7 +54,7 @@ class EvaluationSubTab(BaseTab):
         group = QGroupBox("Evaluation Files")
         layout = QGridLayout()
         label_model = QLabel("Model Path:")
-        self.model_path_input = QLineEdit("models/saved_models/final_model.pth")
+        self.model_path_input = QLineEdit("")
         browse_model_btn = QPushButton("Browse")
         browse_model_btn.clicked.connect(lambda: self.browse_file(self.model_path_input, "Select Model File", "PyTorch Model (*.pth *.pt)"))
         label_indices = QLabel("Dataset Indices:")

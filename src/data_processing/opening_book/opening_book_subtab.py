@@ -2,20 +2,20 @@ from PyQt5.QtWidgets import QVBoxLayout, QLabel, QGridLayout, QLineEdit, QPushBu
 from src.data_processing.opening_book.opening_book_worker import OpeningBookWorker
 from src.data_processing.opening_book.opening_book_visualization import OpeningBookVisualization
 from src.base.base_tab import BaseTab
-import os, json
+import os
 
 class OpeningBookSubTab(BaseTab):
-    def __init__(self, parent=None, processed_data_dir_default="data/processed"):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.visualization = OpeningBookVisualization()
-        self.processed_data_dir_default = processed_data_dir_default
         self.init_ui()
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
+        
         self.setup_subtab(
             main_layout,
-            "Generate an Opening Book from raw PGN files.",
+            "Generate an Opening Book from a raw PGN file.",
             "Opening Book Generation Progress",
             "Opening Book Generation Logs",
             "Opening Book Visualization",
@@ -32,8 +32,10 @@ class OpeningBookSubTab(BaseTab):
                 "start_new_callback": self.reset_to_initial_state
             }
         )
+        
         self.opening_book_group = self.create_opening_book_group()
         self.layout().insertWidget(1, self.opening_book_group)
+        
         self.stop_button.setEnabled(False)
         if self.pause_button:
             self.pause_button.setEnabled(False)
@@ -43,73 +45,40 @@ class OpeningBookSubTab(BaseTab):
     def create_opening_book_group(self):
         group = QGroupBox("Opening Book Configuration")
         layout = QGridLayout()
-        label1 = QLabel("PGN File:")
+        
+        label_pgn_file = QLabel("PGN File:")
         self.pgn_file_input = QLineEdit("")
         pgn_browse_button = QPushButton("Browse")
         pgn_browse_button.clicked.connect(lambda: self.browse_file(self.pgn_file_input, "Select PGN File", "PGN Files (*.pgn)"))
-        label2 = QLabel("Max Games:")
-        self.ob_max_games_input = QLineEdit("100000")
-        label3 = QLabel("Minimum ELO:")
-        self.ob_min_elo_input = QLineEdit("1500")
-        label4 = QLabel("Max Opening Moves:")
-        self.ob_max_opening_moves_input = QLineEdit("20")
-        label5 = QLabel("Processed Data Directory:")
-        self.ob_processed_data_dir_input = QLineEdit(self.processed_data_dir_default)
-        ob_processed_browse_button = QPushButton("Browse")
-        ob_processed_browse_button.clicked.connect(lambda: self.browse_dir(self.ob_processed_data_dir_input, "Select Processed Data Directory"))
-        label6 = QLabel("Opening Book JSON:")
-        self.ob_json_input = QLineEdit("data/processed/opening_book.json")
-        ob_json_browse_button = QPushButton("Browse")
-        ob_json_browse_button.clicked.connect(lambda: self.browse_file(self.ob_json_input, "Select JSON File", "JSON Files (*.json)"))
-        ob_json_load_button = QPushButton("Load")
-        ob_json_load_button.clicked.connect(self.load_opening_book_json)
-        layout.addWidget(label1, 0, 0)
+        layout.addWidget(label_pgn_file, 0, 0)
         layout.addLayout(self.create_browse_layout(self.pgn_file_input, pgn_browse_button), 0, 1, 1, 3)
-        layout.addWidget(label2, 1, 0)
+        
+        label_max_games = QLabel("Max Games:")
+        self.ob_max_games_input = QLineEdit("100000")
+        layout.addWidget(label_max_games, 1, 0)
         layout.addWidget(self.ob_max_games_input, 1, 1)
-        layout.addWidget(label3, 1, 2)
+        
+        label_min_elo = QLabel("Minimum ELO:")
+        self.ob_min_elo_input = QLineEdit("1500")
+        layout.addWidget(label_min_elo, 1, 2)
         layout.addWidget(self.ob_min_elo_input, 1, 3)
-        layout.addWidget(label4, 2, 0)
+        
+        label_max_opening_moves = QLabel("Max Opening Moves:")
+        self.ob_max_opening_moves_input = QLineEdit("20")
+        layout.addWidget(label_max_opening_moves, 2, 0)
         layout.addWidget(self.ob_max_opening_moves_input, 2, 1)
-        layout.addWidget(label5, 3, 0)
-        layout.addLayout(self.create_browse_layout(self.ob_processed_data_dir_input, ob_processed_browse_button), 3, 1, 1, 3)
-        layout.addWidget(label6, 4, 0)
-        layout.addLayout(self.create_browse_layout(self.ob_json_input, ob_json_browse_button), 4, 1)
-        layout.addWidget(ob_json_load_button, 4, 3)
+        
         group.setLayout(layout)
         return group
 
-    def load_opening_book_json(self):
-        json_file_path = self.ob_json_input.text()
-        if not os.path.isfile(json_file_path):
-            QMessageBox.warning(self, "File Error", "The specified JSON file does not exist.")
-            return
-        try:
-            with open(json_file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except Exception as e:
-            QMessageBox.critical(self, "JSON Error", f"Could not load JSON: {str(e)}")
-            return
-        if not isinstance(data, dict):
-            QMessageBox.warning(self, "Format Error", "Invalid JSON format for opening book.")
-            return
-        self.visualization.update_opening_book({"positions": data})
-        if self.visualization_group:
-            self.visualization_group.setVisible(True)
-        if self.show_graphs_button:
-            self.show_graphs_button.setVisible(True)
-            self.show_graphs_button.setChecked(True)
-        if self.show_logs_button:
-            self.show_logs_button.setChecked(False)
-        QMessageBox.information(self, "Success", "Opening Book JSON loaded successfully.")
-
     def start_process(self):
         try:
-            pgn_file_path = self.pgn_file_input.text()
+            pgn_file_path = self.pgn_file_input.text().strip()
             max_games = int(self.ob_max_games_input.text())
             min_elo = int(self.ob_min_elo_input.text())
             max_opening_moves = int(self.ob_max_opening_moves_input.text())
-            if not os.path.exists(pgn_file_path):
+            
+            if not os.path.isfile(pgn_file_path):
                 QMessageBox.warning(self, "Input Error", "The specified PGN file does not exist.")
                 return
             if max_games <= 0 or min_elo <= 0 or max_opening_moves <= 0:
@@ -117,28 +86,25 @@ class OpeningBookSubTab(BaseTab):
         except ValueError:
             QMessageBox.warning(self, "Input Error", "Please ensure all inputs are valid positive integers.")
             return
-        processed_data_dir = self.ob_processed_data_dir_input.text()
-        if not os.path.exists(processed_data_dir):
-            try:
-                os.makedirs(processed_data_dir, exist_ok=True)
-            except Exception as e:
-                QMessageBox.critical(self, "Directory Error", str(e))
-                return
+        
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         if self.pause_button:
             self.pause_button.setEnabled(True)
         if self.resume_button:
             self.resume_button.setEnabled(False)
+        
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Starting...")
         self.remaining_time_label.setText("Time Left: Calculating...")
         self.log_text_edit.clear()
         self.visualization.reset_visualization()
+        
         self.opening_book_group.setVisible(False)
         self.progress_group.setVisible(True)
         self.control_group.setVisible(True)
         self.log_group.setVisible(True)
+        
         if self.visualization_group:
             self.visualization_group.setVisible(False)
         if self.show_logs_button:
@@ -147,8 +113,11 @@ class OpeningBookSubTab(BaseTab):
             self.show_graphs_button.setVisible(True)
         if self.start_new_button:
             self.start_new_button.setVisible(False)
+        
         self.init_ui_state = False
-        started = self.start_worker(OpeningBookWorker, pgn_file_path, max_games, min_elo, max_opening_moves, processed_data_dir)
+        
+        started = self.start_worker(OpeningBookWorker, pgn_file_path, max_games, min_elo, max_opening_moves)
+        
         if started:
             self.worker.positions_update.connect(self.visualization.update_opening_book)
         else:
@@ -162,6 +131,7 @@ class OpeningBookSubTab(BaseTab):
         self.opening_book_group.setVisible(True)
         self.progress_group.setVisible(False)
         self.log_group.setVisible(False)
+        
         if self.visualization_group:
             self.visualization_group.setVisible(False)
         if self.start_new_button:
@@ -174,11 +144,13 @@ class OpeningBookSubTab(BaseTab):
             self.show_logs_button.setChecked(True)
         if self.show_graphs_button:
             self.show_graphs_button.setChecked(False)
+        
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Idle")
         self.remaining_time_label.setText("Time Left: N/A")
         self.log_text_edit.clear()
         self.visualization.reset_visualization()
+        
         if self.start_button:
             self.start_button.setEnabled(True)
         if self.stop_button:
@@ -187,4 +159,5 @@ class OpeningBookSubTab(BaseTab):
             self.pause_button.setEnabled(False)
         if self.resume_button:
             self.resume_button.setEnabled(False)
+        
         self.init_ui_state = True

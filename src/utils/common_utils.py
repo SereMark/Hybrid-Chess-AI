@@ -3,6 +3,7 @@ import random
 import numpy as np
 import torch
 import torch.optim as optim
+import os
 
 def initialize_random_seeds(random_seed):
     torch.manual_seed(random_seed)
@@ -87,3 +88,25 @@ def update_progress_time_left(progress_signal, time_left_signal, start_time, cur
 def wait_if_paused(pause_event):
     while not pause_event.is_set():
         time.sleep(0.1)
+
+def estimate_total_games(file_paths, avg_game_size=5000, max_games=None, logger=None):
+    if isinstance(file_paths, str):
+        file_paths = [file_paths]
+    
+    total_games = 0
+    for file_path in file_paths:
+        try:
+            if not os.path.isfile(file_path):
+                if logger:
+                    logger.warning(f"File not found: {file_path}. Skipping.")
+                continue
+            fsize = os.path.getsize(file_path)
+            estimated_games = fsize // avg_game_size
+            total_games += estimated_games
+        except Exception as e:
+            if logger:
+                logger.error(f"Error estimating games for {file_path}: {e}")
+    
+    if max_games is not None:
+        return min(total_games, max_games)
+    return total_games
