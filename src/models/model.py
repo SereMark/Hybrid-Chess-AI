@@ -1,45 +1,61 @@
-import torch, torch.nn as nn
+import torch
+import torch.nn as nn
 
 class ResidualUnit(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, stride: int = 1, inplace_relu=True) -> None:
+    def __init__(self, in_channels: int, out_channels: int, stride: int = 1, inplace_relu: bool = True) -> None:
         super().__init__()
+
+        # First convolutional layer
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
         self.norm1 = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=inplace_relu)
+
+        # Second convolutional layer
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False)
         self.norm2 = nn.BatchNorm2d(out_channels)
+
+        # Downsampling layer to match dimensions when required
         self.downsample = (
             nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(out_channels)
-            )
-            if stride != 1 or in_channels != out_channels
-            else nn.Identity()
+            ) if stride != 1 or in_channels != out_channels else nn.Identity()
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        identity = x
+        identity = x  # Store input for residual connection
+
+        # Forward pass through the block
         out = self.conv1(x)
         out = self.norm1(out)
         out = self.relu(out)
         out = self.conv2(out)
         out = self.norm2(out)
+
+        # Add residual connection
         identity = self.downsample(identity)
         out += identity
+
         return self.relu(out)
 
 class ChessModel(nn.Module):
     def __init__(self, num_moves: int) -> None:
         super().__init__()
         self.num_moves = num_moves
+
+        # Initial convolutional block
         self.initial_block = nn.Sequential(
             nn.Conv2d(20, 48, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(48),
             nn.ReLU(inplace=True)
         )
+
+        # Stack of residual layers
         self.residual_layers = nn.Sequential(
             *(ResidualUnit(48, 48, inplace_relu=True) for _ in range(3))
         )
+
+        # Policy head for move prediction
         self.policy_head = nn.Sequential(
             nn.Conv2d(48, 2, kernel_size=1, bias=False),
             nn.BatchNorm2d(2),
@@ -47,6 +63,8 @@ class ChessModel(nn.Module):
             nn.Flatten(),
             nn.Linear(2 * 8 * 8, self.num_moves)
         )
+
+        # Value head for game evaluation
         self.value_head = nn.Sequential(
             nn.Conv2d(48, 1, kernel_size=1, bias=False),
             nn.BatchNorm2d(1),
@@ -57,9 +75,8 @@ class ChessModel(nn.Module):
             nn.Linear(64, 1),
             nn.Tanh()
         )
-        self._initialize_weights()
 
-    def _initialize_weights(self) -> None:
+        # Initialize weights for the model
         for module in self.modules():
             if isinstance(module, nn.Conv2d):
                 nn.init.kaiming_normal_(module.weight, nonlinearity="relu")
@@ -72,8 +89,12 @@ class ChessModel(nn.Module):
                 nn.init.zeros_(module.bias)
 
     def forward(self, x: torch.Tensor):
+        # Pass input through initial block and residual layers
         x = self.initial_block(x)
         x = self.residual_layers(x)
+
+        # Compute outputs from policy and value heads
         policy_output = self.policy_head(x)
         value_output = self.value_head(x)
+
         return policy_output, value_output
