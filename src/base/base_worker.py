@@ -21,7 +21,7 @@ class BaseWorker(QObject):
         self._is_paused.set()  # Initially not paused
 
         # Logger Setup
-        self.logger = Logger(log_signal=self.log_update)
+        self.logger = Logger(log_signal=self.log_update, level="DEBUG")
 
     def run(self):
         try:
