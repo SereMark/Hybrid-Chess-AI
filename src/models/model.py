@@ -2,25 +2,17 @@ import torch
 import torch.nn as nn
 
 class ResidualUnit(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, stride: int = 1, inplace_relu: bool = True) -> None:
+    def __init__(self) -> None:
         super().__init__()
 
         # First convolutional layer
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.norm1 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=inplace_relu)
+        self.conv1 = nn.Conv2d(48, 48, kernel_size=3, stride=1, padding=1, bias=False)
+        self.norm1 = nn.BatchNorm2d(48)
+        self.relu = nn.ReLU(inplace=True)
 
         # Second convolutional layer
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False)
-        self.norm2 = nn.BatchNorm2d(out_channels)
-
-        # Downsampling layer to match dimensions when required
-        self.downsample = (
-            nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(out_channels)
-            ) if stride != 1 or in_channels != out_channels else nn.Identity()
-        )
+        self.conv2 = nn.Conv2d(48, 48, kernel_size=3, padding=1, bias=False)
+        self.norm2 = nn.BatchNorm2d(48)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         identity = x  # Store input for residual connection
@@ -33,7 +25,6 @@ class ResidualUnit(nn.Module):
         out = self.norm2(out)
 
         # Add residual connection
-        identity = self.downsample(identity)
         out += identity
 
         return self.relu(out)
@@ -52,7 +43,7 @@ class ChessModel(nn.Module):
 
         # Stack of residual layers
         self.residual_layers = nn.Sequential(
-            *(ResidualUnit(48, 48, inplace_relu=True) for _ in range(3))
+            *(ResidualUnit() for _ in range(3))
         )
 
         # Policy head for move prediction
