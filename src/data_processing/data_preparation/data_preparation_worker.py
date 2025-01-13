@@ -69,7 +69,7 @@ class DataPreparationWorker(BaseWorker):
                         result = self._process_game(game_str)
                         if result is None:
                             continue
-                        self._process_data_entry(result, h5_file)
+                        self._process_data_entry(result)
                         self.total_games_processed += 1
                         file_games_count += 1
 
@@ -167,7 +167,7 @@ class DataPreparationWorker(BaseWorker):
 
         return inputs, policy_targets, value_targets
 
-    def _process_data_entry(self, data: dict, h5_file):
+    def _process_data_entry(self, data: dict):
         inputs = data["inputs"]
         policy_targets = data["policy_targets"]
         value_targets = data["value_targets"]
