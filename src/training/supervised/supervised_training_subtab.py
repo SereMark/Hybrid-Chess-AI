@@ -121,11 +121,11 @@ class SupervisedTrainingSubTab(BaseTab):
 
         label5 = QLabel("Optimizer Type:")
         self.optimizer_type_combo = QComboBox()
-        self.optimizer_type_combo.addItems(["AdamW", "SGD"])
+        self.optimizer_type_combo.addItems(["AdamW", "Adam", "SGD"])
 
         label6 = QLabel("Scheduler Type:")
         self.scheduler_type_combo = QComboBox()
-        self.scheduler_type_combo.addItems(["CosineAnnealingWarmRestarts", "StepLR"])
+        self.scheduler_type_combo.addItems(["CosineAnnealingWarmRestarts", "StepLR", "CosineAnnealing", "OneCycleLR", "None"])
 
         label7 = QLabel("Number of Workers:")
         self.num_workers_input = QLineEdit("4")

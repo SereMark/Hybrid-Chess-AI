@@ -67,9 +67,6 @@ class SupervisedWorker(BaseWorker):
         # Initialize GradScaler for mixed precision
         self.scaler = GradScaler(device='cuda') if self.device.type == 'cuda' else GradScaler()
 
-        # Threading lock for thread-safe operations
-        self.lock = threading.Lock()
-
         # Tracking variables
         self.total_batches_processed = 0
 
@@ -276,7 +273,7 @@ class SupervisedWorker(BaseWorker):
                 batch_accuracy = (predicted == policy_targets).sum().item() / policy_targets.size(0)
 
                 # Update tracking variables
-                with self.lock:
+                with threading.Lock():
                     self.total_batches_processed += 1
 
                 # Emit batch metrics and progress updates every 100 batches
