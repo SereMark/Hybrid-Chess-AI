@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QGridLayout, QLineEdit, QPushButton, QMessageBox, QLabel, QSpinBox, QDoubleSpinBox, QComboBox, QCheckBox
+from PyQt5.QtWidgets import QVBoxLayout, QGroupBox, QGridLayout, QLineEdit, QPushButton, QMessageBox, QLabel, QSpinBox, QDoubleSpinBox, QCheckBox
 from src.analysis.benchmark.benchmark_worker import BenchmarkWorker
 from src.analysis.benchmark.benchmark_visualization import BenchmarkVisualization
 from src.base.base_tab import BaseTab
@@ -55,8 +55,6 @@ class BenchmarkSubTab(BaseTab):
         layout = QGridLayout()
         label_bot1 = QLabel("Bot1 Path:")
         self.bot1_path_input = QLineEdit("")
-        self.bot1_file_type_combo = QComboBox()
-        self.bot1_file_type_combo.addItems(["Engine", "PTH"])
         self.bot1_use_mcts_checkbox = QCheckBox("Use MCTS")
         self.bot1_use_opening_book_checkbox = QCheckBox("Use Opening Book")
         browse_bot1_btn = QPushButton("Browse")
@@ -64,13 +62,11 @@ class BenchmarkSubTab(BaseTab):
             lambda: self.browse_file(
                 self.bot1_path_input,
                 "Select Bot1 File",
-                "All Files (*.*)"
+                "PTH Files (*.pth)"
             )
         )
         label_bot2 = QLabel("Bot2 Path:")
         self.bot2_path_input = QLineEdit("")
-        self.bot2_file_type_combo = QComboBox()
-        self.bot2_file_type_combo.addItems(["Engine", "PTH"])
         self.bot2_use_mcts_checkbox = QCheckBox("Use MCTS")
         self.bot2_use_opening_book_checkbox = QCheckBox("Use Opening Book")
         browse_bot2_btn = QPushButton("Browse")
@@ -78,7 +74,7 @@ class BenchmarkSubTab(BaseTab):
             lambda: self.browse_file(
                 self.bot2_path_input,
                 "Select Bot2 File",
-                "All Files (*.*)"
+                "PTH Files (*.pth)"
             )
         )
         label_num_games = QLabel("Number of Games:")
@@ -92,14 +88,12 @@ class BenchmarkSubTab(BaseTab):
         self.time_per_move_spin.setSingleStep(0.1)
         layout.addWidget(label_bot1, 0, 0)
         layout.addLayout(self.create_browse_layout(self.bot1_path_input, browse_bot1_btn), 0, 1, 1, 2)
-        layout.addWidget(self.bot1_file_type_combo, 0, 3)
-        layout.addWidget(self.bot1_use_mcts_checkbox, 0, 4)
-        layout.addWidget(self.bot1_use_opening_book_checkbox, 0, 5)
+        layout.addWidget(self.bot1_use_mcts_checkbox, 0, 3)
+        layout.addWidget(self.bot1_use_opening_book_checkbox, 0, 4)
         layout.addWidget(label_bot2, 1, 0)
         layout.addLayout(self.create_browse_layout(self.bot2_path_input, browse_bot2_btn), 1, 1, 1, 2)
-        layout.addWidget(self.bot2_file_type_combo, 1, 3)
-        layout.addWidget(self.bot2_use_mcts_checkbox, 1, 4)
-        layout.addWidget(self.bot2_use_opening_book_checkbox, 1, 5)
+        layout.addWidget(self.bot2_use_mcts_checkbox, 1, 3)
+        layout.addWidget(self.bot2_use_opening_book_checkbox, 1, 4)
         layout.addWidget(label_num_games, 2, 0)
         layout.addWidget(self.num_games_spin, 2, 1)
         layout.addWidget(label_time_per_move, 3, 0)
@@ -110,8 +104,6 @@ class BenchmarkSubTab(BaseTab):
     def start_benchmark(self):
         bot1_path = self.bot1_path_input.text()
         bot2_path = self.bot2_path_input.text()
-        bot1_file_type = self.bot1_file_type_combo.currentText()
-        bot2_file_type = self.bot2_file_type_combo.currentText()
         bot1_use_mcts = self.bot1_use_mcts_checkbox.isChecked()
         bot1_use_opening_book = self.bot1_use_opening_book_checkbox.isChecked()
         bot2_use_mcts = self.bot2_use_mcts_checkbox.isChecked()
@@ -154,8 +146,6 @@ class BenchmarkSubTab(BaseTab):
             bot2_path,
             num_games,
             time_per_move,
-            bot1_file_type,
-            bot2_file_type,
             bot1_use_mcts,
             bot1_use_opening_book,
             bot2_use_mcts,

@@ -14,8 +14,8 @@ import chess
 import chess.pgn
 from src.base.base_worker import BaseWorker
 from src.models.model import ChessModel
-from src.utils.chess_utils import convert_board_to_tensor, get_move_mapping, get_total_moves, policy_value_fn
-from src.utils.common_utils import format_time_left, initialize_optimizer, initialize_random_seeds, initialize_scheduler, update_progress_time_left, wait_if_paused, get_game_result
+from src.utils.chess_utils import convert_board_to_tensor, get_move_mapping, get_total_moves
+from src.utils.common_utils import format_time_left, initialize_optimizer, initialize_random_seeds, initialize_scheduler, update_progress_time_left, wait_if_paused, get_game_result, policy_value_fn, compute_policy_loss, compute_value_loss, compute_total_loss
 from src.utils.mcts import MCTS
 from src.utils.checkpoint_manager import CheckpointManager
 
@@ -376,23 +376,11 @@ class ReinforcementWorker(BaseWorker):
                 batch_policy_targets = batch_policy_targets.to(self.device, non_blocking=True)
                 batch_value_targets = batch_value_targets.to(self.device, non_blocking=True)
 
-                smoothing = 0.1
-                confidence = 1.0 - smoothing
-                n_classes = batch_policy_targets.size(1) if batch_policy_targets.dim() > 1 else self.total_moves
-
-                one_hot = torch.zeros_like(batch_policy_targets)
-                if batch_policy_targets.dim() == 1:
-                    one_hot.scatter_(1, batch_policy_targets.unsqueeze(1), 1)
-                else:
-                    one_hot = batch_policy_targets
-
-                smoothed_labels = one_hot * confidence + (1 - one_hot) * (smoothing / (n_classes - 1))
-
                 with autocast(device_type=self.device.type):
                     policy_preds, value_preds = self.model(batch_inputs)
-                    pol_loss = -(smoothed_labels * torch.log_softmax(policy_preds, dim=1)).mean()
-                    val_loss = F.mse_loss(value_preds.view(-1), batch_value_targets)
-                    loss = (pol_loss + val_loss) / accumulation_steps
+                    policy_loss = compute_policy_loss(policy_preds, batch_policy_targets)
+                    value_loss = compute_value_loss(value_preds, batch_value_targets)
+                    loss = compute_total_loss(policy_loss, value_loss, self.batch_size)
 
                 self.scaler.scale(loss).backward()
                 accumulate_count += 1
@@ -407,7 +395,7 @@ class ReinforcementWorker(BaseWorker):
                     self.scheduler.step(epoch - 1 + batch_idx / len(loader))
 
                 # Accumulate losses
-                total_loss += (pol_loss.item() + val_loss.item()) * batch_inputs.size(0)
+                total_loss += (policy_loss.item() + value_loss.item()) * batch_inputs.size(0)
 
                 # Clean up to free memory
                 del batch_inputs, batch_policy_targets, batch_value_targets, policy_preds, value_preds, loss

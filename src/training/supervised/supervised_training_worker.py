@@ -5,14 +5,13 @@ from typing import Optional, Dict
 import numpy as np
 import torch
 import torch.optim as optim
-import torch.nn.functional as F
 from torch.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 from src.models.model import ChessModel
 from src.utils.datasets import H5Dataset
-from src.utils.common_utils import format_time_left, initialize_optimizer, initialize_scheduler, initialize_random_seeds, wait_if_paused
+from src.utils.common_utils import format_time_left, initialize_optimizer, initialize_scheduler, initialize_random_seeds, wait_if_paused, compute_policy_loss, compute_value_loss, compute_total_loss, compute_accuracy
 from src.utils.chess_utils import get_total_moves
 from src.utils.checkpoint_manager import CheckpointManager
 
@@ -233,20 +232,10 @@ class SupervisedWorker(BaseWorker):
                 with autocast(device_type=self.device.type):
                     policy_preds, value_preds = self.model(inputs)
 
-                    # Policy loss with label smoothing
-                    smoothing = 0.1
-                    confidence = 1.0 - smoothing
-                    n_classes = policy_preds.size(1)
-                    one_hot = torch.zeros_like(policy_preds).scatter(1, policy_targets.unsqueeze(1), 1)
-                    smoothed_labels = one_hot * confidence + (1 - one_hot) * (smoothing / (n_classes - 1))
-                    log_probs = F.log_softmax(policy_preds, dim=1)
-                    policy_loss = -(smoothed_labels * log_probs).sum(dim=1).mean()
-
-                    # Value loss
-                    value_loss = F.mse_loss(value_preds.view(-1), value_targets)
-
-                    # Total loss scaled by accumulation steps
-                    loss = (policy_loss + value_loss) / max(256 // self.batch_size, 1)
+                    # Calculate losses
+                    policy_loss = compute_policy_loss(policy_preds, policy_targets)
+                    value_loss = compute_value_loss(value_preds, value_targets)
+                    loss = compute_total_loss(policy_loss, value_loss, self.batch_size)
 
                 scaler.scale(loss).backward()
                 accumulate_count += 1
@@ -266,11 +255,9 @@ class SupervisedWorker(BaseWorker):
                 total_value_loss += value_loss.item() * inputs.size(0)
 
                 # Calculate accuracy
-                _, predicted = torch.max(policy_preds.data, 1)
-                total_predictions += policy_targets.size(0)
-                correct_predictions += (predicted == policy_targets).sum().item()
-
-                batch_accuracy = (predicted == policy_targets).sum().item() / policy_targets.size(0)
+                batch_accuracy = compute_accuracy(policy_preds, policy_targets)
+                correct_predictions += batch_accuracy * inputs.size(0)
+                total_predictions += inputs.size(0)
 
                 # Update tracking variables
                 with threading.Lock():
@@ -339,26 +326,18 @@ class SupervisedWorker(BaseWorker):
 
                     policy_preds, value_preds = self.model(inputs)
 
-                    # Policy loss with label smoothing
-                    smoothing = 0.1
-                    confidence = 1.0 - smoothing
-                    n_classes = policy_preds.size(1)
-                    one_hot = torch.zeros_like(policy_preds).scatter(1, policy_targets.unsqueeze(1), 1)
-                    smoothed_labels = one_hot * confidence + (1 - one_hot) * (smoothing / (n_classes - 1))
-                    log_probs = F.log_softmax(policy_preds, dim=1)
-                    policy_loss = -(smoothed_labels * log_probs).sum(dim=1).mean()
-
-                    # Value loss
-                    value_loss = F.mse_loss(value_preds.view(-1), value_targets)
+                    # Calculate losses
+                    policy_loss = compute_policy_loss(policy_preds, policy_targets)
+                    value_loss = compute_value_loss(value_preds, value_targets)
 
                     # Accumulate losses
                     val_policy_loss += policy_loss.item() * inputs.size(0)
                     val_value_loss += value_loss.item() * inputs.size(0)
 
                     # Calculate accuracy
-                    _, predicted = torch.max(policy_preds.data, 1)
-                    val_total_predictions += policy_targets.size(0)
-                    val_correct_predictions += (predicted == policy_targets).sum().item()
+                    batch_accuracy = compute_accuracy(policy_preds, policy_targets)
+                    val_correct_predictions += batch_accuracy * inputs.size(0)
+                    val_total_predictions += inputs.size(0)
 
             # Calculate validation metrics
             if val_total_predictions > 0:

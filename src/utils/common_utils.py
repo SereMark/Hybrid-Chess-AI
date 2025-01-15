@@ -1,9 +1,13 @@
+import os
 import time
+import chess
 import random
 import numpy as np
 import torch
 import torch.optim as optim
-import os
+from torch.nn import functional as F
+from typing import Tuple, Dict
+from src.utils.chess_utils import convert_board_to_tensor, get_move_mapping
 
 def initialize_random_seeds(random_seed):
     torch.manual_seed(random_seed)
@@ -52,6 +56,62 @@ def initialize_scheduler(optimizer, scheduler_type, total_steps=None, logger=Non
             logger.warning(f"Unsupported scheduler type: {scheduler_type}. Using CosineAnnealingWarmRestarts by default.")
         scheduler = schedulers['cosineannealingwarmrestarts']
     return scheduler
+
+def compute_policy_loss(policy_preds: torch.Tensor, policy_targets: torch.Tensor) -> torch.Tensor:
+    smoothing = 0.1
+    confidence = 1.0 - smoothing
+    n_classes = policy_preds.size(1)
+    one_hot = torch.zeros_like(policy_preds).scatter(1, policy_targets.unsqueeze(1), 1)
+    smoothed_labels = one_hot * confidence + (1 - one_hot) * (smoothing / (n_classes - 1))
+    log_probs = F.log_softmax(policy_preds, dim=1)
+    policy_loss = -(smoothed_labels * log_probs).sum(dim=1).mean()
+    return policy_loss
+
+def compute_value_loss(value_preds: torch.Tensor, value_targets: torch.Tensor) -> torch.Tensor:
+    return F.mse_loss(value_preds.view(-1), value_targets)
+
+def compute_total_loss(policy_loss: torch.Tensor, value_loss: torch.Tensor, batch_size: int) -> torch.Tensor:
+    accumulation_steps = max(256 // batch_size, 1)
+    return (policy_loss + value_loss) / accumulation_steps
+
+def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor) -> float:
+    _, predicted = torch.max(predictions.data, 1)
+    correct = (predicted == targets).sum().item()
+    total = targets.size(0)
+    accuracy = correct / total if total > 0 else 0.0
+    return accuracy
+
+@torch.no_grad()
+def policy_value_fn(board: chess.Board, model, device) -> Tuple[Dict[chess.Move, float], float]:
+    board_tensor = convert_board_to_tensor(board)
+    board_tensor = torch.from_numpy(board_tensor).float().unsqueeze(0).to(device)
+    policy_logits, value_out = model(board_tensor)
+    policy = torch.softmax(policy_logits, dim=1).cpu().numpy()[0]
+    value_float = value_out.cpu().item()
+    legal_moves = list(board.legal_moves)
+    if not legal_moves:
+        return {}, value_float
+
+    action_probs = {}
+    total_prob = 0.0
+    for move in legal_moves:
+        idx = get_move_mapping().get_index_by_move(move)
+        if idx is not None and idx < len(policy):
+            prob = max(policy[idx], 1e-8)
+            action_probs[move] = prob
+            total_prob += prob
+        else:
+            action_probs[move] = 1e-8
+
+    if total_prob > 0:
+        for move in action_probs:
+            action_probs[move] /= total_prob
+    else:
+        uniform_prob = 1.0 / len(legal_moves)
+        for move in action_probs:
+            action_probs[move] = uniform_prob
+
+    return action_probs, value_float
 
 def format_time_left(seconds):
     days, remainder = divmod(seconds, 86400)

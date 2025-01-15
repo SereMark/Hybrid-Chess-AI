@@ -1,6 +1,4 @@
 import chess, numpy as np
-import torch
-from typing import Tuple, Dict
 
 class MoveMapping:
     def __init__(self):
@@ -94,35 +92,3 @@ def convert_board_to_tensor(board):
     planes[19, :, :] = 1.0 if board.turn == chess.WHITE else 0.0
 
     return planes
-
-@torch.no_grad()
-def policy_value_fn(board: chess.Board, model, device) -> Tuple[Dict[chess.Move, float], float]:
-    board_tensor = convert_board_to_tensor(board)
-    board_tensor = torch.from_numpy(board_tensor).float().unsqueeze(0).to(device)
-    policy_logits, value_out = model(board_tensor)
-    policy = torch.softmax(policy_logits, dim=1).cpu().numpy()[0]
-    value_float = value_out.cpu().item()
-    legal_moves = list(board.legal_moves)
-    if not legal_moves:
-        return {}, value_float
-
-    action_probs = {}
-    total_prob = 0.0
-    for move in legal_moves:
-        idx = move_mapping.get_index_by_move(move)
-        if idx is not None and idx < len(policy):
-            prob = max(policy[idx], 1e-8)
-            action_probs[move] = prob
-            total_prob += prob
-        else:
-            action_probs[move] = 1e-8
-
-    if total_prob > 0:
-        for move in action_probs:
-            action_probs[move] /= total_prob
-    else:
-        uniform_prob = 1.0 / len(legal_moves)
-        for move in action_probs:
-            action_probs[move] = uniform_prob
-
-    return action_probs, value_float
