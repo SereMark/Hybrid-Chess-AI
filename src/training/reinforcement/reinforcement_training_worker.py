@@ -19,7 +19,7 @@ from src.utils.common_utils import format_time_left, initialize_optimizer, initi
 from src.utils.mcts import MCTS
 from src.utils.checkpoint_manager import CheckpointManager
 
-def play_and_collect_wrapper(args: Tuple) -> Tuple[List[np.ndarray], List[np.ndarray], List[float], List[float], List[int]]:
+def play_and_collect_wrapper(args: Tuple) -> Tuple[List[np.ndarray], List[np.ndarray], List[float], List[float], List[int], List[chess.pgn.Game]]:
     (model_state_dict, device_type, simulations, c_puct, temperature, games_per_process, stop_event, pause_event, seed, stats_queue, move_mapping, total_moves) = args
 
     initialize_random_seeds(seed)
@@ -30,7 +30,7 @@ def play_and_collect_wrapper(args: Tuple) -> Tuple[List[np.ndarray], List[np.nda
         model.load_state_dict(model_state_dict)
     except Exception as e:
         stats_queue.put({"error": f"Failed to load state_dict in worker: {str(e)}"})
-        return ([], [], [], [], [])
+        return ([], [], [], [], [], [])
 
     model.eval()
 
@@ -40,6 +40,7 @@ def play_and_collect_wrapper(args: Tuple) -> Tuple[List[np.ndarray], List[np.nda
     results_list: List[float] = []
     game_lengths_list: List[int] = []
     avg_mcts_visits_list: List[float] = []
+    pgn_games_list: List[chess.pgn.Game] = []
 
     try:
         for _ in range(games_per_process):
@@ -57,6 +58,17 @@ def play_and_collect_wrapper(args: Tuple) -> Tuple[List[np.ndarray], List[np.nda
             max_moves = 200
             total_visits = 0
             num_moves = 0
+
+            # Initialize PGN game
+            game = chess.pgn.Game()
+            game.headers["Event"] = "Reinforcement Self-Play"
+            game.headers["Site"] = "Self-Play"
+            game.headers["Date"] = time.strftime("%Y.%m.%d")
+            game.headers["Round"] = "-"
+            game.headers["White"] = "Agent"
+            game.headers["Black"] = "Opponent"
+            game.headers["Result"] = "*"
+            node = game
 
             while not board.is_game_over() and move_count < max_moves:
                 action_probs = mcts.get_move_probs(temperature)
@@ -79,7 +91,11 @@ def play_and_collect_wrapper(args: Tuple) -> Tuple[List[np.ndarray], List[np.nda
                 mcts_probs.append(prob_arr)
 
                 current_players.append(board.turn)
-                board.push(chosen_move)
+                try:
+                    board.push(chosen_move)
+                except ValueError:
+                    break
+                node = node.add_variation(chosen_move)
                 mcts.update_with_move(chosen_move)
 
                 if mcts.root:
@@ -88,6 +104,7 @@ def play_and_collect_wrapper(args: Tuple) -> Tuple[List[np.ndarray], List[np.nda
 
                 move_count += 1
 
+            # Get the game result
             result = get_game_result(board)
             if board.is_checkmate():
                 last_player = not board.turn
@@ -97,6 +114,16 @@ def play_and_collect_wrapper(args: Tuple) -> Tuple[List[np.ndarray], List[np.nda
 
             game_length = len(states)
             visits_avg = (total_visits / num_moves) if num_moves > 0 else 0.0
+
+            # Set the game result in PGN headers
+            if result > 0:
+                game.headers["Result"] = "1-0"
+            elif result < 0:
+                game.headers["Result"] = "0-1"
+            else:
+                game.headers["Result"] = "1/2-1/2"
+
+            pgn_games_list.append(game)
 
             inputs_list.extend(states)
             policy_targets_list.extend(mcts_probs)
@@ -117,7 +144,7 @@ def play_and_collect_wrapper(args: Tuple) -> Tuple[List[np.ndarray], List[np.nda
     except Exception as e:
         stats_queue.put({"error": f"Exception in play_and_collect_wrapper: {str(e)}"})
 
-    return (inputs_list, policy_targets_list, value_targets_list, results_list, game_lengths_list)
+    return (inputs_list, policy_targets_list, value_targets_list, results_list, game_lengths_list, pgn_games_list)
 
 class ReinforcementWorker(BaseWorker):
     stats_update = pyqtSignal(dict)
@@ -182,6 +209,10 @@ class ReinforcementWorker(BaseWorker):
         self.total_steps = self.num_iterations * self.num_games_per_iteration + self.num_iterations * batches_per_epoch
         self.model_state_dict: Optional[Dict[str, torch.Tensor]] = None
 
+        # Ensure the self-play games directory exists
+        self.self_play_dir = os.path.join("data", "games", "self-play")
+        os.makedirs(self.self_play_dir, exist_ok=True)
+
     def run_task(self):
         self.logger.info("Initializing reinforcement worker with model and optimizer.")
         if self.model_path and os.path.exists(self.model_path):
@@ -212,8 +243,11 @@ class ReinforcementWorker(BaseWorker):
 
             # Generate self-play data
             self.model.eval()
-            self_play_data = self._generate_self_play_data()
+            self_play_data, pgn_games = self._generate_self_play_data()
             self.model.train()
+
+            # Save PGN games to files
+            self._save_self_play_games(pgn_games, iteration)
 
             # Train on self-play data
             self._train_on_self_play_data(self_play_data, iteration)
@@ -260,7 +294,7 @@ class ReinforcementWorker(BaseWorker):
         self.task_finished.emit()
         self.finished.emit()
 
-    def _generate_self_play_data(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _generate_self_play_data(self) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], List[chess.pgn.Game]]:
         num_processes = min(self.num_threads, cpu_count())
         games_per_process = self.num_games_per_iteration // num_processes
         remainder = self.num_games_per_iteration % num_processes
@@ -304,6 +338,7 @@ class ReinforcementWorker(BaseWorker):
         inputs_list: List[np.ndarray] = []
         policy_targets_list: List[np.ndarray] = []
         value_targets_list: List[float] = []
+        pgn_games_list: List[chess.pgn.Game] = []
 
         for res in results:
             inputs_list.extend(res[0])
@@ -311,11 +346,12 @@ class ReinforcementWorker(BaseWorker):
             value_targets_list.extend(res[2])
             self.results.extend(res[3])
             self.game_lengths.extend(res[4])
+            pgn_games_list.extend(res[5])
 
         total_positions = len(inputs_list)
         if total_positions == 0:
             self.logger.warning("No self-play data generated this iteration. Skipping training.")
-            return (torch.empty(0, device=self.device), torch.empty(0, device=self.device), torch.empty(0, device=self.device))
+            return ((torch.empty(0, device=self.device), torch.empty(0, device=self.device), torch.empty(0, device=self.device)), pgn_games_list)
 
         self.total_games_played += self.num_games_per_iteration
 
@@ -323,10 +359,21 @@ class ReinforcementWorker(BaseWorker):
         policy_targets = torch.from_numpy(np.array(policy_targets_list, dtype=np.float32)).to(self.device)
         value_targets = torch.tensor(value_targets_list, dtype=torch.float32, device=self.device)
 
-        return inputs, policy_targets, value_targets
+        return ((inputs, policy_targets, value_targets), pgn_games_list)
+
+    def _save_self_play_games(self, pgn_games: List[chess.pgn.Game], iteration: int):
+        timestamp = int(time.time())
+        for idx, game in enumerate(pgn_games, 1):
+            pgn_filename = os.path.join(self.self_play_dir, f"iteration_{iteration + 1}_game_{timestamp}_{idx}.pgn")
+            try:
+                with open(pgn_filename, "w", encoding="utf-8") as pgn_file:
+                    pgn_file.write(str(game))
+                self.logger.info(f"Saved self-play game to {pgn_filename}")
+            except Exception as e:
+                self.logger.error(f"Failed to save PGN for self-play game {idx} in iteration {iteration + 1}: {e}")
 
     def _train_on_self_play_data(self, self_play_data: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], iteration: int):
-        inputs, policy_targets, value_targets = self_play_data
+        (inputs, policy_targets, value_targets), _ = self_play_data
         if inputs.numel() == 0:
             return
 

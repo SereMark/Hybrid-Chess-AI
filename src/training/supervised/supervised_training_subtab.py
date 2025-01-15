@@ -125,7 +125,7 @@ class SupervisedTrainingSubTab(BaseTab):
 
         label6 = QLabel("Scheduler Type:")
         self.scheduler_type_combo = QComboBox()
-        self.scheduler_type_combo.addItems(["CosineAnnealingWarmRestarts", "StepLR", "CosineAnnealing", "OneCycleLR", "None"])
+        self.scheduler_type_combo.addItems(["CosineAnnealingWarmRestarts", "CosineAnnealing", "OneCycleLR", "None"])
 
         label7 = QLabel("Number of Workers:")
         self.num_workers_input = QLineEdit("4")
@@ -322,7 +322,7 @@ class SupervisedTrainingSubTab(BaseTab):
             self.worker.batch_loss_update.connect(self.visualization.update_loss_plots)
             self.worker.batch_accuracy_update.connect(self.visualization.update_accuracy_plot)
             self.worker.val_loss_update.connect(self.visualization.update_validation_loss_plots)
-            self.worker.epoch_accuracy_update.connect(self.visualization.update_validation_accuracy_plot)
+            self.worker.validation_accuracy_update.connect(self.visualization.update_validation_accuracy_plot)
             self.worker.task_finished.connect(self.on_training_finished)
             self.worker.progress_update.connect(self.update_progress)
         else:

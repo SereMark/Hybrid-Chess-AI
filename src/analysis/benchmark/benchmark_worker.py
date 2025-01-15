@@ -2,6 +2,7 @@ from PyQt5.QtCore import pyqtSignal
 import os
 import time
 import chess
+import chess.pgn
 import json
 import torch
 from typing import Dict, Optional, Tuple
@@ -172,6 +173,10 @@ class BenchmarkWorker(BaseWorker):
         # Load the opening book
         self.opening_book = self._load_opening_book()
 
+        # Ensure the benchmark games directory exists
+        self.games_dir = os.path.join("data", "games", "benchmark")
+        os.makedirs(self.games_dir, exist_ok=True)
+
     def _load_opening_book(self) -> Dict[str, Dict[str, Dict[str, int]]]:
         path = os.path.join("data", "processed", "opening_book.json")
         if not os.path.exists(path):
@@ -209,7 +214,18 @@ class BenchmarkWorker(BaseWorker):
             board = chess.Board()
 
             self.logger.info(f"Starting game {game_idx} of {self.num_games}...")
-            game_result, moves_count = self._play_single_game(board)
+            
+            # Play the game and get the result, move count, and PGN game
+            game_result, moves_count, pgn_game = self._play_single_game(board)
+
+            # Save the PGN game to a file
+            pgn_filename = os.path.join(self.games_dir, f"game_{game_idx}.pgn")
+            try:
+                with open(pgn_filename, "w", encoding="utf-8") as pgn_file:
+                    pgn_file.write(str(pgn_game))
+                self.logger.info(f"Saved game {game_idx} to {pgn_filename}")
+            except Exception as e:
+                self.logger.error(f"Failed to save PGN for game {game_idx}: {e}")
 
             # Determine the winner based on the game result
             winner = self._determine_winner(game_result)
@@ -251,8 +267,19 @@ class BenchmarkWorker(BaseWorker):
             "total_games": self.num_games,
         }
 
-    def _play_single_game(self, board: chess.Board) -> Tuple[int, int]:
+    def _play_single_game(self, board: chess.Board) -> Tuple[int, int, chess.pgn.Game]:
         moves_count = 0
+        game = chess.pgn.Game()
+        game.headers["Event"] = "Bot Benchmarking"
+        game.headers["Site"] = "Local"
+        game.headers["Date"] = time.strftime("%Y.%m.%d")
+        game.headers["Round"] = "-"
+        game.headers["White"] = "Bot1"
+        game.headers["Black"] = "Bot2"
+        game.headers["Result"] = "*"
+
+        node = game
+
         while not board.is_game_over() and not self._is_stopped.is_set():
             # Handle pause functionality
             wait_if_paused(self._is_paused)
@@ -260,7 +287,20 @@ class BenchmarkWorker(BaseWorker):
             current_bot = self.bot1 if board.turn == chess.WHITE else self.bot2
             # Get the move from the current bot
             move = current_bot.get_move(board, self.time_per_move, self.opening_book)
+            if move == chess.Move.null():
+                self.logger.warning(f"{'Bot1' if board.turn == chess.WHITE else 'Bot2'} returned a null move.")
+                break
             board.push(move)
+            node = node.add_variation(move)
             moves_count += 1
-        # Get the game result and number of moves
-        return get_game_result(board), moves_count
+
+        # Get the game result
+        result = get_game_result(board)
+        if result > 0:
+            game.headers["Result"] = "1-0"
+        elif result < 0:
+            game.headers["Result"] = "0-1"
+        else:
+            game.headers["Result"] = "1/2-1/2"
+
+        return result, moves_count, game

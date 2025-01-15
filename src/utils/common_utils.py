@@ -38,7 +38,6 @@ def initialize_scheduler(optimizer, scheduler_type, total_steps=None, logger=Non
     scheduler_type = scheduler_type.lower()
     schedulers = {
         'cosineannealingwarmrestarts': optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2),
-        'steplr': optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1),
         'cosineannealing': optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10),
         'none': None,
     }

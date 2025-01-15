@@ -51,7 +51,7 @@ class DataPreparationWorker(BaseWorker):
             h5_path = os.path.join(self.output_dir, "dataset.h5")
 
             with h5py.File(h5_path, "w") as h5_file:
-                self.h5_inputs = h5_file.create_dataset("inputs", shape=(0, 20, 8, 8), maxshape=(None, 20, 8, 8), dtype=np.float32, compression="gzip")
+                self.h5_inputs = h5_file.create_dataset("inputs", shape=(0, 25, 8, 8), maxshape=(None, 25, 8, 8), dtype=np.float32, compression="gzip")
                 self.h5_policy_targets = h5_file.create_dataset("policy_targets", shape=(0,), maxshape=(None,), dtype=np.int64, compression="gzip")
                 self.h5_value_targets = h5_file.create_dataset("value_targets", shape=(0,), maxshape=(None,), dtype=np.float32, compression="gzip")
 
@@ -198,7 +198,7 @@ class DataPreparationWorker(BaseWorker):
             end_idx = self.current_dataset_size + batch_size
 
             # Resize datasets to accommodate new data
-            self.h5_inputs.resize((end_idx, 20, 8, 8))
+            self.h5_inputs.resize((end_idx, 25, 8, 8))
             self.h5_policy_targets.resize((end_idx,))
             self.h5_value_targets.resize((end_idx,))
 

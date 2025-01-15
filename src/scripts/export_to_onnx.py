@@ -13,7 +13,7 @@ if __name__ == "__main__":
     onnx_path = model_path.replace(".pth", ".onnx")
     torch.onnx.export(
         model,
-        torch.randn(1, 20, 8, 8),
+        torch.randn(1, 25, 8, 8),
         onnx_path,
         export_params=True,
         opset_version=11,

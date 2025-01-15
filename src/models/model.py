@@ -26,7 +26,7 @@ class ChessModel(nn.Module):
     2. **Value Head**: A scalar evaluation of the board state in [-1, 1].
 
     Architecture:
-    - Input: A tensor of shape (batch_size, 20, 8, 8) representing the chessboard state.
+    - Input: A tensor of shape (batch_size, 25, 8, 8) representing the chessboard state.
     - Initial Block: Convolutional preprocessing layer.
     - Residual Layers: Three stacked residual units to enhance feature extraction.
     - Policy Head: Outputs move logits with shape (batch_size, num_moves).
@@ -45,7 +45,7 @@ class ChessModel(nn.Module):
         super().__init__()
         # Initial convolutional block
         self.initial_block = nn.Sequential(
-            nn.Conv2d(20, 48, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.Conv2d(25, 48, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(48),
             nn.ReLU(inplace=True)
         )

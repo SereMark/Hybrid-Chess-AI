@@ -1,4 +1,5 @@
-import chess, numpy as np
+import chess
+import numpy as np
 
 class MoveMapping:
     def __init__(self):
@@ -48,7 +49,7 @@ def flip_move(move):
     )
 
 def convert_board_to_tensor(board):
-    planes = np.zeros((20, 8, 8), dtype=np.float32)
+    planes = np.zeros((25, 8, 8), dtype=np.float32)
     piece_map = board.piece_map()
     piece_type_indices = {
         (chess.PAWN, chess.WHITE): 0,
@@ -65,13 +66,14 @@ def convert_board_to_tensor(board):
         (chess.KING, chess.BLACK): 11,
     }
 
+    # Encode piece positions
     for sq, piece in piece_map.items():
         idx = piece_type_indices.get((piece.piece_type, piece.color))
         if idx is not None:
-            row = sq // 8
-            col = sq % 8
+            row, col = divmod(sq, 8)
             planes[idx, row, col] = 1
 
+    # Encode castling rights
     castling_rights = [
         board.has_kingside_castling_rights(chess.WHITE),
         board.has_queenside_castling_rights(chess.WHITE),
@@ -79,16 +81,65 @@ def convert_board_to_tensor(board):
         board.has_queenside_castling_rights(chess.BLACK)
     ]
     for i, c_right in enumerate(castling_rights):
-        if c_right:
-            planes[12 + i, :, :] = 1
+        planes[12 + i, 0, 0] = float(c_right)
 
+    # Encode en passant square
     if board.ep_square is not None:
-        ep_row = board.ep_square // 8
-        ep_col = board.ep_square % 8
+        ep_row, ep_col = divmod(board.ep_square, 8)
         planes[16, ep_row, ep_col] = 1
 
-    planes[17, :, :] = board.halfmove_clock / 100.0
-    planes[18, :, :] = board.fullmove_number / 100.0
-    planes[19, :, :] = 1.0 if board.turn == chess.WHITE else 0.0
+    # Normalize halfmove clock and fullmove number
+    planes[17, 0, 0] = board.halfmove_clock / 100.0
+    planes[18, 0, 0] = board.fullmove_number / 100.0
+
+    # Encode turn
+    planes[19, 0, 0] = 1.0 if board.turn == chess.WHITE else 0.0
+
+    # Encode repetition count
+    planes[20, 0, 0] = 1.0 if board.is_repetition(3) else 0.0
+
+    # Encode attacks
+    for sq in chess.SQUARES:
+        piece = board.piece_at(sq)
+        if piece:
+            attacks = board.attacks(sq)
+            if piece.color == chess.WHITE:
+                for attack_sq in attacks:
+                    planes[21, *divmod(attack_sq, 8)] = 1
+            else:
+                for attack_sq in attacks:
+                    planes[22, *divmod(attack_sq, 8)] = 1
+
+    # Encode passed pawns
+    for sq, piece in piece_map.items():
+        if piece.piece_type == chess.PAWN and is_passed_pawn(board, sq):
+            row, col = divmod(sq, 8)
+            if piece.color == chess.WHITE:
+                planes[23, row, col] = 1
+            else:
+                planes[24, row, col] = 1
 
     return planes
+
+def is_passed_pawn(board, square):
+    file = chess.square_file(square)
+    rank = chess.square_rank(square)
+    color = board.color_at(square)
+    enemy_pawns = [sq for sq in board.pieces(chess.PAWN, not color)]
+
+    valid_files = {file}
+    if file > 0:
+        valid_files.add(file - 1)
+    if file < 7:
+        valid_files.add(file + 1)
+
+    if color == chess.WHITE:
+        return not any(
+            chess.square_file(sq) in valid_files and chess.square_rank(sq) > rank
+            for sq in enemy_pawns
+        )
+    else:
+        return not any(
+            chess.square_file(sq) in valid_files and chess.square_rank(sq) < rank
+            for sq in enemy_pawns
+        )

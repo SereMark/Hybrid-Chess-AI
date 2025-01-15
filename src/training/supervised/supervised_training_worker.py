@@ -18,11 +18,8 @@ from src.utils.checkpoint_manager import CheckpointManager
 class SupervisedWorker(BaseWorker):
     batch_loss_update = pyqtSignal(int, dict)
     batch_accuracy_update = pyqtSignal(int, float)
-    epoch_loss_update = pyqtSignal(int, dict)
-    epoch_accuracy_update = pyqtSignal(int, float, float)
     val_loss_update = pyqtSignal(int, dict)
-    initial_batches_processed = pyqtSignal(int)
-    lr_update = pyqtSignal(int, float)
+    validation_accuracy_update = pyqtSignal(int, float, float)
 
     def __init__(self, epochs: int, batch_size: int, learning_rate: float, weight_decay: float, save_checkpoints: bool, checkpoint_interval: int, dataset_path: str, train_indices_path: str, val_indices_path: str, model_path: Optional[str] = None, checkpoint_type: str = 'epoch', checkpoint_interval_minutes: int = 60, checkpoint_batch_interval: int = 1000, optimizer_type: str = 'adamw', scheduler_type: str = 'cosineannealingwarmrestarts', num_workers: int = 4, random_seed: int = 42):
         super().__init__()
@@ -119,9 +116,6 @@ class SupervisedWorker(BaseWorker):
             else:
                 self.logger.info("No checkpoint path provided or checkpoint does not exist. Training from scratch.")
 
-            # Emit initial batches processed
-            self.initial_batches_processed.emit(self.total_batches_processed)
-
             # Training loop
             for epoch in range(start_epoch, self.epochs + 1):
                 if self._is_stopped.is_set():
@@ -154,17 +148,12 @@ class SupervisedWorker(BaseWorker):
                     f"Train Acc: {train_metrics['accuracy']*100:.2f}%, Val Acc: {val_metrics['accuracy']*100:.2f}%."
                 )
 
-                # Emit epoch metrics
-                self.epoch_loss_update.emit(epoch, {'policy': train_metrics['policy_loss'], 'value': train_metrics['value_loss']})
-                self.epoch_accuracy_update.emit(epoch, train_metrics['accuracy'], val_metrics['accuracy'])
+                # Emit epoch accuracy update
+                self.validation_accuracy_update.emit(epoch, train_metrics['accuracy'], val_metrics['accuracy'])
 
                 # Save checkpoint if required
                 if self.save_checkpoints and self.checkpoint_type == 'epoch' and self.checkpoint_manager.should_save(epoch=epoch):
                     self._save_checkpoint(epoch)
-
-                # Step the scheduler if applicable
-                if self.scheduler and isinstance(self.scheduler, optim.lr_scheduler.StepLR):
-                    self.scheduler.step()
 
             # Save the final model if training completed without interruption
             if not self._is_stopped.is_set():
@@ -249,6 +238,7 @@ class SupervisedWorker(BaseWorker):
                 # Update scheduler if applicable
                 if self.scheduler and isinstance(self.scheduler, optim.lr_scheduler._LRScheduler):
                     self.scheduler.step()
+                    self.logger.info(f"Learning rate updated to {self.optimizer.param_groups[0]['lr']}.")
 
                 # Accumulate losses
                 total_policy_loss += policy_loss.item() * inputs.size(0)
@@ -268,8 +258,6 @@ class SupervisedWorker(BaseWorker):
                     # Emit batch metrics
                     self.batch_loss_update.emit(self.total_batches_processed, {'policy': policy_loss.item(), 'value': value_loss.item()})
                     self.batch_accuracy_update.emit(self.total_batches_processed, batch_accuracy)
-                    current_lr = self.optimizer.param_groups[0]['lr']
-                    self.lr_update.emit(self.total_batches_processed, current_lr)
 
                     # Emit progress
                     current_progress = min(int((self.total_batches_processed / (self.epochs * len(train_loader))) * 100), 100)
@@ -299,8 +287,6 @@ class SupervisedWorker(BaseWorker):
 
             self.logger.info(f"Epoch {epoch}: Training Accuracy {metrics['accuracy']*100:.2f}%.")
 
-            # Emit epoch metrics
-            self.epoch_loss_update.emit(epoch, {'policy': metrics['policy_loss'], 'value': metrics['value_loss']})
             return metrics
         except Exception as e:
             self.logger.error(f"Error during training for epoch {epoch}: {str(e)}")
@@ -347,7 +333,7 @@ class SupervisedWorker(BaseWorker):
 
             # Emit validation metrics
             self.val_loss_update.emit(epoch, {'policy': metrics['policy_loss'], 'value': metrics['value_loss']})
-            self.epoch_accuracy_update.emit(epoch, training_accuracy, metrics['accuracy'])
+            self.validation_accuracy_update.emit(epoch, training_accuracy, metrics['accuracy'])
 
             self.logger.info(f"Epoch {epoch}: Validation Policy Loss {metrics['policy_loss']:.4f}, "f"Value Loss {metrics['value_loss']:.4f}, Accuracy {metrics['accuracy']*100:.2f}%.")
 
