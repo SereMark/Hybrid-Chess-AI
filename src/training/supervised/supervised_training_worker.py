@@ -238,7 +238,6 @@ class SupervisedWorker(BaseWorker):
                 # Update scheduler if applicable
                 if self.scheduler and isinstance(self.scheduler, optim.lr_scheduler._LRScheduler):
                     self.scheduler.step()
-                    self.logger.info(f"Learning rate updated to {self.optimizer.param_groups[0]['lr']}.")
 
                 # Accumulate losses
                 total_policy_loss += policy_loss.item() * inputs.size(0)
