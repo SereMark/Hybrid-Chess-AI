@@ -50,8 +50,8 @@ def initialize_scheduler(optimizer: optim.Optimizer, scheduler_type: str, total_
 
     return schedulers.get(scheduler_type)
 
-def compute_policy_loss(policy_preds: torch.Tensor, policy_targets: torch.Tensor, apply_label_smoothing: bool = True) -> torch.Tensor:
-    if apply_label_smoothing:
+def compute_policy_loss(policy_preds: torch.Tensor, policy_targets: torch.Tensor, calc_distributions: bool = True) -> torch.Tensor:
+    if calc_distributions:
         one_hot = torch.zeros_like(policy_preds).scatter(1, policy_targets.unsqueeze(1), 1)
         policy_targets = one_hot * 0.9 + (1 - one_hot) * (0.1 / (policy_preds.size(1) - 1))
     
