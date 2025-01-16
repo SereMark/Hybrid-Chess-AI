@@ -222,7 +222,7 @@ class SupervisedWorker(BaseWorker):
                     policy_preds, value_preds = self.model(inputs)
 
                     # Calculate losses
-                    policy_loss = compute_policy_loss(policy_preds, policy_targets)
+                    policy_loss = compute_policy_loss(policy_preds, policy_targets, True)
                     value_loss = compute_value_loss(value_preds, value_targets)
                     loss = compute_total_loss(policy_loss, value_loss, self.batch_size)
 
@@ -312,7 +312,7 @@ class SupervisedWorker(BaseWorker):
                     policy_preds, value_preds = self.model(inputs)
 
                     # Calculate losses
-                    policy_loss = compute_policy_loss(policy_preds, policy_targets)
+                    policy_loss = compute_policy_loss(policy_preds, policy_targets, True)
                     value_loss = compute_value_loss(value_preds, value_targets)
 
                     # Accumulate losses

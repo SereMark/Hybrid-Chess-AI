@@ -14,19 +14,11 @@ from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 from src.models.model import ChessModel
 from src.utils.chess_utils import convert_board_to_tensor, get_move_mapping, get_total_moves
-from src.utils.common_utils import format_time_left, initialize_optimizer, initialize_random_seeds, initialize_scheduler, update_progress_time_left, wait_if_paused, get_game_result, policy_value_fn, compute_policy_loss_MCTS, compute_value_loss, compute_total_loss
+from src.utils.common_utils import format_time_left, initialize_optimizer, initialize_random_seeds, initialize_scheduler, update_progress_time_left, wait_if_paused, get_game_result, policy_value_fn, compute_policy_loss, compute_value_loss, compute_total_loss
 from src.utils.mcts import MCTS
 from src.utils.checkpoint_manager import CheckpointManager
 
 def play_and_collect_wrapper(args: Tuple) -> Tuple[List[np.ndarray], List[np.ndarray], List[float], List[float], List[int], List[chess.pgn.Game]]:
-    """
-    A wrapper for multiprocessing: executes self-play games, collects training data, and aggregates stats/games.
-
-    Returns:
-        (
-            inputs_list, policy_targets_list, value_targets_list, results_list, game_lengths_list, pgn_games_list
-        )
-    """
     (model_state_dict, device_type, simulations, c_puct, temperature, games_per_process, stop_event, pause_event, seed, stats_queue, move_mapping, total_moves) = args
 
     # Initialize seeds and device
@@ -272,12 +264,6 @@ class ReinforcementWorker(BaseWorker):
         os.makedirs(self.self_play_dir, exist_ok=True)
 
     def run_task(self):
-        """
-        Main entry point to start the worker’s job. Executes the entire training loop:
-         1. Load model if checkpoint exists
-         2. For each iteration: self-play -> save games -> train -> save checkpoint
-         3. Finally save the “final_model.pth” if all completes.
-        """
         self.logger.info("Initializing reinforcement worker with model and optimizer.")
 
         # Attempt to load from existing checkpoint
@@ -387,16 +373,6 @@ class ReinforcementWorker(BaseWorker):
             self.logger.error(f"Error saving final model: {str(e)}")
 
     def _generate_self_play_data(self) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], List[chess.pgn.Game]]:
-        """
-        Launches multiple processes to perform self-play. Gathers game states (inputs),
-        policy targets, value targets, and PGN games for training.
-
-        Returns:
-            (
-              (inputs, policy_targets, value_targets),
-              pgn_games_list
-            )
-        """
         num_processes = min(self.num_threads, cpu_count())
         if num_processes < 1:
             num_processes = 1
@@ -579,7 +555,7 @@ class ReinforcementWorker(BaseWorker):
                 with autocast(enabled=(self.device.type == 'cuda')):
                     policy_preds, value_preds = self.model(batch_inputs)
                     # Use the new distribution-based policy loss
-                    policy_loss = compute_policy_loss_MCTS(policy_preds, batch_policy)
+                    policy_loss = compute_policy_loss(policy_preds, batch_policy, False)
                     value_loss = compute_value_loss(value_preds, batch_value)
                     loss = compute_total_loss(policy_loss, value_loss, self.batch_size)
 

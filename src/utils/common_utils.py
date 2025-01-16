@@ -34,12 +34,7 @@ def initialize_optimizer(model: torch.nn.Module, optimizer_type: str, learning_r
         'adam': optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay),
     }
 
-    optimizer = optimizers.get(optimizer_type)
-    if optimizer is None:
-        if logger:
-            logger.warning(f"Unsupported optimizer type: {optimizer_type}. Using AdamW by default.")
-        optimizer = optimizers['adamw']
-    return optimizer
+    return optimizers.get(optimizer_type)
 
 def initialize_scheduler(optimizer: optim.Optimizer, scheduler_type: str, total_steps: int = None, logger=None):
     scheduler_type = scheduler_type.lower()
@@ -51,128 +46,38 @@ def initialize_scheduler(optimizer: optim.Optimizer, scheduler_type: str, total_
 
     # OneCycleLR requires knowing the total number of steps in advance.
     if scheduler_type == 'onecyclelr':
-        if total_steps is None:
-            if logger:
-                logger.error("total_steps must be provided for OneCycleLR scheduler.")
-            raise ValueError("total_steps must be provided for OneCycleLR scheduler.")
         return optim.lr_scheduler.OneCycleLR(optimizer, max_lr=optimizer.param_groups[0]['lr'], total_steps=total_steps)
 
-    scheduler = schedulers.get(scheduler_type)
-    if scheduler is None:
-        # Default to CosineAnnealingWarmRestarts if the requested type is unsupported.
-        if logger:
-            logger.warning(f"Unsupported scheduler type: {scheduler_type}. Using CosineAnnealingWarmRestarts by default.")
-        scheduler = schedulers['cosineannealingwarmrestarts']
-    return scheduler
+    return schedulers.get(scheduler_type)
 
-def compute_policy_loss(policy_preds: torch.Tensor, policy_targets: torch.Tensor) -> torch.Tensor:
-    """
-    Compute a label-smoothed cross-entropy loss for policies, assuming 'policy_targets' are integer move indices.
-
-    NOTE: This method is for single-move label classification. If the target is a distribution, use compute_policy_loss_MCTS.
-
-    Args:
-        policy_preds (torch.Tensor): Raw policy logits of shape [batch_size, num_moves].
-        policy_targets (torch.Tensor): Indices of shape [batch_size], each an integer move index.
-
-    Returns:
-        torch.Tensor: A scalar loss for the policy head.
-    """
-    smoothing = 0.1
-    confidence = 1.0 - smoothing
-    n_classes = policy_preds.size(1)
-
-    # Construct a one-hot vector with label smoothing.
-    one_hot = torch.zeros_like(policy_preds).scatter(1, policy_targets.unsqueeze(1), 1)
-    smoothed_labels = one_hot * confidence + (1 - one_hot) * (smoothing / (n_classes - 1))
-
-    # Convert policy logits to log probabilities.
+def compute_policy_loss(policy_preds: torch.Tensor, policy_targets: torch.Tensor, apply_label_smoothing: bool = True) -> torch.Tensor:
+    if apply_label_smoothing:
+        one_hot = torch.zeros_like(policy_preds).scatter(1, policy_targets.unsqueeze(1), 1)
+        policy_targets = one_hot * 0.9 + (1 - one_hot) * (0.1 / (policy_preds.size(1) - 1))
+    
     log_probs = F.log_softmax(policy_preds, dim=1)
-
-    # Cross-entropy calculation with smoothed labels.
-    policy_loss = -(smoothed_labels * log_probs).sum(dim=1).mean()
+    policy_loss = -(policy_targets * log_probs).sum(dim=1).mean()
+    
     return policy_loss
 
-def compute_policy_loss_MCTS(policy_preds: torch.Tensor, policy_targets: torch.Tensor) -> torch.Tensor:
-    """
-    Compute cross-entropy loss for MCTS-based distributions.
-
-    Args:
-        policy_preds (torch.Tensor): Raw policy logits of shape [batch_size, total_moves].
-        policy_targets (torch.Tensor): Target distribution of the same shape, representing MCTS probabilities for each move.
-
-    Returns:
-        torch.Tensor: A scalar loss value representing the cross-entropy between predicted logits and the MCTS probability distribution.
-    """
-    # Convert policy logits to log probabilities.
-    log_probs = F.log_softmax(policy_preds, dim=1)
-    # Cross-entropy with the provided distribution
-    loss = -(policy_targets * log_probs).sum(dim=1).mean()
-    return loss
-
 def compute_value_loss(value_preds: torch.Tensor, value_targets: torch.Tensor) -> torch.Tensor:
-    """
-    Compute mean squared error (MSE) loss for value head.
-
-    Args:
-        value_preds (torch.Tensor): Model's value output of shape [batch_size], or [batch_size, 1].
-        value_targets (torch.Tensor): Ground truth scalar values, e.g. +1 for win, -1 for loss, 0 for draw.
-
-    Returns:
-        torch.Tensor: A scalar MSE loss.
-    """
     return F.mse_loss(value_preds.view(-1), value_targets)
 
 def compute_total_loss(policy_loss: torch.Tensor, value_loss: torch.Tensor, batch_size: int) -> torch.Tensor:
-    """
-    Combine policy and value losses, accounting for gradient accumulation.
-
-    Args:
-        policy_loss (torch.Tensor): The policy part of the total loss.
-        value_loss (torch.Tensor): The value part of the total loss.
-        batch_size (int): The current batch size (important for deciding accumulation steps).
-
-    Returns:
-        torch.Tensor: A single scalar representing the combined, scaled loss.
-    """
-    # Attempt to keep the effective batch size around 256 for stable training.
     accumulation_steps = max(256 // batch_size, 1)
+
     return (policy_loss + value_loss) / accumulation_steps
 
 def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor) -> float:
-    """
-    Compute classification accuracy by comparing predicted classes to target classes.
-
-    Args:
-        predictions (torch.Tensor): The model’s raw logits of shape [batch_size, n_classes].
-        targets (torch.Tensor): True class labels of shape [batch_size].
-
-    Returns:
-        float: Fraction of correct predictions in the batch.
-    """
-    # Predicted class is the index of max logit.
     _, predicted = torch.max(predictions.data, 1)
     correct = (predicted == targets).sum().item()
     total = targets.size(0)
     accuracy = correct / total if total > 0 else 0.0
+
     return accuracy
 
 @torch.no_grad()
 def policy_value_fn(board: chess.Board, model, device) -> Tuple[Dict[chess.Move, float], float]:
-    """
-    Given a chess board state, apply the model to get policy logits and a value estimate,
-    and then map them to legal chess moves.
-
-    Args:
-        board (chess.Board): The current chess board state.
-        model (torch.nn.Module): The neural network that outputs policy/value.
-        device (torch.device): The device to run inference on.
-
-    Returns:
-        (action_probs, value_float):
-            action_probs (Dict[chess.Move, float]): Probability distribution over legal moves.
-            value_float (float): Estimated value of the current position (e.g., range -1 to +1).
-    """
     # Convert board to tensor and run inference.
     board_tensor = convert_board_to_tensor(board)
     board_tensor = torch.from_numpy(board_tensor).float().unsqueeze(0).to(device)

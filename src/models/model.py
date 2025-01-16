@@ -18,29 +18,6 @@ class ResidualUnit(nn.Module):
 
 
 class ChessModel(nn.Module):
-    """
-    ChessModel: A neural network for chess AI tasks.
-
-    This model predicts:
-    1. **Policy Head**: Logits for all possible moves.
-    2. **Value Head**: A scalar evaluation of the board state in [-1, 1].
-
-    Architecture:
-    - Input: A tensor of shape (batch_size, 25, 8, 8) representing the chessboard state.
-    - Initial Block: Convolutional preprocessing layer.
-    - Residual Layers: Three stacked residual units to enhance feature extraction.
-    - Policy Head: Outputs move logits with shape (batch_size, num_moves).
-    - Value Head: Outputs a scalar evaluation with shape (batch_size, 1).
-
-    Parameters:
-    - `num_moves` (int): Number of possible moves (output size of the policy head).
-
-    Forward Method:
-    - `forward(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]`:
-      Returns:
-        - `policy_output`: Logits for moves.
-        - `value_output`: Scalar evaluation of the board state.
-    """
     def __init__(self, num_moves: int) -> None:
         super().__init__()
         # Initial convolutional block
