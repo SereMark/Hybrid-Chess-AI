@@ -87,7 +87,7 @@ A **PyQt5 Graphical User Interface (GUI)** is provided for:
 
 - **`src.analysis`**  
   - **`evaluation_worker.py`**: Evaluates trained models using hold-out datasets.  
-  - **`benchmark_worker.py`**: Conducts matchups between two engines/bots (can be CNN-based or external engines).
+  - **`benchmark_worker.py`**: Conducts matchups between two bots (can be CNN-based or external engines).
 
 ---
 
