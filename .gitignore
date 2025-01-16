@@ -68,3 +68,6 @@ opening_book.json
 *.swp
 *.tmp
 *.bin
+
+# Engines
+stockfish/

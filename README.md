@@ -61,13 +61,16 @@ A **PyQt5 Graphical User Interface (GUI)** is provided for:
 2. **Download raw data**  
    Download last month's chess games from the Lichess Database, and extract the ZIP into the "data/raw" directory. Now you should have the raw PGN file in the correct directory for training.
 
-3. **Create & Activate the Conda Environment**  
+3. **Download Stockfish Engine**
+   Download the Stockfish engine and place it in the engine directory.
+
+4. **Create & Activate the Conda Environment**  
    ```bash
    conda env create -f environment.yml
    conda activate hybrid_chess_ai
    ```
 
-4. **Launch the GUI Application**  
+5. **Launch the GUI Application**  
    ```bash
    python -m src.main
    ```

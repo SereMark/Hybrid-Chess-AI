@@ -2,7 +2,9 @@ import os
 import io
 import time
 from collections import defaultdict
+import chess
 import chess.pgn
+import chess.engine
 import h5py
 import numpy as np
 from PyQt5.QtCore import pyqtSignal
@@ -13,13 +15,17 @@ from src.utils.common_utils import estimate_total_games, update_progress_time_le
 class DataPreparationWorker(BaseWorker):
     stats_update = pyqtSignal(dict)
 
-    def __init__(self, raw_pgn_file: str, max_games: int, min_elo: int, batch_size: int):
+    def __init__(self, raw_pgn_file: str, max_games: int, min_elo: int, batch_size: int, engine_path: str, engine_depth: int, engine_threads: int, engine_hash: int):
         super().__init__()
         self.raw_pgn_file = raw_pgn_file
         self.max_games = max_games
         self.min_elo = min_elo
         self.batch_size = batch_size
-
+        self.engine = None
+        self.engine_path = engine_path
+        self.engine_depth = engine_depth
+        self.engine_threads = engine_threads
+        self.engine_hash = engine_hash
         self.positions = defaultdict(lambda: defaultdict(lambda: {"win": 0, "draw": 0, "loss": 0, "eco": "", "name": ""}))
         self.game_counter = 0
         self.start_time = None
@@ -42,8 +48,20 @@ class DataPreparationWorker(BaseWorker):
     def run_task(self):
         self.start_time = time.time()
         try:
+            # Check if PGN file exists
             if not os.path.isfile(self.raw_pgn_file):
                 self.logger.warning(f"No PGN file found at {self.raw_pgn_file}. Aborting data preparation.")
+                return
+
+            # Initialize engine
+            try:
+                self.engine = chess.engine.SimpleEngine.popen_uci(self.engine_path)
+                self.engine.configure({
+                    "Threads": self.engine_threads,
+                    "Hash": self.engine_hash
+                })
+            except Exception as e:
+                self.logger.error(f"Could not initialize engine: {str(e)}")
                 return
 
             total_estimated_games = estimate_total_games(file_paths=self.raw_pgn_file, avg_game_size=5000, max_games=self.max_games, logger=self.logger)
@@ -51,42 +69,92 @@ class DataPreparationWorker(BaseWorker):
             h5_path = os.path.join(self.output_dir, "dataset.h5")
 
             with h5py.File(h5_path, "w") as h5_file:
-                self.h5_inputs = h5_file.create_dataset("inputs", shape=(0, 25, 8, 8), maxshape=(None, 25, 8, 8), dtype=np.float32, compression="gzip")
-                self.h5_policy_targets = h5_file.create_dataset("policy_targets", shape=(0,), maxshape=(None,), dtype=np.int64, compression="gzip")
-                self.h5_value_targets = h5_file.create_dataset("value_targets", shape=(0,), maxshape=(None,), dtype=np.float32, compression="gzip")
+                self.h5_inputs = h5_file.create_dataset("inputs", shape=(0, 25, 8, 8), maxshape=(None, 25, 8, 8), dtype=np.float32, compression="lzf")
+                self.h5_policy_targets = h5_file.create_dataset("policy_targets", shape=(0,), maxshape=(None,), dtype=np.int64, compression="lzf")
+                self.h5_value_targets = h5_file.create_dataset("value_targets", shape=(0,), maxshape=(None,), dtype=np.float32, compression="lzf")
 
-                file_games_count = 0
                 fsize = os.path.getsize(self.raw_pgn_file)
                 self.logger.info(f"Processing PGN file: {os.path.basename(self.raw_pgn_file)} (~{fsize} bytes).")
 
                 with open(self.raw_pgn_file, "r", errors="ignore") as f:
-                    while (self.total_games_processed < self.max_games and not self._is_stopped.is_set()):
+                    while self.total_games_processed < self.max_games and not self._is_stopped.is_set():
                         wait_if_paused(self._is_paused)
+
+                        current_pos = f.tell()
+                        line = f.readline()
+                        # If line is empty, we've reached EOF
+                        if not line:
+                            break
+
+                        f.seek(current_pos)
+
                         game = chess.pgn.read_game(f)
                         if game is None:
                             break
+
+                        # Quick ELO check from headers
+                        headers = game.headers
+                        white_elo_str = headers.get("WhiteElo")
+                        black_elo_str = headers.get("BlackElo")
+                        if not white_elo_str or not black_elo_str:
+                            continue
+                        try:
+                            white_elo = int(white_elo_str)
+                            black_elo = int(black_elo_str)
+                        except ValueError:
+                            continue
+
+                        # Skip if ELO too low
+                        if white_elo < self.min_elo or black_elo < self.min_elo:
+                            continue
+
                         game_str = str(game)
                         result = self._process_game(game_str)
                         if result is None:
                             continue
+
                         self._process_data_entry(result)
                         self.total_games_processed += 1
-                        file_games_count += 1
 
-                        if self.total_games_processed % 100 == 0:
+                        # UI updates every 500 games
+                        if self.total_games_processed % 500 == 0:
                             update_progress_time_left(self.progress_update, self.time_left_update, self.start_time, self.total_games_processed, total_estimated_games)
                             self._emit_stats()
 
-                # Write any remaining data in batches
+                # Write any remaining data in memory to disk
                 if self.batch_inputs:
                     self._write_batch_to_h5()
 
+            # Close engine
+            if self.engine is not None:
+                self.engine.close()
+
+            # Split dataset if we haven't been stopped
             if not self._is_stopped.is_set():
                 self._split_dataset()
 
         except Exception as e:
             self.logger.error(f"Critical error in data preparation: {str(e)}")
+            if self.engine is not None:
+                self.engine.close()
             raise
+
+    def evaluate_position(self, board):
+        if self.engine is None:
+            return 0.0
+
+        limit = chess.engine.Limit(depth=self.engine_depth)
+        info = self.engine.analyse(board, limit=limit)
+        score = info["score"].pov(board.turn)
+
+        if score.is_mate():
+            mate_in = score.mate()
+            # +1 if mate for side to move, -1 if mate against
+            return 1.0 if mate_in > 0 else -1.0
+        else:
+            cp = score.score()  # centipawns
+            cp_clamped = max(min(cp, 1000), -1000)
+            return cp_clamped / 1000.0
 
     def _process_game(self, game_str: str):
         try:
@@ -97,27 +165,24 @@ class DataPreparationWorker(BaseWorker):
             headers = game.headers
             white_elo_str = headers.get("WhiteElo")
             black_elo_str = headers.get("BlackElo")
-            if white_elo_str is None or black_elo_str is None:
+
+            # Already checked, but just in case
+            if not white_elo_str or not black_elo_str:
                 return None
 
-            try:
-                white_elo = int(white_elo_str)
-                black_elo = int(black_elo_str)
-            except ValueError:
-                return None
-
-            if white_elo < self.min_elo or black_elo < self.min_elo:
-                return None
-
-            avg_rating = (white_elo + black_elo) / 2
+            # Check result
             result = headers.get("Result", "*")
             game_result = parse_game_result(result)
             if game_result is None:
                 return None
 
+            white_elo = int(white_elo_str)
+            black_elo = int(black_elo_str)
+            avg_rating = (white_elo + black_elo) / 2
+
             board = game.board()
             moves = list(game.mainline_moves())
-            inputs, policy_targets, value_targets = self._extract_move_data(board, moves, game_result)
+            inputs, policy_targets, value_targets = self._extract_move_data(board, moves)
 
             if not inputs:
                 return None
@@ -128,29 +193,31 @@ class DataPreparationWorker(BaseWorker):
                 "value_targets": value_targets,
                 "game_length": len(moves),
                 "avg_rating": avg_rating,
-                "game_result": game_result,
+                "game_result": game_result
             }
 
         except Exception as e:
             self.logger.error(f"Error processing game entry: {str(e)}")
             return None
 
-    def _extract_move_data(self, board, moves, game_result):
+    def _extract_move_data(self, board, moves):
         inputs = []
         policy_targets = []
         value_targets = []
 
-        for move in moves:
+        for _, move in enumerate(moves):
             current_tensor = convert_board_to_tensor(board)
             move_idx = self.move_mapping.get_index_by_move(move)
             if move_idx is None:
                 board.push(move)
                 continue
 
+            # Evaluate current position BEFORE making the move
+            value_target = self.evaluate_position(board)
+
             inputs.append(current_tensor)
-            value_target = game_result if board.turn == chess.WHITE else -game_result
-            value_targets.append(value_target)
             policy_targets.append(move_idx)
+            value_targets.append(value_target)
 
             # Handle board flipping for data augmentation
             flipped_board = flip_board(board)
@@ -182,12 +249,14 @@ class DataPreparationWorker(BaseWorker):
         self.total_samples += num_new_samples
         self.total_moves_processed += num_new_samples
         self.game_results_counter[game_result] += 1
+
         self._update_histograms(game_length, avg_rating)
 
         self.batch_inputs.extend(inputs)
         self.batch_policy_targets.extend(policy_targets)
         self.batch_value_targets.extend(value_targets)
 
+        # If batch is large enough, write to disk
         if len(self.batch_inputs) >= self.batch_size:
             self._write_batch_to_h5()
 
@@ -197,7 +266,7 @@ class DataPreparationWorker(BaseWorker):
             start_idx = self.current_dataset_size
             end_idx = self.current_dataset_size + batch_size
 
-            # Resize datasets to accommodate new data
+            # Resize datasets
             self.h5_inputs.resize((end_idx, 25, 8, 8))
             self.h5_policy_targets.resize((end_idx,))
             self.h5_value_targets.resize((end_idx,))
@@ -210,7 +279,7 @@ class DataPreparationWorker(BaseWorker):
             # Update dataset size
             self.current_dataset_size += batch_size
 
-            # Clear batches
+            # Clear the in-memory batch
             self.batch_inputs.clear()
             self.batch_policy_targets.clear()
             self.batch_value_targets.clear()

@@ -60,8 +60,37 @@ class DataPreparationSubTab(BaseTab):
         group.setLayout(layout)
         self.pgn_file_group = group
 
+        group = QGroupBox("Chess Engine Configuration")
+        layout = QGridLayout()
+        label_engine_path = QLabel("Engine Path:")
+        self.engine_path_input = QLineEdit("")
+        engine_path_button = QPushButton("Browse")
+        engine_path_button.clicked.connect(lambda: self.browse_file(self.engine_path_input, "Select Engine", "All Files (*)"))
+
+        label_engine_depth = QLabel("Depth:")
+        self.engine_depth_input = QLineEdit("8")
+
+        label_engine_threads = QLabel("Threads:")
+        self.engine_threads_input = QLineEdit("4")
+
+        label_engine_hash = QLabel("Hash (MB):")
+        self.engine_hash_input = QLineEdit("256")
+
+        layout.addWidget(label_engine_path, 0, 0)
+        layout.addLayout(self.create_browse_layout(self.engine_path_input, engine_path_button), 0, 1, 1, 3)
+        layout.addWidget(label_engine_depth, 1, 0)
+        layout.addWidget(self.engine_depth_input, 1, 1)
+        layout.addWidget(label_engine_threads, 1, 2)
+        layout.addWidget(self.engine_threads_input, 1, 3)
+        layout.addWidget(label_engine_hash, 2, 0)
+        layout.addWidget(self.engine_hash_input, 2, 1)
+        group.setLayout(layout)
+        self.engine_config_group = group
+
         self.layout().insertWidget(1, self.parameters_group)
         self.layout().insertWidget(2, self.pgn_file_group)
+        self.layout().insertWidget(3, self.engine_config_group)
+
         self.stop_button.setEnabled(False)
         if self.pause_button:
             self.pause_button.setEnabled(False)
@@ -85,6 +114,21 @@ class DataPreparationSubTab(BaseTab):
             QMessageBox.warning(self, "Error", "Selected PGN file does not exist.")
             return
 
+        engine_path = self.engine_path_input.text().strip()
+        if not engine_path:
+            QMessageBox.warning(self, "Error", "Engine path cannot be empty.")
+            return
+
+        try:
+            engine_depth = int(self.engine_depth_input.text())
+            engine_threads = int(self.engine_threads_input.text())
+            engine_hash = int(self.engine_hash_input.text())
+            if engine_depth <= 0 or engine_threads <= 0 or engine_hash <= 0:
+                raise ValueError
+        except ValueError:
+            QMessageBox.warning(self, "Input Error", "Depth, Threads, and Hash must be positive integers.")
+            return
+
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         if self.pause_button:
@@ -98,6 +142,7 @@ class DataPreparationSubTab(BaseTab):
         self.visualization.reset_visualization()
         self.parameters_group.setVisible(False)
         self.pgn_file_group.setVisible(False)
+        self.engine_config_group.setVisible(False)
         self.progress_group.setVisible(True)
         self.control_group.setVisible(True)
         self.log_group.setVisible(True)
@@ -111,7 +156,7 @@ class DataPreparationSubTab(BaseTab):
             self.start_new_button.setVisible(False)
         self.init_ui_state = False
 
-        started = self.start_worker(DataPreparationWorker, pgn_file, max_games, min_elo, batch_size)
+        started = self.start_worker(DataPreparationWorker, pgn_file, max_games, min_elo, batch_size, engine_path, engine_depth, engine_threads, engine_hash)
         if started:
             self.worker.stats_update.connect(self.visualization.update_data_visualization)
         else:
@@ -124,6 +169,7 @@ class DataPreparationSubTab(BaseTab):
     def reset_to_initial_state(self):
         self.parameters_group.setVisible(True)
         self.pgn_file_group.setVisible(True)
+        self.engine_config_group.setVisible(True)
         self.progress_group.setVisible(False)
         self.log_group.setVisible(False)
         if self.visualization_group:
