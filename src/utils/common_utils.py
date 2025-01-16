@@ -50,13 +50,14 @@ def initialize_scheduler(optimizer: optim.Optimizer, scheduler_type: str, total_
 
     return schedulers.get(scheduler_type)
 
-def compute_policy_loss(policy_preds: torch.Tensor, policy_targets: torch.Tensor, calc_distributions: bool = True) -> torch.Tensor:
-    if calc_distributions:
-        one_hot = torch.zeros_like(policy_preds).scatter(1, policy_targets.unsqueeze(1), 1)
-        policy_targets = one_hot * 0.9 + (1 - one_hot) * (0.1 / (policy_preds.size(1) - 1))
+def compute_policy_loss(predicted_policies: torch.Tensor, target_policies: torch.Tensor, apply_smoothing: bool = True) -> torch.Tensor:
+    if apply_smoothing:
+        one_hot_targets = torch.zeros_like(predicted_policies).scatter(1, target_policies.unsqueeze(1), 1)
+        smoothed_targets = one_hot_targets * 0.9 + (1 - one_hot_targets) * (0.1 / (predicted_policies.size(1) - 1))
+        target_policies = smoothed_targets
     
-    log_probs = F.log_softmax(policy_preds, dim=1)
-    policy_loss = -(policy_targets * log_probs).sum(dim=1).mean()
+    log_probabilities = F.log_softmax(predicted_policies, dim=1)
+    policy_loss = -(target_policies * log_probabilities).sum(dim=1).mean()
     
     return policy_loss
 
