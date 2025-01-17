@@ -78,7 +78,16 @@ def play_and_collect_wrapper(args: Tuple) -> Tuple[List[np.ndarray], List[np.nda
 
             # Self-play loop
             while not board.is_game_over() and move_count < max_moves:
+                # Get the MCTS action probabilities
                 action_probs = mcts.get_move_probs(temperature)
+
+                # Add Dirichlet noise to the root node
+                if move_count == 0:
+                    moves = list(action_probs.keys())
+                    noise = np.random.dirichlet([0.3] * len(moves))
+                    for i, move in enumerate(moves):
+                        action_probs[move] = action_probs[move] * (1 - 0.25) + noise[i] * 0.25
+
                 if not action_probs:
                     break
 
@@ -392,7 +401,7 @@ class ReinforcementWorker(BaseWorker):
             pause_event.set()
 
         stats_queue = manager.Queue()
-        seeds = [self.random_seed + i for i in range(num_processes)]
+        seeds = [self.random_seed + i + int(time.time()) for i in range(num_processes)]
 
         # Prepare arguments for each subprocess
         self._prepare_model_state_dict()
