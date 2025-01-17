@@ -56,6 +56,7 @@ def compute_policy_loss(predicted_policies: torch.Tensor, target_policies: torch
         smoothed_targets = one_hot_targets * 0.9 + (1 - one_hot_targets) * (0.1 / (predicted_policies.size(1) - 1))
         target_policies = smoothed_targets
     
+    # Cross-entropy loss with log-softmax and target policies.
     log_probabilities = F.log_softmax(predicted_policies, dim=1)
     policy_loss = -(target_policies * log_probabilities).sum(dim=1).mean()
     
