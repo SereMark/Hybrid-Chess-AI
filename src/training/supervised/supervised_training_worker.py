@@ -53,7 +53,7 @@ class SupervisedWorker(BaseWorker):
         self.optimizer = initialize_optimizer(self.model, self.optimizer_type, self.learning_rate, self.weight_decay, logger=self.logger)
 
         # Initialize scheduler
-        total_steps = self.epochs * self._get_total_steps()
+        total_steps = self.epochs * len(DataLoader(H5Dataset(self.dataset_path, np.load(self.train_indices_path)), batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, pin_memory=True))
         self.scheduler = initialize_scheduler(self.optimizer, self.scheduler_type, total_steps=total_steps, logger=self.logger)
 
         # Mixed Precision Training
@@ -65,16 +65,6 @@ class SupervisedWorker(BaseWorker):
 
         # Tracking variables
         self.total_batches_processed = 0
-
-    def _get_total_steps(self) -> int:
-        try:
-            train_indices = np.load(self.train_indices_path)
-            train_dataset = H5Dataset(self.dataset_path, train_indices)
-            train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, pin_memory=True)
-            return len(train_loader)
-        except Exception as e:
-            self.logger.error(f"Error calculating total steps: {str(e)}")
-            return 1
 
     def run_task(self):
         self.logger.info("Starting supervised training worker.")
