@@ -8,13 +8,13 @@ import chess.pgn
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from torch.cuda.amp import GradScaler
 from multiprocessing import Pool, cpu_count, Manager
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 from src.models.model import ChessModel
 from src.utils.chess_utils import get_total_moves
-from src.utils.common_utils import format_time_left, initialize_optimizer, initialize_random_seeds, initialize_scheduler, update_progress_time_left, train_epoch
+from src.utils.common_utils import format_time_left, update_progress_time_left
+from src.utils.train_utils import initialize_optimizer, initialize_random_seeds, initialize_scheduler, train_epoch
 from src.utils.checkpoint_manager import CheckpointManager
 from src.training.reinforcement.play_and_collect_worker import PlayAndCollectWorker
 
@@ -69,7 +69,6 @@ class ReinforcementWorker(BaseWorker):
 
         # Build Model
         self.model = ChessModel(get_total_moves()).to(self.device)
-        self.scaler = GradScaler()
         self.optimizer = initialize_optimizer(self.model, self.optimizer_type, self.learning_rate, self.weight_decay, logger=self.logger)
         self.scheduler: Optional[optim.lr_scheduler._LRScheduler] = None
 
@@ -164,7 +163,7 @@ class ReinforcementWorker(BaseWorker):
                         self.current_epoch = epoch
 
                         # Train for one epoch
-                        train_metrics = train_epoch(model=self.model, data_loader=data_loader, device=self.device, optimizer=self.optimizer, scaler=self.scaler, scheduler=self.scheduler, epoch=epoch, total_epochs=self.num_epochs,
+                        train_metrics = train_epoch(model=self.model, data_loader=data_loader, device=self.device, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch, total_epochs=self.num_epochs,
                             skip_batches=self.batch_idx if (epoch == self.current_epoch and self.batch_idx is not None) else 0, accumulation_steps=max(256 // max(self.batch_size, 1), 1), batch_size=self.batch_size,
                             smooth_policy_targets=False, compute_accuracy_flag=False, total_batches_processed=self.total_batches_processed, batch_loss_update_signal=None, batch_accuracy_update_signal=None,
                             progress_update_signal=self.progress_update, time_left_update_signal=self.time_left_update, checkpoint_manager=self.checkpoint_manager, checkpoint_type=self.checkpoint_type,

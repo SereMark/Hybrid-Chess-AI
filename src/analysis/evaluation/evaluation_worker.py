@@ -9,7 +9,8 @@ from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 from src.models.model import ChessModel
 from src.utils.datasets import H5Dataset
-from src.utils.common_utils import initialize_random_seeds, update_progress_time_left, wait_if_paused
+from src.utils.common_utils import update_progress_time_left, wait_if_paused
+from src.utils.train_utils import initialize_random_seeds
 from src.utils.chess_utils import get_total_moves, get_move_mapping
 
 class EvaluationWorker(BaseWorker):

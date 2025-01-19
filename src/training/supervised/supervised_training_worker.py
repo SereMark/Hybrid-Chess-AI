@@ -3,13 +3,13 @@ import time
 from typing import Optional
 import numpy as np
 import torch
-from torch.amp import GradScaler
 from torch.utils.data import DataLoader
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 from src.models.model import ChessModel
 from src.utils.datasets import H5Dataset
-from src.utils.common_utils import format_time_left, initialize_optimizer, initialize_scheduler, initialize_random_seeds, validate_epoch, train_epoch
+from src.utils.common_utils import format_time_left
+from src.utils.train_utils import initialize_optimizer, initialize_scheduler, initialize_random_seeds, validate_epoch, train_epoch
 from src.utils.chess_utils import get_total_moves
 from src.utils.checkpoint_manager import CheckpointManager
 
@@ -58,9 +58,6 @@ class SupervisedWorker(BaseWorker):
         # Initialize checkpoint manager
         self.checkpoint_dir = os.path.join('models', 'checkpoints', 'supervised')
         self.checkpoint_manager = CheckpointManager(checkpoint_dir=self.checkpoint_dir, checkpoint_type=self.checkpoint_type, checkpoint_interval=self.checkpoint_interval, logger=self.logger)
-
-        # Initialize GradScaler for mixed precision
-        self.scaler = GradScaler(device='cuda') if self.device.type == 'cuda' else GradScaler()
 
         # Tracking variables
         self.total_batches_processed = 0
@@ -128,7 +125,7 @@ class SupervisedWorker(BaseWorker):
                 self.logger.info(f"Beginning epoch {epoch}/{self.epochs}.")
 
                 # Train for one epoch
-                train_metrics = train_epoch(model=self.model, data_loader=train_loader, device=self.device, optimizer=self.optimizer, scaler=self.scaler, scheduler=self.scheduler, 
+                train_metrics = train_epoch(model=self.model, data_loader=train_loader, device=self.device, optimizer=self.optimizer, scheduler=self.scheduler, 
                                                      epoch=epoch, total_epochs=self.epochs, skip_batches=skip_batches if epoch == start_epoch else 0, accumulation_steps=max(256 // self.batch_size, 1), 
                                                      batch_size=self.batch_size, smooth_policy_targets=True, compute_accuracy_flag=True, total_batches_processed=self.total_batches_processed, 
                                                      batch_loss_update_signal=self.batch_loss_update, batch_accuracy_update_signal=self.batch_accuracy_update, progress_update_signal=self.progress_update, 

@@ -6,7 +6,8 @@ import chess.pgn
 import torch
 from src.models.model import ChessModel
 from src.utils.chess_utils import convert_board_to_tensor, get_move_mapping, get_total_moves
-from src.utils.common_utils import initialize_random_seeds, wait_if_paused, get_game_result
+from src.utils.common_utils import wait_if_paused, get_game_result
+from src.utils.train_utils import initialize_random_seeds
 from src.training.reinforcement.mcts import MCTS
 
 class PlayAndCollectWorker:
