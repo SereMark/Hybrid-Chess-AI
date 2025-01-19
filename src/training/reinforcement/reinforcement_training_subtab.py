@@ -109,7 +109,8 @@ class ReinforcementTrainingSubTab(BaseTab):
 
         label10 = QLabel("Optimizer Type:")
         self.optimizer_type_combo = QComboBox()
-        self.optimizer_type_combo.addItems(["Adam", "AdamW", "SGD"])
+        self.optimizer_type_combo.addItems(["AdamW", "Adam", "SGD"])
+        self.optimizer_type_combo.setCurrentText("AdamW")
 
         label11 = QLabel("Learning Rate:")
         self.learning_rate_input = QLineEdit("0.0005")
@@ -118,8 +119,8 @@ class ReinforcementTrainingSubTab(BaseTab):
 
         label13 = QLabel("Scheduler Type:")
         self.scheduler_type_combo = QComboBox()
-        self.scheduler_type_combo.addItems(["None", "StepLR", "CosineAnnealing", "CosineAnnealingWarmRestarts"])
-        self.scheduler_type_combo.setCurrentText("CosineAnnealing")
+        self.scheduler_type_combo.addItems(["CosineAnnealingWarmRestarts", "CosineAnnealing", "StepLR", "None"])
+        self.scheduler_type_combo.setCurrentText("CosineAnnealingWarmRestarts")
 
         layout.addWidget(label1, 0, 0)
         layout.addWidget(self.num_iterations_input, 0, 1)

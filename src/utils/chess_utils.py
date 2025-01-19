@@ -49,25 +49,6 @@ def flip_move(move):
     )
 
 def convert_board_to_tensor(board):
-    """
-    Converts the given chess.Board into a 25 x 8 x 8 NumPy tensor (float32).
-    
-    Plane breakdown (indices in the 0th dimension):
-    0-11 : One-hot planes for piece type & color
-           [ White Pawn, White Knight, White Bishop, White Rook, White Queen, White King,
-             Black Pawn, Black Knight, Black Bishop, Black Rook, Black Queen, Black King ]
-    12-15: Castling rights
-           [ White king-side, White queen-side, Black king-side, Black queen-side ]
-    16   : En passant square (if any)
-    17   : Normalized halfmove clock (divided by 100)
-    18   : Normalized fullmove number (divided by 100)
-    19   : Whose turn plane (1 if white, 0 if black)
-    20   : Threefold repetition indicator (1 if the position has repeated at least 3 times)
-    21   : Squares attacked by white
-    22   : Squares attacked by black
-    23   : White passed pawns
-    24   : Black passed pawns
-    """
     planes = np.zeros((25, 8, 8), dtype=np.float32)
     piece_map = board.piece_map()
 

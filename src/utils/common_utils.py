@@ -6,8 +6,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.nn import functional as F
-from typing import Tuple, Dict
-from src.utils.chess_utils import convert_board_to_tensor, get_move_mapping
+from torch.cuda.amp import autocast
 
 def initialize_random_seeds(random_seed: int) -> None:
     torch.manual_seed(random_seed)
@@ -78,45 +77,195 @@ def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor) -> float:
 
     return accuracy
 
-@torch.no_grad()
-def policy_value_fn(board: chess.Board, model, device) -> Tuple[Dict[chess.Move, float], float]:
-    # Convert board to tensor and run inference.
-    board_tensor = convert_board_to_tensor(board)
-    board_tensor = torch.from_numpy(board_tensor).float().unsqueeze(0).to(device)
-    policy_logits, value_out = model(board_tensor)
+def train_epoch(model, data_loader, device, optimizer, scaler, scheduler=None, epoch: int = 1, total_epochs: int = 1, skip_batches: int = 0, accumulation_steps: int = 1, batch_size: int = 1, 
+                         smooth_policy_targets: bool = False, compute_accuracy_flag: bool = False, total_batches_processed: int = 0, batch_loss_update_signal=None, batch_accuracy_update_signal=None, 
+                         progress_update_signal=None, time_left_update_signal=None, checkpoint_manager=None, checkpoint_type: str = None, logger=None, is_stopped_event=None, is_paused_event=None, start_time=None, total_steps=None):
+    model.train()
 
-    # Convert policy logits to a probability distribution.
-    policy = torch.softmax(policy_logits, dim=1).cpu().numpy()[0]
-    value_float = value_out.cpu().item()
-    legal_moves = list(board.legal_moves)
+    total_policy_loss = 0.0
+    total_value_loss = 0.0
+    correct_predictions = 0
+    total_samples = 0
 
-    # If no legal moves, return empty distribution
-    if not legal_moves:
-        return {}, value_float
+    # Convert loader to iterator if we might skip batches
+    data_iter = iter(data_loader)
 
-    action_probs = {}
-    total_prob = 0.0
-    # Map each legal move to its probability (index-based from the move_mapping).
-    for move in legal_moves:
-        idx = get_move_mapping().get_index_by_move(move)
-        if idx is not None and idx < len(policy):
-            prob = max(policy[idx], 1e-8)  # Avoid zero probabilities.
-            action_probs[move] = prob
-            total_prob += prob
+    # Skip any batches if resuming from a checkpoint
+    if skip_batches > 0:
+        if logger:
+            logger.info(f"Skipping {skip_batches} batch(es) from checkpoint.")
+            for _ in range(skip_batches):
+                try:
+                    next(data_iter)
+                except StopIteration:
+                    break
+
+    accumulate_count = 0
+    start_epoch_time = time.time()
+
+    # Main training loop
+    for batch_idx, (inputs, policy_targets, value_targets) in enumerate(data_iter, start=1):
+        # Check if asked to stop externally
+        if is_stopped_event is not None and is_stopped_event.is_set():
+            break
+
+        # Handle pause
+        if is_paused_event is not None:
+            wait_if_paused(is_paused_event)
+
+        # Move data to device
+        inputs = inputs.to(device, non_blocking=True)
+        policy_targets = policy_targets.to(device, non_blocking=True)
+        value_targets = value_targets.to(device, non_blocking=True)
+
+        # Forward pass with AMP
+        with autocast(enabled=(device.type == 'cuda')):
+            policy_preds, value_preds = model(inputs)
+
+            # Compute losses
+            policy_loss = compute_policy_loss(policy_preds, policy_targets, smooth_policy_targets)
+            value_loss = compute_value_loss(value_preds, value_targets)
+            loss = compute_total_loss(policy_loss, value_loss, batch_size)
+
+        # Backprop with gradient scaling
+        scaler.scale(loss).backward()
+        accumulate_count += 1
+
+        # Gradient accumulation step
+        if (accumulate_count % accumulation_steps == 0) or (batch_idx == len(data_loader)):
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
+            accumulate_count = 0
+
+        # Scheduler step
+        if scheduler and isinstance(scheduler, optim.lr_scheduler._LRScheduler):
+            scheduler.step()
+
+        # Track losses
+        batch_sz = inputs.size(0)
+        total_policy_loss += policy_loss.item() * batch_sz
+        total_value_loss += value_loss.item() * batch_sz
+        total_samples += batch_sz
+
+        # Accuracy (if requested)
+        if compute_accuracy_flag:
+            batch_accuracy = compute_accuracy(policy_preds, policy_targets)
+            correct_predictions += batch_accuracy * batch_sz
+
+        # Update overall batch count
+        total_batches_processed += 1
+
+        # Emit signals / logging every N batches (every 100)
+        if (total_batches_processed % 100) == 0:
+            if batch_loss_update_signal:
+                batch_loss_update_signal.emit(total_batches_processed, {'policy': policy_loss.item(), 'value': value_loss.item()})
+            if compute_accuracy_flag and batch_accuracy_update_signal:
+                batch_accuracy_update_signal.emit(total_batches_processed, batch_accuracy if compute_accuracy_flag else 0.0)
+
+            # Emit progress
+            if progress_update_signal and total_steps is not None and total_steps > 0:
+                current_progress = min(int((total_batches_processed / total_steps) * 100), 100)
+                progress_update_signal.emit(current_progress)
+
+            # Estimate time left
+            if time_left_update_signal and start_time is not None and total_steps:
+                elapsed_time = time.time() - start_time
+                remaining_steps = total_steps - total_batches_processed
+                if total_batches_processed > 0:
+                    estimated_total_time = (elapsed_time / total_batches_processed) * remaining_steps
+                    time_left_str = format_time_left(estimated_total_time)
+                    time_left_update_signal.emit(time_left_str)
+                else:
+                    time_left_update_signal.emit("Calculating...")
+
+        # Checkpoint saving if needed (batch / iteration)
+        if checkpoint_manager and checkpoint_type in ("batch", "iteration"):
+            if checkpoint_manager.should_save(batch_idx=total_batches_processed, iteration=total_batches_processed):
+                # For iteration-based checkpoint, pass iteration=total_batches_processed as well
+                checkpoint_data = {
+                    'model_state_dict': {k: v.cpu() for k, v in model.state_dict().items()},
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
+                    'epoch': epoch,
+                    'batch_idx': total_batches_processed,
+                    'training_stats': {}
+                }
+                checkpoint_manager.save(checkpoint_data)
+                if logger:
+                    logger.info(f"Checkpoint saved (batch/iteration) at step {total_batches_processed}.")
+
+        # Cleanup to free memory
+        del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
+        torch.cuda.empty_cache()
+
+    # Compute final metrics
+    avg_policy_loss = (total_policy_loss / total_samples) if total_samples > 0 else float('inf')
+    avg_value_loss = (total_value_loss / total_samples) if total_samples > 0 else float('inf')
+    accuracy = (correct_predictions / total_samples) if (total_samples > 0 and compute_accuracy_flag) else 0.0
+
+    epoch_duration = time.time() - start_epoch_time
+    if logger:
+        logger.info(f"Finished epoch {epoch}/{total_epochs} in {format_time_left(epoch_duration)}. Policy Loss: {avg_policy_loss:.4f}, Value Loss: {avg_value_loss:.4f}, Accuracy: {accuracy*100:.2f}%." if compute_accuracy_flag else "")
+
+    return {"policy_loss": avg_policy_loss, "value_loss": avg_value_loss, "accuracy": accuracy, "total_batches_processed": total_batches_processed }
+
+def validate_epoch(model, val_loader, device, epoch: int, training_accuracy: float, val_loss_update_signal=None, validation_accuracy_update_signal=None, logger=None, is_stopped_event=None, is_paused_event=None, smooth_policy_targets: bool = True):
+    val_policy_loss = 0.0
+    val_value_loss = 0.0
+    val_correct_predictions = 0
+    val_total_predictions = 0
+
+    model.eval()
+    try:
+        with torch.no_grad():
+            for inputs, policy_targets, value_targets in val_loader:
+                if is_stopped_event and is_stopped_event.is_set():
+                    break
+                if is_paused_event:
+                    wait_if_paused(is_paused_event)
+
+                inputs = inputs.to(device, non_blocking=True)
+                policy_targets = policy_targets.to(device, non_blocking=True)
+                value_targets = value_targets.to(device, non_blocking=True)
+
+                policy_preds, value_preds = model(inputs)
+
+                policy_loss = compute_policy_loss(policy_preds, policy_targets, smooth_policy_targets)
+                value_loss = compute_value_loss(value_preds, value_targets)
+
+                batch_sz = inputs.size(0)
+                val_policy_loss += policy_loss.item() * batch_sz
+                val_value_loss += value_loss.item() * batch_sz
+
+                # Accuracy
+                batch_accuracy = compute_accuracy(policy_preds, policy_targets)
+                val_correct_predictions += batch_accuracy * batch_sz
+                val_total_predictions += batch_sz
+
+        if val_total_predictions > 0:
+            avg_policy_loss = val_policy_loss / val_total_predictions
+            avg_value_loss = val_value_loss / val_total_predictions
+            accuracy = val_correct_predictions / val_total_predictions
         else:
-            action_probs[move] = 1e-8  # Very small probability for moves out of index range.
+            avg_policy_loss = float('inf')
+            avg_value_loss = float('inf')
+            accuracy = 0.0
 
-    # Normalize probabilities over legal moves if total_prob > 0.
-    if total_prob > 0:
-        for move in action_probs:
-            action_probs[move] /= total_prob
-    else:
-        # Fallback to uniform distribution if total_prob is zero.
-        uniform_prob = 1.0 / len(legal_moves)
-        for move in action_probs:
-            action_probs[move] = uniform_prob
+        if val_loss_update_signal:
+            val_loss_update_signal.emit(epoch, {'policy': avg_policy_loss, 'value': avg_value_loss})
+        if validation_accuracy_update_signal:
+            validation_accuracy_update_signal.emit(epoch, training_accuracy, accuracy)
 
-    return action_probs, value_float
+        if logger:
+            logger.info(f"Epoch {epoch}: Validation Policy Loss {avg_policy_loss:.4f}, Value Loss {avg_value_loss:.4f}, Accuracy {accuracy*100:.2f}%.")
+
+        return {'policy_loss': avg_policy_loss, 'value_loss': avg_value_loss, 'accuracy': accuracy}
+
+    except Exception as e:
+        if logger:
+            logger.error(f"Error during validation for epoch {epoch}: {str(e)}")
+            return {'policy_loss': float('inf'), 'value_loss': float('inf'), 'accuracy': 0.0}
 
 def format_time_left(seconds: float) -> str:
     days, remainder = divmod(seconds, 86400)

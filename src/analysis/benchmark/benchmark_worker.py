@@ -7,9 +7,9 @@ import json
 import torch
 from typing import Dict, Optional, Tuple
 from src.base.base_worker import BaseWorker
-from src.utils.mcts import MCTS
-from src.utils.chess_utils import get_total_moves
-from src.utils.common_utils import wait_if_paused, update_progress_time_left, get_game_result, policy_value_fn
+from src.training.reinforcement.mcts import MCTS
+from src.utils.chess_utils import get_total_moves, convert_board_to_tensor, get_move_mapping
+from src.utils.common_utils import wait_if_paused, update_progress_time_left, get_game_result
 from src.models.model import ChessModel
 
 class Bot:
@@ -41,8 +41,52 @@ class Bot:
 
     def initialize_mcts(self, simulations: int = 100, exploration: float = 1.4):
         if self.use_mcts and self.model:
-            self.mcts = MCTS(policy_value_fn=lambda board: policy_value_fn(board, self.model, self.device), c_puct=exploration, n_simulations=simulations)
+            self.mcts = MCTS(model=self.model, device=torch.device(self.device), c_puct=exploration, n_simulations=simulations)
             self.logger.info("Initialized MCTS for bot.")
+
+    def _get_board_action_probs(self, board: chess.Board) -> Dict[chess.Move, float]:
+        if not self.model:
+            return {}
+
+        board_tensor = convert_board_to_tensor(board)
+        board_tensor = torch.from_numpy(board_tensor).float().unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            policy_logits, _ = self.model(board_tensor)
+            policy_logits = policy_logits[0]  # Remove batch dimension
+
+        # Convert logits to probabilities
+        policy = torch.softmax(policy_logits, dim=0).cpu().numpy()
+
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
+            return {}
+
+        action_probs = {}
+        total_prob = 0.0
+        move_mapping = get_move_mapping()
+
+        for move in legal_moves:
+            idx = move_mapping.get_index_by_move(move)
+            if idx is not None and idx < len(policy):
+                prob = max(policy[idx], 1e-8)
+                action_probs[move] = prob
+                total_prob += prob
+            else:
+                action_probs[move] = 1e-8
+                total_prob += 1e-8
+
+        # Normalize probabilities
+        if total_prob > 0:
+            for mv in action_probs:
+                action_probs[mv] /= total_prob
+        else:
+            # Fallback to uniform if total_prob is zero
+            uniform_prob = 1.0 / len(legal_moves)
+            for mv in action_probs:
+                action_probs[mv] = uniform_prob
+
+        return action_probs
 
     def get_move_pth(self, board: chess.Board) -> chess.Move:
         if not self.model:
@@ -55,29 +99,13 @@ class Bot:
                 self.logger.warning("No legal moves available.")
                 return chess.Move.null()
 
-            board_features = policy_value_fn(board, self.model, self.device)
-
-            # Validate board_features structure
-            if not isinstance(board_features, tuple) or len(board_features) != 2:
-                raise ValueError(f"Invalid board features format: {board_features}")
-
-            move_scores, _ = board_features
-
-            # Validate move_scores structure
-            if not isinstance(move_scores, dict):
-                raise ValueError(f"Invalid move scores format: {move_scores}")
-
-            # Filter scores for legal moves
-            legal_move_scores = {
-                move: score for move, score in move_scores.items() if move in legal_moves
-            }
-
-            if not legal_move_scores:
-                self.logger.warning("No valid scores for legal moves.")
+            action_probs = self._get_board_action_probs(board)
+            if not action_probs:
+                self.logger.warning("No valid moves found from the NN inference.")
                 return chess.Move.null()
 
-            # Select the best move based on scores
-            best_move = max(legal_move_scores, key=legal_move_scores.get)
+            # Pick move with the highest probability
+            best_move = max(action_probs, key=action_probs.get)
             return best_move
 
         except Exception as e:
@@ -186,8 +214,8 @@ class BenchmarkWorker(BaseWorker):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 opening_book = json.load(f)
-                self.logger.info("Loaded opening book.")
-                return opening_book
+            self.logger.info("Loaded opening book.")
+            return opening_book
         except json.JSONDecodeError as e:
             self.logger.error(f"Failed to decode opening book JSON: {e}")
             return {}

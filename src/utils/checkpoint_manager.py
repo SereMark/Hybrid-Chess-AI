@@ -11,6 +11,8 @@ class CheckpointManager:
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
     def should_save(self, epoch=None, batch_idx=None, iteration=None):
+        if not self.checkpoint_interval or self.checkpoint_interval <= 0:
+            return False
         if self.checkpoint_type == 'epoch' and epoch is not None:
             return epoch % self.checkpoint_interval == 0
         if self.checkpoint_type == 'batch' and batch_idx is not None:

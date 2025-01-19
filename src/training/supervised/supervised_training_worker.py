@@ -1,17 +1,15 @@
 import os
 import time
-import threading
-from typing import Optional, Dict
+from typing import Optional
 import numpy as np
 import torch
-import torch.optim as optim
-from torch.amp import autocast, GradScaler
+from torch.amp import GradScaler
 from torch.utils.data import DataLoader
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
 from src.models.model import ChessModel
 from src.utils.datasets import H5Dataset
-from src.utils.common_utils import format_time_left, initialize_optimizer, initialize_scheduler, initialize_random_seeds, wait_if_paused, compute_policy_loss, compute_value_loss, compute_total_loss, compute_accuracy
+from src.utils.common_utils import format_time_left, initialize_optimizer, initialize_scheduler, initialize_random_seeds, validate_epoch, train_epoch
 from src.utils.chess_utils import get_total_moves
 from src.utils.checkpoint_manager import CheckpointManager
 
@@ -54,7 +52,8 @@ class SupervisedWorker(BaseWorker):
         self.optimizer = initialize_optimizer(self.model, self.optimizer_type, self.learning_rate, self.weight_decay, logger=self.logger)
 
         # Initialize scheduler
-        self.scheduler = initialize_scheduler(self.optimizer, self.scheduler_type, total_steps=self.epochs*self._get_total_steps(), logger=self.logger)
+        total_steps = self.epochs * self._get_total_steps()
+        self.scheduler = initialize_scheduler(self.optimizer, self.scheduler_type, total_steps=total_steps, logger=self.logger)
 
         # Initialize checkpoint manager
         self.checkpoint_dir = os.path.join('models', 'checkpoints', 'supervised')
@@ -116,6 +115,10 @@ class SupervisedWorker(BaseWorker):
             else:
                 self.logger.info("No checkpoint path provided or checkpoint does not exist. Training from scratch.")
 
+            # For time-left estimation
+            total_steps = self.epochs * len(train_loader)
+            start_time = time.time()
+
             # Training loop
             for epoch in range(start_epoch, self.epochs + 1):
                 if self._is_stopped.is_set():
@@ -124,9 +127,16 @@ class SupervisedWorker(BaseWorker):
                 epoch_start_time = time.time()
                 self.logger.info(f"Beginning epoch {epoch}/{self.epochs}.")
 
-                # Train the current epoch
-                self.model.train()
-                train_metrics = self._train_epoch(train_loader, epoch, self.device, self.scaler, skip_batches if epoch == start_epoch else 0)
+                # Train for one epoch
+                train_metrics = train_epoch(model=self.model, data_loader=train_loader, device=self.device, optimizer=self.optimizer, scaler=self.scaler, scheduler=self.scheduler, 
+                                                     epoch=epoch, total_epochs=self.epochs, skip_batches=skip_batches if epoch == start_epoch else 0, accumulation_steps=max(256 // self.batch_size, 1), 
+                                                     batch_size=self.batch_size, smooth_policy_targets=True, compute_accuracy_flag=True, total_batches_processed=self.total_batches_processed, 
+                                                     batch_loss_update_signal=self.batch_loss_update, batch_accuracy_update_signal=self.batch_accuracy_update, progress_update_signal=self.progress_update, 
+                                                     time_left_update_signal=self.time_left_update, checkpoint_manager=self.checkpoint_manager, checkpoint_type=self.checkpoint_type, logger=self.logger, 
+                                                     is_stopped_event=self._is_stopped, is_paused_event=self._is_paused, start_time=start_time, total_steps=total_steps)
+                
+                # Update total_batches_processed after the epoch
+                self.total_batches_processed = train_metrics["total_batches_processed"]
                 skip_batches = 0
 
                 if self._is_stopped.is_set():
@@ -134,7 +144,9 @@ class SupervisedWorker(BaseWorker):
 
                 # Validate the current epoch
                 self.model.eval()
-                val_metrics = self._validate_epoch(val_loader, epoch, self.device, train_metrics['accuracy'])
+                val_metrics = validate_epoch(model=self.model, val_loader=val_loader, device=self.device, epoch=epoch, training_accuracy=train_metrics['accuracy'], 
+                                                      val_loss_update_signal=self.val_loss_update, validation_accuracy_update_signal=self.validation_accuracy_update, logger=self.logger, 
+                                                      is_stopped_event=self._is_stopped, is_paused_event=self._is_paused, smooth_policy_targets=True)
 
                 # Calculate total losses
                 total_train_loss = train_metrics['policy_loss'] + train_metrics['value_loss']
@@ -153,7 +165,16 @@ class SupervisedWorker(BaseWorker):
 
                 # Save checkpoint if required
                 if self.save_checkpoints and self.checkpoint_type == 'epoch' and self.checkpoint_manager.should_save(epoch=epoch):
-                    self._save_checkpoint(epoch)
+                    checkpoint_data = {
+                        'model_state_dict': {k: v.cpu() for k, v in self.model.state_dict().items()},
+                        'optimizer_state_dict': self.optimizer.state_dict(),
+                        'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
+                        'epoch': epoch,
+                        'batch_idx': self.total_batches_processed,
+                        'training_stats': {}
+                    }
+                    self.checkpoint_manager.save(checkpoint_data)
+                    self.logger.info(f"Checkpoint saved at epoch {epoch}.")
 
             # Save the final model if training completed without interruption
             if not self._is_stopped.is_set():
@@ -179,165 +200,3 @@ class SupervisedWorker(BaseWorker):
         finally:
             self.task_finished.emit()
             self.finished.emit()
-
-    def _save_checkpoint(self, epoch: int):
-        checkpoint_data = {
-            'model_state_dict': {k: v.cpu() for k, v in self.model.state_dict().items()},
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
-            'epoch': epoch,
-            'batch_idx': self.total_batches_processed,
-            'training_stats': {}
-        }
-        self.checkpoint_manager.save(checkpoint_data)
-        self.logger.info(f"Checkpoint saved at epoch {epoch}.")
-
-    def _train_epoch(self, train_loader: DataLoader, epoch: int, device: torch.device, scaler: GradScaler, skip_batches: int) -> Dict[str, float]:
-        total_policy_loss = 0.0
-        total_value_loss = 0.0
-        correct_predictions = 0
-        total_predictions = 0
-        accumulate_count = 0
-
-        try:
-            start_time = time.time()
-            if skip_batches > 0:
-                self.logger.info(f"Skipping {skip_batches} batch(es) from checkpoint.")
-
-            for batch_idx, (inputs, policy_targets, value_targets) in enumerate(train_loader, 1):
-                if self._is_stopped.is_set():
-                    break
-
-                if skip_batches > 0:
-                    skip_batches -= 1
-                    continue
-
-                wait_if_paused(self._is_paused)
-
-                inputs = inputs.to(device, non_blocking=True)
-                policy_targets = policy_targets.to(device, non_blocking=True)
-                value_targets = value_targets.to(device, non_blocking=True)
-
-                with autocast(device_type=self.device.type):
-                    policy_preds, value_preds = self.model(inputs)
-
-                    # Calculate losses
-                    policy_loss = compute_policy_loss(policy_preds, policy_targets, True)
-                    value_loss = compute_value_loss(value_preds, value_targets)
-                    loss = compute_total_loss(policy_loss, value_loss, self.batch_size)
-
-                scaler.scale(loss).backward()
-                accumulate_count += 1
-
-                if (accumulate_count % max(256 // self.batch_size, 1) == 0) or (batch_idx == len(train_loader)):
-                    scaler.step(self.optimizer)
-                    scaler.update()
-                    self.optimizer.zero_grad()
-                    accumulate_count = 0
-
-                # Update scheduler if applicable
-                if self.scheduler and isinstance(self.scheduler, optim.lr_scheduler._LRScheduler):
-                    self.scheduler.step()
-
-                # Accumulate losses
-                total_policy_loss += policy_loss.item() * inputs.size(0)
-                total_value_loss += value_loss.item() * inputs.size(0)
-
-                # Calculate accuracy
-                batch_accuracy = compute_accuracy(policy_preds, policy_targets)
-                correct_predictions += batch_accuracy * inputs.size(0)
-                total_predictions += inputs.size(0)
-
-                # Update tracking variables
-                with threading.Lock():
-                    self.total_batches_processed += 1
-
-                # Emit batch metrics and progress updates every 100 batches
-                if self.total_batches_processed % 100 == 0:
-                    # Emit batch metrics
-                    self.batch_loss_update.emit(self.total_batches_processed, {'policy': policy_loss.item(), 'value': value_loss.item()})
-                    self.batch_accuracy_update.emit(self.total_batches_processed, batch_accuracy)
-
-                    # Emit progress
-                    current_progress = min(int((self.total_batches_processed / (self.epochs * len(train_loader))) * 100), 100)
-                    self.progress_update.emit(current_progress)
-
-                    # Estimate and emit time left
-                    elapsed_time = time.time() - start_time
-                    if self.total_batches_processed > 0:
-                        estimated_total_time = (elapsed_time / self.total_batches_processed) * (self.epochs * len(train_loader) - self.total_batches_processed)
-                        time_left_str = format_time_left(estimated_total_time)
-                        self.time_left_update.emit(time_left_str)
-                    else:
-                        self.time_left_update.emit("Calculating...")
-
-                # Save checkpoint based on batch interval or iteration
-                if self.checkpoint_type == 'batch' and self.checkpoint_manager.should_save(batch_idx=self.total_batches_processed):
-                    self._save_checkpoint(epoch)
-                elif self.checkpoint_type == 'iteration' and self.checkpoint_manager.should_save(iteration=self.total_batches_processed):
-                    self._save_checkpoint(epoch)
-
-                # Clean up to free memory
-                del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
-                torch.cuda.empty_cache()
-
-            # Calculate metrics
-            metrics = {'policy_loss': total_policy_loss / total_predictions if total_predictions > 0 else float('inf'), 'value_loss': total_value_loss / total_predictions if total_predictions > 0 else float('inf'), 'accuracy': correct_predictions / total_predictions if total_predictions > 0 else 0.0}
-
-            self.logger.info(f"Epoch {epoch}: Training Accuracy {metrics['accuracy']*100:.2f}%.")
-
-            return metrics
-        except Exception as e:
-            self.logger.error(f"Error during training for epoch {epoch}: {str(e)}")
-            return {'policy_loss': float('inf'), 'value_loss': float('inf'), 'accuracy': 0.0}
-
-    def _validate_epoch(self, val_loader: DataLoader, epoch: int, device: torch.device, training_accuracy: float) -> Dict[str, float]:
-        val_policy_loss = 0.0
-        val_value_loss = 0.0
-        val_correct_predictions = 0
-        val_total_predictions = 0
-
-        try:
-            with torch.no_grad():
-                for inputs, policy_targets, value_targets in val_loader:
-                    if self._is_stopped.is_set():
-                        break
-
-                    wait_if_paused(self._is_paused)
-
-                    inputs = inputs.to(device, non_blocking=True)
-                    policy_targets = policy_targets.to(device, non_blocking=True)
-                    value_targets = value_targets.to(device, non_blocking=True)
-
-                    policy_preds, value_preds = self.model(inputs)
-
-                    # Calculate losses
-                    policy_loss = compute_policy_loss(policy_preds, policy_targets, True)
-                    value_loss = compute_value_loss(value_preds, value_targets)
-
-                    # Accumulate losses
-                    val_policy_loss += policy_loss.item() * inputs.size(0)
-                    val_value_loss += value_loss.item() * inputs.size(0)
-
-                    # Calculate accuracy
-                    batch_accuracy = compute_accuracy(policy_preds, policy_targets)
-                    val_correct_predictions += batch_accuracy * inputs.size(0)
-                    val_total_predictions += inputs.size(0)
-
-            # Calculate validation metrics
-            if val_total_predictions > 0:
-                metrics = {'policy_loss': val_policy_loss / val_total_predictions, 'value_loss': val_value_loss / val_total_predictions, 'accuracy': val_correct_predictions / val_total_predictions}
-            else:
-                metrics = {'policy_loss': float('inf'), 'value_loss': float('inf'), 'accuracy': 0.0}
-
-            # Emit validation metrics
-            self.val_loss_update.emit(epoch, {'policy': metrics['policy_loss'], 'value': metrics['value_loss']})
-            self.validation_accuracy_update.emit(epoch, training_accuracy, metrics['accuracy'])
-
-            self.logger.info(f"Epoch {epoch}: Validation Policy Loss {metrics['policy_loss']:.4f}, "f"Value Loss {metrics['value_loss']:.4f}, Accuracy {metrics['accuracy']*100:.2f}%.")
-
-            return metrics
-
-        except Exception as e:
-            self.logger.error(f"Error during validation for epoch {epoch}: {str(e)}")
-            return {'policy_loss': float('inf'), 'value_loss': float('inf'), 'accuracy': 0.0}
