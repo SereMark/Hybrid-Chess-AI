@@ -156,8 +156,7 @@ def train_epoch( model, data_loader,  device, scaler, optimizer, scheduler=None,
         # Periodic UI/log updates
         if (total_batches_processed % 100) == 0:
             if batch_loss_update_signal:
-                batch_loss_update_signal.emit(
-                    total_batches_processed, {'policy': policy_loss.item(), 'value': value_loss.item()})
+                batch_loss_update_signal.emit(total_batches_processed, {'policy': policy_loss.item(), 'value': value_loss.item()})
             if compute_accuracy_flag and batch_accuracy_update_signal:
                 batch_accuracy_update_signal.emit(total_batches_processed, batch_accuracy)
             if progress_update_signal and total_steps:
