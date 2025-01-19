@@ -7,6 +7,7 @@ import chess
 import chess.pgn
 import torch
 import torch.optim as optim
+from torch.amp import GradScaler
 from torch.utils.data import DataLoader, TensorDataset
 from multiprocessing import Pool, cpu_count, Manager
 from PyQt5.QtCore import pyqtSignal
@@ -53,6 +54,9 @@ class ReinforcementWorker(BaseWorker):
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.scheduler_type = scheduler_type
+
+        # Mixed Precision Training
+        self.scaler = GradScaler("cuda" if torch.cuda.is_available() else "cpu")
 
         # Initialization
         initialize_random_seeds(self.random_seed)
@@ -163,7 +167,7 @@ class ReinforcementWorker(BaseWorker):
                         self.current_epoch = epoch
 
                         # Train for one epoch
-                        train_metrics = train_epoch(model=self.model, data_loader=data_loader, device=self.device, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch, total_epochs=self.num_epochs,
+                        train_metrics = train_epoch(model=self.model, data_loader=data_loader, device=self.device, scaler=self.scaler, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch, total_epochs=self.num_epochs,
                             skip_batches=self.batch_idx if (epoch == self.current_epoch and self.batch_idx is not None) else 0, accumulation_steps=max(256 // max(self.batch_size, 1), 1), batch_size=self.batch_size,
                             smooth_policy_targets=False, compute_accuracy_flag=False, total_batches_processed=self.total_batches_processed, batch_loss_update_signal=None, batch_accuracy_update_signal=None,
                             progress_update_signal=self.progress_update, time_left_update_signal=self.time_left_update, checkpoint_manager=self.checkpoint_manager, checkpoint_type=self.checkpoint_type,

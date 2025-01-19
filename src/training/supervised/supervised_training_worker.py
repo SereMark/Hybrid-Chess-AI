@@ -3,6 +3,7 @@ import time
 from typing import Optional
 import numpy as np
 import torch
+from torch.amp import GradScaler
 from torch.utils.data import DataLoader
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
@@ -54,6 +55,9 @@ class SupervisedWorker(BaseWorker):
         # Initialize scheduler
         total_steps = self.epochs * self._get_total_steps()
         self.scheduler = initialize_scheduler(self.optimizer, self.scheduler_type, total_steps=total_steps, logger=self.logger)
+
+        # Mixed Precision Training
+        self.scaler = GradScaler("cuda" if torch.cuda.is_available() else "cpu")
 
         # Initialize checkpoint manager
         self.checkpoint_dir = os.path.join('models', 'checkpoints', 'supervised')
@@ -125,7 +129,7 @@ class SupervisedWorker(BaseWorker):
                 self.logger.info(f"Beginning epoch {epoch}/{self.epochs}.")
 
                 # Train for one epoch
-                train_metrics = train_epoch(model=self.model, data_loader=train_loader, device=self.device, optimizer=self.optimizer, scheduler=self.scheduler, 
+                train_metrics = train_epoch(model=self.model, data_loader=train_loader, device=self.device, scaler=self.scaler, optimizer=self.optimizer, scheduler=self.scheduler, 
                                                      epoch=epoch, total_epochs=self.epochs, skip_batches=skip_batches if epoch == start_epoch else 0, accumulation_steps=max(256 // self.batch_size, 1), 
                                                      batch_size=self.batch_size, smooth_policy_targets=True, compute_accuracy_flag=True, total_batches_processed=self.total_batches_processed, 
                                                      batch_loss_update_signal=self.batch_loss_update, batch_accuracy_update_signal=self.batch_accuracy_update, progress_update_signal=self.progress_update, 

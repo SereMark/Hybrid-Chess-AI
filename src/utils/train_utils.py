@@ -4,11 +4,8 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.nn import functional as F
-from torch.amp import GradScaler, autocast
+from torch.amp import autocast
 from src.utils.common_utils import format_time_left, wait_if_paused
-
-# Global AMP GradScaler instance
-scaler = GradScaler("cuda" if torch.cuda.is_available() else "cpu")
 
 def initialize_random_seeds(random_seed: int) -> None:
     torch.manual_seed(random_seed)
@@ -21,7 +18,6 @@ def initialize_random_seeds(random_seed: int) -> None:
 
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-
 
 def initialize_optimizer(model: torch.nn.Module, optimizer_type: str, learning_rate: float, weight_decay: float, logger=None) -> optim.Optimizer:
     optimizer_type = optimizer_type.lower()
@@ -36,7 +32,6 @@ def initialize_optimizer(model: torch.nn.Module, optimizer_type: str, learning_r
     if optimizer is None and logger:
         logger.error(f"Unsupported optimizer type '{optimizer_type}'.")
     return optimizer
-
 
 def initialize_scheduler(optimizer: optim.Optimizer, scheduler_type: str, total_steps: int = None, logger=None):
     scheduler_type = scheduler_type.lower()
@@ -57,7 +52,6 @@ def initialize_scheduler(optimizer: optim.Optimizer, scheduler_type: str, total_
         logger.error(f"Unsupported scheduler type '{scheduler_type}'.")
     return scheduler
 
-
 def compute_policy_loss(predicted_policies: torch.Tensor, target_policies: torch.Tensor, apply_smoothing: bool = True) -> torch.Tensor:
     if apply_smoothing:
         one_hot = torch.zeros_like(predicted_policies)
@@ -70,15 +64,12 @@ def compute_policy_loss(predicted_policies: torch.Tensor, target_policies: torch
     policy_loss = -(target_policies * log_probabilities).sum(dim=1).mean()
     return policy_loss
 
-
 def compute_value_loss(value_preds: torch.Tensor, value_targets: torch.Tensor) -> torch.Tensor:
     return F.mse_loss(value_preds.view(-1), value_targets)
-
 
 def compute_total_loss(policy_loss: torch.Tensor, value_loss: torch.Tensor, batch_size: int) -> torch.Tensor:
     accumulation_steps = max(256 // batch_size, 1)
     return (policy_loss + value_loss) / accumulation_steps
-
 
 def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor) -> float:
     _, predicted_classes = torch.max(predictions.data, 1)
@@ -86,8 +77,7 @@ def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor) -> float:
     total = targets.size(0)
     return correct / total if total > 0 else 0.0
 
-
-def train_epoch( model, data_loader,  device, optimizer, scheduler=None, epoch: int = 1, total_epochs: int = 1, skip_batches: int = 0, accumulation_steps: int = 1, batch_size: int = 1,
+def train_epoch( model, data_loader,  device, scaler, optimizer, scheduler=None, epoch: int = 1, total_epochs: int = 1, skip_batches: int = 0, accumulation_steps: int = 1, batch_size: int = 1,
                  smooth_policy_targets: bool = False, compute_accuracy_flag: bool = False, total_batches_processed: int = 0, batch_loss_update_signal=None,
                    batch_accuracy_update_signal=None, progress_update_signal=None, time_left_update_signal=None, checkpoint_manager=None,
                      checkpoint_type: str = None, logger=None, is_stopped_event=None, is_paused_event=None, start_time=None, total_steps=None):
@@ -222,7 +212,6 @@ def train_epoch( model, data_loader,  device, optimizer, scheduler=None, epoch: 
         "accuracy": accuracy,
         "total_batches_processed": total_batches_processed
     }
-
 
 def validate_epoch(model, val_loader, device, epoch: int, training_accuracy: float, val_loss_update_signal=None, validation_accuracy_update_signal=None, 
                    logger=None, is_stopped_event=None, is_paused_event=None, smooth_policy_targets: bool = True):
