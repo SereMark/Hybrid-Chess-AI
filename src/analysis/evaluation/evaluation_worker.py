@@ -1,6 +1,6 @@
 import os
 import time
-from typing import Optional, List, Dict
+from typing import Optional, List
 from collections import Counter
 import numpy as np
 import torch
