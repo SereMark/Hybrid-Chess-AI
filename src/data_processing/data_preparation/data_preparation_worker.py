@@ -116,8 +116,8 @@ class DataPreparationWorker(BaseWorker):
                         self._process_data_entry(result)
                         self.total_games_processed += 1
 
-                        # UI updates every 500 games
-                        if self.total_games_processed % 500 == 0:
+                        # UI updates every 10 games
+                        if self.total_games_processed % 10 == 0:
                             update_progress_time_left(self.progress_update, self.time_left_update, self.start_time, self.total_games_processed, total_estimated_games)
                             self._emit_stats()
 
