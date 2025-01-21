@@ -5,7 +5,7 @@ import chess
 import chess.pgn
 import json
 import torch
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 from src.base.base_worker import BaseWorker
 from src.training.reinforcement.mcts import MCTS
 from src.utils.chess_utils import get_total_moves, convert_board_to_tensor, get_move_mapping
@@ -19,30 +19,31 @@ class Bot:
         self.use_opening_book = use_opening_book
         self.logger = logger
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = self._load_model()
-        self.mcts: Optional[MCTS] = None
-        self.initialize_mcts()
 
-    def _load_model(self) -> Optional[ChessModel]:
+        # Load the model
         if not os.path.exists(self.path):
-            self.logger.error(f"Model path does not exist: {self.path}")
-            return None
+            self.model = None
+            self.logger.warning(f"Model path does not exist: {self.path}")
+        else:
+            try:
+                self.model = ChessModel(get_total_moves()).to(self.device)
+                self.model.load_state_dict(torch.load(self.path, map_location=self.device)["model_state_dict"])
+                self.model.eval()
+                self.logger.info(f"Model loaded successfully from {self.path}")
+            except Exception as e:
+                self.logger.error(f"Failed to load model from {self.path}: {e}")
+                self.model = None
 
-        try:
-            model = ChessModel(get_total_moves()).to(self.device)
-            checkpoint = torch.load(self.path, map_location=self.device)
-            model.load_state_dict(checkpoint["model_state_dict"])
-            model.eval()
-            self.logger.info(f"Loaded model from {self.path}")
-            return model
-        except Exception as e:
-            self.logger.error(f"Failed to load model from {self.path}: {e}")
-            return None
-
-    def initialize_mcts(self, simulations: int = 100, exploration: float = 1.4):
+        # Initialize MCTS if required
+        self.mcts: Optional[MCTS] = None
         if self.use_mcts and self.model:
-            self.mcts = MCTS(model=self.model, device=torch.device(self.device), c_puct=exploration, n_simulations=simulations)
-            self.logger.info("Initialized MCTS for bot.")
+            try:
+                # Initialize MCTS
+                self.mcts = MCTS(model=self.model, device=torch.device(self.device), c_puct=1.4, n_simulations=100)
+                self.logger.info("MCTS initialized successfully.")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize MCTS: {e}")
+                self.mcts = None
 
     def _get_board_action_probs(self, board: chess.Board) -> Dict[chess.Move, float]:
         if not self.model:
@@ -64,10 +65,9 @@ class Bot:
 
         action_probs = {}
         total_prob = 0.0
-        move_mapping = get_move_mapping()
 
         for move in legal_moves:
-            idx = move_mapping.get_index_by_move(move)
+            idx = get_move_mapping().get_index_by_move(move)
             if idx is not None and idx < len(policy):
                 prob = max(policy[idx], 1e-8)
                 action_probs[move] = prob
@@ -112,18 +112,12 @@ class Bot:
             self.logger.error(f"Error determining move with .pth model: {e}")
             return chess.Move.null()
 
-    def get_move_mcts(self, board: chess.Board, time_per_move: float) -> chess.Move:
+    def get_move_mcts(self, board: chess.Board) -> chess.Move:
         if not self.mcts:
             self.logger.warning("MCTS not initialized. Returning null move.")
             return chess.Move.null()
 
         self.mcts.set_root_node(board.copy())
-
-        start_time = time.time()
-        while (time.time() - start_time) < time_per_move:
-            if board.is_game_over():
-                break
-            self.mcts.simulate()
 
         move_probs = self.mcts.get_move_probs(temperature=1e-3)
         if not move_probs:
@@ -133,25 +127,6 @@ class Bot:
         # Select the move with the highest probability
         best_move = max(move_probs, key=move_probs.get)
         return best_move
-
-    def get_move(self, board: chess.Board, time_per_move: float, opening_book: Dict[str, Dict[str, Dict[str, int]]]) -> chess.Move:
-        # Use opening book and MCTS if both are enabled
-        if self.use_mcts and self.use_opening_book:
-            move = self.get_opening_book_move(board, opening_book)
-            if move != chess.Move.null():
-                return move
-            return self.get_move_mcts(board, time_per_move)
-
-        # Use only MCTS
-        if self.use_mcts:
-            return self.get_move_mcts(board, time_per_move)
-
-        # Use only opening book
-        if self.use_opening_book:
-            return self.get_opening_book_move(board, opening_book)
-
-        # Fallback to model-based move
-        return self.get_move_pth(board)
 
     def get_opening_book_move(self, board: chess.Board, opening_book: Dict[str, Dict[str, Dict[str, int]]]) -> chess.Move:
         if not opening_book:
@@ -185,14 +160,31 @@ class Bot:
         # Return the best move found or a null move if none
         return best_move if best_move else chess.Move.null()
 
+    def get_move(self, board: chess.Board, opening_book: Dict[str, Dict[str, Dict[str, int]]]) -> chess.Move:
+        # Use opening book and MCTS if both are enabled
+        if self.use_mcts and self.use_opening_book:
+            move = self.get_opening_book_move(board, opening_book)
+            if move != chess.Move.null():
+                return move
+            return self.get_move_mcts(board)
+
+        # Use only MCTS
+        if self.use_mcts:
+            return self.get_move_mcts(board)
+
+        # Use only opening book
+        if self.use_opening_book:
+            return self.get_opening_book_move(board, opening_book)
+
+        # Fallback to model-based move
+        return self.get_move_pth(board)
+
 class BenchmarkWorker(BaseWorker):
     benchmark_update = pyqtSignal(dict)
 
-    def __init__(self, bot1_path: str, bot2_path: str, num_games: int, time_per_move: float, bot1_use_mcts: bool, bot1_use_opening_book: bool, bot2_use_mcts: bool, bot2_use_opening_book: bool):
+    def __init__(self, bot1_path: str, bot2_path: str, num_games: int, bot1_use_mcts: bool, bot1_use_opening_book: bool, bot2_use_mcts: bool, bot2_use_opening_book: bool):
         super().__init__()
         self.num_games = num_games
-        self.time_per_move = time_per_move
-        self.default_mcts_simulations = 100
 
         # Load the opening book
         opening_book_path = os.path.join("data", "processed", "opening_book.json")
@@ -258,10 +250,12 @@ class BenchmarkWorker(BaseWorker):
             while not board.is_game_over() and not self._is_stopped.is_set():
                 # Handle pause functionality
                 wait_if_paused(self._is_paused)
+
                 # Determine which bot's turn it is
                 current_bot = self.bot1 if board.turn == chess.WHITE else self.bot2
+
                 # Get the move from the current bot
-                move = current_bot.get_move(board, self.time_per_move, self.opening_book)
+                move = current_bot.get_move(board, self.opening_book)
                 if move == chess.Move.null():
                     self.logger.warning(f"{'Bot1' if board.turn == chess.WHITE else 'Bot2'} returned a null move.")
                     break

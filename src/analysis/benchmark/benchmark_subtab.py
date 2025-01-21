@@ -81,11 +81,6 @@ class BenchmarkSubTab(BaseTab):
         self.num_games_spin = QSpinBox()
         self.num_games_spin.setRange(1, 10000)
         self.num_games_spin.setValue(10)
-        label_time_per_move = QLabel("Time/Move (sec):")
-        self.time_per_move_spin = QDoubleSpinBox()
-        self.time_per_move_spin.setRange(0.1, 600.0)
-        self.time_per_move_spin.setValue(1.0)
-        self.time_per_move_spin.setSingleStep(0.1)
         layout.addWidget(label_bot1, 0, 0)
         layout.addLayout(self.create_browse_layout(self.bot1_path_input, browse_bot1_btn), 0, 1, 1, 2)
         layout.addWidget(self.bot1_use_mcts_checkbox, 0, 3)
@@ -96,8 +91,6 @@ class BenchmarkSubTab(BaseTab):
         layout.addWidget(self.bot2_use_opening_book_checkbox, 1, 4)
         layout.addWidget(label_num_games, 2, 0)
         layout.addWidget(self.num_games_spin, 2, 1)
-        layout.addWidget(label_time_per_move, 3, 0)
-        layout.addWidget(self.time_per_move_spin, 3, 1)
         group.setLayout(layout)
         return group
 
@@ -109,7 +102,6 @@ class BenchmarkSubTab(BaseTab):
         bot2_use_mcts = self.bot2_use_mcts_checkbox.isChecked()
         bot2_use_opening_book = self.bot2_use_opening_book_checkbox.isChecked()
         num_games = self.num_games_spin.value()
-        time_per_move = self.time_per_move_spin.value()
         if not bot1_path or not os.path.exists(bot1_path):
             QMessageBox.warning(self, "Error", "Bot1 file does not exist.")
             return
@@ -145,7 +137,6 @@ class BenchmarkSubTab(BaseTab):
             bot1_path,
             bot2_path,
             num_games,
-            time_per_move,
             bot1_use_mcts,
             bot1_use_opening_book,
             bot2_use_mcts,
