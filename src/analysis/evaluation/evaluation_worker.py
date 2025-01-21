@@ -54,7 +54,6 @@ class EvaluationWorker(BaseWorker):
 
         for _, (inputs, policy_targets, _) in enumerate(loader, 1):
             if self._is_stopped.is_set():
-                self.logger.info("Evaluation stopped by user.")
                 return
 
             wait_if_paused(self._is_paused)
