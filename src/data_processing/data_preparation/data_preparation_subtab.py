@@ -35,11 +35,11 @@ class DataPreparationSubTab(BaseTab):
         group = QGroupBox("Data Parameters")
         layout = QGridLayout()
         label1 = QLabel("Max Games:")
-        self.max_games_input = QLineEdit("100000")
+        self.max_games_input = QLineEdit("60000")
         label2 = QLabel("Minimum ELO:")
-        self.min_elo_input = QLineEdit("2000")
+        self.min_elo_input = QLineEdit("1600")
         label3 = QLabel("Batch Size:")
-        self.batch_size_input = QLineEdit("10000")
+        self.batch_size_input = QLineEdit("4000")
         layout.addWidget(label1, 0, 0)
         layout.addWidget(self.max_games_input, 0, 1)
         layout.addWidget(label2, 0, 2)
@@ -68,13 +68,13 @@ class DataPreparationSubTab(BaseTab):
         engine_path_button.clicked.connect(lambda: self.browse_file(self.engine_path_input, "Select Engine", "All Files (*)"))
 
         label_engine_depth = QLabel("Depth:")
-        self.engine_depth_input = QLineEdit("8")
+        self.engine_depth_input = QLineEdit("10")
 
         label_engine_threads = QLabel("Threads:")
-        self.engine_threads_input = QLineEdit("4")
+        self.engine_threads_input = QLineEdit("8")
 
         label_engine_hash = QLabel("Hash (MB):")
-        self.engine_hash_input = QLineEdit("256")
+        self.engine_hash_input = QLineEdit("1024")
 
         layout.addWidget(label_engine_path, 0, 0)
         layout.addLayout(self.create_browse_layout(self.engine_path_input, engine_path_button), 0, 1, 1, 3)
