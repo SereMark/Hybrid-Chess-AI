@@ -87,11 +87,11 @@ class ReinforcementTrainingSubTab(BaseTab):
         layout = QGridLayout()
 
         label1 = QLabel("Number of Iterations:")
-        self.num_iterations_input = QLineEdit("10")
+        self.num_iterations_input = QLineEdit("5")
         label2 = QLabel("Games per Iteration:")
-        self.num_games_per_iteration_input = QLineEdit("100")
+        self.num_games_per_iteration_input = QLineEdit("250")
         label3 = QLabel("Simulations per Move:")
-        self.simulations_input = QLineEdit("800")
+        self.simulations_input = QLineEdit("400")
         label4 = QLabel("c_puct:")
         self.c_puct_input = QLineEdit("1.4")
         label5 = QLabel("Temperature:")
@@ -100,10 +100,10 @@ class ReinforcementTrainingSubTab(BaseTab):
         self.num_epochs_input = QLineEdit("5")
 
         label7 = QLabel("Batch Size:")
-        self.batch_size_input = QLineEdit("128")
+        self.batch_size_input = QLineEdit("256")
 
         label8 = QLabel("Number of Threads:")
-        self.num_threads_input = QLineEdit("4")
+        self.num_threads_input = QLineEdit("6")
         label9 = QLabel("Random Seed:")
         self.random_seed_input = QLineEdit("42")
 
@@ -113,7 +113,7 @@ class ReinforcementTrainingSubTab(BaseTab):
         self.optimizer_type_combo.setCurrentText("AdamW")
 
         label11 = QLabel("Learning Rate:")
-        self.learning_rate_input = QLineEdit("0.0005")
+        self.learning_rate_input = QLineEdit("0.001")
         label12 = QLabel("Weight Decay:")
         self.weight_decay_input = QLineEdit("0.0001")
 

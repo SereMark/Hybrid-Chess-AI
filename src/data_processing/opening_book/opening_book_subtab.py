@@ -54,12 +54,12 @@ class OpeningBookSubTab(BaseTab):
         layout.addLayout(self.create_browse_layout(self.pgn_file_input, pgn_browse_button), 0, 1, 1, 3)
         
         label_max_games = QLabel("Max Games:")
-        self.ob_max_games_input = QLineEdit("100000")
+        self.ob_max_games_input = QLineEdit("1000000")
         layout.addWidget(label_max_games, 1, 0)
         layout.addWidget(self.ob_max_games_input, 1, 1)
         
         label_min_elo = QLabel("Minimum ELO:")
-        self.ob_min_elo_input = QLineEdit("1500")
+        self.ob_min_elo_input = QLineEdit("1800")
         layout.addWidget(label_min_elo, 1, 2)
         layout.addWidget(self.ob_min_elo_input, 1, 3)
         

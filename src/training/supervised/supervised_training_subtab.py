@@ -108,16 +108,16 @@ class SupervisedTrainingSubTab(BaseTab):
         main_params_layout = QGridLayout()
 
         label1 = QLabel("Epochs:")
-        self.epochs_input = QLineEdit("25")
+        self.epochs_input = QLineEdit("20")
 
         label2 = QLabel("Batch Size:")
-        self.batch_size_input = QLineEdit("128")
+        self.batch_size_input = QLineEdit("256")
 
         label3 = QLabel("Learning Rate:")
-        self.learning_rate_input = QLineEdit("0.0005")
+        self.learning_rate_input = QLineEdit("0.001")
 
         label4 = QLabel("Weight Decay:")
-        self.weight_decay_input = QLineEdit("2e-4")
+        self.weight_decay_input = QLineEdit("1e-4")
 
         label5 = QLabel("Optimizer Type:")
         self.optimizer_type_combo = QComboBox()
@@ -125,10 +125,10 @@ class SupervisedTrainingSubTab(BaseTab):
 
         label6 = QLabel("Scheduler Type:")
         self.scheduler_type_combo = QComboBox()
-        self.scheduler_type_combo.addItems(["CosineAnnealingWarmRestarts", "CosineAnnealing", "OneCycleLR", "None"])
+        self.scheduler_type_combo.addItems(["OneCycleLR", "CosineAnnealingWarmRestarts", "CosineAnnealing", "None"])
 
         label7 = QLabel("Number of Workers:")
-        self.num_workers_input = QLineEdit("4")
+        self.num_workers_input = QLineEdit("6")
 
         label8 = QLabel("Random Seed:")
         self.random_seed_input = QLineEdit("42")
