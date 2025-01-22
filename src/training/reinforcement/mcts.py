@@ -52,7 +52,6 @@ class MCTS:
         self.device = device
         self.c_puct = c_puct
         self.n_simulations = n_simulations
-        self.tree_lock = threading.Lock()
 
     def _policy_value_fn(self, board: chess.Board):
         board_tensor = convert_board_to_tensor(board)
