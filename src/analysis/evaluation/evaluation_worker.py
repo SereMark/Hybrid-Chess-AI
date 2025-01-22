@@ -133,99 +133,17 @@ class EvaluationWorker(BaseWorker):
         topk_accuracy = np.mean(topk_correct)
         self.logger.info(f"Top-5 Accuracy: {topk_accuracy * 100:.2f}%")
 
-        # Determine Top N Classes by Frequency
-        N = 10
-        class_counts = Counter(all_actuals)
-        common_classes = [label for label, _ in class_counts.most_common(N)]
-
-        # Filter predictions and actuals to include only the top N classes
-        filter_mask = np.isin(all_actuals, common_classes)
-        filtered_actuals = all_actuals[filter_mask]
-        filtered_predictions = all_predictions[filter_mask]
-
         # Compute Confusion Matrix
-        label_to_idx = {label: idx for idx, label in enumerate(common_classes)}
-        confusion_matrix = np.zeros((N, N), dtype=int)
-        for actual, pred in zip(filtered_actuals, filtered_predictions):
-            if actual in label_to_idx and pred in label_to_idx:
-                confusion_matrix[label_to_idx[actual], label_to_idx[pred]] += 1
+        unique_labels = np.unique(all_actuals)
+        num_classes = len(unique_labels)
+        label_to_idx = {label: idx for idx, label in enumerate(unique_labels)}
+        confusion_matrix = np.zeros((num_classes, num_classes), dtype=int)
 
-        # Compute Classification Report
-        support = Counter(filtered_actuals)
-        tp = {label: 0 for label in common_classes}
-        fp = {label: 0 for label in common_classes}
-        fn = {label: 0 for label in common_classes}
+        for actual, pred in zip(all_actuals, all_predictions):
+            confusion_matrix[label_to_idx[actual], label_to_idx[pred]] += 1
 
-        for actual, pred in zip(filtered_actuals, filtered_predictions):
-            if actual == pred:
-                tp[actual] += 1
-            else:
-                if pred in fp:
-                    fp[pred] += 1
-                if actual in fn:
-                    fn[actual] += 1
-
-        precision = {}
-        recall = {}
-        f1_score = {}
-
-        for label in common_classes:
-            p_denom = tp[label] + fp[label]
-            r_denom = tp[label] + fn[label]
-            precision[label] = tp[label] / p_denom if p_denom > 0 else 0.0
-            recall[label] = tp[label] / r_denom if r_denom > 0 else 0.0
-            if (precision[label] + recall[label]) > 0:
-                f1_score[label] = 2 * precision[label] * recall[label] / (precision[label] + recall[label])
-            else:
-                f1_score[label] = 0.0
-
-        # Calculate Macro Averages
-        macro_precision = np.mean(list(precision.values()))
-        macro_recall = np.mean(list(recall.values()))
-        macro_f1 = np.mean(list(f1_score.values()))
-
-        # Calculate Weighted Averages
-        total_support = sum(support[label] for label in common_classes)
-        if total_support > 0:
-            weighted_precision = sum(precision[label] * support[label] for label in common_classes) / total_support
-            weighted_recall = sum(recall[label] * support[label] for label in common_classes) / total_support
-            weighted_f1 = sum(f1_score[label] * support[label] for label in common_classes) / total_support
-        else:
-            weighted_precision = weighted_recall = weighted_f1 = 0.0
-
-        # Assemble Classification Report
-        classification_report = {
-            'macro avg': {
-                'precision': macro_precision,
-                'recall': macro_recall,
-                'f1-score': macro_f1,
-                'support': total_support
-            },
-            'weighted avg': {
-                'precision': weighted_precision,
-                'recall': weighted_recall,
-                'f1-score': weighted_f1,
-                'support': total_support
-            }
-        }
-
-        for label in common_classes:
-            classification_report[label] = {
-                'precision': precision[label],
-                'recall': recall[label],
-                'f1-score': f1_score[label],
-                'support': support[label]
-            }
-
-        # Prepare Labels for Reporting
-        labels = []
-        for label in common_classes:
-            move_obj = get_move_mapping().get_move_by_index(label)
-            if move_obj:
-                labels.append(move_obj.uci())
-            else:
-                labels.append(f"Unknown({label})")
-
-        # Emit Metrics Update
+        # Emit metrics
+        move_mapping = get_move_mapping()
+        class_labels = [move.uci() if (move := move_mapping.get_move_by_index(label)) else f"Unknown({label})" for label in unique_labels]
         if self.metrics_update:
-            self.metrics_update.emit(accuracy, topk_accuracy, classification_report.get('macro avg', {}), classification_report.get('weighted avg', {}), confusion_matrix, labels)
+            self.metrics_update.emit(accuracy, topk_accuracy, confusion_matrix, class_labels)

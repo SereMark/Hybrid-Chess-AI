@@ -14,37 +14,28 @@ class EvaluationVisualization(BaseVisualizationWidget):
         self.ax_confusion = self.figure.add_subplot(grid_spec[0, 1])
 
         # Configure plots
-        self.plots['accuracy_metrics'] = BasePlot(self.ax_accuracy, title='Model Accuracy and Metrics', ylabel='Scores')
+        self.plots['accuracy_metrics'] = BasePlot(self.ax_accuracy, title='Model Accuracy Metrics', ylabel='Scores')
         self.plots['confusion_matrix'] = BasePlot(self.ax_confusion, title='Confusion Matrix', xlabel='Predicted Label', ylabel='True Label')
 
         # Add placeholders
         self.add_text_to_axis('accuracy_metrics', 'No Data Yet')
         self.add_text_to_axis('confusion_matrix', 'No Data Yet')
 
-    def update_metrics_visualization(self, accuracy, topk_accuracy, macro_avg, weighted_avg, confusion_matrix, class_labels):
+    def update_metrics_visualization(self, accuracy, topk_accuracy, confusion_matrix, class_labels):
         self.accuracy = accuracy
         self.topk_accuracy = topk_accuracy
-        self.macro_avg = macro_avg
-        self.weighted_avg = weighted_avg
         self.confusion_matrix = confusion_matrix
         self.class_labels = class_labels
 
         # Update accuracy metrics plot
         self.clear_axis('accuracy_metrics')
 
-        if self.weighted_avg:
-            labels = ['Top-1 Acc', 'Top-5 Acc', 'Precision', 'Recall', 'F1-Score']
-            values = [
-                self.accuracy * 100,
-                self.topk_accuracy * 100,
-                self.weighted_avg.get('precision', 0.0) * 100,
-                self.weighted_avg.get('recall', 0.0) * 100,
-                self.weighted_avg.get('f1-score', 0.0) * 100
-            ]
-            colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+        if self.accuracy is not None and self.topk_accuracy is not None:
+            labels = ['Top-1 Accuracy', 'Top-5 Accuracy']
+            values = [self.accuracy * 100, self.topk_accuracy * 100]
 
             # Create bar plot
-            self.ax_accuracy.bar(labels, values, color=colors, alpha=0.8)
+            self.ax_accuracy.bar(labels, values, alpha=0.8)
             self.ax_accuracy.set_ylim(0, 100)
 
             # Add value annotations
@@ -85,8 +76,6 @@ class EvaluationVisualization(BaseVisualizationWidget):
     def reset_visualization(self):
         self.accuracy = 0.0
         self.topk_accuracy = 0.0
-        self.macro_avg = {}
-        self.weighted_avg = {}
         self.confusion_matrix = None
         self.class_labels = []
         super().reset_visualization()
