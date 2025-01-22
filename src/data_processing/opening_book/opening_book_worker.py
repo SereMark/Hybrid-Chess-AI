@@ -40,9 +40,6 @@ class OpeningBookWorker(BaseWorker):
 
                     self.game_counter += 1
 
-                    if self.game_counter % 1000 == 0:
-                        update_progress_time_left(self.progress_update, self.time_left_update, self.start_time, self.game_counter, total_estimated_games)
-                        self._emit_stats()
 
             # Final progress update after processing
             update_progress_time_left(self.progress_update, self.time_left_update, self.start_time, self.game_counter, total_estimated_games)
