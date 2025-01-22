@@ -1,6 +1,5 @@
 import math
 import numpy as np
-import threading
 import chess
 import torch
 from src.utils.common_utils import get_game_result
