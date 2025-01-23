@@ -14,7 +14,7 @@ from src.utils.train_utils import initialize_random_seeds
 from src.utils.chess_utils import get_total_moves, get_move_mapping
 
 class EvaluationWorker(BaseWorker):
-    metrics_update = pyqtSignal(float, float, dict, dict, np.ndarray, list)
+    metrics_update = pyqtSignal(float, float, np.ndarray, list)
 
     def __init__(self, model_path: str, dataset_indices_path: str, h5_file_path: str):
         super().__init__()
