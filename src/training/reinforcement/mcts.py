@@ -89,9 +89,8 @@ class MCTS:
             for mv in action_probs:
                 action_probs[mv] /= total_prob
         else:
-            uniform = 1.0 / len(legal_moves)
             for mv in action_probs:
-                action_probs[mv] = uniform
+                action_probs[mv] = 1.0 / len(legal_moves)
 
         return action_probs, value_float
 
