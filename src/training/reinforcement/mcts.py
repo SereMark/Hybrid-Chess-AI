@@ -26,17 +26,12 @@ class TreeNode:
     def select(self, c_puct):
         return max(self.children.items(), key=lambda item: item[1].get_value(c_puct))
 
-    def update(self, leaf_value):
-        self.n_visits += 1
-        self.Q += (leaf_value - self.Q) / self.n_visits
-
     def update_recursive(self, leaf_value):
         if self.parent:
             self.parent.update_recursive(-leaf_value)
-        self.update(leaf_value)
-
-    def is_leaf(self):
-        return len(self.children) == 0
+            
+        self.n_visits += 1
+        self.Q += (leaf_value - self.Q) / self.n_visits
 
     def get_value(self, c_puct):
         if self.parent:
@@ -100,7 +95,7 @@ class MCTS:
         node = self.root
 
         # Selection
-        while not node.is_leaf():
+        while not len(node.children) == 0:
             _, node = node.select(self.c_puct)
 
         # Expansion & Evaluation
