@@ -113,7 +113,7 @@ class ReinforcementWorker(BaseWorker):
                 self.logger.info("No valid checkpoint found. Starting from scratch.")
         else:
             self.logger.info("No checkpoint path or file not found. Starting fresh.")
-            
+
         self.start_time = time.time()
 
         # Main training loop
@@ -181,27 +181,9 @@ class ReinforcementWorker(BaseWorker):
                         self.logger.info(f"Finished epoch {epoch}/{self.num_epochs} in iteration {iteration + 1}.")
 
             # Possibly checkpoint at iteration level
-            if self.save_checkpoints and self.checkpoint_type == "iteration":
-                if not self.save_checkpoints:
-                    return
-
-                with self.lock:
-                    checkpoint_data = {
-                        "model_state_dict": { k: v.cpu() for k, v in self.model.state_dict().items() },
-                        "optimizer_state_dict": self.optimizer.state_dict(),
-                        "scheduler_state_dict": (self.scheduler.state_dict() if self.scheduler else None),
-                        "epoch": self.current_epoch,
-                        "batch_idx": self.total_batches_processed,
-                        "iteration": iteration + 1,
-                        "training_stats": {
-                            "total_games_played": self.total_games_played,
-                            "results": self.results,
-                            "game_lengths": self.game_lengths,
-                        }
-                    }
-                    if self.checkpoint_manager.should_save(iteration=iteration + 1, batch_idx=self.total_batches_processed):
-                        self.checkpoint_manager.save(checkpoint_data)
-                        self.logger.info(f"Checkpoint saved at iteration {iteration + 1}.")
+            if self.save_checkpoints:
+                self.checkpoint_manager.save(model=self.model, optimizer=self.optimizer, scheduler=self.scheduler, epoch=self.current_epoch, batch_idx=self.total_batches_processed, 
+                                               iteration=iteration + 1, training_stats={"total_games_played": self.total_games_played, "results": self.results,"game_lengths": self.game_lengths})
 
             # Print iteration timing
             iter_duration = time.time() - iteration_start_time
@@ -216,21 +198,8 @@ class ReinforcementWorker(BaseWorker):
         final_path = os.path.join(final_dir, "final_model.pth")
         os.makedirs(final_dir, exist_ok=True)
 
-        checkpoint = {
-            "model_state_dict": self.model.state_dict(),
-            "optimizer_state_dict": self.optimizer.state_dict(),
-            "scheduler_state_dict": (self.scheduler.state_dict() if self.scheduler else None),
-            "training_stats": {
-                "total_games_played": self.total_games_played,
-                "results": self.results,
-                "game_lengths": self.game_lengths,
-            }
-        }
-        try:
-            torch.save(checkpoint, final_path)
-            self.logger.info(f"Final model saved at {final_path}")
-        except Exception as e:
-            self.logger.error(f"Error saving final model: {str(e)}")
+        self.checkpoint_manager.save_final_model(model=self.model, optimizer=self.optimizer, scheduler=self.scheduler,
+                                                  training_stats={"total_games_played": self.total_games_played, "results": self.results, "game_lengths": self.game_lengths}, final_path=final_path)
 
         self.task_finished.emit()
         self.finished.emit()

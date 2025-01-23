@@ -119,13 +119,12 @@ class SupervisedWorker(BaseWorker):
                 self.logger.info(f"Beginning epoch {epoch}/{self.epochs}.")
 
                 # Train for one epoch
-                train_metrics = train_epoch(model=self.model, data_loader=train_loader, device=self.device, scaler=self.scaler, optimizer=self.optimizer, scheduler=self.scheduler, 
-                                                     epoch=epoch, total_epochs=self.epochs, skip_batches=skip_batches if epoch == start_epoch else 0, accumulation_steps=max(256 // self.batch_size, 1), 
-                                                     batch_size=self.batch_size, smooth_policy_targets=True, compute_accuracy_flag=True, total_batches_processed=self.total_batches_processed, 
-                                                     batch_loss_update_signal=self.batch_loss_update, batch_accuracy_update_signal=self.batch_accuracy_update, progress_update_signal=self.progress_update, 
-                                                     time_left_update_signal=self.time_left_update, checkpoint_manager=self.checkpoint_manager, checkpoint_type=self.checkpoint_type, logger=self.logger, 
-                                                     is_stopped_event=self._is_stopped, is_paused_event=self._is_paused, start_time=start_time, total_steps=total_steps)
-                
+                train_metrics = train_epoch(model=self.model, data_loader=train_loader, device=self.device, scaler=self.scaler, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch, 
+                                            total_epochs=self.epochs, skip_batches=skip_batches if epoch == start_epoch else 0, accumulation_steps=max(256 // self.batch_size, 1), batch_size=self.batch_size, 
+                                            smooth_policy_targets=True, compute_accuracy_flag=True, total_batches_processed=self.total_batches_processed, batch_loss_update_signal=self.batch_loss_update, 
+                                            batch_accuracy_update_signal=self.batch_accuracy_update, progress_update_signal=self.progress_update, time_left_update_signal=self.time_left_update, 
+                                            checkpoint_manager=self.checkpoint_manager, logger=self.logger, is_stopped_event=self._is_stopped, is_paused_event=self._is_paused, start_time=start_time, total_steps=total_steps)
+
                 # Update total_batches_processed after the epoch
                 self.total_batches_processed = train_metrics["total_batches_processed"]
                 skip_batches = 0
@@ -136,8 +135,8 @@ class SupervisedWorker(BaseWorker):
                 # Validate the current epoch
                 self.model.eval()
                 val_metrics = validate_epoch(model=self.model, val_loader=val_loader, device=self.device, epoch=epoch, training_accuracy=train_metrics['accuracy'], 
-                                                      val_loss_update_signal=self.val_loss_update, validation_accuracy_update_signal=self.validation_accuracy_update, logger=self.logger, 
-                                                      is_stopped_event=self._is_stopped, is_paused_event=self._is_paused, smooth_policy_targets=True)
+                                             val_loss_update_signal=self.val_loss_update, validation_accuracy_update_signal=self.validation_accuracy_update, logger=self.logger, 
+                                             is_stopped_event=self._is_stopped, is_paused_event=self._is_paused, smooth_policy_targets=True)
 
                 # Calculate total losses
                 total_train_loss = train_metrics['policy_loss'] + train_metrics['value_loss']
@@ -148,43 +147,21 @@ class SupervisedWorker(BaseWorker):
                 self.logger.info(
                     f"Epoch {epoch}/{self.epochs} completed in {format_time_left(epoch_duration)}. "
                     f"Train Loss: {total_train_loss:.4f}, Val Loss: {total_val_loss:.4f}, "
-                    f"Train Acc: {train_metrics['accuracy']*100:.2f}%, Val Acc: {val_metrics['accuracy']*100:.2f}%."
+                    f"Train Acc: {train_metrics['accuracy']*100:.2f}%, "
+                    f"Val Acc: {val_metrics['accuracy']*100:.2f}%."
                 )
 
                 # Emit epoch accuracy update
                 self.validation_accuracy_update.emit(epoch, train_metrics['accuracy'], val_metrics['accuracy'])
 
-                # Save checkpoint if required
-                if self.save_checkpoints and self.checkpoint_type == 'epoch' and self.checkpoint_manager.should_save(epoch=epoch):
-                    checkpoint_data = {
-                        'model_state_dict': {k: v.cpu() for k, v in self.model.state_dict().items()},
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
-                        'epoch': epoch,
-                        'batch_idx': self.total_batches_processed,
-                        'training_stats': {}
-                    }
-                    self.checkpoint_manager.save(checkpoint_data)
-                    self.logger.info(f"Checkpoint saved at epoch {epoch}.")
+                # Let the checkpoint manager handle saving if required (epoch-based)
+                if self.save_checkpoints:
+                    self.checkpoint_manager.save(model=self.model, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch, batch_idx=self.total_batches_processed, iteration=None, training_stats={})
 
             # Save the final model if training completed without interruption
             if not self._is_stopped.is_set():
-                try:
-                    final_dir = os.path.join("models", "saved_models")
-                    final_path = os.path.join(final_dir, "pre_trained_model.pth")
-                    os.makedirs(final_dir, exist_ok=True)
-                    checkpoint = {
-                        "model_state_dict": self.model.state_dict(),
-                        "optimizer_state_dict": self.optimizer.state_dict(),
-                        "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler else None,
-                        "epoch": epoch,
-                        "batch_idx": self.total_batches_processed,
-                        "training_stats": {}
-                    }
-                    torch.save(checkpoint, final_path)
-                    self.logger.info(f"Final model saved at {final_path}")
-                except Exception as e:
-                    self.logger.error(f"Error saving final model: {str(e)}")
+                self.checkpoint_manager.save_final_model(model=self.model, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch, batch_idx=self.total_batches_processed, training_stats={},
+                                                         final_path=os.path.join("models", "saved_models", "pre_trained_model.pth"))
 
         except Exception as e:
             self.logger.error(f"Error in SupervisedWorker: {str(e)}")

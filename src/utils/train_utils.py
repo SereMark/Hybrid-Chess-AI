@@ -172,20 +172,8 @@ def train_epoch( model, data_loader,  device, scaler, optimizer, scheduler=None,
                 else:
                     time_left_update_signal.emit("Calculating...")
 
-        # Checkpoint saving if needed
-        if checkpoint_manager and checkpoint_type in ("batch", "iteration"):
-            if checkpoint_manager.should_save(batch_idx=total_batches_processed, iteration=total_batches_processed):
-                checkpoint_data = {
-                    'model_state_dict': {k: v.cpu() for k, v in model.state_dict().items()},
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
-                    'epoch': epoch,
-                    'batch_idx': total_batches_processed,
-                    'training_stats': {}
-                }
-                checkpoint_manager.save(checkpoint_data)
-                if logger:
-                    logger.info(f"Checkpoint saved at step {total_batches_processed}.")
+        if checkpoint_manager:
+            checkpoint_manager.save(model, optimizer, scheduler, epoch=epoch, batch_idx=total_batches_processed, iteration=None, training_stats={})
 
         # Cleanup
         del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
