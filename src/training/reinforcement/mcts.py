@@ -24,7 +24,22 @@ class TreeNode:
                 self.children[mv] = TreeNode(self, prob, next_board, mv)
 
     def select(self, c_puct):
-        return max(self.children.items(), key=lambda item: item[1].get_value(c_puct))
+        best_move, best_node = None, None
+        best_value = float('-inf')
+
+        for move, node in self.children.items():
+            if node.parent:
+                node.u = c_puct * node.P * math.sqrt(node.parent.n_visits) / (1 + node.n_visits)
+                value = node.Q + node.u
+            else:
+                value = node.Q
+
+            if value > best_value:
+                best_value = value
+                best_move = move
+                best_node = node
+
+        return best_move, best_node
 
     def update_recursive(self, leaf_value):
         if self.parent:
@@ -32,12 +47,6 @@ class TreeNode:
             
         self.n_visits += 1
         self.Q += (leaf_value - self.Q) / self.n_visits
-
-    def get_value(self, c_puct):
-        if self.parent:
-            parent_visits = self.parent.n_visits
-            self.u = c_puct * self.P * math.sqrt(parent_visits) / (1 + self.n_visits)
-        return self.Q + self.u
 
 class MCTS:
     def __init__(self, model, device, c_puct=1.4, n_simulations=800):
