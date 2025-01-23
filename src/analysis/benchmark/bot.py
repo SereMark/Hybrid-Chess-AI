@@ -2,6 +2,7 @@ import os
 import chess
 import chess.pgn
 import torch
+import numpy as np
 from typing import Dict, Optional
 from src.training.reinforcement.mcts import MCTS
 from src.utils.chess_utils import get_total_moves, convert_board_to_tensor, get_move_mapping
@@ -114,10 +115,26 @@ class Bot:
 
         self.mcts.set_root_node(board.copy())
 
+        # Get MCTS move probabilities
         move_probs = self.mcts.get_move_probs(temperature=1e-3)
         if not move_probs:
             self.logger.warning("No move probabilities available from MCTS.")
             return chess.Move.null()
+
+        # Add Dirichlet noise on the very first move of the game
+        if board.fullmove_number == 1 and board.turn == chess.WHITE:
+            moves = list(move_probs.keys())
+            if moves:
+                # Dirichlet noise parameters: alpha=0.3, blend=0.25
+                noise = np.random.dirichlet([0.3] * len(moves))
+                for i, mv in enumerate(moves):
+                    move_probs[mv] = 0.75 * move_probs[mv] + 0.25 * noise[i]
+
+                # Re-normalize probabilities
+                total_prob = sum(move_probs.values())
+                if total_prob > 1e-8:
+                    for mv in move_probs:
+                        move_probs[mv] /= total_prob
 
         # Select the move with the highest probability
         best_move = max(move_probs, key=move_probs.get)
