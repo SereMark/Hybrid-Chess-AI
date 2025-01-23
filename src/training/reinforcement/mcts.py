@@ -91,26 +91,24 @@ class MCTS:
         action_probs, _ = self._policy_value_fn(board)
         self.root.expand(action_probs)
 
-    def simulate(self):
-        node = self.root
-
-        # Selection
-        while not len(node.children) == 0:
-            _, node = node.select(self.c_puct)
-
-        # Expansion & Evaluation
-        action_probs, leaf_value = self._policy_value_fn(node.board)
-        if not node.board.is_game_over():
-            node.expand(action_probs)
-        else:
-            leaf_value = get_game_result(node.board)
-
-        # Backpropagation
-        node.update_recursive(-leaf_value)
-
     def get_move_probs(self, temperature=1e-3):
+        # Run simulations
         for _ in range(self.n_simulations):
-            self.simulate()
+            node = self.root
+
+            # Selection
+            while not len(node.children) == 0:
+                _, node = node.select(self.c_puct)
+
+            # Expansion & Evaluation
+            action_probs, leaf_value = self._policy_value_fn(node.board)
+            if not node.board.is_game_over():
+                node.expand(action_probs)
+            else:
+                leaf_value = get_game_result(node.board)
+
+            # Backpropagation
+            node.update_recursive(-leaf_value)
 
         if not self.root.children:
             return {}
