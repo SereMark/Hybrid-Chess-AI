@@ -173,7 +173,7 @@ def train_epoch( model, data_loader,  device, scaler, optimizer, scheduler=None,
                     time_left_update_signal.emit("Calculating...")
 
         if checkpoint_manager:
-            checkpoint_manager.save(model, optimizer, scheduler, epoch=epoch, batch_idx=total_batches_processed, iteration=None, training_stats={})
+            checkpoint_manager.save(model, optimizer, scheduler, epoch=None, batch_idx=total_batches_processed, iteration=None, training_stats={})
 
         # Cleanup
         del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
