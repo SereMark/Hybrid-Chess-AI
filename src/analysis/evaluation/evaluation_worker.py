@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from models.tempname import TransformerChessModel
+from src.models.transformer import TransformerChessModel
 from src.utils.datasets import H5Dataset
 from src.utils.common_utils import update_progress_time_left, wait_if_paused
 from src.utils.train_utils import initialize_random_seeds

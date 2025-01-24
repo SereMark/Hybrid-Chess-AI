@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from multiprocessing import Pool, cpu_count, Manager
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from models.tempname import TransformerChessModel
+from src.models.transformer import TransformerChessModel
 from src.utils.chess_utils import get_total_moves
 from src.utils.common_utils import format_time_left, update_progress_time_left
 from src.utils.train_utils import initialize_optimizer, initialize_random_seeds, initialize_scheduler, train_epoch
