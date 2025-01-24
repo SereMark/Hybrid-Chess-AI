@@ -17,7 +17,7 @@ class ResidualUnit(nn.Module):
         return self.relu(out + identity)
 
 
-class ChessModel(nn.Module):
+class CNNModel(nn.Module):
     def __init__(self, num_moves: int) -> None:
         super().__init__()
         # Initial convolutional block

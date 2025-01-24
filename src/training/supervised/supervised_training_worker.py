@@ -7,7 +7,7 @@ from torch.amp import GradScaler
 from torch.utils.data import DataLoader
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.models.model import ChessModel
+from src.models.Transformer import TransformerChessModel
 from src.utils.datasets import H5Dataset
 from src.utils.common_utils import format_time_left
 from src.utils.train_utils import initialize_optimizer, initialize_scheduler, initialize_random_seeds, validate_epoch, train_epoch
@@ -47,7 +47,7 @@ class SupervisedWorker(BaseWorker):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # Initialize model
-        self.model = ChessModel(get_total_moves()).to(self.device)
+        self.model = TransformerChessModel(get_total_moves()).to(self.device)
 
         # Initialize optimizer
         self.optimizer = initialize_optimizer(self.model, self.optimizer_type, self.learning_rate, self.weight_decay, logger=self.logger)

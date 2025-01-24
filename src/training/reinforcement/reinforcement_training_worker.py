@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from multiprocessing import Pool, cpu_count, Manager
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.models.model import ChessModel
+from src.models.CNN import CNNModel
 from src.utils.chess_utils import get_total_moves
 from src.utils.common_utils import format_time_left, update_progress_time_left
 from src.utils.train_utils import initialize_optimizer, initialize_random_seeds, initialize_scheduler, train_epoch
@@ -72,7 +72,7 @@ class ReinforcementWorker(BaseWorker):
         self.start_iteration = 0
 
         # Build Model
-        self.model = ChessModel(get_total_moves()).to(self.device)
+        self.model = CNNModel(get_total_moves()).to(self.device)
         self.optimizer = initialize_optimizer(self.model, self.optimizer_type, self.learning_rate, self.weight_decay, logger=self.logger)
         self.scheduler: Optional[optim.lr_scheduler._LRScheduler] = None
 
