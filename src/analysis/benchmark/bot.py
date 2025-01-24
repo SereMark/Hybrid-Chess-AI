@@ -6,7 +6,7 @@ import numpy as np
 from typing import Dict, Optional
 from src.training.reinforcement.mcts import MCTS
 from src.utils.chess_utils import get_total_moves, convert_board_to_tensor, get_move_mapping
-from src.models.Transformer import TransformerChessModel
+from src.models.transformer import TransformerChessModel
 
 class Bot:
     def __init__(self, path: str, use_mcts: bool, use_opening_book: bool, logger):

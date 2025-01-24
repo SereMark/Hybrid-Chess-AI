@@ -7,7 +7,7 @@ from torch.amp import GradScaler
 from torch.utils.data import DataLoader
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.models.Transformer import TransformerChessModel
+from src.models.transformer import TransformerChessModel
 from src.utils.datasets import H5Dataset
 from src.utils.common_utils import format_time_left
 from src.utils.train_utils import initialize_optimizer, initialize_scheduler, initialize_random_seeds, validate_epoch, train_epoch
