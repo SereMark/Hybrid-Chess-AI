@@ -80,7 +80,7 @@ def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor) -> float:
 def train_epoch( model, data_loader,  device, scaler, optimizer, scheduler=None, epoch: int = 1, total_epochs: int = 1, skip_batches: int = 0, accumulation_steps: int = 1, batch_size: int = 1,
                  smooth_policy_targets: bool = False, compute_accuracy_flag: bool = False, total_batches_processed: int = 0, batch_loss_update_signal=None,
                    batch_accuracy_update_signal=None, progress_update_signal=None, time_left_update_signal=None, checkpoint_manager=None,
-                     checkpoint_type: str = None, logger=None, is_stopped_event=None, is_paused_event=None, start_time=None, total_steps=None):
+                     logger=None, is_stopped_event=None, is_paused_event=None, start_time=None, total_steps=None):
     model.train()
 
     total_policy_loss = 0.0

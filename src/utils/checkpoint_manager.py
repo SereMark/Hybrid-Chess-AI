@@ -1,6 +1,7 @@
 import os
 import time
 import torch
+import shutil
 
 class CheckpointManager:
     def __init__(self, checkpoint_dir, checkpoint_type='epoch', checkpoint_interval=5, logger=None):
@@ -47,22 +48,35 @@ class CheckpointManager:
         temp_path = os.path.join(self.checkpoint_dir, temp_name)
         final_path = os.path.join(self.checkpoint_dir, final_name)
 
-        try:
-            torch.save(checkpoint_data, temp_path)
-            os.replace(temp_path, final_path)
-            if self.logger:
-                self.logger.info(f"Checkpoint saved: {final_name}")
-        except Exception as e:
-            # Clean up any leftover temp file
-            if self.logger:
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                torch.save(checkpoint_data, temp_path)
+                shutil.move(temp_path, final_path)
+                if self.logger:
+                    self.logger.info(f"Checkpoint saved: {final_name}")
+                break  # Exit loop if successful
+            except PermissionError as e:
+                if attempt < max_retries - 1:
+                    time.sleep(1)  # Wait before retrying
+                else:
+                    # Handle exception after final attempt
+                    self.logger.error(f"Error saving checkpoint after {max_retries} attempts: {e}")
+                    if os.path.exists(temp_path):
+                        try:
+                            os.remove(temp_path)
+                        except Exception as remove_e:
+                            self.logger.error(f"Failed to remove temp checkpoint: {remove_e}")
+                    raise
+            except Exception as e:
+                # Handle other exceptions
                 self.logger.error(f"Error saving checkpoint: {e}")
-            if os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except Exception as remove_e:
-                    if self.logger:
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except Exception as remove_e:
                         self.logger.error(f"Failed to remove temp checkpoint: {remove_e}")
-            raise
+                raise
 
     def save_final_model(self, model, optimizer=None, scheduler=None, training_stats=None, epoch=None, batch_idx=None, iteration=None, final_path=None):
         if final_path is None:
