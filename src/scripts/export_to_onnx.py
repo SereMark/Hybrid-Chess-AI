@@ -1,13 +1,13 @@
 import sys, os, torch
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-from src.models.CNN import CNNModel
+from src.models.Transformer import TransformerChessModel
 
 if __name__ == "__main__":
     model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../models/saved_models/pre_trained_model.pth"))
     checkpoint = torch.load(model_path, map_location="cpu")
     model_state_dict = checkpoint.get("model_state_dict", checkpoint)
     num_moves = model_state_dict.get("policy_head.4.weight", torch.empty(8064)).shape[0]
-    model = CNNModel(num_moves=num_moves)
+    model = TransformerChessModel(num_moves=num_moves)
     model.load_state_dict(model_state_dict)
     model.eval()
     onnx_path = model_path.replace(".pth", ".onnx")

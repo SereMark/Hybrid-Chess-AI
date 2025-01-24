@@ -6,7 +6,7 @@ import numpy as np
 from typing import Dict, Optional
 from src.training.reinforcement.mcts import MCTS
 from src.utils.chess_utils import get_total_moves, convert_board_to_tensor, get_move_mapping
-from src.models.CNN import CNNModel
+from src.models.Transformer import TransformerChessModel
 
 class Bot:
     def __init__(self, path: str, use_mcts: bool, use_opening_book: bool, logger):
@@ -22,7 +22,7 @@ class Bot:
             self.logger.warning(f"Model path does not exist: {self.path}")
         else:
             try:
-                self.model = CNNModel(get_total_moves()).to(self.device)
+                self.model = TransformerChessModel(get_total_moves()).to(self.device)
                 self.model.load_state_dict(torch.load(self.path, map_location=self.device)["model_state_dict"])
                 self.model.eval()
                 self.logger.info(f"Model loaded successfully from {self.path}")

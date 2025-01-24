@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 from PyQt5.QtCore import pyqtSignal
 from src.base.base_worker import BaseWorker
-from src.models.CNN import CNNModel
+from src.models.Transformer import TransformerChessModel
 from src.utils.datasets import H5Dataset
 from src.utils.common_utils import update_progress_time_left, wait_if_paused
 from src.utils.train_utils import initialize_random_seeds
@@ -76,7 +76,7 @@ class EvaluationWorker(BaseWorker):
 
         self._compute_metrics(all_predictions, all_actuals, topk_predictions)
 
-    def _load_model(self) -> Optional[CNNModel]:
+    def _load_model(self) -> Optional[TransformerChessModel]:
         try:
             checkpoint = torch.load(self.model_path, map_location=self.device)
             self.logger.info(f"Loaded checkpoint from {self.model_path}")
@@ -91,7 +91,7 @@ class EvaluationWorker(BaseWorker):
             self.logger.warning("Checkpoint does not contain architecture parameters. Using default settings.")
 
         try:
-            model = CNNModel(num_moves=get_total_moves())
+            model = TransformerChessModel(num_moves=get_total_moves())
             model.load_state_dict(state_dict)
             model.to(self.device)
             model.eval()

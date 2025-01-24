@@ -4,10 +4,10 @@ import math
 from typing import Tuple
 
 class LearnablePositionalEncoding(nn.Module):
-    def __init__(self, d_model: int, max_len: int = 64):
+    def __init__(self, d_model: int, max_len: int = 16):
         super().__init__()
         self.pos_embedding = nn.Parameter(torch.zeros(1, max_len, d_model))
-        nn.init.kaiming_normal_(self.pos_embedding, a=math.sqrt(5))
+        nn.init.uniform_(self.pos_embedding, -0.02, 0.02)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x + self.pos_embedding[:, :x.size(1), :]
@@ -16,7 +16,7 @@ class LearnablePositionalEncoding(nn.Module):
 class DepthwiseSeparableConv(nn.Module):
     def __init__(self, in_channels: int, out_channels: int):
         super().__init__()
-        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, groups=in_channels, bias=False)
+        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, stride=2, groups=in_channels, bias=False)
         self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
         self.activation = nn.SiLU()
         self.norm = nn.BatchNorm2d(out_channels)
@@ -28,8 +28,18 @@ class DepthwiseSeparableConv(nn.Module):
         x = self.norm(x)
         return x
 
+class AttentionPooling(nn.Module):
+    def __init__(self, d_model: int):
+        super().__init__()
+        self.attention = nn.Linear(d_model, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        weights = torch.softmax(self.attention(x), dim=1)
+        pooled = (x * weights).sum(dim=1)
+        return pooled
+
 class TransformerChessModel(nn.Module):
-    def __init__(self, num_moves: int, input_channels: int = 25, d_model: int = 256, nhead: int = 16, num_layers: int = 12, dim_feedforward: int = 1024, dropout: float = 0.1, max_seq_len: int = 128):
+    def __init__(self, num_moves: int, input_channels: int = 25, d_model: int = 256, nhead: int = 8, num_layers: int = 6, dim_feedforward: int = 512, dropout: float = 0.1, max_seq_len: int = 16):
         super().__init__()
         self.num_moves = num_moves
         self.d_model = d_model
@@ -59,21 +69,27 @@ class TransformerChessModel(nn.Module):
         self.value_head = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
             nn.SiLU(),
-            nn.Linear(d_model // 2, 1),
+            nn.Linear(d_model // 2, d_model // 4),
+            nn.SiLU(),
+            nn.Linear(d_model // 4, 1),
             nn.Tanh()
         )
 
-        # 7. Weight Initialization
+        # 7. Attention Pooling
+        self.attention_pooling = AttentionPooling(d_model)
+
+        # 8. Weight Initialization
         self._init_weights()
 
     def _init_weights(self):
         for module in self.modules():
             if isinstance(module, nn.Linear):
-                nn.init.kaiming_normal_(module.weight, a=math.sqrt(5))
-                if module.bias is not None:
-                    fan_in, _ = nn.init._calculate_fan_in_and_fan_out(module.weight)
-                    bound = 1 / math.sqrt(fan_in)
-                    nn.init.uniform_(module.bias, -bound, bound)
+                if module is not self.pos_encoder.pos_embedding:
+                    nn.init.kaiming_normal_(module.weight, a=math.sqrt(5))
+                    if module.bias is not None:
+                        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(module.weight)
+                        bound = 1 / math.sqrt(fan_in)
+                        nn.init.uniform_(module.bias, -bound, bound)
             elif isinstance(module, nn.Conv2d):
                 nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
                 if module.bias is not None:
@@ -82,24 +98,25 @@ class TransformerChessModel(nn.Module):
                 nn.init.ones_(module.weight)
                 nn.init.zeros_(module.bias)
             elif isinstance(module, nn.Parameter):
-                nn.init.kaiming_normal_(module, a=math.sqrt(5))
+                # Positional embeddings are already initialized separately
+                pass
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # 1. Patch Embedding
-        x = self.patch_embedding(x)  # Shape: (batch_size, d_model, H, W)
+        x = self.patch_embedding(x)  # Shape: (batch_size, d_model, 4, 4)
 
         # Flatten spatial dimensions
-        x = x.flatten(2).transpose(1, 2)  # Shape: (batch_size, H*W, d_model)
+        x = x.flatten(2).transpose(1, 2)  # Shape: (batch_size, 16, d_model)
         x = self.pos_encoder(x)           # Add positional encoding
 
         # 2. Transformer Encoding
-        x = self.transformer_encoder(x)    # Shape: (batch_size, H*W, d_model)
+        x = self.transformer_encoder(x)    # Shape: (batch_size, 16, d_model)
 
         # 3. Shared LayerNorm
-        x = self.shared_norm(x)           # Shape: (batch_size, H*W, d_model)
+        x = self.shared_norm(x)           # Shape: (batch_size, 16, d_model)
 
-        # 4. Aggregate features (e.g., via mean pooling)
-        x = x.mean(dim=1)                  # Shape: (batch_size, d_model)
+        # 4. Aggregate features via Attention Pooling
+        x = self.attention_pooling(x)     # Shape: (batch_size, d_model)
 
         # 5. Policy and Value Heads
         policy = self.policy_head(x)       # Shape: (batch_size, num_moves)
