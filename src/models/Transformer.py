@@ -1,113 +1,108 @@
 import torch
 import torch.nn as nn
 import math
+from typing import Tuple
 
-class PositionalEncoding(nn.Module):
+class LearnablePositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_len: int = 64):
         super().__init__()
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)
-        self.register_buffer('pe', pe)
+        self.pos_embedding = nn.Parameter(torch.zeros(1, max_len, d_model))
+        nn.init.kaiming_normal_(self.pos_embedding, a=math.sqrt(5))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x + self.pe[:, :x.size(1), :]
+        x = x + self.pos_embedding[:, :x.size(1), :]
         return x
 
-class TransformerEncoderBlock(nn.Module):
-    def __init__(self, d_model: int, nhead: int, dim_feedforward: int, dropout: float = 0.1):
+class DepthwiseSeparableConv(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int):
         super().__init__()
-        self.self_attn = nn.MultiheadAttention(embed_dim=d_model, num_heads=nhead, dropout=dropout)
-        self.linear1 = nn.Linear(d_model, dim_feedforward)
-        self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, d_model)
+        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, groups=in_channels, bias=False)
+        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
+        self.activation = nn.SiLU()
+        self.norm = nn.BatchNorm2d(out_channels)
 
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.dropout1 = nn.Dropout(dropout)
-        self.dropout2 = nn.Dropout(dropout)
-
-        self.activation = nn.ReLU(inplace=True)
-
-    def forward(self, src: torch.Tensor) -> torch.Tensor:
-        src2, _ = self.self_attn(src, src, src)
-        src = src + self.dropout1(src2)
-        src = self.norm1(src)
-        src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
-        src = src + self.dropout2(src2)
-        src = self.norm2(src)
-        return src
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        x = self.activation(x)
+        x = self.norm(x)
+        return x
 
 class TransformerChessModel(nn.Module):
-    def __init__(self, num_moves: int, input_channels: int = 25, d_model: int = 128, nhead: int = 8, num_layers: int = 6, dim_feedforward: int = 512, dropout: float = 0.1):
+    def __init__(self, num_moves: int, input_channels: int = 25, d_model: int = 256, nhead: int = 16, num_layers: int = 12, dim_feedforward: int = 1024, dropout: float = 0.1, max_seq_len: int = 128):
         super().__init__()
         self.num_moves = num_moves
         self.d_model = d_model
-        self.seq_len = 64
+        self.seq_len = max_seq_len
 
-        # Patch embedding
-        self.patch_embedding = nn.Linear(input_channels, d_model)
+        # 1. Efficient Patch Embedding using Depthwise Separable Convolution
+        self.patch_embedding = DepthwiseSeparableConv(input_channels, d_model)
 
-        # Positional encoding
-        self.pos_encoder = PositionalEncoding(d_model, max_len=self.seq_len)
+        # 2. Positional Encoding
+        self.pos_encoder = LearnablePositionalEncoding(d_model, max_len=self.seq_len)
 
-        # Transformer encoder
-        encoder_layer = TransformerEncoderBlock(d_model, nhead, dim_feedforward, dropout)
-        self.transformer_encoder = nn.ModuleList([encoder_layer for _ in range(num_layers)])
+        # 3. Transformer Encoder with Pre-Layer Normalization
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, dropout=dropout, activation='gelu', batch_first=True, norm_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
-        # Policy head
+        # 4. Shared LayerNorm for both heads
+        self.shared_norm = nn.LayerNorm(d_model)
+
+        # 5. Policy Head
         self.policy_head = nn.Sequential(
-            nn.LayerNorm(d_model),
-            nn.Linear(d_model, 2),
-            nn.ReLU(inplace=True),
-            nn.Flatten(start_dim=1),
-            nn.Linear(2 * self.seq_len, num_moves)
+            nn.Linear(d_model, d_model // 2),
+            nn.SiLU(),
+            nn.Linear(d_model // 2, num_moves)
         )
 
-        # Value head
+        # 6. Value Head
         self.value_head = nn.Sequential(
-            nn.LayerNorm(d_model),
-            nn.Linear(d_model, 1),
-            nn.ReLU(inplace=True),
-            nn.Flatten(start_dim=1),
-            nn.Linear(self.seq_len, 64),
-            nn.ReLU(inplace=True),
-            nn.Linear(64, 1),
+            nn.Linear(d_model, d_model // 2),
+            nn.SiLU(),
+            nn.Linear(d_model // 2, 1),
             nn.Tanh()
         )
 
-        # Initialize weights
+        # 7. Weight Initialization
         self._init_weights()
 
     def _init_weights(self):
         for module in self.modules():
             if isinstance(module, nn.Linear):
-                nn.init.kaiming_uniform_(module.weight, a=math.sqrt(5))
+                nn.init.kaiming_normal_(module.weight, a=math.sqrt(5))
+                if module.bias is not None:
+                    fan_in, _ = nn.init._calculate_fan_in_and_fan_out(module.weight)
+                    bound = 1 / math.sqrt(fan_in)
+                    nn.init.uniform_(module.bias, -bound, bound)
+            elif isinstance(module, nn.Conv2d):
+                nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
             elif isinstance(module, nn.LayerNorm):
                 nn.init.ones_(module.weight)
                 nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.Parameter):
+                nn.init.kaiming_normal_(module, a=math.sqrt(5))
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        batch_size = x.size(0)
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # 1. Patch Embedding
+        x = self.patch_embedding(x)  # Shape: (batch_size, d_model, H, W)
 
-        x = x.view(batch_size, 25, 8 * 8).permute(0, 2, 1)
+        # Flatten spatial dimensions
+        x = x.flatten(2).transpose(1, 2)  # Shape: (batch_size, H*W, d_model)
+        x = self.pos_encoder(x)           # Add positional encoding
 
-        x = self.patch_embedding(x)
-        x = self.pos_encoder(x)
+        # 2. Transformer Encoding
+        x = self.transformer_encoder(x)    # Shape: (batch_size, H*W, d_model)
 
-        x = x.permute(1, 0, 2)
+        # 3. Shared LayerNorm
+        x = self.shared_norm(x)           # Shape: (batch_size, H*W, d_model)
 
-        for layer in self.transformer_encoder:
-            x = layer(x)
+        # 4. Aggregate features (e.g., via mean pooling)
+        x = x.mean(dim=1)                  # Shape: (batch_size, d_model)
 
-        x = x.permute(1, 0, 2)
-
-        policy = self.policy_head(x)
-        value = self.value_head(x)
+        # 5. Policy and Value Heads
+        policy = self.policy_head(x)       # Shape: (batch_size, num_moves)
+        value = self.value_head(x)         # Shape: (batch_size, 1)
 
         return policy, value
