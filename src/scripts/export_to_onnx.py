@@ -1,6 +1,6 @@
 import sys, os, torch
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-from src.models.transformer import TransformerChessModel
+from models.tempname import TransformerChessModel
 
 if __name__ == "__main__":
     model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../models/saved_models/pre_trained_model.pth"))
