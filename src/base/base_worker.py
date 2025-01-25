@@ -28,7 +28,7 @@ class BaseWorker(QObject):
             self.logger.info(f"Worker {self.__class__.__name__} is starting.")
             self.run_task()
             if not self._is_stopped.is_set():
-                self.logger.info(f"Worker {self.__class__.__name__} completed successfully.")
+                self.logger.info(f"Worker {self.__class__.__name__} finished.")
                 self.task_finished.emit()
             else:
                 self.logger.info(f"Worker {self.__class__.__name__} stopped by user request.")
