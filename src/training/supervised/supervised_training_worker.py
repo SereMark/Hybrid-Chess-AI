@@ -100,7 +100,7 @@ class SupervisedWorker(BaseWorker):
                     start_epoch = checkpoint.get('epoch', 0) + 1
                     skip_batches = checkpoint.get('batch_idx', 0) or 0
                     self.total_batches_processed = skip_batches
-                    self.logger.info(f"Resuming from epoch {start_epoch - 1}, batch {skip_batches}.")
+                    self.logger.info(f"Resuming from epoch {start_epoch}, batch {skip_batches}.")
                 else:
                     self.logger.warning("No valid checkpoint found. Starting from epoch 1.")
             else:
