@@ -45,7 +45,6 @@ class ReinforcementTrainingSubTab(BaseTab):
             self.checkpoint_type_combo,
             {
                 'iteration': self.iteration_interval_widget,
-                'epoch': self.epoch_interval_widget,
                 'time': self.time_interval_widget,
                 'batch': self.batch_interval_widget
             }
@@ -170,23 +169,20 @@ class ReinforcementTrainingSubTab(BaseTab):
         label1 = QLabel("Save checkpoint by:")
         row1.addWidget(label1)
         self.checkpoint_type_combo = QComboBox()
-        self.checkpoint_type_combo.addItems(["Iteration", "Epoch", "Time", "Batch"])
+        self.checkpoint_type_combo.addItems(["Iteration", "Time", "Batch"])
         row1.addWidget(self.checkpoint_type_combo)
         row1.addStretch()
         layout.addLayout(row1)
 
         self.iteration_interval_input = QLineEdit("1")
-        self.epoch_interval_input = QLineEdit("1")
         self.time_interval_minutes_input = QLineEdit("30")
         self.batch_interval_input = QLineEdit("2000")
 
         self.iteration_interval_widget = self.create_interval_widget("Every", self.iteration_interval_input, "iterations")
-        self.epoch_interval_widget = self.create_interval_widget("Every", self.epoch_interval_input, "epochs")
         self.time_interval_widget = self.create_interval_widget("Every", self.time_interval_minutes_input, "minutes")
         self.batch_interval_widget = self.create_interval_widget("Every", self.batch_interval_input, "batches")
 
         layout.addWidget(self.iteration_interval_widget)
-        layout.addWidget(self.epoch_interval_widget)
         layout.addWidget(self.time_interval_widget)
         layout.addWidget(self.batch_interval_widget)
 
@@ -195,15 +191,12 @@ class ReinforcementTrainingSubTab(BaseTab):
 
     def update_checkpoint_interval_visibility(self, checkpoint_type):
         self.iteration_interval_widget.hide()
-        self.epoch_interval_widget.hide()
         self.time_interval_widget.hide()
         self.batch_interval_widget.hide()
 
         checkpoint_type_lower = checkpoint_type.lower()
         if checkpoint_type_lower == "iteration":
             self.iteration_interval_widget.show()
-        elif checkpoint_type_lower == "epoch":
-            self.epoch_interval_widget.show()
         elif checkpoint_type_lower == "time":
             self.time_interval_widget.show()
         elif checkpoint_type_lower == "batch":
@@ -251,14 +244,6 @@ class ReinforcementTrainingSubTab(BaseTab):
                         raise ValueError("Iteration interval must be positive.")
                 except ValueError as er:
                     QMessageBox.warning(self, "Input Error", f"Invalid Iteration Interval: {str(er)}")
-                    return
-            elif ctype == "epoch":
-                try:
-                    ci = int(self.epoch_interval_input.text())
-                    if ci <= 0:
-                        raise ValueError("Epoch interval must be positive.")
-                except ValueError as er:
-                    QMessageBox.warning(self, "Input Error", f"Invalid Epoch Interval: {str(er)}")
                     return
             elif ctype == "time":
                 try:
