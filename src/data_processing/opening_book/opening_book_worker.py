@@ -11,7 +11,7 @@ class OpeningBookWorker:
         self.start_time = time.time()
         if self.status_callback:
             self.status_callback("🔍 Starting processing of games...")
-        skipped_games = 0
+        skipped_games, last_update_time = 0, time.time()
         try:
             with open(self.pgn_file_path, "r", encoding="utf-8", errors="ignore") as pgn_file:
                 while self.game_counter < self.max_games:
@@ -44,12 +44,13 @@ class OpeningBookWorker:
                                 move_data["name"] = opening_name
                             board.push(move)
                         self.game_counter +=1
-                        if self.game_counter % 1000 == 0:
+                        if self.game_counter %10 ==0 or time.time()-last_update_time >5:
                             progress = min((self.game_counter / self.max_games)*100, 100)
                             if self.progress_callback:
                                 self.progress_callback(int(progress))
                             if self.status_callback:
-                                self.status_callback(f"✅ Processed {self.game_counter}/{self.max_games} games.")
+                                self.status_callback(f"✅ Processed {self.game_counter}/{self.max_games} games. Skipped {skipped_games} games so far.")
+                            last_update_time = time.time()
                     except:
                         skipped_games +=1
                         if self.status_callback:
