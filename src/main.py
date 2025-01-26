@@ -382,14 +382,14 @@ def run_benchmark_worker():
     with st.expander("🛠️ Configure Benchmarking Parameters", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
-            bot1_path = st.text_input("Path to Bot1 Model:", "models\saved_models\supervised_model.pth", placeholder="e.g., models\saved_models\supervised_model.pth", help="Enter the path to Bot1's model.")
+            bot1_path = st.text_input("Path to Bot1 Model:", "models\\saved_models\\supervised_model.pth", placeholder="e.g., models\\saved_models\\supervised_model.pth", help="Enter the path to Bot1's model.")
             if bot1_path:
                 is_valid = validate_file_path(bot1_path)
                 show_validation_message(is_valid, "Valid Bot1 model path." if is_valid else "Invalid Bot1 model path.")
             bot1_use_mcts = st.checkbox("Bot1 Use MCTS", True, help="Enable MCTS for Bot1.")
             bot1_use_opening_book = st.checkbox("Bot1 Use Opening Book", True, help="Enable Opening Book for Bot1.")
         with col2:
-            bot2_path = st.text_input("Path to Bot2 Model:", "models\saved_models\supervised_model.pth", placeholder="e.g., models\saved_models\supervised_model.pth", help="Enter the path to Bot2's model.")
+            bot2_path = st.text_input("Path to Bot2 Model:", "models\\saved_models\\supervised_model.pth", placeholder="e.g., models\\saved_models\\supervised_model.pth", help="Enter the path to Bot2's model.")
             if bot2_path:
                 is_valid = validate_file_path(bot2_path)
                 show_validation_message(is_valid, "Valid Bot2 model path." if is_valid else "Invalid Bot2 model path.")

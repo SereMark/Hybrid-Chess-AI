@@ -36,8 +36,6 @@ class BenchmarkWorker:
         os.makedirs(self.games_dir, exist_ok=True)
 
     def run(self) -> Dict:
-        if self.status_callback:
-            self.status_callback("Starting benchmarking...")
         bot1_valid = self.bot1.is_initialized()
         bot2_valid = self.bot2.is_initialized()
         if not bot1_valid:

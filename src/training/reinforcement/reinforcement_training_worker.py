@@ -45,8 +45,6 @@ class ReinforcementWorker:
         self.total_batches_processed = 0
 
     def run(self) -> Dict:
-        if self.status_callback:
-            self.status_callback('🔍 Starting reinforcement training...')
         try:
             if self.model_path and os.path.exists(self.model_path):
                 checkpoint = self.checkpoint_manager.load(self.model_path, self.device, self.model, self.optimizer, self.scheduler)

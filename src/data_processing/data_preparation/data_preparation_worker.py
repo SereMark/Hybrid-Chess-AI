@@ -23,12 +23,6 @@ class DataPreparationWorker:
 
     def run(self):
         self.start_time = time.time()
-        if not os.path.isfile(self.raw_pgn_file):
-            if self.status_callback:
-                self.status_callback("❌ Raw PGN file does not exist.")
-            return
-        if self.status_callback:
-            self.status_callback("🔍 Initializing chess engine...")
         try:
             if platform.system() == "Windows":
                 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -47,7 +41,7 @@ class DataPreparationWorker:
             self.h5_inputs = h5_file.create_dataset("inputs", shape=(0,25,8,8), maxshape=(None,25,8,8), dtype=np.float32, compression="lzf")
             self.h5_policy_targets = h5_file.create_dataset("policy_targets", shape=(0,), maxshape=(None,), dtype=np.int64, compression="lzf")
             self.h5_value_targets = h5_file.create_dataset("value_targets", shape=(0,), maxshape=(None,), dtype=np.float32, compression="lzf")
-            skipped_games, last_update_time = 0, time.time()
+            skipped_games = 0
             with open(self.raw_pgn_file, "r", errors="ignore") as f:
                 while self.total_games_processed < self.max_games:
                     game = chess.pgn.read_game(f)
@@ -75,13 +69,11 @@ class DataPreparationWorker:
                         continue
                     self._process_data_entry(result)
                     self.total_games_processed +=1
-                    if self.total_games_processed %10 ==0 or time.time()-last_update_time >5:
-                        progress = (self.total_games_processed / self.max_games) *100
+                    if len(self.batch_inputs) >= self.batch_size:
                         if self.progress_callback:
-                            self.progress_callback(int(progress))
+                            self.progress_callback(int((self.total_games_processed / self.max_games) *100))
                         if self.status_callback:
                             self.status_callback(f"✅ Processed {self.total_games_processed}/{self.max_games} games. Skipped {skipped_games} games so far.")
-                        last_update_time = time.time()
             if self.batch_inputs:
                 if self.status_callback:
                     self.status_callback("🔄 Writing remaining batch to H5 file.")

@@ -39,8 +39,6 @@ class SupervisedWorker:
         self.total_batches_processed = 0
 
     def run(self) -> Dict:
-        if self.status_callback:
-            self.status_callback('🔍 Starting supervised training...')
         try:
             required_files = [(self.dataset_path, "dataset file"), (self.train_indices_path, "training indices"), (self.val_indices_path, "validation indices")]
             for file_path, desc in required_files:

@@ -18,8 +18,6 @@ class EvaluationWorker:
         self.status_callback = status_callback
 
     def run(self) -> Dict:
-        if self.status_callback:
-            self.status_callback("Starting evaluation...")
         initialize_random_seeds(42)
         model = self._load_model()
         if model is None:
