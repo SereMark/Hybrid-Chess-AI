@@ -1,4 +1,4 @@
-import os, io, h5py, time, chess, chess.pgn, numpy as np, chess.engine
+import os, io, h5py, time, chess, chess.pgn, numpy as np, chess.engine, asyncio, platform
 from collections import defaultdict
 from src.utils.chess_utils import convert_board_to_tensor, flip_board, flip_move, get_move_mapping
 
@@ -30,6 +30,8 @@ class DataPreparationWorker:
         if self.status_callback:
             self.status_callback("🔍 Initializing chess engine...")
         try:
+            if platform.system() == "Windows":
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
             self.engine = chess.engine.SimpleEngine.popen_uci(self.engine_path)
             self.engine.configure({"Threads": self.engine_threads, "Hash": self.engine_hash})
             if self.status_callback:
