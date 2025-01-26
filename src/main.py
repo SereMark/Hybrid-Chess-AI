@@ -19,26 +19,14 @@ st.markdown("""
 .badge-completed {background-color:#28a745;}
 .badge-in-progress {background-color:#ffc107;}
 .badge-failed {background-color:#dc3545;}
-.log-output {background-color:#2c2c2c;color:#ffffff;padding:1em;border-radius:0.5em;height:500px;overflow-y:scroll;white-space:pre-wrap;font-family:monospace;font-size:14px;}
-.log-output::-webkit-scrollbar {width:8px;}
-.log-output::-webkit-scrollbar-track {background:#1e1e1e;}
-.log-output::-webkit-scrollbar-thumb {background-color:#555;border-radius:4px;border:2px solid #2c2c2c;}
 </style>
 """, unsafe_allow_html=True)
-
-if 'logs' not in st.session_state:
-    st.session_state['logs'] = {}
 
 def validate_file_path(file_path, file_type="file"):
     return os.path.isfile(file_path) if file_type == "file" else os.path.isdir(file_path) if file_type == "directory" else False
 
 def show_validation_message(is_valid, message):
     st.markdown(f"✅ **{message}**" if is_valid else f"⚠️ **{message}**")
-
-def add_log(process, message):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_entry = f"[{timestamp}] {message}"
-    st.session_state['logs'].setdefault(process, []).append(log_entry)
 
 def run_data_preparation_worker():
     st.header("📂 Data Preparation")
@@ -66,29 +54,23 @@ def run_data_preparation_worker():
     submitted = st.button("Start Data Preparation 🏁")
     if submitted:
         if validate_file_path(raw_pgn_file) and validate_file_path(engine_path):
-            add_log("Data Preparation", "Data preparation started.")
             progress = st.progress(0)
             status_text = st.empty()
-            log_container = st.empty()
             def progress_callback(percent):
                 progress.progress(int(percent))
             def status_callback(message):
                 status_text.text(message)
-                add_log("Data Preparation", message)
-                log_container.markdown("<div class='log-output'>" + "\n".join(st.session_state['logs']['Data Preparation']) + "</div>", unsafe_allow_html=True)
             try:
                 worker = DataPreparationWorker(raw_pgn_file, max_games, min_elo, batch_size, engine_path, engine_depth, engine_threads, engine_hash, progress_callback, status_callback)
+                status_text.text("🚀 Data Preparation Started!")
                 result = worker.run()
                 if result:
                     progress.progress(100)
                     status_text.text("🎉 Data Preparation Completed!")
-                    add_log("Data Preparation", "Data preparation completed successfully.")
                 else:
                     status_text.text("⚠️ Processing failed. Please check your inputs.")
-                    add_log("Data Preparation", "Data preparation failed.")
             except Exception as e:
                 status_text.text(f"⚠️ An unexpected error occurred: {e}")
-                add_log("Data Preparation", f"Error: {e}")
         else:
             st.error("⚠️ Invalid PGN file or engine path. Please check and try again.")
 
@@ -110,29 +92,23 @@ def run_opening_book_worker():
     submitted = st.button("Start Opening Book Generation 🏁")
     if submitted:
         if validate_file_path(pgn_file_path):
-            add_log("Opening Book Generation", "Opening book generation started.")
             progress = st.progress(0)
             status_text = st.empty()
-            log_container = st.empty()
             def progress_callback(percent):
                 progress.progress(int(percent))
             def status_callback(message):
                 status_text.text(message)
-                add_log("Opening Book Generation", message)
-                log_container.markdown("<div class='log-output'>" + "\n".join(st.session_state['logs']['Opening Book Generation']) + "</div>", unsafe_allow_html=True)
             try:
                 worker = OpeningBookWorker(pgn_file_path, max_games, min_elo, max_opening_moves, progress_callback, status_callback)
+                status_text.text("🚀 Opening Book Generation Started!")
                 result = worker.run()
                 if result:
                     progress.progress(100)
                     status_text.text("🎉 Opening Book Generation Completed!")
-                    add_log("Opening Book Generation", "Opening book generation completed successfully.")
                 else:
                     status_text.text("⚠️ Processing failed. Please check your inputs.")
-                    add_log("Opening Book Generation", "Opening book generation failed.")
             except Exception as e:
                 status_text.text(f"⚠️ An unexpected error occurred: {e}")
-                add_log("Opening Book Generation", f"Error: {e}")
         else:
             st.error("⚠️ Invalid PGN file path. Please check and try again.")
 
@@ -190,16 +166,12 @@ def run_supervised_training_worker():
             required_files.append(model_path)
         missing_files = [f for f in required_files if f and not validate_file_path(f)]
         if not missing_files:
-            add_log("Supervised Training", "Supervised training started.")
             progress = st.progress(0)
             status_text = st.empty()
-            log_container = st.empty()
             def progress_callback(percent):
                 progress.progress(int(percent))
             def status_callback(message):
                 status_text.text(message)
-                add_log("Supervised Training", message)
-                log_container.markdown("<div class='log-output'>" + "\n".join(st.session_state['logs']['Supervised Training']) + "</div>", unsafe_allow_html=True)
             try:
                 lr = float(learning_rate)
                 wd = float(weight_decay)
@@ -222,19 +194,17 @@ def run_supervised_training_worker():
                     progress_callback=progress_callback,
                     status_callback=status_callback
                 )
+                status_text.text("🚀 Supervised Training Started!")
                 result = worker.run()
                 if result:
                     progress.progress(100)
                     status_text.text("🎉 Supervised Training Completed!")
-                    add_log("Supervised Training", "Supervised training completed successfully.")
                 else:
                     status_text.text("⚠️ Supervised Training failed. Please check the logs.")
-                    add_log("Supervised Training", "Supervised training failed.")
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
             except Exception as e:
                 status_text.text(f"⚠️ An unexpected error occurred: {e}")
-                add_log("Supervised Training", f"Error: {e}")
         else:
             st.error(f"⚠️ The following required files are missing: {', '.join(missing_files)}. Please check the paths and try again.")
 
@@ -279,16 +249,12 @@ def run_reinforcement_training_worker():
         if model_path and not validate_file_path(model_path):
             st.error("⚠️ Model path is invalid or the file does not exist. Please check and try again.")
         else:
-            add_log("Reinforcement Training", "Reinforcement training started.")
             progress = st.progress(0)
             status_text = st.empty()
-            log_container = st.empty()
             def progress_callback(percent):
                 progress.progress(int(percent))
             def status_callback(message):
                 status_text.text(message)
-                add_log("Reinforcement Training", message)
-                log_container.markdown("<div class='log-output'>" + "\n".join(st.session_state['logs']['Reinforcement Training']) + "</div>", unsafe_allow_html=True)
             try:
                 lr = float(learning_rate)
                 wd = float(weight_decay)
@@ -313,19 +279,17 @@ def run_reinforcement_training_worker():
                     progress_callback=progress_callback,
                     status_callback=status_callback
                 )
+                status_text.text("🚀 Reinforcement Training Started!")
                 result = worker.run()
                 if result:
                     progress.progress(100)
                     status_text.text("🎉 Reinforcement Training Completed!")
-                    add_log("Reinforcement Training", "Reinforcement training completed successfully.")
                 else:
                     status_text.text("⚠️ Reinforcement Training failed. Please check the logs.")
-                    add_log("Reinforcement Training", "Reinforcement training failed.")
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
             except Exception as e:
                 status_text.text(f"⚠️ An unexpected error occurred: {e}")
-                add_log("Reinforcement Training", f"Error: {e}")
 
 def run_evaluation_worker():
     st.header("📈 Evaluation")
@@ -350,29 +314,23 @@ def run_evaluation_worker():
         required_files = [model_path, dataset_indices_path, h5_file_path]
         missing_files = [f for f in required_files if f and not validate_file_path(f)]
         if not missing_files:
-            add_log("Evaluation", "Evaluation started.")
             progress = st.progress(0)
             status_text = st.empty()
-            log_container = st.empty()
             def progress_callback(percent):
                 progress.progress(int(percent))
             def status_callback(message):
                 status_text.text(message)
-                add_log("Evaluation", message)
-                log_container.markdown("<div class='log-output'>" + "\n".join(st.session_state['logs']['Evaluation']) + "</div>", unsafe_allow_html=True)
             try:
                 worker = EvaluationWorker(model_path, dataset_indices_path, h5_file_path, progress_callback, status_callback)
+                status_text.text("🚀 Evaluation Started!")
                 metrics = worker.run()
                 if metrics:
                     progress.progress(100)
                     status_text.text("🎉 Evaluation Completed!")
-                    add_log("Evaluation", "Evaluation completed successfully.")
                 else:
                     status_text.text("⚠️ Evaluation failed. Please check the logs.")
-                    add_log("Evaluation", "Evaluation failed.")
             except Exception as e:
                 status_text.text(f"⚠️ An unexpected error occurred: {e}")
-                add_log("Evaluation", f"Error: {e}")
         else:
             st.error(f"⚠️ The following required files are missing: {', '.join(missing_files)}. Please check the paths and try again.")
 
@@ -400,32 +358,26 @@ def run_benchmark_worker():
         required_files = [bot1_path, bot2_path]
         missing_files = [f for f in required_files if f and not validate_file_path(f)]
         if not missing_files:
-            add_log("Benchmarking", "Benchmarking started.")
             progress = st.progress(0)
             status_text = st.empty()
-            log_container = st.empty()
             def progress_callback(percent):
                 progress.progress(int(percent))
             def status_callback(message):
                 status_text.text(message)
-                add_log("Benchmarking", message)
-                log_container.markdown("<div class='log-output'>" + "\n".join(st.session_state['logs']['Benchmarking']) + "</div>", unsafe_allow_html=True)
             try:
                 worker = BenchmarkWorker(bot1_path, bot2_path, int(num_games), bot1_use_mcts, bot1_use_opening_book, bot2_use_mcts, bot2_use_opening_book, progress_callback, status_callback)
+                status_text.text("🚀 Benchmarking Started!")
                 metrics = worker.run()
                 if metrics:
                     progress.progress(100)
                     status_text.text("🎉 Benchmarking Completed!")
-                    add_log("Benchmarking", "Benchmarking completed successfully.")
                     if "results" in metrics and isinstance(metrics["results"], dict):
                         results_df = pd.DataFrame(list(metrics["results"].items()), columns=["Bot", "Wins"])
                         st.bar_chart(results_df.set_index("Bot"))
                 else:
                     status_text.text("⚠️ Benchmarking failed. Please check the logs.")
-                    add_log("Benchmarking", "Benchmarking failed.")
             except Exception as e:
                 status_text.text(f"⚠️ An unexpected error occurred: {e}")
-                add_log("Benchmarking", f"Error: {e}")
         else:
             st.error(f"⚠️ The following required files are missing: {', '.join(missing_files)}. Please check the paths and try again.")
 
