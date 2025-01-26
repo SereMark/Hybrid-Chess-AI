@@ -1,7 +1,6 @@
 import os
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 from src.data_processing.data_preparation.data_preparation_worker import DataPreparationWorker
 from src.data_processing.opening_book.opening_book_worker import OpeningBookWorker
 from src.training.supervised.supervised_training_worker import SupervisedWorker
@@ -175,32 +174,17 @@ def run_supervised_training_worker():
             try:
                 lr = float(learning_rate)
                 wd = float(weight_decay)
-                worker = SupervisedWorker(
-                    epochs=int(epochs),
-                    batch_size=int(batch_size),
-                    learning_rate=lr,
-                    weight_decay=wd,
-                    save_checkpoints=save_checkpoints,
-                    checkpoint_interval=int(checkpoint_interval) if save_checkpoints else None,
-                    dataset_path=dataset_path,
-                    train_indices_path=train_indices_path,
-                    val_indices_path=val_indices_path,
-                    model_path=model_path if model_path else None,
-                    checkpoint_type=checkpoint_type if save_checkpoints else None,
-                    optimizer_type=optimizer_type,
-                    scheduler_type=scheduler_type,
-                    num_workers=int(num_workers),
-                    random_seed=int(random_seed),
-                    progress_callback=progress_callback,
-                    status_callback=status_callback
-                )
+                worker = SupervisedWorker(epochs=int(epochs), batch_size=int(batch_size), learning_rate=lr, weight_decay=wd, save_checkpoints=save_checkpoints, checkpoint_interval=int(checkpoint_interval) if save_checkpoints else None,
+                                          dataset_path=dataset_path, train_indices_path=train_indices_path, val_indices_path=val_indices_path, model_path=model_path if model_path else None,
+                                          checkpoint_type=checkpoint_type if save_checkpoints else None, optimizer_type=optimizer_type, scheduler_type=scheduler_type, num_workers=int(num_workers),
+                                          random_seed=int(random_seed), progress_callback=progress_callback, status_callback=status_callback)
                 status_text.text("🚀 Supervised Training Started!")
                 result = worker.run()
                 if result:
                     progress.progress(100)
                     status_text.text("🎉 Supervised Training Completed!")
                 else:
-                    status_text.text("⚠️ Supervised Training failed. Please check the logs.")
+                    status_text.text("⚠️ Supervised Training failed.")
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
             except Exception as e:
@@ -258,34 +242,17 @@ def run_reinforcement_training_worker():
             try:
                 lr = float(learning_rate)
                 wd = float(weight_decay)
-                worker = ReinforcementWorker(
-                    model_path=model_path if model_path else None,
-                    num_iterations=int(num_iterations),
-                    num_games_per_iteration=int(num_games_per_iteration),
-                    simulations=int(simulations),
-                    c_puct=float(c_puct),
-                    temperature=float(temperature),
-                    num_epochs=int(num_epochs),
-                    batch_size=int(batch_size),
-                    num_threads=int(num_threads),
-                    save_checkpoints=save_checkpoints,
-                    checkpoint_interval=int(checkpoint_interval) if save_checkpoints else None,
-                    checkpoint_type=checkpoint_type if save_checkpoints else None,
-                    random_seed=int(random_seed),
-                    optimizer_type=optimizer_type,
-                    learning_rate=lr,
-                    weight_decay=wd,
-                    scheduler_type=scheduler_type,
-                    progress_callback=progress_callback,
-                    status_callback=status_callback
-                )
+                worker = ReinforcementWorker(model_path=model_path if model_path else None, num_iterations=int(num_iterations), num_games_per_iteration=int(num_games_per_iteration), simulations=int(simulations),
+                                             c_puct=float(c_puct), temperature=float(temperature), num_epochs=int(num_epochs), batch_size=int(batch_size), num_threads=int(num_threads), save_checkpoints=save_checkpoints,
+                                             checkpoint_interval=int(checkpoint_interval) if save_checkpoints else None, checkpoint_type=checkpoint_type if save_checkpoints else None, random_seed=int(random_seed),
+                                             optimizer_type=optimizer_type, learning_rate=lr, weight_decay=wd, scheduler_type=scheduler_type, progress_callback=progress_callback, status_callback=status_callback)
                 status_text.text("🚀 Reinforcement Training Started!")
                 result = worker.run()
                 if result:
                     progress.progress(100)
                     status_text.text("🎉 Reinforcement Training Completed!")
                 else:
-                    status_text.text("⚠️ Reinforcement Training failed. Please check the logs.")
+                    status_text.text("⚠️ Reinforcement Training failed.")
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
             except Exception as e:
@@ -328,7 +295,7 @@ def run_evaluation_worker():
                     progress.progress(100)
                     status_text.text("🎉 Evaluation Completed!")
                 else:
-                    status_text.text("⚠️ Evaluation failed. Please check the logs.")
+                    status_text.text("⚠️ Evaluation failed.")
             except Exception as e:
                 status_text.text(f"⚠️ An unexpected error occurred: {e}")
         else:
@@ -375,7 +342,7 @@ def run_benchmark_worker():
                         results_df = pd.DataFrame(list(metrics["results"].items()), columns=["Bot", "Wins"])
                         st.bar_chart(results_df.set_index("Bot"))
                 else:
-                    status_text.text("⚠️ Benchmarking failed. Please check the logs.")
+                    status_text.text("⚠️ Benchmarking failed.")
             except Exception as e:
                 status_text.text(f"⚠️ An unexpected error occurred: {e}")
         else:
