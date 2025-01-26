@@ -69,11 +69,6 @@ class DataPreparationWorker:
                         continue
                     self._process_data_entry(result)
                     self.total_games_processed +=1
-                    if len(self.batch_inputs) >= self.batch_size:
-                        if self.progress_callback:
-                            self.progress_callback(int((self.total_games_processed / self.max_games) *100))
-                        if self.status_callback:
-                            self.status_callback(f"✅ Processed {self.total_games_processed}/{self.max_games} games. Skipped {skipped_games} games so far.")
             if self.batch_inputs:
                 if self.status_callback:
                     self.status_callback("🔄 Writing remaining batch to H5 file.")
@@ -173,6 +168,10 @@ class DataPreparationWorker:
         self.game_results_counter[data["game_result"]] +=1
         self._update_histograms(data["game_length"], data["avg_rating"])
         if len(self.batch_inputs) >= self.batch_size:
+            if self.progress_callback:
+                self.progress_callback(int((self.total_games_processed / self.max_games) *100))
+            if self.status_callback:
+                self.status_callback(f"✅ Processed {self.total_games_processed}/{self.max_games} games.")
             self._write_batch_to_h5()
 
     def _write_batch_to_h5(self):

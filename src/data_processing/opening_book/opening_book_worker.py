@@ -49,7 +49,7 @@ class OpeningBookWorker:
                             if self.progress_callback:
                                 self.progress_callback(int(progress))
                             if self.status_callback:
-                                self.status_callback(f"✅ Processed {self.game_counter}/{self.max_games} games. Skipped {skipped_games} games so far.")
+                                self.status_callback(f"✅ Processed {self.game_counter}/{self.max_games} games.")
                     except:
                         skipped_games +=1
                         if self.status_callback:
