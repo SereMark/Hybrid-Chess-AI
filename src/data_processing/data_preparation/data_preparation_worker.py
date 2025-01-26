@@ -34,8 +34,6 @@ class DataPreparationWorker:
             if self.status_callback:
                 self.status_callback(f"❌ Failed to initialize engine: {e}")
             self.engine = None
-        if self.status_callback:
-            self.status_callback("🔍 Starting game processing...")
         h5_path = os.path.join(self.output_dir, "dataset.h5")
         with h5py.File(h5_path, "w") as h5_file:
             self.h5_inputs = h5_file.create_dataset("inputs", shape=(0,25,8,8), maxshape=(None,25,8,8), dtype=np.float32, compression="lzf")
@@ -46,8 +44,6 @@ class DataPreparationWorker:
                 while self.total_games_processed < self.max_games:
                     game = chess.pgn.read_game(f)
                     if game is None:
-                        if self.status_callback:
-                            self.status_callback("🔍 Reached end of PGN file.")
                         break
                     headers = game.headers
                     white_elo_str, black_elo_str = headers.get("WhiteElo"), headers.get("BlackElo")
