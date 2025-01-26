@@ -92,6 +92,8 @@ class DataPreparationWorker:
             self.status_callback("🔍 Splitting dataset into train, validation, and test sets...")
         self._split_dataset()
         metrics = {"total_samples":self.total_samples, "total_games_processed":self.total_games_processed, "total_moves_processed":self.total_moves_processed, "game_results_counter":self.game_results_counter, "game_length_histogram":self.game_length_histogram.tolist(), "player_rating_histogram":self.player_rating_histogram.tolist(), "dataset_path":h5_path}
+        if self.progress_callback:
+            self.progress_callback(1.0)
         if self.status_callback:
             self.status_callback(f"✅ Data Preparation completed successfully. Processed {self.total_games_processed} games with {skipped_games} skipped games in {time.time()-self.start_time:.2f} seconds.")
         return metrics

@@ -77,6 +77,8 @@ class OpeningBookWorker:
                 self.status_callback("❌ Failed to save opening book.")
             return
         total_time = time.time() - self.start_time
+        if self.progress_callback:
+            self.progress_callback(1.0)
         if self.status_callback:
             self.status_callback(f"✅ Completed processing {self.game_counter} games with {skipped_games} skipped games in {total_time:.2f} seconds.")
         opening_stats = defaultdict(int)
