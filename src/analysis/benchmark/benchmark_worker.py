@@ -36,6 +36,8 @@ class BenchmarkWorker:
         os.makedirs(self.games_dir, exist_ok=True)
 
     def run(self) -> Dict:
+        if self.status_callback:
+            self.status_callback("Starting benchmarking...")
         bot1_valid = self.bot1.is_initialized()
         bot2_valid = self.bot2.is_initialized()
         if not bot1_valid:
@@ -48,6 +50,8 @@ class BenchmarkWorker:
             return {}
         results = []
         for game_idx in range(1, self.num_games + 1):
+            if self.status_callback:
+                self.status_callback(f"Playing game {game_idx}/{self.num_games}")
             board = chess.Board()
             moves_count = 0
             game = chess.pgn.Game()
@@ -82,6 +86,8 @@ class BenchmarkWorker:
                 self.progress_callback(progress)
             if self.status_callback:
                 self.status_callback(f"Completed game {game_idx}/{self.num_games}")
+        if self.progress_callback:
+            self.progress_callback(1.0)
         metrics = {
             "total_games_played": self.num_games,
             "results": results,

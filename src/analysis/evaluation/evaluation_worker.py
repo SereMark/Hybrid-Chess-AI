@@ -18,6 +18,8 @@ class EvaluationWorker:
         self.status_callback = status_callback
 
     def run(self) -> Dict:
+        if self.status_callback:
+            self.status_callback("Starting evaluation...")
         initialize_random_seeds(42)
         model = self._load_model()
         if model is None:
@@ -50,10 +52,12 @@ class EvaluationWorker:
                 progress = done_batches / total_batches
                 self.progress_callback(progress)
             if self.status_callback:
-                self.status_callback(f"Processed batch {done_batches}/{total_batches}")
+                self.status_callback(f"Batch {done_batches}/{total_batches} done.")
         del dataset
         torch.cuda.empty_cache()
         self._compute_metrics(all_predictions, all_actuals, topk_predictions)
+        if self.progress_callback:
+            self.progress_callback(1.0)
         metrics = {
             "confusion_matrix": self.confusion_matrix.tolist(),
             "accuracy": self.accuracy,
