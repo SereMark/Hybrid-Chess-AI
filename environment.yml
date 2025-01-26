@@ -9,7 +9,8 @@ dependencies:
   - pytorch-cuda=12.4
   - numpy
   - matplotlib
-  - pyqt
   - chess
   - h5py
   - onnx
+  - streamlit
+  - wandb

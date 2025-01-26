@@ -36,13 +36,8 @@ env/
 # Testing
 .cache/
 
-# Jupyter Notebooks
-.ipynb_checkpoints/
-
 # IDE / Editor configurations
-.idea/
 .vscode/
-*.iml
 
 # Data files
 *.csv
@@ -57,9 +52,6 @@ opening_book.json
 *.pth
 *.pt
 
-# ONNX model files
-*.onnx
-
 # Logs
 *.log
 
@@ -71,3 +63,6 @@ opening_book.json
 
 # Engines
 stockfish/
+
+# Wandb
+wandb/

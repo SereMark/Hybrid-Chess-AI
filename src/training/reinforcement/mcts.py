@@ -1,8 +1,7 @@
 import math
-import numpy as np
 import chess
 import torch
-from src.utils.common_utils import get_game_result
+import numpy as np
 from src.utils.chess_utils import convert_board_to_tensor, get_move_mapping
 
 class TreeNode:
@@ -26,25 +25,21 @@ class TreeNode:
     def select(self, c_puct):
         best_move, best_node = None, None
         best_value = float('-inf')
-
         for move, node in self.children.items():
             if node.parent:
                 node.u = c_puct * node.P * math.sqrt(node.parent.n_visits) / (1 + node.n_visits)
                 value = node.Q + node.u
             else:
                 value = node.Q
-
             if value > best_value:
                 best_value = value
                 best_move = move
                 best_node = node
-
         return best_move, best_node
 
     def update_recursive(self, leaf_value):
         if self.parent:
             self.parent.update_recursive(-leaf_value)
-            
         self.n_visits += 1
         self.Q += (leaf_value - self.Q) / self.n_visits
 
@@ -59,22 +54,17 @@ class MCTS:
     def _policy_value_fn(self, board: chess.Board):
         board_tensor = convert_board_to_tensor(board)
         board_tensor = torch.from_numpy(board_tensor).float().unsqueeze(0).to(self.device)
-
         with torch.no_grad():
             policy_logits, value_out = self.model(board_tensor)
             policy_logits = policy_logits[0]
             value_float = value_out.item()
-
         policy = torch.softmax(policy_logits, dim=0).cpu().numpy()
         legal_moves = list(board.legal_moves)
-
         if not legal_moves:
             return {}, value_float
-
         action_probs = {}
         total_prob = 0.0
         move_mapping = get_move_mapping()
-
         for mv in legal_moves:
             idx = move_mapping.get_index_by_move(mv)
             if idx is not None and idx < len(policy):
@@ -84,14 +74,12 @@ class MCTS:
             else:
                 action_probs[mv] = 1e-8
                 total_prob += 1e-8
-
         if total_prob > 0:
             for mv in action_probs:
                 action_probs[mv] /= total_prob
         else:
             for mv in action_probs:
                 action_probs[mv] = 1.0 / len(legal_moves)
-
         return action_probs, value_float
 
     def set_root_node(self, board: chess.Board):
@@ -100,40 +88,28 @@ class MCTS:
         self.root.expand(action_probs)
 
     def get_move_probs(self, temperature=1e-3):
-        # Run simulations
         for _ in range(self.n_simulations):
             node = self.root
-
-            # Selection
-            while not len(node.children) == 0:
+            while node.children:
                 _, node = node.select(self.c_puct)
-
-            # Expansion & Evaluation
             action_probs, leaf_value = self._policy_value_fn(node.board)
             if not node.board.is_game_over():
                 node.expand(action_probs)
             else:
-                leaf_value = get_game_result(node.board)
-
-            # Backpropagation
+                result_map = {'1-0': 1.0, '0-1': -1.0, '1/2-1/2': 0.0}
+                leaf_value = result_map.get(node.board.result(), 0.0)
             node.update_recursive(-leaf_value)
-
         if not self.root.children:
             return {}
-
         move_visits = [(mv, child.n_visits) for mv, child in self.root.children.items()]
         moves, visits = zip(*move_visits)
         visits = np.array(visits, dtype=np.float32)
-
         if temperature <= 1e-3:
-            # Deterministic: pick the move with highest visit count
             probs = np.zeros_like(visits)
             probs[np.argmax(visits)] = 1.0
         else:
-            # Softmax over visit counts
             visits_exp = np.exp((visits - np.max(visits)) / temperature)
             probs = visits_exp / visits_exp.sum()
-
         return dict(zip(moves, probs))
 
     def update_with_move(self, last_move: chess.Move):

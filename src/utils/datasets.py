@@ -17,7 +17,6 @@ class H5Dataset(Dataset):
         return len(self.indices)
 
     def __getitem__(self, idx):
-        # Open the HDF5 file if it hasn't been opened yet
         if self.h5_file is None:
             self.h5_file = h5py.File(self.h5_file_path, 'r')
 
@@ -27,7 +26,6 @@ class H5Dataset(Dataset):
             pol = self.h5_file['policy_targets'][actual_idx]
             val = self.h5_file['value_targets'][actual_idx]
 
-            # Validate the shapes of the data
             if inp.shape != self.input_shape:
                 raise ValueError(f"Input shape mismatch at index {actual_idx}: {inp.shape} != {self.input_shape}")
             if pol.shape != self.policy_shape:
@@ -35,7 +33,6 @@ class H5Dataset(Dataset):
             if val.shape != self.value_shape:
                 raise ValueError(f"Value target shape mismatch at index {actual_idx}: {val.shape} != {self.value_shape}")
 
-            # Convert data to tensors
             inp_t = torch.from_numpy(inp).float()
             pol_t = torch.tensor(pol).long()
             val_t = torch.tensor(val).float()
