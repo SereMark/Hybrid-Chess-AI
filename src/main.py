@@ -20,7 +20,7 @@ st.markdown("""
 .badge-completed {background-color:#28a745;}
 .badge-in-progress {background-color:#ffc107;}
 .badge-failed {background-color:#dc3545;}
-.log-output {background-color:#2c2c2c;color:#ffffff;padding:1em;border-radius:0.5em;height:200px;overflow-y:scroll;white-space:pre-wrap;font-family:monospace;font-size:14px;}
+.log-output {background-color:#2c2c2c;color:#ffffff;padding:1em;border-radius:0.5em;height:500px;overflow-y:scroll;white-space:pre-wrap;font-family:monospace;font-size:14px;}
 .log-output::-webkit-scrollbar {width:8px;}
 .log-output::-webkit-scrollbar-track {background:#1e1e1e;}
 .log-output::-webkit-scrollbar-thumb {background-color:#555;border-radius:4px;border:2px solid #2c2c2c;}

@@ -56,8 +56,6 @@ class EvaluationWorker:
         del dataset
         torch.cuda.empty_cache()
         self._compute_metrics(all_predictions, all_actuals, topk_predictions)
-        if self.progress_callback:
-            self.progress_callback(1.0)
         metrics = {
             "confusion_matrix": self.confusion_matrix.tolist(),
             "accuracy": self.accuracy,

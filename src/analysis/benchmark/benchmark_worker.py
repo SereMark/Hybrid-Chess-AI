@@ -86,8 +86,6 @@ class BenchmarkWorker:
                 self.progress_callback(progress)
             if self.status_callback:
                 self.status_callback(f"Completed game {game_idx}/{self.num_games}")
-        if self.progress_callback:
-            self.progress_callback(1.0)
         metrics = {
             "total_games_played": self.num_games,
             "results": results,
