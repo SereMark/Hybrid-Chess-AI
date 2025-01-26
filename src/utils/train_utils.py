@@ -90,14 +90,9 @@ def train_epoch(model, data_loader, device, scaler, optimizer, scheduler=None, e
         if progress_callback:
             progress_callback(total_batches_processed / len(data_loader))
         if status_callback:
-            status_callback(f"Batch {batch_idx}: Policy Loss={policy_loss.item():.4f}, Value Loss={value_loss.item():.4f}")
+            status_callback(f"Epoch {epoch} - Batch {batch_idx}/{len(data_loader)} - Policy Loss: {total_policy_loss / total_samples:.4f} - Value Loss: {total_value_loss / total_samples:.4f}")
         del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
         torch.cuda.empty_cache()
-    if status_callback:
-        avg_policy_loss = total_policy_loss / total_samples
-        avg_value_loss = total_value_loss / total_samples
-        accuracy = (correct_predictions / total_samples) if compute_accuracy_flag else 0.0
-        status_callback(f"Policy Loss={avg_policy_loss:.4f}, Value Loss={avg_value_loss:.4f}, Accuracy={accuracy:.4f}")
     if progress_callback:
         progress_callback(1.0)
 
@@ -119,13 +114,8 @@ def validate_epoch(model, val_loader, device, epoch:int, smooth_policy_targets:b
             if progress_callback:
                 progress_callback(batch_idx / total_batches)
             if status_callback:
-                status_callback(f"Validation {epoch} Batch {batch_idx}: Policy Loss={policy_loss.item():.4f}, Value Loss={value_loss.item():.4f}")
+                status_callback(f"Validation - Epoch {epoch} - Batch {batch_idx}/{total_batches} - Policy Loss: {val_policy_loss / val_total_predictions:.4f} - Value Loss: {val_value_loss / val_total_predictions:.4f}")
             del inputs, policy_targets, value_targets, policy_preds, value_preds, policy_loss, value_loss
         torch.cuda.empty_cache()
-    if status_callback:
-        avg_policy_loss = val_policy_loss / val_total_predictions
-        avg_value_loss = val_value_loss / val_total_predictions
-        accuracy = val_correct_predictions / val_total_predictions
-        status_callback(f"Validation {epoch}: Policy Loss={avg_policy_loss:.4f}, Value Loss={avg_value_loss:.4f}, Accuracy={accuracy:.4f}")
     if progress_callback:
         progress_callback(1.0)
