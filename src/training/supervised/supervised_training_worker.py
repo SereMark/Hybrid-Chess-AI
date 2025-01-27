@@ -40,12 +40,6 @@ class SupervisedWorker:
 
     def run(self) -> Dict:
         try:
-            required_files = [(self.dataset_path, "dataset file"), (self.train_indices_path, "training indices"), (self.val_indices_path, "validation indices")]
-            for file_path, desc in required_files:
-                if not os.path.exists(file_path):
-                    if self.status_callback:
-                        self.status_callback(f"Missing {desc} at {file_path}.")
-                    return {}
             train_indices = np.load(self.train_indices_path)
             val_indices = np.load(self.val_indices_path)
             train_dataset = H5Dataset(self.dataset_path, train_indices)
@@ -80,6 +74,5 @@ class SupervisedWorker:
             }
             return metrics
         except Exception as e:
-            if self.status_callback:
-                self.status_callback(f"Training error: {e}")
+            self.status_callback(f"Training error: {e}")
             raise

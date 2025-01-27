@@ -59,8 +59,7 @@ class ReinforcementWorker:
                 self.start_iteration = 0
             for iteration in range(self.start_iteration, self.num_iterations):
                 self.model.eval()
-                if self.status_callback:
-                    self.status_callback(f"🔁 Iteration {iteration+1}/{self.num_iterations} 🎮 Generating self-play data...")
+                self.status_callback(f"🔁 Iteration {iteration+1}/{self.num_iterations} 🎮 Generating self-play data...")
                 self_play_data, pgn_games = self._generate_self_play_data()
                 self.model.train()
                 timestamp = int(time.time())
@@ -90,8 +89,7 @@ class ReinforcementWorker:
             }
             return metrics
         except Exception as e:
-            if self.status_callback:
-                self.status_callback(f"Training error: {e}")
+            self.status_callback(f"Training error: {e}")
             return {}
 
     def _generate_self_play_data(self) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], List[chess.pgn.Game]]:
@@ -108,8 +106,7 @@ class ReinforcementWorker:
         while not stats_queue.empty():
             stat = stats_queue.get()
             if "error" in stat:
-                if self.status_callback:
-                    self.status_callback(f"Subprocess error: {stat['error']}")
+                self.status_callback(f"Subprocess error: {stat['error']}")
                 continue
         all_inputs, all_policy_targets, all_value_targets, pgn_games_list = [], [], [], []
         for inp, pol, val, res, g_len, pgns in results:

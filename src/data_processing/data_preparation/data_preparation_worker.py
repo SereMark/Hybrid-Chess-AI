@@ -28,11 +28,9 @@ class DataPreparationWorker:
                 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
             self.engine = chess.engine.SimpleEngine.popen_uci(self.engine_path)
             self.engine.configure({"Threads": self.engine_threads, "Hash": self.engine_hash})
-            if self.status_callback:
-                self.status_callback("✅ Chess engine initialized successfully.")
+            self.status_callback("✅ Chess engine initialized successfully.")
         except Exception as e:
-            if self.status_callback:
-                self.status_callback(f"❌ Failed to initialize engine: {e}")
+            self.status_callback(f"❌ Failed to initialize engine: {e}")
             self.engine = None
         h5_path = os.path.join(self.output_dir, "dataset.h5")
         with h5py.File(h5_path, "w") as h5_file:
@@ -67,25 +65,19 @@ class DataPreparationWorker:
                     self.total_games_processed +=1
                     if self.total_games_processed %10 ==0 or time.time()-last_update_time >5:
                         progress = (self.total_games_processed / self.max_games) *100
-                        if self.progress_callback:
-                            self.progress_callback(int(progress))
-                        if self.status_callback:
-                            self.status_callback(f"✅ Processed {self.total_games_processed}/{self.max_games} games. Skipped {skipped_games} games so far.")
+                        self.progress_callback(int(progress))
+                        self.status_callback(f"✅ Processed {self.total_games_processed}/{self.max_games} games. Skipped {skipped_games} games so far.")
                         last_update_time = time.time()
             if self.batch_inputs:
-                if self.status_callback:
-                    self.status_callback("🔄 Writing remaining batch to H5 file.")
+                self.status_callback("🔄 Writing remaining batch to H5 file.")
                 self._write_batch_to_h5()
         if self.engine:
             self.engine.close()
-            if self.status_callback:
-                self.status_callback("🔍 Chess engine closed.")
-        if self.status_callback:
-            self.status_callback("🔍 Splitting dataset into train, validation, and test sets...")
+            self.status_callback("🔍 Chess engine closed.")
+        self.status_callback("🔍 Splitting dataset into train, validation, and test sets...")
         self._split_dataset()
         metrics = {"total_samples":self.total_samples, "total_games_processed":self.total_games_processed, "total_moves_processed":self.total_moves_processed, "game_results_counter":self.game_results_counter, "game_length_histogram":self.game_length_histogram.tolist(), "player_rating_histogram":self.player_rating_histogram.tolist(), "dataset_path":h5_path}
-        if self.status_callback:
-            self.status_callback(f"✅ Data Preparation completed successfully. Processed {self.total_games_processed} games with {skipped_games} skipped games in {time.time()-self.start_time:.2f} seconds.")
+        self.status_callback(f"✅ Data Preparation completed successfully. Processed {self.total_games_processed} games with {skipped_games} skipped games in {time.time()-self.start_time:.2f} seconds.")
         return metrics
 
     def evaluate_position(self, board):
@@ -101,41 +93,35 @@ class DataPreparationWorker:
             cp = score.score()
             return max(min(cp,1000),-1000)/1000.0
         except:
-            if self.status_callback:
-                self.status_callback(f"❌ Error evaluating position.")
+            self.status_callback(f"❌ Error evaluating position.")
             return 0.0
 
     def _process_game(self, game_str):
         try:
             game = chess.pgn.read_game(io.StringIO(game_str))
             if not game:
-                if self.status_callback:
-                    self.status_callback("ℹ️ No game found in PGN string.")
+                self.status_callback("ℹ️ No game found in PGN string.")
                 return None
             headers = game.headers
             white_elo_str, black_elo_str = headers.get("WhiteElo"), headers.get("BlackElo")
             if not white_elo_str or not black_elo_str:
-                if self.status_callback:
-                    self.status_callback("ℹ️ Missing ELO ratings in game headers.")
+                self.status_callback("ℹ️ Missing ELO ratings in game headers.")
                 return None
             result_map = {"1-0":1.0, "0-1":-1.0, "1/2-1/2":0.0}
             game_result = result_map.get(headers.get("Result"), None)
             if game_result is None:
-                if self.status_callback:
-                    self.status_callback(f"ℹ️ Unrecognized game result: {headers.get('Result')}")
+                self.status_callback(f"ℹ️ Unrecognized game result: {headers.get('Result')}")
                 return None
             white_elo, black_elo = int(white_elo_str), int(black_elo_str)
             avg_rating = (white_elo + black_elo)/2
             board, moves = game.board(), list(game.mainline_moves())
             inputs, policy_targets, value_targets = self._extract_move_data(board, moves)
             if not inputs:
-                if self.status_callback:
-                    self.status_callback("ℹ️ No valid inputs extracted from game.")
+                self.status_callback("ℹ️ No valid inputs extracted from game.")
                 return None
             return {"inputs":inputs, "policy_targets":policy_targets, "value_targets":value_targets, "game_length":len(moves), "avg_rating":avg_rating, "game_result":game_result}
         except:
-            if self.status_callback:
-                self.status_callback("❌ Exception in _process_game.")
+            self.status_callback("❌ Exception in _process_game.")
             return None
 
     def _extract_move_data(self, board, moves):
@@ -144,8 +130,7 @@ class DataPreparationWorker:
             current_tensor = convert_board_to_tensor(board)
             move_idx = self.move_mapping.get_index_by_move(move)
             if move_idx is None:
-                if self.status_callback:
-                    self.status_callback(f"ℹ️ Move index not found for move: {move}")
+                self.status_callback(f"ℹ️ Move index not found for move: {move}")
                 board.push(move)
                 continue
             value_target = self.evaluate_position(board)
@@ -201,8 +186,7 @@ class DataPreparationWorker:
             with h5py.File(h5_path, "r") as h5_file:
                 num_samples = h5_file["inputs"].shape[0]
                 if num_samples ==0:
-                    if self.status_callback:
-                        self.status_callback("❌ No samples to split.")
+                    self.status_callback("❌ No samples to split.")
                     return
                 indices = np.arange(num_samples)
                 np.random.shuffle(indices)
@@ -210,8 +194,6 @@ class DataPreparationWorker:
                 np.save(train_indices_path, indices[:train_end])
                 np.save(val_indices_path, indices[train_end:val_end])
                 np.save(test_indices_path, indices[val_end:])
-                if self.status_callback:
-                    self.status_callback(f"✅ Dataset split into Train ({train_end}), Validation ({val_end - train_end}), Test ({num_samples - val_end}) samples.")
+                self.status_callback(f"✅ Dataset split into Train ({train_end}), Validation ({val_end - train_end}), Test ({num_samples - val_end}) samples.")
         except:
-            if self.status_callback:
-                self.status_callback("❌ Error splitting dataset.")
+            self.status_callback("❌ Error splitting dataset.")

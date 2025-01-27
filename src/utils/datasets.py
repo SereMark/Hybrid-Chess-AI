@@ -1,5 +1,5 @@
-import torch
 import h5py
+import torch
 from torch.utils.data import Dataset
 
 class H5Dataset(Dataset):
@@ -22,20 +22,9 @@ class H5Dataset(Dataset):
 
         try:
             actual_idx = self.indices[idx]
-            inp = self.h5_file['inputs'][actual_idx]
-            pol = self.h5_file['policy_targets'][actual_idx]
-            val = self.h5_file['value_targets'][actual_idx]
-
-            if inp.shape != self.input_shape:
-                raise ValueError(f"Input shape mismatch at index {actual_idx}: {inp.shape} != {self.input_shape}")
-            if pol.shape != self.policy_shape:
-                raise ValueError(f"Policy target shape mismatch at index {actual_idx}: {pol.shape} != {self.policy_shape}")
-            if val.shape != self.value_shape:
-                raise ValueError(f"Value target shape mismatch at index {actual_idx}: {val.shape} != {self.value_shape}")
-
-            inp_t = torch.from_numpy(inp).float()
-            pol_t = torch.tensor(pol).long()
-            val_t = torch.tensor(val).float()
+            inp_t = torch.from_numpy(self.h5_file['inputs'][actual_idx]).float()
+            pol_t = torch.tensor(self.h5_file['policy_targets'][actual_idx]).long()
+            val_t = torch.tensor(self.h5_file['value_targets'][actual_idx]).float()
             return inp_t, pol_t, val_t
         except Exception as e:
             raise RuntimeError(f"Error loading data at index {idx}: {e}")

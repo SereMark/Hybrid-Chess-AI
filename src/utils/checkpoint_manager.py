@@ -37,7 +37,6 @@ class CheckpointManager:
             self.last_save_time = time.time()
 
     def save_final_model(self, model, optimizer=None, scheduler=None, training_stats=None, epoch=None, iteration=None, final_path=None):
-        final_path = final_path or os.path.join(self.checkpoint_dir, "final_model.pth")
         checkpoint_data = {
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict() if optimizer else None,
@@ -46,18 +45,9 @@ class CheckpointManager:
             'iteration': iteration,
             'training_stats': training_stats if training_stats else {}
         }
-        temp_path = final_path + ".temp"
-        try:
-            torch.save(checkpoint_data, temp_path)
-            os.replace(temp_path, final_path)
-        except Exception:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            raise
+        torch.save(checkpoint_data, final_path or os.path.join(self.checkpoint_dir, "final_model.pth"))
 
     def load(self, checkpoint_path, device, model, optimizer=None, scheduler=None):
-        if not os.path.exists(checkpoint_path):
-            return None
         try:
             checkpoint = torch.load(checkpoint_path, map_location=device)
             model.load_state_dict(checkpoint['model_state_dict'])

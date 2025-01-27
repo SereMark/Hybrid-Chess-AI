@@ -1,6 +1,6 @@
-import torch, random, numpy as np, torch.optim as optim
 from torch.cuda.amp import autocast
 from torch.nn import functional as F
+import torch, random, numpy as np, torch.optim as optim
 
 def initialize_random_seeds(random_seed:int)->None:
     torch.manual_seed(random_seed)
@@ -87,14 +87,11 @@ def train_epoch(model, data_loader, device, scaler, optimizer, scheduler=None, e
         if compute_accuracy_flag:
             correct_predictions += compute_accuracy(policy_preds, policy_targets) * batch_sz
         total_batches_processed +=1
-        if progress_callback:
-            progress_callback(total_batches_processed / len(data_loader) * 100)
-        if status_callback:
-            status_callback(f"Epoch {epoch} - Batch {batch_idx}/{len(data_loader)} - Policy Loss: {total_policy_loss / total_samples:.4f} - Value Loss: {total_value_loss / total_samples:.4f}")
+        progress_callback(total_batches_processed / len(data_loader) * 100)
+        status_callback(f"Epoch {epoch} - Batch {batch_idx}/{len(data_loader)} - Policy Loss: {total_policy_loss / total_samples:.4f} - Value Loss: {total_value_loss / total_samples:.4f}")
         del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
         torch.cuda.empty_cache()
-    if progress_callback:
-        progress_callback(100)
+    progress_callback(100)
 
 def validate_epoch(model, val_loader, device, epoch:int, smooth_policy_targets:bool=True, progress_callback=None, status_callback=None):
     model.eval()
@@ -111,11 +108,8 @@ def validate_epoch(model, val_loader, device, epoch:int, smooth_policy_targets:b
             val_value_loss += value_loss.item() * batch_sz
             val_correct_predictions += compute_accuracy(policy_preds, policy_targets) * batch_sz
             val_total_predictions += batch_sz
-            if progress_callback:
-                progress_callback(batch_idx / total_batches * 100)
-            if status_callback:
-                status_callback(f"Validation - Epoch {epoch} - Batch {batch_idx}/{total_batches} - Policy Loss: {val_policy_loss / val_total_predictions:.4f} - Value Loss: {val_value_loss / val_total_predictions:.4f}")
+            progress_callback(batch_idx / total_batches * 100)
+            status_callback(f"Validation - Epoch {epoch} - Batch {batch_idx}/{total_batches} - Policy Loss: {val_policy_loss / val_total_predictions:.4f} - Value Loss: {val_value_loss / val_total_predictions:.4f}")
             del inputs, policy_targets, value_targets, policy_preds, value_preds, policy_loss, value_loss
         torch.cuda.empty_cache()
-    if progress_callback:
-        progress_callback(100)
+    progress_callback(100)

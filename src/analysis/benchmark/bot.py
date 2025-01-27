@@ -1,4 +1,3 @@
-import os
 import chess
 import torch
 import chess.pgn
@@ -14,25 +13,14 @@ class Bot:
         self.use_mcts = use_mcts
         self.use_opening_book = use_opening_book
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        if not os.path.exists(self.path):
-            self.model = None
-        else:
-            try:
-                self.model = TransformerChessModel(get_total_moves()).to(self.device)
-                self.model.load_state_dict(torch.load(self.path, map_location=self.device)["model_state_dict"])
-                self.model.eval()
-            except Exception:
-                self.model = None
+        self.model = TransformerChessModel(get_total_moves()).to(self.device)
+        self.model.load_state_dict(torch.load(self.path, map_location=self.device)["model_state_dict"])
+        self.model.eval()
         self.mcts: Optional[MCTS] = None
-        if self.use_mcts and self.model:
-            try:
-                self.mcts = MCTS(model=self.model, device=torch.device(self.device), c_puct=1.4, n_simulations=100)
-            except Exception:
-                self.mcts = None
+        if self.use_mcts:
+            self.mcts = MCTS(model=self.model, device=torch.device(self.device), c_puct=1.4, n_simulations=100)
 
     def _get_board_action_probs(self, board: chess.Board) -> Dict[chess.Move, float]:
-        if not self.model:
-            return {}
         board_tensor = convert_board_to_tensor(board)
         board_tensor = torch.from_numpy(board_tensor).float().unsqueeze(0).to(self.device)
         with torch.no_grad():
@@ -40,8 +28,6 @@ class Bot:
             policy_logits = policy_logits[0]
         policy = torch.softmax(policy_logits, dim=0).cpu().numpy()
         legal_moves = list(board.legal_moves)
-        if not legal_moves:
-            return {}
         action_probs = {}
         total_prob = 0.0
         move_mapping = get_move_mapping()
@@ -64,27 +50,16 @@ class Bot:
         return action_probs
 
     def get_move_pth(self, board: chess.Board) -> chess.Move:
-        if not self.model:
-            return chess.Move.null()
         try:
-            legal_moves = list(board.legal_moves)
-            if not legal_moves:
-                return chess.Move.null()
             action_probs = self._get_board_action_probs(board)
-            if not action_probs:
-                return chess.Move.null()
             best_move = max(action_probs, key=action_probs.get)
             return best_move
         except Exception:
             return chess.Move.null()
 
     def get_move_mcts(self, board: chess.Board) -> chess.Move:
-        if not self.mcts:
-            return chess.Move.null()
         self.mcts.set_root_node(board.copy())
         move_probs = self.mcts.get_move_probs(temperature=1e-3)
-        if not move_probs:
-            return chess.Move.null()
         if board.fullmove_number == 1 and board.turn == chess.WHITE:
             moves = list(move_probs.keys())
             noise = np.random.dirichlet([0.3] * len(moves))
@@ -98,15 +73,11 @@ class Bot:
         return best_move
 
     def get_opening_book_move(self, board: chess.Board, opening_book: Dict[str, Dict[str, Dict[str, int]]]) -> chess.Move:
-        if not opening_book:
-            return chess.Move.null()
         fen = board.fen()
         moves_data = opening_book.get(fen, {})
         best_move: Optional[chess.Move] = None
         best_score = -1.0
         for uci_move, stats in moves_data.items():
-            if not isinstance(stats, dict):
-                continue
             total = stats.get("win", 0) + stats.get("draw", 0) + stats.get("loss", 0)
             if total == 0:
                 continue
@@ -128,6 +99,3 @@ class Bot:
         if self.use_opening_book:
             return self.get_opening_book_move(board, opening_book)
         return self.get_move_pth(board)
-
-    def is_initialized(self) -> bool:
-        return self.model is not None

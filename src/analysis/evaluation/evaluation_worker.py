@@ -1,7 +1,6 @@
-import os
 import torch
 import numpy as np
-from typing import Optional, List, Dict
+from typing import List, Dict
 from torch.utils.data import DataLoader
 from src.utils.datasets import H5Dataset
 from src.models.transformer import TransformerChessModel
@@ -19,16 +18,12 @@ class EvaluationWorker:
 
     def run(self) -> Dict:
         initialize_random_seeds(42)
-        model = self._load_model()
-        if model is None:
-            if self.status_callback:
-                self.status_callback("Failed to load the model.")
-            return {}
-        dataset = self._load_dataset()
-        if dataset is None:
-            if self.status_callback:
-                self.status_callback("Failed to load the dataset.")
-            return {}
+        checkpoint = torch.load(self.model_path, map_location=self.device)
+        model = TransformerChessModel(get_total_moves())
+        model.load_state_dict(checkpoint.get("model_state_dict", checkpoint) if isinstance(checkpoint, dict) else checkpoint)
+        model.to(self.device)
+        model.eval()
+        dataset = H5Dataset(self.h5_file_path, np.load(self.dataset_indices_path))
         loader = DataLoader(dataset, batch_size=1024, shuffle=False, num_workers=0, pin_memory=True)
         all_predictions: List[int] = []
         all_actuals: List[int] = []
@@ -46,60 +41,10 @@ class EvaluationWorker:
                 _, topk_preds = torch.topk(policy_outputs, 5, dim=1)
                 topk_predictions.extend(topk_preds.cpu().numpy())
             done_batches += 1
-            if self.progress_callback:
-                progress = done_batches / total_batches
-                self.progress_callback(progress)
-            if self.status_callback:
-                self.status_callback(f"Batch {done_batches}/{total_batches} done.")
+            self.progress_callback(done_batches / total_batches)
+            self.status_callback(f"Batch {done_batches}/{total_batches} done.")
         del dataset
         torch.cuda.empty_cache()
-        self._compute_metrics(all_predictions, all_actuals, topk_predictions)
-        metrics = {
-            "confusion_matrix": self.confusion_matrix.tolist(),
-            "accuracy": self.accuracy,
-            "topk_accuracy": self.topk_accuracy.tolist(),
-            "dataset_path": self.h5_file_path
-        }
-        return metrics
-
-    def _load_model(self) -> Optional[TransformerChessModel]:
-        try:
-            checkpoint = torch.load(self.model_path, map_location=self.device)
-        except Exception as e:
-            if self.status_callback:
-                self.status_callback(f"Failed to load model: {e}")
-            return None
-        state_dict = checkpoint.get("model_state_dict", checkpoint) if isinstance(checkpoint, dict) else checkpoint
-        try:
-            model = TransformerChessModel(get_total_moves())
-            model.load_state_dict(state_dict)
-            model.to(self.device)
-            model.eval()
-            return model
-        except Exception as e:
-            if self.status_callback:
-                self.status_callback(f"Failed to initialize model: {e}")
-            return None
-
-    def _load_dataset(self) -> Optional[H5Dataset]:
-        if not os.path.exists(self.h5_file_path):
-            if self.status_callback:
-                self.status_callback(f"H5 file not found at {self.h5_file_path}")
-            return None
-        if not os.path.exists(self.dataset_indices_path):
-            if self.status_callback:
-                self.status_callback(f"Dataset indices file not found at {self.dataset_indices_path}")
-            return None
-        try:
-            idxs = np.load(self.dataset_indices_path)
-            dataset = H5Dataset(self.h5_file_path, idxs)
-            return dataset
-        except Exception as e:
-            if self.status_callback:
-                self.status_callback(f"Failed to load dataset: {e}")
-            return None
-
-    def _compute_metrics(self, all_predictions: List[int], all_actuals: List[int], topk_predictions: List[np.ndarray]):
         all_predictions = np.array(all_predictions)
         all_actuals = np.array(all_actuals)
         topk_predictions = np.array(topk_predictions)
@@ -116,3 +61,10 @@ class EvaluationWorker:
             if actual in topk:
                 correct_topk += 1
         self.topk_accuracy = np.array([correct_topk / len(all_actuals)])
+        metrics = {
+            "confusion_matrix": self.confusion_matrix.tolist(),
+            "accuracy": self.accuracy,
+            "topk_accuracy": self.topk_accuracy.tolist(),
+            "dataset_path": self.h5_file_path
+        }
+        return metrics

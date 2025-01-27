@@ -9,16 +9,14 @@ class OpeningBookWorker:
 
     def run(self):
         self.start_time = time.time()
-        if self.status_callback:
-            self.status_callback("🔍 Starting processing of games...")
+        self.status_callback("🔍 Starting processing of games...")
         skipped_games, last_update_time = 0, time.time()
         try:
             with open(self.pgn_file_path, "r", encoding="utf-8", errors="ignore") as pgn_file:
                 while self.game_counter < self.max_games:
                     game = chess.pgn.read_game(pgn_file)
                     if game is None:
-                        if self.status_callback:
-                            self.status_callback("🔍 Reached end of PGN file.")
+                        self.status_callback("🔍 Reached end of PGN file.")
                         break
                     try:
                         white_elo, black_elo = int(game.headers.get("WhiteElo",0)), int(game.headers.get("BlackElo",0))
@@ -45,20 +43,15 @@ class OpeningBookWorker:
                             board.push(move)
                         self.game_counter +=1
                         if self.game_counter %10 ==0 or time.time()-last_update_time >5:
-                            progress = min((self.game_counter / self.max_games)*100, 100)
-                            if self.progress_callback:
-                                self.progress_callback(int(progress))
-                            if self.status_callback:
-                                self.status_callback(f"✅ Processed {self.game_counter}/{self.max_games} games. Skipped {skipped_games} games so far.")
+                            self.progress_callback(int(min((self.game_counter / self.max_games)*100, 100)))
+                            self.status_callback(f"✅ Processed {self.game_counter}/{self.max_games} games. Skipped {skipped_games} games so far.")
                             last_update_time = time.time()
                     except:
                         skipped_games +=1
-                        if self.status_callback:
-                            self.status_callback("❌ Exception in processing game.")
+                        self.status_callback("❌ Exception in processing game.")
                         continue
         except:
-            if self.status_callback:
-                self.status_callback("❌ Exception during processing.")
+            self.status_callback("❌ Exception during processing.")
             return
         positions = {fen:dict(moves) for fen, moves in self.positions.items()}
         book_file = os.path.abspath(os.path.join("data","processed","opening_book.json"))
@@ -66,15 +59,12 @@ class OpeningBookWorker:
         try:
             with open(book_file, "w") as f:
                 json.dump(positions, f, indent=4)
-            if self.status_callback:
-                self.status_callback(f"✅ Opening book saved at {book_file}.")
+            self.status_callback(f"✅ Opening book saved at {book_file}.")
         except:
-            if self.status_callback:
-                self.status_callback("❌ Failed to save opening book.")
+            self.status_callback("❌ Failed to save opening book.")
             return
         total_time = time.time() - self.start_time
-        if self.status_callback:
-            self.status_callback(f"✅ Completed processing {self.game_counter} games with {skipped_games} skipped games in {total_time:.2f} seconds.")
+        self.status_callback(f"✅ Completed processing {self.game_counter} games with {skipped_games} skipped games in {total_time:.2f} seconds.")
         opening_stats = defaultdict(int)
         for moves in self.positions.values():
             for stats in moves.values():

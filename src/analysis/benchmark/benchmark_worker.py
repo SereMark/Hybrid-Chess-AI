@@ -18,38 +18,17 @@ class BenchmarkWorker:
         self.progress_callback = progress_callback
         self.status_callback = status_callback
         opening_book_path = os.path.join("data", "processed", "opening_book.json")
-        if os.path.exists(opening_book_path):
-            try:
-                with open(opening_book_path, "r", encoding="utf-8") as f:
-                    self.opening_book = json.load(f)
-            except Exception as e:
-                self.opening_book = {}
-                if self.status_callback:
-                    self.status_callback(f"Failed to load opening book: {e}")
-        else:
-            self.opening_book = {}
-            if self.status_callback:
-                self.status_callback("Opening book not found. Proceeding without it.")
+        with open(opening_book_path, "r", encoding="utf-8") as f:
+            self.opening_book = json.load(f)
         self.bot1 = Bot(path=self.bot1_path, use_mcts=self.bot1_use_mcts, use_opening_book=self.bot1_use_opening_book)
         self.bot2 = Bot(path=self.bot2_path, use_mcts=self.bot2_use_mcts, use_opening_book=self.bot2_use_opening_book)
         self.games_dir = os.path.join("data", "games", "benchmark")
         os.makedirs(self.games_dir, exist_ok=True)
 
     def run(self) -> Dict:
-        bot1_valid = self.bot1.is_initialized()
-        bot2_valid = self.bot2.is_initialized()
-        if not bot1_valid:
-            if self.status_callback:
-                self.status_callback("Bot1 is not properly initialized.")
-            return {}
-        if not bot2_valid:
-            if self.status_callback:
-                self.status_callback("Bot2 is not properly initialized.")
-            return {}
         results = []
         for game_idx in range(1, self.num_games + 1):
-            if self.status_callback:
-                self.status_callback(f"Playing game {game_idx}/{self.num_games}")
+            self.status_callback(f"Playing game {game_idx}/{self.num_games}")
             board = chess.Board()
             moves_count = 0
             game = chess.pgn.Game()
@@ -79,11 +58,8 @@ class BenchmarkWorker:
                 pgn_file.write(str(pgn_game))
             winner = "Bot1" if game_result >0 else "Bot2" if game_result <0 else "Draw"
             results.append({"game_index": game_idx, "winner": winner, "moves": moves_count})
-            if self.progress_callback:
-                progress = game_idx / self.num_games
-                self.progress_callback(progress)
-            if self.status_callback:
-                self.status_callback(f"Completed game {game_idx}/{self.num_games}")
+            self.progress_callback(game_idx / self.num_games)
+            self.status_callback(f"Completed game {game_idx}/{self.num_games}")
         metrics = {
             "total_games_played": self.num_games,
             "results": results,
