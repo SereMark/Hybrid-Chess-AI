@@ -12,8 +12,8 @@ st.set_page_config(page_title="Chess AI Management Dashboard", layout="wide", in
 def validate_path(path, type_="file"):
     return os.path.isfile(path) if type_ == "file" else os.path.isdir(path) if type_ == "directory" else False
 
-def input_with_validation(label, default, help_text, type_="file"):
-    path = st.text_input(label, default, help=help_text)
+def input_with_validation(label, default, type_="file"):
+    path = st.text_input(label, default)
     if path:
         valid = validate_path(path, type_)
         st.markdown(f"✅ **Valid {label.split()[2]} path.**" if valid else f"⚠️ **Invalid {label.split()[2]} path.**")
@@ -39,9 +39,9 @@ def run_data_preparation_worker():
     with st.expander("🛠️ Configure Parameters", True):
         col1, col2 = st.columns(2)
         with col1:
-            raw_pgn = input_with_validation("Path to Raw PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "Path to raw PGN file.", "file")
+            raw_pgn = input_with_validation("Path to Raw PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
         with col2:
-            engine = input_with_validation("Path to Chess Engine:", "engine/stockfish/stockfish-windows-x86-64-avx2.exe", "Path to chess engine.", "file")
+            engine = input_with_validation("Path to Chess Engine:", "engine/stockfish/stockfish-windows-x86-64-avx2.exe", "file")
             max_games = st.slider("Max Games:", 100, 5000, 1000)
             min_elo = st.slider("Min ELO:", 0, 3000, 1600)
         col3, col4 = st.columns(2)
@@ -62,7 +62,7 @@ def run_opening_book_worker():
     with st.expander("🛠️ Configure Parameters", True):
         col1, col2 = st.columns(2)
         with col1:
-            pgn = input_with_validation("Path to PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "Path to PGN file.", "file")
+            pgn = input_with_validation("Path to PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
         with col2:
             max_games = st.slider("Max Games:", 100, 5000, 1000)
             min_elo = st.slider("Min ELO:", 0, 3000, 1600)
@@ -94,14 +94,14 @@ def run_supervised_training_worker():
     with st.expander("📁 Dataset Details", True):
         col3, col4 = st.columns(2)
         with col3:
-            dataset = input_with_validation("Path to Dataset:", "data/processed/dataset.h5", "Path to dataset.", "file")
+            dataset = input_with_validation("Path to Dataset:", "data/processed/dataset.h5", "file")
         with col4:
-            train_idx = input_with_validation("Path to Train Indices:", "data/processed/train_indices.npy", "Path to train indices.", "file")
-            val_idx = input_with_validation("Path to Validation Indices:", "data/processed/val_indices.npy", "Path to validation indices.", "file")
+            train_idx = input_with_validation("Path to Train Indices:", "data/processed/train_indices.npy", "file")
+            val_idx = input_with_validation("Path to Validation Indices:", "data/processed/val_indices.npy", "file")
     with st.expander("🔗 Model Options", True):
         col5, col6 = st.columns(2)
         with col5:
-            model = input_with_validation("Path to Existing Model (optional):", "", "Path to pretrained model.", "file")
+            model = input_with_validation("Path to Existing Model (optional):", "", "file")
         with col6:
             chkpt_interval = st.number_input("Checkpoint Interval (Epochs):", 0, 100, 1, help="Set the interval (in epochs) for saving checkpoints. Set it to 0 for no checkpoints.")
     if st.button("Start Supervised Training 🏁"):
@@ -143,7 +143,7 @@ def run_reinforcement_training_worker():
     with st.expander("🔗 Model Options", True):
         col3, col4 = st.columns(2)
         with col3:
-            model = input_with_validation("Path to Pretrained Model (optional):", "", "Path to existing model.", "file")
+            model = input_with_validation("Path to Pretrained Model (optional):", "", "file")
         with col4:
             chkpt_interval = st.number_input("Checkpoint Interval (Iterations):", 0, 100, 1, help="Set the interval (in iterations) for saving checkpoints. Set it to 0 for no checkpoints.")
     random_seed = st.number_input("Random Seed:", 0, 100000, 42)
@@ -163,10 +163,10 @@ def run_evaluation_worker():
     with st.expander("🛠️ Configure Evaluation Parameters", True):
         col1, col2 = st.columns(2)
         with col1:
-            model = input_with_validation("Path to Trained Model:", "models/saved_models/supervised_model.pth", "Path to trained model.", "file")
+            model = input_with_validation("Path to Trained Model:", "models/saved_models/supervised_model.pth", "file")
         with col2:
-            dataset_idx = input_with_validation("Path to Dataset Indices:", "data/processed/test_indices.npy", "Path to dataset indices.", "file")
-        h5_path = input_with_validation("Path to H5 Dataset:", "data/processed/dataset.h5", "Path to H5 dataset.", "file")
+            dataset_idx = input_with_validation("Path to Dataset Indices:", "data/processed/test_indices.npy", "file")
+        h5_path = input_with_validation("Path to H5 Dataset:", "data/processed/dataset.h5", "file")
     if st.button("Start Evaluation 🏁"):
         required = [model, dataset_idx, h5_path]
         missing = [f for f in required if not validate_path(f, "file")]
@@ -180,11 +180,11 @@ def run_benchmark_worker():
     with st.expander("🛠️ Configure Benchmarking Parameters", True):
         col1, col2 = st.columns(2)
         with col1:
-            bot1 = input_with_validation("Path to Bot1 Model:", "models/saved_models/supervised_model.pth", "Path to Bot1's model.", "file")
+            bot1 = input_with_validation("Path to Bot1 Model:", "models/saved_models/supervised_model.pth", "file")
             bot1_mcts = st.checkbox("Bot1 Use MCTS", True)
             bot1_open = st.checkbox("Bot1 Use Opening Book", True)
         with col2:
-            bot2 = input_with_validation("Path to Bot2 Model:", "models/saved_models/supervised_model.pth", "Path to Bot2's model.", "file")
+            bot2 = input_with_validation("Path to Bot2 Model:", "models/saved_models/supervised_model.pth", "file")
             bot2_mcts = st.checkbox("Bot2 Use MCTS", True)
             bot2_open = st.checkbox("Bot2 Use Opening Book", True)
         num_games = st.number_input("Number of Games:", 1, 10000, 100)
