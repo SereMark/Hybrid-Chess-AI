@@ -10,12 +10,12 @@ from src.utils.chess_utils import get_total_moves
 from src.utils.train_utils import initialize_optimizer, initialize_random_seeds, initialize_scheduler, train_epoch
 
 class ReinforcementWorker:
-    def __init__(self, model_path:Optional[str], num_iterations:int, num_games_per_iteration:int, simulations:int, c_puct:float, temperature:float, num_epochs:int, batch_size:int, num_threads:int, checkpoint_interval:int, random_seed:int=42, optimizer_type:str="adamw", learning_rate:float=0.0001, weight_decay:float=1e-4, scheduler_type:str="cosineannealingwarmrestarts", accumulation_steps:int=3, num_workers:int=4, policy_weight:float=1.0, value_weight:float=2.0, progress_callback=None, status_callback=None):
+    def __init__(self, model_path:Optional[str], num_iterations:int, num_games_per_iteration:int, simulations:int, c_puct:float, temperature:float, num_epochs:int, batch_size:int, num_threads:int, checkpoint_interval:int, random_seed:int=42, optimizer_type:str="adamw", learning_rate:float=0.0001, weight_decay:float=1e-4, scheduler_type:str="cosineannealingwarmrestarts", accumulation_steps:int=3, num_workers:int=4, policy_weight:float=1.0, value_weight:float=2.0, grad_clip:Optional[float]=0.1, progress_callback=None, status_callback=None):
         self.model_path, self.num_iterations, self.num_games_per_iteration = model_path, num_iterations, num_games_per_iteration
         self.simulations, self.c_puct, self.temperature = simulations, c_puct, temperature
         self.num_epochs, self.batch_size, self.num_threads, self.checkpoint_interval = num_epochs, batch_size, num_threads, checkpoint_interval
         self.num_workers, self.random_seed, self.optimizer_type = num_workers, random_seed, optimizer_type
-        self.learning_rate, self.weight_decay = learning_rate, weight_decay
+        self.learning_rate, self.weight_decay, self.grad_clip = learning_rate, weight_decay, grad_clip
         self.scheduler_type, self.progress_callback = scheduler_type, progress_callback
         self.status_callback = status_callback
         self.policy_weight, self.value_weight = policy_weight, value_weight
@@ -70,7 +70,7 @@ class ReinforcementWorker:
             if not self.scheduler and self.scheduler_type.lower() != 'none':
                 self.scheduler = initialize_scheduler(self.optimizer, self.scheduler_type, total_steps=self.num_epochs * len(data_loader))
             for epoch in range(1, self.num_epochs + 1):
-                train_epoch(model=self.model, data_loader=data_loader, device=self.device, scaler=self.scaler, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch, accumulation_steps=self.accumulation_steps, batch_size=self.batch_size, smooth_policy_targets=False, compute_accuracy_flag=False, progress_callback=self.progress_callback, status_callback=self.status_callback, policy_weight=self.policy_weight, value_weight=self.value_weight)
+                train_epoch(model=self.model, data_loader=data_loader, device=self.device, scaler=self.scaler, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch, accumulation_steps=self.accumulation_steps, batch_size=self.batch_size, smooth_policy_targets=False, compute_accuracy_flag=False, progress_callback=self.progress_callback, status_callback=self.status_callback, policy_weight=self.policy_weight, value_weight=self.value_weight, max_grad_norm=self.grad_clip)
             if self.checkpoint_interval and self.checkpoint_interval > 0:
                 self.checkpoint_manager.save(model=self.model, optimizer=self.optimizer, scheduler=self.scheduler, iteration=iteration)
             for idx, game in enumerate(pgn_games, start=1):

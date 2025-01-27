@@ -81,8 +81,8 @@ def run_supervised_training_worker():
             epochs = st.number_input("Epochs:", 1, 1000, 10)
             batch_size = st.number_input("Batch Size:", 1, 10000, 128)
             accumulation_steps = st.number_input("Accumulation Steps:", 1, 100, 3)
-            lr = st.text_input("Learning Rate:", "0.0001")
-            wd = st.text_input("Weight Decay:", "0.0001")
+            lr = st.number_input("Learning Rate:", 1e-6, 1.0, 0.0001, format="%.6f")
+            wd = st.number_input("Weight Decay:", 0.0, 1.0, 0.0001, format="%.6f")
             optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"])
         with col2:
             scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "cosineannealing", "steplr", "exponentiallr", "onelr", "none"])
@@ -90,6 +90,7 @@ def run_supervised_training_worker():
             random_seed = st.number_input("Random Seed:", 0, 100000, 42)
             policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 1.0, step=0.1)
             value_weight = st.number_input("Value Weight:", 0.0, 10.0, 2.0, step=0.1)
+            grad_clip = st.number_input("Gradient Clip:", 0.0, 10.0, 0.1, step=0.1)
     with st.expander("📁 Dataset Details", True):
         col3, col4 = st.columns(2)
         with col3:
@@ -102,7 +103,7 @@ def run_supervised_training_worker():
         with col5:
             model = input_with_validation("Path to Existing Model (optional):", "", "Path to pretrained model.", "file")
         with col6:
-            chkpt_interval = st.number_input("Checkpoint Interval (Epochs):", 0, 100, 1, help="Set the interval (in epochs) for saving checkpoints. Leave it empty or set it to 0 for no checkpoints.")
+            chkpt_interval = st.number_input("Checkpoint Interval (Epochs):", 0, 100, 1, help="Set the interval (in epochs) for saving checkpoints. Set it to 0 for no checkpoints.")
     if st.button("Start Supervised Training 🏁"):
         required = [dataset, train_idx, val_idx] + ([model] if model else [])
         missing = [f for f in required if not validate_path(f, "file")]
@@ -110,7 +111,7 @@ def run_supervised_training_worker():
             try:
                 lr_val, wd_val = float(lr), float(wd)
                 execute_worker(lambda pc, sc: SupervisedWorker(int(epochs), int(batch_size), lr_val, wd_val, int(chkpt_interval) if chkpt_interval else 0, dataset, train_idx, val_idx, model if model else None,
-                                                               optimizer, scheduler, accumulation_steps, int(num_workers), int(random_seed), policy_weight, value_weight, pc, sc))
+                                                               optimizer, scheduler, accumulation_steps, int(num_workers), int(random_seed), policy_weight, value_weight, grad_clip, pc, sc))
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
         else:
@@ -131,19 +132,20 @@ def run_reinforcement_training_worker():
             batch_size = st.number_input("Batch Size:", 1, 10000, 128)
             accumulation_steps = st.number_input("Accumulation Steps:", 1, 100, 3)
             num_threads = st.number_input("Number of Threads:", 1, 32, 4)
-            lr = st.text_input("Learning Rate:", "0.0001")
-            wd = st.text_input("Weight Decay:", "0.0001")
+            lr = st.number_input("Learning Rate:", 1e-6, 1.0, 0.0001, format="%.6f")
+            wd = st.number_input("Weight Decay:", 0.0, 1.0, 0.0001, format="%.6f")
             optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"])
             scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "cosineannealing", "steplr", "exponentiallr", "onelr", "none"])
             num_workers = st.number_input("Worker Threads:", 1, 32, 4)
             policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 1.0, step=0.1)
             value_weight = st.number_input("Value Weight:", 0.0, 10.0, 2.0, step=0.1)
+            grad_clip = st.number_input("Gradient Clip:", 0.0, 10.0, 0.1, step=0.1)
     with st.expander("🔗 Model Options", True):
         col3, col4 = st.columns(2)
         with col3:
             model = input_with_validation("Path to Pretrained Model (optional):", "", "Path to existing model.", "file")
         with col4:
-            chkpt_interval = st.number_input("Checkpoint Interval (Iterations):", 0, 100, 1, help="Set the interval (in iterations) for saving checkpoints. Leave it empty or set it to 0 for no checkpoints.")
+            chkpt_interval = st.number_input("Checkpoint Interval (Iterations):", 0, 100, 1, help="Set the interval (in iterations) for saving checkpoints. Set it to 0 for no checkpoints.")
     random_seed = st.number_input("Random Seed:", 0, 100000, 42)
     if st.button("Start Reinforcement Training 🏁"):
         if model and not validate_path(model, "file"):
@@ -152,7 +154,7 @@ def run_reinforcement_training_worker():
             try:
                 lr_val, wd_val = float(lr), float(wd)
                 execute_worker(lambda pc, sc: ReinforcementWorker(model if model else None, int(num_iter), int(games_per_iter), int(simulations), float(c_puct), float(temperature), int(epochs), int(batch_size),
-                                                                  int(num_threads), int(chkpt_interval), int(random_seed), optimizer, lr_val, wd_val, scheduler, accumulation_steps, int(num_workers), policy_weight, value_weight, pc, sc))
+                                                                  int(num_threads), int(chkpt_interval), int(random_seed), optimizer, lr_val, wd_val, scheduler, accumulation_steps, int(num_workers), policy_weight, value_weight, grad_clip, pc, sc))
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
 

@@ -45,7 +45,7 @@ def compute_total_loss(policy_loss: torch.Tensor, value_loss: torch.Tensor, poli
 def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor) -> float:
     return (predictions.argmax(1) == targets).float().sum().item() / targets.size(0) if targets.size(0) else 0.0
 
-def train_epoch(model, data_loader, device, scaler, optimizer, scheduler=None, epoch=1, skip_batches: int = 0, accumulation_steps: int = 1, batch_size: int = 1, smooth_policy_targets: bool = False, compute_accuracy_flag: bool = False, progress_callback=None, status_callback=None, policy_weight: float=1.0, value_weight: float=1.0):
+def train_epoch(model, data_loader, device, scaler, optimizer, scheduler=None, epoch=1, skip_batches: int = 0, accumulation_steps: int = 1, batch_size: int = 1, smooth_policy_targets: bool = False, compute_accuracy_flag: bool = False, progress_callback=None, status_callback=None, policy_weight: float=1.0, value_weight: float=1.0, max_grad_norm: float = None):
     model.train()
     total_policy_loss, total_value_loss, correct, total = 0.0, 0.0, 0, 0
     data_iter = iter(data_loader)
@@ -63,6 +63,9 @@ def train_epoch(model, data_loader, device, scaler, optimizer, scheduler=None, e
         scaler.scale(loss).backward()
         accumulate += 1
         if accumulate % accumulation_steps == 0 or batch_idx == len(data_loader):
+            if max_grad_norm and max_grad_norm > 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad()
