@@ -132,6 +132,7 @@ def run_reinforcement_training_worker():
             wd = st.text_input("Weight Decay:", "0.0001")
             optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"])
             scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "cosineannealing", "steplr", "exponentiallr", "onelr", "none"])
+            num_workers = st.number_input("Worker Threads:", 1, 32, 4)
     with st.expander("🔗 Model Options", True):
         col3, col4 = st.columns(2)
         with col3:
@@ -146,7 +147,7 @@ def run_reinforcement_training_worker():
             try:
                 lr_val, wd_val = float(lr), float(wd)
                 execute_worker(lambda pc, sc: ReinforcementWorker(model if model else None, int(num_iter), int(games_per_iter), int(simulations), float(c_puct), float(temperature), int(epochs), int(batch_size),
-                                                                  int(num_threads), int(chkpt_interval), int(random_seed), optimizer, lr_val, wd_val, scheduler, accumulation_steps, pc, sc))
+                                                                  int(num_threads), int(chkpt_interval), int(random_seed), optimizer, lr_val, wd_val, scheduler, accumulation_steps, int(num_workers), pc, sc))
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
 
