@@ -1,10 +1,11 @@
-import os, streamlit as st
+import os, warnings, streamlit as st
 from src.data_processing.data_preparation.data_preparation_worker import DataPreparationWorker
 from src.data_processing.opening_book.opening_book_worker import OpeningBookWorker
 from src.training.supervised.supervised_training_worker import SupervisedWorker
 from src.training.reinforcement.reinforcement_training_worker import ReinforcementWorker
 from src.analysis.evaluation.evaluation_worker import EvaluationWorker
 from src.analysis.benchmark.benchmark_worker import BenchmarkWorker
+warnings.filterwarnings("ignore", message="Thread 'MainThread': missing ScriptRunContext!")
 
 st.set_page_config(page_title="Chess AI Management Dashboard", layout="wide", initial_sidebar_state="expanded")
 
