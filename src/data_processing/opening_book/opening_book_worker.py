@@ -1,5 +1,5 @@
+import os, chess.pgn, json, time
 from collections import defaultdict
-import chess.pgn, json, time, os
 
 class OpeningBookWorker:
     def __init__(self, pgn_file_path, max_games, min_elo, max_opening_moves, progress_callback=None, status_callback=None):
@@ -24,7 +24,7 @@ class OpeningBookWorker:
                             skipped_games +=1
                             continue
                         outcome_map = {"1-0":"win", "0-1":"loss", "1/2-1/2":"draw"}
-                        outcome = outcome_map.get(game.headers.get("Result"), None)
+                        outcome = outcome_map.get(game.headers.get("Result"))
                         if not outcome:
                             skipped_games +=1
                             continue
@@ -36,20 +36,18 @@ class OpeningBookWorker:
                             fen, uci_move = board.fen(), move.uci()
                             move_data = self.positions[fen][uci_move]
                             move_data[outcome] +=1
-                            if not move_data["eco"]:
-                                move_data["eco"] = eco_code
-                            if not move_data["name"]:
-                                move_data["name"] = opening_name
+                            move_data["eco"] = move_data["eco"] or eco_code
+                            move_data["name"] = move_data["name"] or opening_name
                             board.push(move)
                         self.game_counter +=1
                         if self.game_counter %10 ==0 or time.time()-last_update_time >5:
-                            self.progress_callback(int(min((self.game_counter / self.max_games)*100, 100)))
+                            progress = min(int((self.game_counter / self.max_games)*100), 100)
+                            self.progress_callback(progress)
                             self.status_callback(f"✅ Processed {self.game_counter}/{self.max_games} games. Skipped {skipped_games} games so far.")
                             last_update_time = time.time()
                     except:
                         skipped_games +=1
                         self.status_callback("❌ Exception in processing game.")
-                        continue
         except:
             self.status_callback("❌ Exception during processing.")
             return
@@ -69,4 +67,4 @@ class OpeningBookWorker:
         for moves in self.positions.values():
             for stats in moves.values():
                 opening_stats[stats["name"]] += stats["win"] + stats["draw"] + stats["loss"]
-        return {"total_games_processed":self.game_counter, "opening_book_path":book_file}
+        return True

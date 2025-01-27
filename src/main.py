@@ -96,26 +96,17 @@ def run_supervised_training_worker():
     with st.expander("🔗 Model Options", True):
         col5, col6 = st.columns(2)
         with col5:
-            model = input_with_validation("Path to Pretrained Model (optional):", "", "Path to pretrained model.", "file")
+            model = input_with_validation("Path to Existing Model (optional):", "", "Path to pretrained model.", "file")
         with col6:
-            save_ckpt = st.checkbox("Save Checkpoints", True)
-            if save_ckpt:
-                chkpt_type = st.selectbox("Checkpoint Type:", ["epoch", "time"])
-                chkpt_interval = st.number_input("Checkpoint Interval (Epochs):", 1, 1000, 5) if chkpt_type == "epoch" else st.number_input("Checkpoint Interval (Minutes):", 1, 10000, 60)
-            else:
-                chkpt_type, chkpt_interval = None, None
+            chkpt_interval = st.number_input("Checkpoint Interval (Epochs):", 1, 1000, 5, help="Set the interval (in epochs) for saving checkpoints. Leave it empty or set it to 0 for no checkpoints.")
     if st.button("Start Supervised Training 🏁"):
         required = [dataset, train_idx, val_idx] + ([model] if model else [])
         missing = [f for f in required if not validate_path(f, "file")]
         if not missing:
             try:
                 lr_val, wd_val = float(lr), float(wd)
-                execute_worker(lambda pc, sc: SupervisedWorker(
-                    int(epochs), int(batch_size), lr_val, wd_val, save_ckpt,
-                    int(chkpt_interval) if save_ckpt else None, dataset, train_idx, val_idx,
-                    model if model else None, chkpt_type if save_ckpt else None, optimizer,
-                    scheduler, int(num_workers), int(random_seed), pc, sc
-                ))
+                execute_worker(lambda pc, sc: SupervisedWorker(int(epochs), int(batch_size), lr_val, wd_val, int(chkpt_interval) if chkpt_interval else 0, dataset, train_idx, val_idx, model if model else None,
+                                                               optimizer, scheduler, int(num_workers), int(random_seed), pc, sc))
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
         else:
@@ -142,14 +133,9 @@ def run_reinforcement_training_worker():
     with st.expander("🔗 Model Options", True):
         col3, col4 = st.columns(2)
         with col3:
-            model = input_with_validation("Path to Existing Model (optional):", "", "Path to existing model.", "file")
+            model = input_with_validation("Path to Pretrained Model (optional):", "", "Path to existing model.", "file")
         with col4:
-            save_ckpt = st.checkbox("Save Checkpoints", True)
-            if save_ckpt:
-                chkpt_type = st.selectbox("Checkpoint Type:", ["iteration", "time"])
-                chkpt_interval = st.number_input("Checkpoint Interval (Iterations):", 1, 1000, 5) if chkpt_type == "iteration" else st.number_input("Checkpoint Interval (Minutes):", 1, 10000, 60)
-            else:
-                chkpt_type, chkpt_interval = None, None
+            chkpt_interval = st.number_input("Checkpoint Interval (Iterations):", 1, 1000, 5, help="Set the interval (in iterations) for saving checkpoints. Leave it empty or set it to 0 for no checkpoints.")
     random_seed = st.number_input("Random Seed:", 0, 100000, 42)
     if st.button("Start Reinforcement Training 🏁"):
         if model and not validate_path(model, "file"):
@@ -157,12 +143,8 @@ def run_reinforcement_training_worker():
         else:
             try:
                 lr_val, wd_val = float(lr), float(wd)
-                execute_worker(lambda pc, sc: ReinforcementWorker(
-                    model if model else None, int(num_iter), int(games_per_iter), int(simulations),
-                    float(c_puct), float(temperature), int(epochs), int(batch_size), int(num_threads),
-                    save_ckpt, int(chkpt_interval) if save_ckpt else None, chkpt_type if save_ckpt else None,
-                    int(random_seed), optimizer, lr_val, wd_val, scheduler, pc, sc
-                ))
+                execute_worker(lambda pc, sc: ReinforcementWorker(model if model else None, int(num_iter), int(games_per_iter), int(simulations), float(c_puct), float(temperature), int(epochs), int(batch_size),
+                                                                  int(num_threads), int(chkpt_interval), int(random_seed), optimizer, lr_val, wd_val, scheduler, pc, sc))
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
 
