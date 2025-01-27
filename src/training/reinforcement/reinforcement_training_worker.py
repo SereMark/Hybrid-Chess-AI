@@ -22,7 +22,7 @@ class ReinforcementWorker:
         self.num_threads = num_threads
         self.save_checkpoints = save_checkpoints
         self.checkpoint_interval = checkpoint_interval
-        self.checkpoint_type = checkpoint_type.lower()
+        self.checkpoint_type = checkpoint_type
         self.random_seed = random_seed
         self.optimizer_type = optimizer_type
         self.learning_rate = learning_rate
@@ -111,7 +111,6 @@ class ReinforcementWorker:
                 if self.status_callback:
                     self.status_callback(f"Subprocess error: {stat['error']}")
                 continue
-            self.total_batches_processed += stat.get("total_games", 0)
         all_inputs, all_policy_targets, all_value_targets, pgn_games_list = [], [], [], []
         for inp, pol, val, res, g_len, pgns in results:
             all_inputs.extend(inp)
