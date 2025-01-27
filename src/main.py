@@ -87,6 +87,8 @@ def run_supervised_training_worker():
             scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "cosineannealing", "steplr", "exponentiallr", "onelr", "none"])
             num_workers = st.number_input("Worker Threads:", 1, 32, 4)
             random_seed = st.number_input("Random Seed:", 0, 100000, 42)
+            policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 1.0, step=0.1)
+            value_weight = st.number_input("Value Weight:", 0.0, 10.0, 2.0, step=0.1)
     with st.expander("📁 Dataset Details", True):
         col3, col4 = st.columns(2)
         with col3:
@@ -107,7 +109,7 @@ def run_supervised_training_worker():
             try:
                 lr_val, wd_val = float(lr), float(wd)
                 execute_worker(lambda pc, sc: SupervisedWorker(int(epochs), int(batch_size), lr_val, wd_val, int(chkpt_interval) if chkpt_interval else 0, dataset, train_idx, val_idx, model if model else None,
-                                                               optimizer, scheduler, accumulation_steps, int(num_workers), int(random_seed), pc, sc))
+                                                               optimizer, scheduler, accumulation_steps, int(num_workers), int(random_seed), policy_weight, value_weight, pc, sc))
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
         else:
@@ -133,6 +135,8 @@ def run_reinforcement_training_worker():
             optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"])
             scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "cosineannealing", "steplr", "exponentiallr", "onelr", "none"])
             num_workers = st.number_input("Worker Threads:", 1, 32, 4)
+            policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 1.0, step=0.1)
+            value_weight = st.number_input("Value Weight:", 0.0, 10.0, 2.0, step=0.1)
     with st.expander("🔗 Model Options", True):
         col3, col4 = st.columns(2)
         with col3:
@@ -147,7 +151,7 @@ def run_reinforcement_training_worker():
             try:
                 lr_val, wd_val = float(lr), float(wd)
                 execute_worker(lambda pc, sc: ReinforcementWorker(model if model else None, int(num_iter), int(games_per_iter), int(simulations), float(c_puct), float(temperature), int(epochs), int(batch_size),
-                                                                  int(num_threads), int(chkpt_interval), int(random_seed), optimizer, lr_val, wd_val, scheduler, accumulation_steps, int(num_workers), pc, sc))
+                                                                  int(num_threads), int(chkpt_interval), int(random_seed), optimizer, lr_val, wd_val, scheduler, accumulation_steps, int(num_workers), policy_weight, value_weight, pc, sc))
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
 

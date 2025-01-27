@@ -9,12 +9,13 @@ from src.utils.chess_utils import get_total_moves
 from src.utils.train_utils import initialize_optimizer, initialize_scheduler, initialize_random_seeds, validate_epoch, train_epoch
 
 class SupervisedWorker:
-    def __init__(self, epochs:int, batch_size:int, learning_rate:float, weight_decay:float, checkpoint_interval:int, dataset_path:str, train_indices_path:str, val_indices_path:str, model_path:Optional[str]=None, optimizer_type:str='adamw', scheduler_type:str='cosineannealingwarmrestarts', accumulation_steps:int=3, num_workers:int=4, random_seed:int=42, progress_callback=None, status_callback=None):
+    def __init__(self, epochs:int, batch_size:int, learning_rate:float, weight_decay:float, checkpoint_interval:int, dataset_path:str, train_indices_path:str, val_indices_path:str, model_path:Optional[str]=None, optimizer_type:str='adamw', scheduler_type:str='cosineannealingwarmrestarts', accumulation_steps:int=3, num_workers:int=4, random_seed:int=42, policy_weight:float=1.0, value_weight:float=2.0, progress_callback=None, status_callback=None):
         self.epochs, self.batch_size, self.learning_rate, self.weight_decay, self.checkpoint_interval = epochs, batch_size, learning_rate, weight_decay, checkpoint_interval
         self.dataset_path, self.train_indices_path, self.val_indices_path = dataset_path, train_indices_path, val_indices_path
         self.model_path, self.optimizer_type, self.scheduler_type = model_path, optimizer_type, scheduler_type
         self.num_workers, self.random_seed = num_workers, random_seed
         self.progress_callback, self.status_callback = progress_callback, status_callback
+        self.policy_weight, self.value_weight = policy_weight, value_weight
         initialize_random_seeds(self.random_seed)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = TransformerChessModel(get_total_moves()).to(self.device)
@@ -37,8 +38,8 @@ class SupervisedWorker:
         if not self.scheduler and self.scheduler_type.lower() != 'none':
             self.scheduler = initialize_scheduler(self.optimizer, self.scheduler_type, total_steps=self.epochs * len(train_loader))
         for epoch in range(start_epoch, self.epochs + 1):
-            train_epoch(model=self.model, data_loader=train_loader, device=self.device, scaler=self.scaler, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch, accumulation_steps=self.accumulation_steps, batch_size=self.batch_size, smooth_policy_targets=True, compute_accuracy_flag=True, progress_callback=self.progress_callback, status_callback=self.status_callback)
-            validate_epoch(model=self.model, val_loader=val_loader, device=self.device, epoch=epoch, smooth_policy_targets=True, progress_callback=self.progress_callback, status_callback=self.status_callback)
+            train_epoch(model=self.model, data_loader=train_loader, device=self.device, scaler=self.scaler, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch, accumulation_steps=self.accumulation_steps, batch_size=self.batch_size, smooth_policy_targets=True, compute_accuracy_flag=True, progress_callback=self.progress_callback, status_callback=self.status_callback, policy_weight=self.policy_weight, value_weight=self.value_weight)
+            validate_epoch(model=self.model, val_loader=val_loader, device=self.device, epoch=epoch, smooth_policy_targets=True, progress_callback=self.progress_callback, status_callback=self.status_callback, policy_weight=self.policy_weight, value_weight=self.value_weight)
             if self.checkpoint_interval and self.checkpoint_interval > 0:
                 self.checkpoint_manager.save(model=self.model, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch)
         self.checkpoint_manager.save_final_model(model=self.model, optimizer=self.optimizer, scheduler=self.scheduler, epoch=self.epochs, final_path=os.path.join("models", "saved_models", "supervised_model.pth"))
