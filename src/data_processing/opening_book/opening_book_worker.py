@@ -41,8 +41,7 @@ class OpeningBookWorker:
                             board.push(move)
                         self.game_counter +=1
                         if self.game_counter %10 ==0 or time.time()-last_update_time >5:
-                            progress = min(int((self.game_counter / self.max_games)*100), 100)
-                            self.progress_callback(progress)
+                            self.progress_callback(min(int((self.game_counter / self.max_games)*100), 100))
                             self.status_callback(f"✅ Processed {self.game_counter}/{self.max_games} games. Skipped {skipped_games} games so far.")
                             last_update_time = time.time()
                     except:

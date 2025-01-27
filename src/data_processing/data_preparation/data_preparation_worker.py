@@ -104,8 +104,7 @@ class DataPreparationWorker:
                         self.batch_inputs, self.batch_policy_targets, self.batch_value_targets = [], [], []
                     self.total_games_processed +=1
                     if self.total_games_processed %10 ==0 or time.time()-last_update_time >5:
-                        progress = (self.total_games_processed / self.max_games) *100
-                        self.progress_callback(int(progress))
+                        self.progress_callback(int((self.total_games_processed / self.max_games) *100))
                         self.status_callback(f"✅ Processed {self.total_games_processed}/{self.max_games} games. Skipped {skipped_games} games so far.")
                         last_update_time = time.time()
             if self.batch_inputs:

@@ -77,7 +77,6 @@ def train_epoch(model, data_loader, device, scaler, optimizer, scheduler=None, e
         status_callback(f"Epoch {epoch} - Batch {batch_idx}/{len(data_loader)} - Policy Loss: {total_policy_loss / total:.4f} - Value Loss: {total_value_loss / total:.4f}")
         del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
         torch.cuda.empty_cache()
-    progress_callback(100)
 
 def validate_epoch(model, val_loader, device, epoch: int, smooth_policy_targets: bool = True, progress_callback=None, status_callback=None):
     model.eval()
@@ -93,6 +92,5 @@ def validate_epoch(model, val_loader, device, epoch: int, smooth_policy_targets:
         progress_callback(batch_idx / len(val_loader) * 100)
         status_callback(f"Validation - Epoch {epoch} - Batch {batch_idx}/{len(val_loader)} - Policy Loss: {val_policy_loss / total:.4f} - Value Loss: {val_value_loss / total:.4f}")
         del inputs, policy_targets, value_targets, policy_preds, value_preds
-    torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
     model.train()
-    progress_callback(100)
