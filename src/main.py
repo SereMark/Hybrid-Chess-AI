@@ -1,6 +1,4 @@
-import os
-import streamlit as st
-import pandas as pd
+import os, streamlit as st
 from src.data_processing.data_preparation.data_preparation_worker import DataPreparationWorker
 from src.data_processing.opening_book.opening_book_worker import OpeningBookWorker
 from src.training.supervised.supervised_training_worker import SupervisedWorker
@@ -9,366 +7,213 @@ from src.analysis.evaluation.evaluation_worker import EvaluationWorker
 from src.analysis.benchmark.benchmark_worker import BenchmarkWorker
 
 st.set_page_config(page_title="Chess AI Management Dashboard", layout="wide", initial_sidebar_state="expanded")
-st.markdown("""
-<style>
-.section-header {font-size:24px;font-weight:bold;margin-bottom:10px;}
-.stButton>button {width:100%;}
-.stCheckbox > div > label {font-size:16px;}
-.badge {padding:0.5em 1em;border-radius:0.5em;color:white;font-weight:bold;font-size:14px;}
-.badge-completed {background-color:#28a745;}
-.badge-in-progress {background-color:#ffc107;}
-.badge-failed {background-color:#dc3545;}
-</style>
-""", unsafe_allow_html=True)
 
-def validate_file_path(file_path, file_type="file"):
-    return os.path.isfile(file_path) if file_type == "file" else os.path.isdir(file_path) if file_type == "directory" else False
+def validate_path(path, type_="file"):
+    return os.path.isfile(path) if type_ == "file" else os.path.isdir(path) if type_ == "directory" else False
 
-def show_validation_message(is_valid, message):
-    st.markdown(f"✅ **{message}**" if is_valid else f"⚠️ **{message}**")
+def input_with_validation(label, default, help_text, type_="file"):
+    path = st.text_input(label, default, help=help_text)
+    if path:
+        valid = validate_path(path, type_)
+        st.markdown(f"✅ **Valid {label.split()[2]} path.**" if valid else f"⚠️ **Invalid {label.split()[2]} path.**")
+    return path
+
+def execute_worker(create_worker):
+    progress = st.progress(0)
+    status = st.empty()
+    try:
+        worker = create_worker(lambda p: progress.progress(int(p)), lambda m: status.text(m))
+        status.text("🚀 Started!")
+        result = worker.run()
+        if result:
+            progress.progress(100)
+            status.text("🎉 Completed!")
+        else:
+            status.text("⚠️ Failed.")
+    except Exception as e:
+        status.text(f"⚠️ Error: {e}")
 
 def run_data_preparation_worker():
     st.header("📂 Data Preparation")
-    with st.expander("🛠️ Configure Parameters", expanded=True):
+    with st.expander("🛠️ Configure Parameters", True):
         col1, col2 = st.columns(2)
         with col1:
-            raw_pgn_file = st.text_input("Path to Raw PGN File:", value="data/raw/lichess_db_standard_rated_2024-12.pgn", placeholder="e.g., data/raw/lichess_db_standard_rated_2024-12.pgn", help="Enter the path to the raw PGN file for data preparation.")
-            if raw_pgn_file:
-                is_valid = validate_file_path(raw_pgn_file)
-                show_validation_message(is_valid, "Valid PGN file path." if is_valid else "Invalid PGN file path.")
+            raw_pgn = input_with_validation("Path to Raw PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "Path to raw PGN file.", "file")
         with col2:
-            engine_path = st.text_input("Path to Chess Engine:", value="engine/stockfish/stockfish-windows-x86-64-avx2.exe", placeholder="e.g., engine/stockfish/stockfish-windows-x86-64-avx2.exe", help="Enter the path to the chess engine executable.")
-            if engine_path:
-                is_valid = validate_file_path(engine_path)
-                show_validation_message(is_valid, "Valid Engine path." if is_valid else "Invalid Engine path.")
-            max_games = st.slider("Max Games to Process:", 100, 5000, 1000, help="Set the maximum number of games to process.")
-            min_elo = st.slider("Minimum Player ELO:", 0, 3000, 1600, help="Set the minimum ELO rating of players to include.")
+            engine = input_with_validation("Path to Chess Engine:", "engine/stockfish/stockfish-windows-x86-64-avx2.exe", "Path to chess engine.", "file")
+            max_games = st.slider("Max Games:", 100, 5000, 1000)
+            min_elo = st.slider("Min ELO:", 0, 3000, 1600)
         col3, col4 = st.columns(2)
         with col3:
-            batch_size = st.number_input("Batch Size:", 1, 10000, 128, step=1, help="Number of games to process in each batch.")
+            batch_size = st.number_input("Batch Size:", 1, 10000, 128, step=1)
         with col4:
-            engine_depth = st.slider("Engine Depth:", 1, 30, 20, help="Set the search depth for the chess engine.")
-            engine_threads = st.slider("Engine Threads:", 1, 8, 4, help="Set the number of threads for the chess engine.")
-            engine_hash = st.slider("Engine Hash (MB):", 128, 2048, 512, step=128, help="Set the hash size (MB) for the chess engine.")
-    submitted = st.button("Start Data Preparation 🏁")
-    if submitted:
-        if validate_file_path(raw_pgn_file) and validate_file_path(engine_path):
-            progress = st.progress(0)
-            status_text = st.empty()
-            def progress_callback(percent):
-                progress.progress(int(percent))
-            def status_callback(message):
-                status_text.text(message)
-            try:
-                worker = DataPreparationWorker(raw_pgn_file, max_games, min_elo, batch_size, engine_path, engine_depth, engine_threads, engine_hash, progress_callback, status_callback)
-                status_text.text("🚀 Data Preparation Started!")
-                result = worker.run()
-                if result:
-                    progress.progress(100)
-                    status_text.text("🎉 Data Preparation Completed!")
-                else:
-                    status_text.text("⚠️ Processing failed. Please check your inputs.")
-            except Exception as e:
-                status_text.text(f"⚠️ An unexpected error occurred: {e}")
+            engine_depth = st.slider("Engine Depth:", 1, 30, 20)
+            engine_threads = st.slider("Engine Threads:", 1, 8, 4)
+            engine_hash = st.slider("Engine Hash (MB):", 128, 2048, 512, step=128)
+    if st.button("Start Data Preparation 🏁"):
+        if validate_path(raw_pgn, "file") and validate_path(engine, "file"):
+            execute_worker(lambda pc, sc: DataPreparationWorker(raw_pgn, max_games, min_elo, batch_size, engine, engine_depth, engine_threads, engine_hash, pc, sc))
         else:
-            st.error("⚠️ Invalid PGN file or engine path. Please check and try again.")
+            st.error("⚠️ Invalid PGN file or engine path.")
 
 def run_opening_book_worker():
     st.header("📖 Opening Book Generator")
-    with st.expander("🛠️ Configure Parameters", expanded=True):
+    with st.expander("🛠️ Configure Parameters", True):
         col1, col2 = st.columns(2)
         with col1:
-            pgn_file_path = st.text_input("Path to PGN File:", value="data/raw/lichess_db_standard_rated_2024-12.pgn", placeholder="e.g., data/raw/lichess_db_standard_rated_2024-12.pgn", help="Enter the path to the PGN file for generating the opening book.")
-            if pgn_file_path:
-                is_valid = validate_file_path(pgn_file_path)
-                show_validation_message(is_valid, "Valid PGN file path." if is_valid else "Invalid PGN file path.")
+            pgn = input_with_validation("Path to PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "Path to PGN file.", "file")
         with col2:
-            max_games = st.slider("Max Games to Process:", 100, 5000, 1000, help="Set the maximum number of games to process.")
-            min_elo = st.slider("Minimum Player ELO:", 0, 3000, 1600, help="Set the minimum ELO rating of players to include.")
-        col3, _ = st.columns(2)
-        with col3:
-            max_opening_moves = st.slider("Max Opening Moves:", 1, 30, 10, help="Set the maximum number of opening moves to include.")
-    submitted = st.button("Start Opening Book Generation 🏁")
-    if submitted:
-        if validate_file_path(pgn_file_path):
-            progress = st.progress(0)
-            status_text = st.empty()
-            def progress_callback(percent):
-                progress.progress(int(percent))
-            def status_callback(message):
-                status_text.text(message)
-            try:
-                worker = OpeningBookWorker(pgn_file_path, max_games, min_elo, max_opening_moves, progress_callback, status_callback)
-                status_text.text("🚀 Opening Book Generation Started!")
-                result = worker.run()
-                if result:
-                    progress.progress(100)
-                    status_text.text("🎉 Opening Book Generation Completed!")
-                else:
-                    status_text.text("⚠️ Processing failed. Please check your inputs.")
-            except Exception as e:
-                status_text.text(f"⚠️ An unexpected error occurred: {e}")
+            max_games = st.slider("Max Games:", 100, 5000, 1000)
+            min_elo = st.slider("Min ELO:", 0, 3000, 1600)
+            max_moves = st.slider("Max Opening Moves:", 1, 30, 10)
+    if st.button("Start Opening Book Generation 🏁"):
+        if validate_path(pgn, "file"):
+            execute_worker(lambda pc, sc: OpeningBookWorker(pgn, max_games, min_elo, max_moves, pc, sc))
         else:
-            st.error("⚠️ Invalid PGN file path. Please check and try again.")
+            st.error("⚠️ Invalid PGN file path.")
 
 def run_supervised_training_worker():
     st.header("🎓 Supervised Trainer")
-    with st.expander("🛠️ Configure Training Parameters", expanded=True):
+    with st.expander("🛠️ Configure Training Parameters", True):
         col1, col2 = st.columns(2)
         with col1:
-            epochs = st.number_input("Epochs:", 1, 1000, 10, step=1, help="Number of training epochs.")
-            batch_size = st.number_input("Batch Size:", 1, 10000, 128, step=1, help="Number of samples per training batch.")
-            learning_rate = st.text_input("Learning Rate:", "0.0001", placeholder="e.g., 0.0001", help="Set the learning rate for the optimizer.")
-            weight_decay = st.text_input("Weight Decay:", "0.0001", placeholder="e.g., 0.0001", help="Set the weight decay (L2 penalty) for the optimizer.")
-            optimizer_type = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"], help="Choose the optimizer for training.")
+            epochs = st.number_input("Epochs:", 1, 1000, 10)
+            batch_size = st.number_input("Batch Size:", 1, 10000, 128)
+            lr = st.text_input("Learning Rate:", "0.0001")
+            wd = st.text_input("Weight Decay:", "0.0001")
+            optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"])
         with col2:
-            scheduler_type = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "cosineannealing", "steplr", "exponentiallr", "onelr", "none"], help="Choose the learning rate scheduler.")
-            num_workers = st.number_input("Number of Worker Threads:", 1, 32, 4, step=1, help="Number of worker threads for data loading.")
-            random_seed = st.number_input("Random Seed:", 0, 100000, 42, step=1, help="Set the random seed for reproducibility.")
-    with st.expander("📁 Dataset Details", expanded=True):
+            scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "cosineannealing", "steplr", "exponentiallr", "onelr", "none"])
+            num_workers = st.number_input("Worker Threads:", 1, 32, 4)
+            random_seed = st.number_input("Random Seed:", 0, 100000, 42)
+    with st.expander("📁 Dataset Details", True):
         col3, col4 = st.columns(2)
         with col3:
-            dataset_path = st.text_input("Path to Dataset:", "data/processed/dataset.h5", placeholder="e.g., data/processed/dataset.h5", help="Enter the path to the processed dataset.")
-            if dataset_path:
-                is_valid = validate_file_path(dataset_path)
-                show_validation_message(is_valid, "Valid Dataset path." if is_valid else "Invalid Dataset path.")
+            dataset = input_with_validation("Path to Dataset:", "data/processed/dataset.h5", "Path to dataset.", "file")
         with col4:
-            train_indices_path = st.text_input("Path to Train Indices:", "data/processed/train_indices.npy", placeholder="e.g., data/processed/train_indices.npy", help="Enter the path to the training indices.")
-            if train_indices_path:
-                is_valid = validate_file_path(train_indices_path)
-                show_validation_message(is_valid, "Valid Train Indices path." if is_valid else "Invalid Train Indices path.")
-            val_indices_path = st.text_input("Path to Validation Indices:", "data/processed/val_indices.npy", placeholder="e.g., data/processed/val_indices.npy", help="Enter the path to the validation indices.")
-            if val_indices_path:
-                is_valid = validate_file_path(val_indices_path)
-                show_validation_message(is_valid, "Valid Validation Indices path." if is_valid else "Invalid Validation Indices path.")
-    with st.expander("🔗 Model Options", expanded=True):
+            train_idx = input_with_validation("Path to Train Indices:", "data/processed/train_indices.npy", "Path to train indices.", "file")
+            val_idx = input_with_validation("Path to Validation Indices:", "data/processed/val_indices.npy", "Path to validation indices.", "file")
+    with st.expander("🔗 Model Options", True):
         col5, col6 = st.columns(2)
         with col5:
-            model_path = st.text_input("Path to Pretrained Model (optional):", "", placeholder="e.g., models/pretrained_model.pth", help="Enter the path to a pretrained model if available.")
-            if model_path:
-                is_valid = validate_file_path(model_path)
-                show_validation_message(is_valid, "Valid Model path." if is_valid else "Invalid Model path.")
+            model = input_with_validation("Path to Pretrained Model (optional):", "", "Path to pretrained model.", "file")
         with col6:
-            save_checkpoints = st.checkbox("Save Checkpoints", True, help="Enable to save model checkpoints during training.")
-            checkpoint_type = None
-            checkpoint_interval = None
-            if save_checkpoints:
-                checkpoint_type = st.selectbox("Checkpoint Type:", ["epoch", "time"], help="Type of checkpoint interval.")
-                if checkpoint_type == "epoch":
-                    checkpoint_interval = st.number_input("Checkpoint Interval (Epochs):", 1, 1000, 5, step=1, help="Interval for saving checkpoints based on epochs.")
-                else:
-                    checkpoint_interval = st.number_input("Checkpoint Interval (Minutes):", 1, 10000, 60, step=1, help="Interval for saving checkpoints based on time.")
-    submitted = st.button("Start Supervised Training 🏁")
-    if submitted:
-        required_files = [dataset_path, train_indices_path, val_indices_path]
-        if model_path:
-            required_files.append(model_path)
-        missing_files = [f for f in required_files if f and not validate_file_path(f)]
-        if not missing_files:
-            progress = st.progress(0)
-            status_text = st.empty()
-            def progress_callback(percent):
-                progress.progress(int(percent))
-            def status_callback(message):
-                status_text.text(message)
+            save_ckpt = st.checkbox("Save Checkpoints", True)
+            if save_ckpt:
+                chkpt_type = st.selectbox("Checkpoint Type:", ["epoch", "time"])
+                chkpt_interval = st.number_input("Checkpoint Interval (Epochs):", 1, 1000, 5) if chkpt_type == "epoch" else st.number_input("Checkpoint Interval (Minutes):", 1, 10000, 60)
+            else:
+                chkpt_type, chkpt_interval = None, None
+    if st.button("Start Supervised Training 🏁"):
+        required = [dataset, train_idx, val_idx] + ([model] if model else [])
+        missing = [f for f in required if not validate_path(f, "file")]
+        if not missing:
             try:
-                lr = float(learning_rate)
-                wd = float(weight_decay)
-                worker = SupervisedWorker(epochs=int(epochs), batch_size=int(batch_size), learning_rate=lr, weight_decay=wd, save_checkpoints=save_checkpoints, checkpoint_interval=int(checkpoint_interval) if save_checkpoints else None,
-                                          dataset_path=dataset_path, train_indices_path=train_indices_path, val_indices_path=val_indices_path, model_path=model_path if model_path else None,
-                                          checkpoint_type=checkpoint_type if save_checkpoints else None, optimizer_type=optimizer_type, scheduler_type=scheduler_type, num_workers=int(num_workers),
-                                          random_seed=int(random_seed), progress_callback=progress_callback, status_callback=status_callback)
-                status_text.text("🚀 Supervised Training Started!")
-                result = worker.run()
-                if result:
-                    progress.progress(100)
-                    status_text.text("🎉 Supervised Training Completed!")
-                else:
-                    status_text.text("⚠️ Supervised Training failed.")
+                lr_val, wd_val = float(lr), float(wd)
+                execute_worker(lambda pc, sc: SupervisedWorker(
+                    int(epochs), int(batch_size), lr_val, wd_val, save_ckpt,
+                    int(chkpt_interval) if save_ckpt else None, dataset, train_idx, val_idx,
+                    model if model else None, chkpt_type if save_ckpt else None, optimizer,
+                    scheduler, int(num_workers), int(random_seed), pc, sc
+                ))
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
-            except Exception as e:
-                status_text.text(f"⚠️ An unexpected error occurred: {e}")
         else:
-            st.error(f"⚠️ The following required files are missing: {', '.join(missing_files)}. Please check the paths and try again.")
+            st.error(f"⚠️ Missing files: {', '.join(missing)}.")
 
 def run_reinforcement_training_worker():
     st.header("🛡️ Reinforcement Trainer")
-    with st.expander("🛠️ Configure Training Parameters", expanded=True):
+    with st.expander("🛠️ Configure Training Parameters", True):
         col1, col2 = st.columns(2)
         with col1:
-            num_iterations = st.number_input("Number of Iterations:", 1, 1000, 10, step=1, help="Number of reinforcement training iterations.")
-            num_games_per_iteration = st.number_input("Games per Iteration:", 1, 10000, 1000, step=100, help="Number of games to play in each iteration.")
-            simulations = st.number_input("Simulations per Move:", 1, 10000, 100, step=10, help="Number of MCTS simulations per move.")
-            c_puct = st.number_input("C_PUCT:", 0.0, 10.0, 1.4, step=0.1, format="%.1f", help="Exploration constant for MCTS.")
-            temperature = st.number_input("Temperature:", 0.0, 10.0, 1.0, step=0.1, format="%.1f", help="Temperature parameter for move selection.")
+            num_iter = st.number_input("Number of Iterations:", 1, 1000, 10)
+            games_per_iter = st.number_input("Games per Iteration:", 1, 10000, 1000, step=100)
+            simulations = st.number_input("Simulations per Move:", 1, 10000, 100, step=10)
+            c_puct = st.number_input("C_PUCT:", 0.0, 10.0, 1.4, step=0.1)
+            temperature = st.number_input("Temperature:", 0.0, 10.0, 1.0, step=0.1)
         with col2:
-            num_epochs = st.number_input("Epochs per Iteration:", 1, 1000, 5, step=1, help="Number of training epochs per iteration.")
-            batch_size = st.number_input("Batch Size:", 1, 10000, 128, step=1, help="Number of samples per training batch.")
-            num_threads = st.number_input("Number of Threads:", 1, 32, 4, step=1, help="Number of threads for parallel processing.")
-            learning_rate = st.text_input("Learning Rate:", "0.0001", placeholder="e.g., 0.0001", help="Set the learning rate for the optimizer.")
-            weight_decay = st.text_input("Weight Decay:", "0.0001", placeholder="e.g., 0.0001", help="Set the weight decay (L2 penalty) for the optimizer.")
-            optimizer_type = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"], help="Choose the optimizer for training.")
-            scheduler_type = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "cosineannealing", "steplr", "exponentiallr", "onelr", "none"], help="Choose the learning rate scheduler.")
-    with st.expander("🔗 Model Options", expanded=True):
+            epochs = st.number_input("Epochs per Iteration:", 1, 1000, 5)
+            batch_size = st.number_input("Batch Size:", 1, 10000, 128)
+            num_threads = st.number_input("Number of Threads:", 1, 32, 4)
+            lr = st.text_input("Learning Rate:", "0.0001")
+            wd = st.text_input("Weight Decay:", "0.0001")
+            optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"])
+            scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "cosineannealing", "steplr", "exponentiallr", "onelr", "none"])
+    with st.expander("🔗 Model Options", True):
         col3, col4 = st.columns(2)
         with col3:
-            model_path = st.text_input("Path to Existing Model (optional):", "", placeholder="e.g., models/supervised_model.pth", help="Enter the path to an existing model if available.")
-            if model_path:
-                is_valid = validate_file_path(model_path)
-                show_validation_message(is_valid, "Valid Model path." if is_valid else "Invalid Model path.")
+            model = input_with_validation("Path to Existing Model (optional):", "", "Path to existing model.", "file")
         with col4:
-            save_checkpoints = st.checkbox("Save Checkpoints", True, help="Enable to save model checkpoints during training.")
-            checkpoint_type = None
-            checkpoint_interval = None
-            if save_checkpoints:
-                checkpoint_type = st.selectbox("Checkpoint Type:", ["iteration", "time"], help="Type of checkpoint interval.")
-                if checkpoint_type == "iteration":
-                    checkpoint_interval = st.number_input("Checkpoint Interval (Iterations):", 1, 1000, 5, step=1, help="Interval for saving checkpoints based on iterations.")
-                else:
-                    checkpoint_interval = st.number_input("Checkpoint Interval (Minutes):", 1, 10000, 60, step=1, help="Interval for saving checkpoints based on time.")
-    random_seed = st.number_input("Random Seed:", 0, 100000, 42, step=1, help="Set the random seed for reproducibility.")
-    submitted = st.button("Start Reinforcement Training 🏁")
-    if submitted:
-        if model_path and not validate_file_path(model_path):
-            st.error("⚠️ Model path is invalid or the file does not exist. Please check and try again.")
+            save_ckpt = st.checkbox("Save Checkpoints", True)
+            if save_ckpt:
+                chkpt_type = st.selectbox("Checkpoint Type:", ["iteration", "time"])
+                chkpt_interval = st.number_input("Checkpoint Interval (Iterations):", 1, 1000, 5) if chkpt_type == "iteration" else st.number_input("Checkpoint Interval (Minutes):", 1, 10000, 60)
+            else:
+                chkpt_type, chkpt_interval = None, None
+    random_seed = st.number_input("Random Seed:", 0, 100000, 42)
+    if st.button("Start Reinforcement Training 🏁"):
+        if model and not validate_path(model, "file"):
+            st.error("⚠️ Invalid model path.")
         else:
-            progress = st.progress(0)
-            status_text = st.empty()
-            def progress_callback(percent):
-                progress.progress(int(percent))
-            def status_callback(message):
-                status_text.text(message)
             try:
-                lr = float(learning_rate)
-                wd = float(weight_decay)
-                worker = ReinforcementWorker(model_path=model_path if model_path else None, num_iterations=int(num_iterations), num_games_per_iteration=int(num_games_per_iteration), simulations=int(simulations),
-                                             c_puct=float(c_puct), temperature=float(temperature), num_epochs=int(num_epochs), batch_size=int(batch_size), num_threads=int(num_threads), save_checkpoints=save_checkpoints,
-                                             checkpoint_interval=int(checkpoint_interval) if save_checkpoints else None, checkpoint_type=checkpoint_type if save_checkpoints else None, random_seed=int(random_seed),
-                                             optimizer_type=optimizer_type, learning_rate=lr, weight_decay=wd, scheduler_type=scheduler_type, progress_callback=progress_callback, status_callback=status_callback)
-                status_text.text("🚀 Reinforcement Training Started!")
-                result = worker.run()
-                if result:
-                    progress.progress(100)
-                    status_text.text("🎉 Reinforcement Training Completed!")
-                else:
-                    status_text.text("⚠️ Reinforcement Training failed.")
+                lr_val, wd_val = float(lr), float(wd)
+                execute_worker(lambda pc, sc: ReinforcementWorker(
+                    model if model else None, int(num_iter), int(games_per_iter), int(simulations),
+                    float(c_puct), float(temperature), int(epochs), int(batch_size), int(num_threads),
+                    save_ckpt, int(chkpt_interval) if save_ckpt else None, chkpt_type if save_ckpt else None,
+                    int(random_seed), optimizer, lr_val, wd_val, scheduler, pc, sc
+                ))
             except ValueError:
                 st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
-            except Exception as e:
-                status_text.text(f"⚠️ An unexpected error occurred: {e}")
 
 def run_evaluation_worker():
     st.header("📈 Evaluation")
-    with st.expander("🛠️ Configure Evaluation Parameters", expanded=True):
+    with st.expander("🛠️ Configure Evaluation Parameters", True):
         col1, col2 = st.columns(2)
         with col1:
-            model_path = st.text_input("Path to Trained Model:", "models/saved_models/supervised_model.pth", placeholder="e.g., models/saved_models/supervised_model.pth", help="Enter the path to the trained model for evaluation.")
-            if model_path:
-                is_valid = validate_file_path(model_path)
-                show_validation_message(is_valid, "Valid Model path." if is_valid else "Invalid Model path.")
+            model = input_with_validation("Path to Trained Model:", "models/saved_models/supervised_model.pth", "Path to trained model.", "file")
         with col2:
-            dataset_indices_path = st.text_input("Path to Dataset Indices:", "data/processed/test_indices.npy", placeholder="e.g., data/processed/test_indices.npy", help="Enter the path to the dataset indices for evaluation.")
-            if dataset_indices_path:
-                is_valid = validate_file_path(dataset_indices_path)
-                show_validation_message(is_valid, "Valid Dataset Indices path." if is_valid else "Invalid Dataset Indices path.")
-        h5_file_path = st.text_input("Path to H5 Dataset:", "data/processed/dataset.h5", placeholder="e.g., data/processed/dataset.h5", help="Enter the path to the H5 dataset file.")
-        if h5_file_path:
-            is_valid = validate_file_path(h5_file_path)
-            show_validation_message(is_valid, "Valid H5 Dataset path." if is_valid else "Invalid H5 Dataset path.")
-    submitted = st.button("Start Evaluation 🏁")
-    if submitted:
-        required_files = [model_path, dataset_indices_path, h5_file_path]
-        missing_files = [f for f in required_files if f and not validate_file_path(f)]
-        if not missing_files:
-            progress = st.progress(0)
-            status_text = st.empty()
-            def progress_callback(percent):
-                progress.progress(int(percent))
-            def status_callback(message):
-                status_text.text(message)
-            try:
-                worker = EvaluationWorker(model_path, dataset_indices_path, h5_file_path, progress_callback, status_callback)
-                status_text.text("🚀 Evaluation Started!")
-                metrics = worker.run()
-                if metrics:
-                    progress.progress(100)
-                    status_text.text("🎉 Evaluation Completed!")
-                else:
-                    status_text.text("⚠️ Evaluation failed.")
-            except Exception as e:
-                status_text.text(f"⚠️ An unexpected error occurred: {e}")
+            dataset_idx = input_with_validation("Path to Dataset Indices:", "data/processed/test_indices.npy", "Path to dataset indices.", "file")
+        h5_path = input_with_validation("Path to H5 Dataset:", "data/processed/dataset.h5", "Path to H5 dataset.", "file")
+    if st.button("Start Evaluation 🏁"):
+        required = [model, dataset_idx, h5_path]
+        missing = [f for f in required if not validate_path(f, "file")]
+        if not missing:
+            execute_worker(lambda pc, sc: EvaluationWorker(model, dataset_idx, h5_path, pc, sc))
         else:
-            st.error(f"⚠️ The following required files are missing: {', '.join(missing_files)}. Please check the paths and try again.")
+            st.error(f"⚠️ Missing files: {', '.join(missing)}.")
 
 def run_benchmark_worker():
     st.header("🏆 Benchmarking")
-    with st.expander("🛠️ Configure Benchmarking Parameters", expanded=True):
+    with st.expander("🛠️ Configure Benchmarking Parameters", True):
         col1, col2 = st.columns(2)
         with col1:
-            bot1_path = st.text_input("Path to Bot1 Model:", "models\\saved_models\\supervised_model.pth", placeholder="e.g., models\\saved_models\\supervised_model.pth", help="Enter the path to Bot1's model.")
-            if bot1_path:
-                is_valid = validate_file_path(bot1_path)
-                show_validation_message(is_valid, "Valid Bot1 model path." if is_valid else "Invalid Bot1 model path.")
-            bot1_use_mcts = st.checkbox("Bot1 Use MCTS", True, help="Enable MCTS for Bot1.")
-            bot1_use_opening_book = st.checkbox("Bot1 Use Opening Book", True, help="Enable Opening Book for Bot1.")
+            bot1 = input_with_validation("Path to Bot1 Model:", "models/saved_models/supervised_model.pth", "Path to Bot1's model.", "file")
+            bot1_mcts = st.checkbox("Bot1 Use MCTS", True)
+            bot1_open = st.checkbox("Bot1 Use Opening Book", True)
         with col2:
-            bot2_path = st.text_input("Path to Bot2 Model:", "models\\saved_models\\supervised_model.pth", placeholder="e.g., models\\saved_models\\supervised_model.pth", help="Enter the path to Bot2's model.")
-            if bot2_path:
-                is_valid = validate_file_path(bot2_path)
-                show_validation_message(is_valid, "Valid Bot2 model path." if is_valid else "Invalid Bot2 model path.")
-            bot2_use_mcts = st.checkbox("Bot2 Use MCTS", True, help="Enable MCTS for Bot2.")
-            bot2_use_opening_book = st.checkbox("Bot2 Use Opening Book", True, help="Enable Opening Book for Bot2.")
-        num_games = st.number_input("Number of Games:", 1, 10000, 100, step=1, help="Total number of games to be played in the benchmark.")
-    submitted = st.button("Start Benchmarking 🏁")
-    if submitted:
-        required_files = [bot1_path, bot2_path]
-        missing_files = [f for f in required_files if f and not validate_file_path(f)]
-        if not missing_files:
-            progress = st.progress(0)
-            status_text = st.empty()
-            def progress_callback(percent):
-                progress.progress(int(percent))
-            def status_callback(message):
-                status_text.text(message)
-            try:
-                worker = BenchmarkWorker(bot1_path, bot2_path, int(num_games), bot1_use_mcts, bot1_use_opening_book, bot2_use_mcts, bot2_use_opening_book, progress_callback, status_callback)
-                status_text.text("🚀 Benchmarking Started!")
-                metrics = worker.run()
-                if metrics:
-                    progress.progress(100)
-                    status_text.text("🎉 Benchmarking Completed!")
-                    if "results" in metrics and isinstance(metrics["results"], dict):
-                        results_df = pd.DataFrame(list(metrics["results"].items()), columns=["Bot", "Wins"])
-                        st.bar_chart(results_df.set_index("Bot"))
-                else:
-                    status_text.text("⚠️ Benchmarking failed.")
-            except Exception as e:
-                status_text.text(f"⚠️ An unexpected error occurred: {e}")
+            bot2 = input_with_validation("Path to Bot2 Model:", "models/saved_models/supervised_model.pth", "Path to Bot2's model.", "file")
+            bot2_mcts = st.checkbox("Bot2 Use MCTS", True)
+            bot2_open = st.checkbox("Bot2 Use Opening Book", True)
+        num_games = st.number_input("Number of Games:", 1, 10000, 100)
+    if st.button("Start Benchmarking 🏁"):
+        required = [bot1, bot2]
+        missing = [f for f in required if not validate_path(f, "file")]
+        if not missing:
+            execute_worker(lambda pc, sc: BenchmarkWorker(bot1, bot2, int(num_games), bot1_mcts, bot1_open, bot2_mcts, bot2_open, pc, sc))
         else:
-            st.error(f"⚠️ The following required files are missing: {', '.join(missing_files)}. Please check the paths and try again.")
+            st.error(f"⚠️ Missing files: {', '.join(missing)}.")
+
+sections = {
+    "Data Preparation": run_data_preparation_worker,
+    "Opening Book Generator": run_opening_book_worker,
+    "Supervised Trainer": run_supervised_training_worker,
+    "Reinforcement Trainer": run_reinforcement_training_worker,
+    "Evaluation": run_evaluation_worker,
+    "Benchmarking": run_benchmark_worker
+}
 
 if __name__ == "__main__":
     st.sidebar.title("🔧 Navigation")
-    app_mode = st.sidebar.radio("Choose the section:", [
-        "Data Preparation", 
-        "Opening Book Generator", 
-        "Supervised Trainer", 
-        "Reinforcement Trainer", 
-        "Evaluation", 
-        "Benchmarking"
-    ])
-    if app_mode == "Data Preparation":
-        run_data_preparation_worker()
-    elif app_mode == "Opening Book Generator":
-        run_opening_book_worker()
-    elif app_mode == "Supervised Trainer":
-        run_supervised_training_worker()
-    elif app_mode == "Reinforcement Trainer":
-        run_reinforcement_training_worker()
-    elif app_mode == "Evaluation":
-        run_evaluation_worker()
-    elif app_mode == "Benchmarking":
-        run_benchmark_worker()
-    else:
-        st.error("Unknown section selected!")
+    section = st.sidebar.radio("Choose the section:", list(sections.keys()))
+    sections[section]()
