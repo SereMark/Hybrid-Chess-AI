@@ -300,5 +300,4 @@ sections = {
 
 if __name__ == "__main__":
     st.sidebar.title("🔧 Navigation")
-    section = st.sidebar.radio("Choose the section:", list(sections.keys()))
-    sections[section]()
+    sections[st.sidebar.radio("Choose the section:", list(sections.keys()))]()
