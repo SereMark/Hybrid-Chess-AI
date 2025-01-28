@@ -72,8 +72,9 @@ def train_epoch(model, data_loader, device, scaler, optimizer, scheduler, epoch,
         total += batch_sz
         if compute_accuracy_flag:
             correct += compute_accuracy(policy_preds, policy_targets) * batch_sz
-        progress_callback(batch_idx / len(data_loader) * 100)
-        status_callback(f"Epoch {epoch}/{max_epoch} - Batch {batch_idx}/{len(data_loader)} - Policy Loss: {total_policy_loss / total:.4f} - Value Loss: {total_value_loss / total:.4f}")
+        if progress_callback and status_callback:
+            progress_callback(batch_idx / len(data_loader) * 100)
+            status_callback(f"Epoch {epoch}/{max_epoch} - Batch {batch_idx}/{len(data_loader)} - Policy Loss: {total_policy_loss / total:.4f} - Value Loss: {total_value_loss / total:.4f}")
         del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
         torch.cuda.empty_cache()
 
@@ -90,8 +91,9 @@ def validate_epoch(model, val_loader, device, epoch, max_epoch, smooth_policy_ta
             val_value_loss += value_loss.item() * inputs.size(0)
             correct += compute_accuracy(policy_preds, policy_targets) * inputs.size(0)
             total += inputs.size(0)
-            progress_callback(batch_idx / len(val_loader) * 100)
-            status_callback(f"Validation - Epoch {epoch}/{max_epoch} - Batch {batch_idx}/{len(val_loader)} - Policy Loss: {val_policy_loss / total:.4f} - Value Loss: {val_value_loss / total:.4f}")
+            if progress_callback and status_callback:
+                progress_callback(batch_idx / len(val_loader) * 100)
+                status_callback(f"Validation - Epoch {epoch}/{max_epoch} - Batch {batch_idx}/{len(val_loader)} - Policy Loss: {val_policy_loss / total:.4f} - Value Loss: {val_value_loss / total:.4f}")
             del inputs, policy_targets, value_targets, policy_preds, value_preds
             torch.cuda.empty_cache()
     model.train()
