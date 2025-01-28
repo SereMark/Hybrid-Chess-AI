@@ -1,11 +1,12 @@
-import os, h5py, time, chess, chess.pgn, numpy as np, chess.engine, asyncio, platform
+import os, h5py, time, chess, chess.pgn, numpy as np, chess.engine, asyncio, platform, json
 from collections import defaultdict
 from src.utils.chess_utils import convert_board_to_tensor, flip_board, flip_move, get_move_mapping
 
 class DataPreparationWorker:
-    def __init__(self, raw_pgn_file, max_games, min_elo, batch_size, engine_path, engine_depth, engine_threads, engine_hash, progress_callback=None, status_callback=None):
+    def __init__(self, raw_pgn_file, max_games, min_elo, batch_size, engine_path, engine_depth, engine_threads, engine_hash, pgn_file, max_opening_moves, progress_callback=None, status_callback=None):
         self.raw_pgn_file, self.max_games, self.min_elo, self.batch_size = raw_pgn_file, max_games, min_elo, batch_size
         self.engine_path, self.engine_depth, self.engine_threads, self.engine_hash = engine_path, engine_depth, engine_threads, engine_hash
+        self.pgn_file, self.max_opening_moves = pgn_file, max_opening_moves
         self.progress_callback, self.status_callback = progress_callback, status_callback
         self.positions = defaultdict(lambda: defaultdict(lambda: {"win":0,"draw":0,"loss":0,"eco":"","name":""}))
         self.game_counter, self.start_time = 0, None
@@ -117,7 +118,59 @@ class DataPreparationWorker:
             if self.engine:
                 self.engine.close()
                 self.status_callback("🔍 Chess engine closed.")
-            self.status_callback("🔍 Splitting dataset into train, validation, and test sets...")
+            if self.pgn_file and self.max_opening_moves >0:
+                self.status_callback("🔍 Processing Opening Book...")
+                skipped_games_book, last_update_time_book = 0, time.time()
+                try:
+                    with open(self.pgn_file, "r", encoding="utf-8", errors="ignore") as pgn_file:
+                        while self.game_counter < self.max_games:
+                            game = chess.pgn.read_game(pgn_file)
+                            if game is None:
+                                self.status_callback("🔍 Reached end of PGN file.")
+                                break
+                            try:
+                                white_elo, black_elo = int(game.headers.get("WhiteElo",0)), int(game.headers.get("BlackElo",0))
+                                if white_elo < self.min_elo or black_elo < self.min_elo:
+                                    skipped_games_book +=1
+                                    continue
+                                outcome_map = {"1-0":"win", "0-1":"loss", "1/2-1/2":"draw"}
+                                outcome = outcome_map.get(game.headers.get("Result"))
+                                if not outcome:
+                                    skipped_games_book +=1
+                                    continue
+                                eco_code, opening_name = game.headers.get("ECO",""), game.headers.get("Opening","")
+                                board = game.board()
+                                for move_counter, move in enumerate(game.mainline_moves(),1):
+                                    if move_counter > self.max_opening_moves:
+                                        break
+                                    fen, uci_move = board.fen(), move.uci()
+                                    move_data = self.positions[fen][uci_move]
+                                    move_data[outcome] +=1
+                                    move_data["eco"] = move_data["eco"] or eco_code
+                                    move_data["name"] = move_data["name"] or opening_name
+                                    board.push(move)
+                                self.game_counter +=1
+                                if self.game_counter %10 ==0 or time.time()-last_update_time_book >5:
+                                    self.progress_callback(min(int((self.game_counter / self.max_games)*100), 100))
+                                    self.status_callback(f"✅ Processed {self.game_counter}/{self.max_games} games for opening book. Skipped {skipped_games_book} games so far.")
+                                    last_update_time_book = time.time()
+                            except:
+                                skipped_games_book +=1
+                                self.status_callback("❌ Exception in processing game for opening book.")
+                except:
+                    self.status_callback("❌ Exception during opening book processing.")
+                    return
+                positions = {fen:dict(moves) for fen, moves in self.positions.items()}
+                book_file = os.path.abspath(os.path.join("data","processed","opening_book.json"))
+                os.makedirs(os.path.dirname(book_file), exist_ok=True)
+                try:
+                    with open(book_file, "w") as f:
+                        json.dump(positions, f, indent=4)
+                    self.status_callback(f"✅ Opening book saved at {book_file}.")
+                except:
+                    self.status_callback("❌ Failed to save opening book.")
+                    return
+            self.status_callback(f"🔍 Splitting dataset into train, validation, and test sets...")
             train_indices_path, val_indices_path, test_indices_path = map(lambda x: os.path.join(self.output_dir, f"{x}_indices.npy"), ["train", "val", "test"])
             try:
                 with h5py.File(h5_path, "r") as h5_file:
@@ -133,5 +186,7 @@ class DataPreparationWorker:
                     self.status_callback(f"✅ Dataset split into Train ({train_end}), Validation ({val_end - train_end}), Test ({num_samples - val_end}) samples.")
             except:
                 self.status_callback("❌ Error splitting dataset.")
-            self.status_callback(f"✅ Data Preparation completed successfully. Processed {self.total_games_processed} games with {skipped_games} skipped games in {time.time()-self.start_time:.2f} seconds.")
+                return
+            total_time = time.time() - self.start_time
+            self.status_callback(f"✅ Data Preparation{' & Opening Book Generation' if self.pgn_file else ''} completed successfully. Processed {self.total_games_processed} games with {skipped_games} skipped games{' and processed opening book games' if self.pgn_file else ''} in {total_time:.2f} seconds.")
             return True

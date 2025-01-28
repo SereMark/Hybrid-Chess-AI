@@ -1,6 +1,5 @@
 import os, warnings, streamlit as st
-from src.data_processing.data_preparation.data_preparation_worker import DataPreparationWorker
-from src.data_processing.opening_book.opening_book_worker import OpeningBookWorker
+from src.data_preperation.data_preparation_worker import DataPreparationWorker
 from src.training.Hyperparameter_Optimization.hyperparameter_optimization_worker import HyperparameterOptimizationWorker
 from src.training.supervised.supervised_training_worker import SupervisedWorker
 from src.training.reinforcement.reinforcement_training_worker import ReinforcementWorker
@@ -38,6 +37,12 @@ def run_data_preparation_worker():
     with st.expander("🛠️ Configure Parameters", True):
         raw_pgn = input_with_validation("Path to Raw PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
         engine = input_with_validation("Path to Chess Engine:", "engine/stockfish/stockfish-windows-x86-64-avx2.exe", "file")
+        generate_book = st.checkbox("Generate Opening Book", True)
+        if generate_book:
+            pgn = input_with_validation("Path to PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
+            max_opening_moves = st.slider("Max Opening Moves:", 1, 30, 25)
+        else:
+            pgn, max_opening_moves = None, 0
         col1, col2 = st.columns(2)
         with col1:
             max_games = st.slider("Max Games:", 100, 20000, 10000)
@@ -51,27 +56,14 @@ def run_data_preparation_worker():
         engine_hash = st.slider("Engine Hash (MB):", 128, 4096, 2048, step=128)
         batch_size = st.number_input("Batch Size:", 1, 10000, 512, step=1)
     if st.button("Start Data Preparation 🏁"):
-        if validate_path(raw_pgn, "file") and validate_path(engine, "file"):
-            execute_worker(lambda pc, sc: DataPreparationWorker(raw_pgn, max_games, min_elo, batch_size, engine, engine_depth, engine_threads, engine_hash, pc, sc))
+        if generate_book:
+            paths = [raw_pgn, engine, pgn]
         else:
-            st.error("⚠️ Invalid PGN file or engine path.")
-
-def run_opening_book_worker():
-    st.header("📖 Opening Book Generator")
-    with st.expander("🛠️ Configure Parameters", True):
-        pgn = input_with_validation("Path to PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            max_games = st.slider("Max Games:", 100, 20000, 10000)
-        with col2:
-            min_elo = st.slider("Min ELO:", 0, 3000, 1800)
-        with col3:
-            max_moves = st.slider("Max Opening Moves:", 1, 30, 25)
-    if st.button("Start Opening Book Generation 🏁"):
-        if validate_path(pgn, "file"):
-            execute_worker(lambda pc, sc: OpeningBookWorker(pgn, max_games, min_elo, max_moves, pc, sc))
+            paths = [raw_pgn, engine]
+        if all(validate_path(p, "file") for p in paths):
+            execute_worker(lambda pc, sc: DataPreparationWorker(raw_pgn, max_games, min_elo, batch_size, engine, engine_depth, engine_threads, engine_hash, pgn or "", max_opening_moves, pc, sc))
         else:
-            st.error("⚠️ Invalid PGN file path.")
+            st.error("⚠️ Invalid file paths.")
 
 def run_supervised_training_worker():
     st.header("🎓 Supervised Trainer")
@@ -282,7 +274,6 @@ def run_hyperparameter_optimization_worker():
 
 sections = {
     "Data Preparation": run_data_preparation_worker,
-    "Opening Book Generator": run_opening_book_worker,
     "Supervised Trainer": run_supervised_training_worker,
     "Reinforcement Trainer": run_reinforcement_training_worker,
     "Evaluation": run_evaluation_worker,
