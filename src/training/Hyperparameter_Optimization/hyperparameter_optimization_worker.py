@@ -1,5 +1,5 @@
 from src.training.supervised.supervised_training_worker import SupervisedWorker
-import optuna, os, torch
+import optuna, os
 
 class HyperparameterOptimizationWorker:
     def __init__(self, num_trials, timeout, dataset_path, train_indices_path, val_indices_path, num_workers, random_seed, lr_min, lr_max, wd_min, wd_max, batch_size, epochs_min, epochs_max, optimizer, scheduler, grad_clip_min, grad_clip_max, momentum_min, momentum_max, accumulation_steps_min, accumulation_steps_max, policy_weight_min, policy_weight_max, value_weight_min, value_weight_max, progress_callback, status_callback):
@@ -41,8 +41,6 @@ class HyperparameterOptimizationWorker:
         trial.set_user_attr("val_accuracy", result.get("val_accuracy", 0.0))
         trial.set_user_attr("best_epoch", result.get("best_epoch", 0))
         trial.set_user_attr("training_time", result.get("training_time", 0.0))
-        torch.cuda.reset_peak_memory_stats()
-        trial.set_user_attr("gpu_memory", torch.cuda.max_memory_allocated())
         return result.get('metric', 0.0)
 
     def run(self):
@@ -50,7 +48,7 @@ class HyperparameterOptimizationWorker:
         db_path = f"sqlite:///{db_filename}"
         if os.path.exists(db_filename):
             os.remove(db_filename)
-        study = optuna.create_study(direction="minimize", study_name="HPO Study", storage=db_path, load_if_exists=True)
+        study = optuna.create_study(direction="minimize", study_name="HPO Study", storage=db_path, load_if_exists=False)
         def trial_callback(study, trial):
             self.current_trial += 1
             self.progress_callback((len(study.trials) / self.num_trials) * 100)
