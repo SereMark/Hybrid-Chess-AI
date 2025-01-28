@@ -38,7 +38,7 @@ class HyperparameterOptimizationWorker:
         params['momentum'] = trial.suggest_uniform('momentum', self.momentum_min, self.momentum_max) if params['optimizer'] in ['sgd', 'rmsprop'] else 0.0
         worker = SupervisedWorker(params['epochs'], params['batch_size'], params['learning_rate'], params['weight_decay'], 0, self.dataset_path, self.train_indices_path, self.val_indices_path,
                                   None, params['optimizer'], params['scheduler'], params['accumulation_steps'], self.num_workers, self.random_seed, params['policy_weight'], params['value_weight'],
-                                  params['grad_clip'], params['momentum'], None, None)
+                                  params['grad_clip'], params['momentum'], False, None, None)
         result = worker.run()
         val_metric = result.get('metric', float('inf'))
         for key, value in params.items():

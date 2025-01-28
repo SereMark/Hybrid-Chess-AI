@@ -104,6 +104,8 @@ def run_supervised_training_worker():
         dataset = input_with_validation("Path to Dataset:", "data/processed/dataset.h5", "file")
         train_idx = input_with_validation("Path to Train Indices:", "data/processed/train_indices.npy", "file")
         val_idx = input_with_validation("Path to Validation Indices:", "data/processed/val_indices.npy", "file")
+    with st.expander("🔗 Model Options", True):
+        wandb_flag = st.checkbox("Use Weights & Biases", True)
     if st.button("Start Supervised Training 🏁"):
         missing = [p for p in [dataset, train_idx, val_idx] if not validate_path(p, "file")] + ([model] if model and not validate_path(model, "file") else [])
         if scheduler == "onecycle" and optimizer not in ["sgd", "rmsprop"]:
@@ -116,7 +118,7 @@ def run_supervised_training_worker():
             st.error("⚠️ At least one batch size must be selected.")
         else:
             try:
-                execute_worker(lambda pc, sc: SupervisedWorker(int(epochs), int(batch_size), float(lr), float(wd), int(chkpt_interval) if chkpt_interval else 0, dataset, train_idx, val_idx, model or None, optimizer, scheduler, accumulation_steps, int(num_workers), int(random_seed), float(policy_weight), float(value_weight), float(grad_clip), float(momentum), pc, sc))
+                execute_worker(lambda pc, sc: SupervisedWorker(int(epochs), int(batch_size), float(lr), float(wd), int(chkpt_interval) if chkpt_interval else 0, dataset, train_idx, val_idx, model or None, optimizer, scheduler, accumulation_steps, int(num_workers), int(random_seed), float(policy_weight), float(value_weight), float(grad_clip), float(momentum), wandb_flag, pc, sc))
             except ValueError:
                 st.error("⚠️ Invalid input values.")
 
@@ -150,7 +152,11 @@ def run_reinforcement_training_worker():
         else:
             momentum = 0.0
     with st.expander("🔗 Model Options", True):
-        model = input_with_validation("Path to Pretrained Model (optional):", "", "file")
+        col1, col2 = st.columns(2)
+        with col1:
+            model = input_with_validation("Path to Pretrained Model (optional):", "", "file")
+        with col2:
+            wandb_flag = st.checkbox("Use Weights & Biases", True)
     if st.button("Start Reinforcement Training 🏁"):
         missing = [model] if model and not validate_path(model, "file") else []
         bounds_checks = [
@@ -171,7 +177,7 @@ def run_reinforcement_training_worker():
                     model or None, int(num_iter), int(games_per_iter), int(simulations), float(c_puct), float(temperature),
                     int(epochs), int(batch_size), int(num_threads), int(chkpt_interval), int(random_seed), optimizer,
                     float(lr), float(wd), scheduler, accumulation_steps, int(num_workers),
-                    float(policy_weight), float(value_weight), float(grad_clip), float(momentum), pc, sc
+                    float(policy_weight), float(value_weight), float(grad_clip), float(momentum), wandb_flag, pc, sc
                 ))
             except ValueError:
                 st.error("⚠️ Invalid input values.")

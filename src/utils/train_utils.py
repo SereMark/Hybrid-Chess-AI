@@ -31,7 +31,7 @@ def initialize_scheduler(optimizer: optim.Optimizer, scheduler_type: str, total_
 
 def compute_policy_loss(predicted_policies: torch.Tensor, target_policies: torch.Tensor, apply_smoothing: bool = True) -> torch.Tensor:
     if apply_smoothing:
-        one_hot = torch.zeros_like(predicted_policies).scatter(1, target_policies.unsqueeze(1), 1)
+        one_hot = torch.zeros_like(predicted_policies).scatter_(1, target_policies.unsqueeze(1), 1)
         target_policies = one_hot * 0.9 + (1 - one_hot) * (0.1 / (predicted_policies.size(1) - 1))
     return -(target_policies * F.log_softmax(predicted_policies, dim=1)).sum(dim=1).mean()
 
@@ -44,7 +44,7 @@ def compute_total_loss(policy_loss: torch.Tensor, value_loss: torch.Tensor, poli
 def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor) -> float:
     return (predictions.argmax(1) == targets).float().sum().item() / targets.size(0) if targets.size(0) else 0.0
 
-def train_epoch(model, data_loader, device, scaler, optimizer, scheduler, epoch, max_epoch, accumulation_steps, batch_size, smooth_policy_targets, compute_accuracy_flag, policy_weight, value_weight, max_grad_norm, progress_callback, status_callback):
+def train_epoch(model, data_loader, device, scaler, optimizer, scheduler, epoch, max_epoch, accumulation_steps, batch_size, smooth_policy_targets, compute_accuracy_flag, policy_weight, value_weight, max_grad_norm, progress_callback, status_callback, use_wandb):
     model.train()
     total_policy_loss, total_value_loss, correct, total = 0.0, 0.0, 0, 0
     accumulate = 0
@@ -58,7 +58,7 @@ def train_epoch(model, data_loader, device, scaler, optimizer, scheduler, epoch,
         scaler.scale(loss).backward()
         accumulate += 1
         if accumulate % accumulation_steps == 0 or batch_idx == len(data_loader):
-            if max_grad_norm and max_grad_norm > 0:
+            if max_grad_norm > 0:
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
             scaler.step(optimizer)
@@ -75,10 +75,14 @@ def train_epoch(model, data_loader, device, scaler, optimizer, scheduler, epoch,
         if progress_callback and status_callback:
             progress_callback(batch_idx / len(data_loader) * 100)
             status_callback(f"Epoch {epoch}/{max_epoch} - Batch {batch_idx}/{len(data_loader)} - Policy Loss: {total_policy_loss / total:.4f} - Value Loss: {total_value_loss / total:.4f}")
+        if use_wandb:
+            import wandb
+            wandb.log({"train_policy_loss": policy_loss.item(), "train_value_loss": value_loss.item(), "train_accuracy": compute_accuracy(policy_preds, policy_targets), "learning_rate": scheduler.get_last_lr()[0]})
         del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
         torch.cuda.empty_cache()
+    return {"policy_loss": total_policy_loss / total, "value_loss": total_value_loss / total, "accuracy": correct / total}
 
-def validate_epoch(model, val_loader, device, epoch, max_epoch, smooth_policy_targets, progress_callback, status_callback):
+def validate_epoch(model, val_loader, device, epoch, max_epoch, smooth_policy_targets, progress_callback, status_callback, use_wandb):
     model.eval()
     val_policy_loss, val_value_loss, correct, total = 0.0, 0.0, 0, 0
     with torch.no_grad():
@@ -94,7 +98,9 @@ def validate_epoch(model, val_loader, device, epoch, max_epoch, smooth_policy_ta
             if progress_callback and status_callback:
                 progress_callback(batch_idx / len(val_loader) * 100)
                 status_callback(f"Validation - Epoch {epoch}/{max_epoch} - Batch {batch_idx}/{len(val_loader)} - Policy Loss: {val_policy_loss / total:.4f} - Value Loss: {val_value_loss / total:.4f}")
+            if use_wandb:
+                import wandb
+                wandb.log({"val_policy_loss": policy_loss.item(), "val_value_loss": value_loss.item(), "val_accuracy": compute_accuracy(policy_preds, policy_targets)})
             del inputs, policy_targets, value_targets, policy_preds, value_preds
             torch.cuda.empty_cache()
-    model.train()
     return {"policy_loss": val_policy_loss / total, "value_loss": val_value_loss / total, "accuracy": correct / total}
