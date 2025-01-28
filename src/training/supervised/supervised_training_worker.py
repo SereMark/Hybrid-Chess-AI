@@ -42,8 +42,7 @@ class SupervisedWorker:
             epoch_metrics = validate_epoch(self.model, val_loader, self.device, epoch, self.epochs, True, self.progress_callback, self.status_callback)
             val_loss = epoch_metrics["policy_loss"] + epoch_metrics["value_loss"]
             if val_loss < best_metric:
-                best_metric = val_loss
-                best_epoch = epoch
+                best_metric, best_epoch = val_loss, epoch
             if self.checkpoint_interval and self.checkpoint_interval > 0:
                 self.checkpoint_manager.save(model=self.model, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch)
         self.checkpoint_manager.save_final_model(model=self.model, optimizer=self.optimizer, scheduler=self.scheduler, epoch=self.epochs, final_path=os.path.join("models", "saved_models", "supervised_model.pth"))

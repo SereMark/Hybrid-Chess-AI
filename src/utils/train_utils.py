@@ -47,9 +47,8 @@ def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor) -> float:
 def train_epoch(model, data_loader, device, scaler, optimizer, scheduler, epoch, max_epoch, accumulation_steps, batch_size, smooth_policy_targets, compute_accuracy_flag, policy_weight, value_weight, max_grad_norm, progress_callback, status_callback):
     model.train()
     total_policy_loss, total_value_loss, correct, total = 0.0, 0.0, 0, 0
-    data_iter = iter(data_loader)
     accumulate = 0
-    for batch_idx, (inputs, policy_targets, value_targets) in enumerate(data_iter, 1):
+    for batch_idx, (inputs, policy_targets, value_targets) in enumerate(data_loader, 1):
         inputs, policy_targets, value_targets = inputs.to(device, non_blocking=True), policy_targets.to(device, non_blocking=True), value_targets.to(device, non_blocking=True)
         with autocast():
             policy_preds, value_preds = model(inputs)
@@ -66,7 +65,6 @@ def train_epoch(model, data_loader, device, scaler, optimizer, scheduler, epoch,
             scaler.update()
             optimizer.zero_grad()
             accumulate = 0
-        if scheduler and isinstance(scheduler, optim.lr_scheduler._LRScheduler):
             scheduler.step()
         batch_sz = inputs.size(0)
         total_policy_loss += policy_loss.item() * batch_sz
@@ -82,9 +80,9 @@ def train_epoch(model, data_loader, device, scaler, optimizer, scheduler, epoch,
 def validate_epoch(model, val_loader, device, epoch, max_epoch, smooth_policy_targets, progress_callback, status_callback):
     model.eval()
     val_policy_loss, val_value_loss, correct, total = 0.0, 0.0, 0, 0
-    for batch_idx, (inputs, policy_targets, value_targets) in enumerate(val_loader, 1):
-        inputs, policy_targets, value_targets = (inputs.to(device, non_blocking=True), policy_targets.to(device, non_blocking=True), value_targets.to(device, non_blocking=True))
-        with torch.no_grad():
+    with torch.no_grad():
+        for batch_idx, (inputs, policy_targets, value_targets) in enumerate(val_loader, 1):
+            inputs, policy_targets, value_targets = inputs.to(device, non_blocking=True), policy_targets.to(device, non_blocking=True), value_targets.to(device, non_blocking=True)
             policy_preds, value_preds = model(inputs)
             policy_loss = compute_policy_loss(policy_preds, policy_targets, smooth_policy_targets)
             value_loss = compute_value_loss(value_preds, value_targets)
@@ -92,9 +90,9 @@ def validate_epoch(model, val_loader, device, epoch, max_epoch, smooth_policy_ta
             val_value_loss += value_loss.item() * inputs.size(0)
             correct += compute_accuracy(policy_preds, policy_targets) * inputs.size(0)
             total += inputs.size(0)
-        progress_callback(batch_idx / len(val_loader) * 100)
-        status_callback(f"Validation - Epoch {epoch}/{max_epoch} - Batch {batch_idx}/{len(val_loader)} - Policy Loss: {val_policy_loss / total:.4f} - Value Loss: {val_value_loss / total:.4f}")
-        del inputs, policy_targets, value_targets, policy_preds, value_preds
-        torch.cuda.empty_cache()
+            progress_callback(batch_idx / len(val_loader) * 100)
+            status_callback(f"Validation - Epoch {epoch}/{max_epoch} - Batch {batch_idx}/{len(val_loader)} - Policy Loss: {val_policy_loss / total:.4f} - Value Loss: {val_value_loss / total:.4f}")
+            del inputs, policy_targets, value_targets, policy_preds, value_preds
+            torch.cuda.empty_cache()
     model.train()
     return {"policy_loss": val_policy_loss / total, "value_loss": val_value_loss / total, "accuracy": correct / total}
