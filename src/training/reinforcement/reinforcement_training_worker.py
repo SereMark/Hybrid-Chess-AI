@@ -34,7 +34,7 @@ class ReinforcementWorker:
     def run(self):
         if self.wandb:
             import wandb
-            wandb.init(entity="chess_ai", project="chess_ai_app", config=self.__dict__, reinit=True)
+            wandb.init(entity="chess_ai", project="chess_ai_app", name="reinforcement_training", config=self.__dict__, reinit=True)
             wandb.watch(self.model, log="all", log_freq=100)
         start_iteration, best_metric, best_iteration, training_start = 1, float('inf'), 0, time.time()
         if self.model_path and os.path.exists(self.model_path):

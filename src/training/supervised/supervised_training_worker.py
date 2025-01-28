@@ -31,7 +31,7 @@ class SupervisedWorker:
     def run(self):
         if self.wandb:
             import wandb
-            wandb.init(entity="chess_ai", project="chess_ai_app", config=self.__dict__, reinit=True)
+            wandb.init(entity="chess_ai", project="chess_ai_app", name="supervised_training", config=self.__dict__, reinit=True)
             wandb.watch(self.model, log="all", log_freq=100)
         train_loader = DataLoader(H5Dataset(self.dataset_path, np.load(self.train_indices_path)), batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, pin_memory=True)
         val_loader = DataLoader(H5Dataset(self.dataset_path, np.load(self.val_indices_path)), batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, pin_memory=True)
