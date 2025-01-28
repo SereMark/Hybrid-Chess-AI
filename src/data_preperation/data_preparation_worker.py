@@ -3,11 +3,11 @@ from collections import defaultdict
 from src.utils.chess_utils import convert_board_to_tensor, flip_board, flip_move, get_move_mapping
 
 class DataPreparationWorker:
-    def __init__(self, raw_pgn_file, max_games, min_elo, batch_size, engine_path, engine_depth, engine_threads, engine_hash, pgn_file, max_opening_moves, progress_callback=None, status_callback=None):
+    def __init__(self, raw_pgn_file, max_games, min_elo, batch_size, engine_path, engine_depth, engine_threads, engine_hash, pgn_file, max_opening_moves, wandb_flag, progress_callback=None, status_callback=None):
         self.raw_pgn_file, self.max_games, self.min_elo, self.batch_size = raw_pgn_file, max_games, min_elo, batch_size
         self.engine_path, self.engine_depth, self.engine_threads, self.engine_hash = engine_path, engine_depth, engine_threads, engine_hash
         self.pgn_file, self.max_opening_moves = pgn_file, max_opening_moves
-        self.progress_callback, self.status_callback = progress_callback, status_callback
+        self.wandb_flag, self.progress_callback, self.status_callback = wandb_flag, progress_callback, status_callback
         self.positions = defaultdict(lambda: defaultdict(lambda: {"win":0,"draw":0,"loss":0,"eco":"","name":""}))
         self.game_counter, self.start_time = 0, None
         self.batch_inputs, self.batch_policy_targets, self.batch_value_targets = [], [], []
@@ -17,6 +17,9 @@ class DataPreparationWorker:
         self.total_games_processed, self.current_dataset_size = 0, 0
 
     def run(self):
+        if self.wandb_flag:
+            import wandb
+            wandb.init(entity="chess_ai", project="chess_ai_app", config=self.__dict__, reinit=True)
         self.start_time = time.time()
         try:
             if platform.system() == "Windows":
@@ -105,8 +108,12 @@ class DataPreparationWorker:
                         self.batch_inputs, self.batch_policy_targets, self.batch_value_targets = [], [], []
                     self.total_games_processed +=1
                     if self.total_games_processed %10 ==0 or time.time()-last_update_time >5:
-                        self.progress_callback(int((self.total_games_processed / self.max_games) *100))
-                        self.status_callback(f"✅ Processed {self.total_games_processed}/{self.max_games} games. Skipped {skipped_games} games so far.")
+                        progress = int((self.total_games_processed / self.max_games) *100)
+                        self.progress_callback(progress)
+                        status_msg = f"✅ Processed {self.total_games_processed}/{self.max_games} games. Skipped {skipped_games} games so far."
+                        self.status_callback(status_msg)
+                        if self.wandb_flag:
+                            wandb.log({"games_processed": self.total_games_processed, "games_skipped": skipped_games, "progress": progress})
                         last_update_time = time.time()
             if self.batch_inputs:
                 batch_size = len(self.batch_inputs)
@@ -120,6 +127,8 @@ class DataPreparationWorker:
                 self.status_callback("🔍 Chess engine closed.")
             if self.pgn_file and self.max_opening_moves >0:
                 self.status_callback("🔍 Processing Opening Book...")
+                if self.wandb_flag:
+                    wandb.log({"processing_opening_book": True})
                 skipped_games_book, last_update_time_book = 0, time.time()
                 try:
                     with open(self.pgn_file, "r", encoding="utf-8", errors="ignore") as pgn_file:
@@ -151,8 +160,11 @@ class DataPreparationWorker:
                                     board.push(move)
                                 self.game_counter +=1
                                 if self.game_counter %10 ==0 or time.time()-last_update_time_book >5:
-                                    self.progress_callback(min(int((self.game_counter / self.max_games)*100), 100))
+                                    progress = min(int((self.game_counter / self.max_games)*100), 100)
+                                    self.progress_callback(progress)
                                     self.status_callback(f"✅ Processed {self.game_counter}/{self.max_games} games for opening book. Skipped {skipped_games_book} games so far.")
+                                    if self.wandb_flag:
+                                        wandb.log({"opening_games_processed": self.game_counter, "opening_games_skipped": skipped_games_book, "opening_progress": progress})
                                     last_update_time_book = time.time()
                             except:
                                 skipped_games_book +=1
@@ -184,9 +196,20 @@ class DataPreparationWorker:
                     np.save(val_indices_path, indices[train_end:val_end])
                     np.save(test_indices_path, indices[val_end:])
                     self.status_callback(f"✅ Dataset split into Train ({train_end}), Validation ({val_end - train_end}), Test ({num_samples - val_end}) samples.")
+                    if self.wandb_flag:
+                        wandb.log({"train_samples": train_end, "val_samples": val_end - train_end, "test_samples": num_samples - val_end})
             except:
                 self.status_callback("❌ Error splitting dataset.")
                 return
             total_time = time.time() - self.start_time
             self.status_callback(f"✅ Data Preparation{' & Opening Book Generation' if self.pgn_file else ''} completed successfully. Processed {self.total_games_processed} games with {skipped_games} skipped games{' and processed opening book games' if self.pgn_file else ''} in {total_time:.2f} seconds.")
+            if self.wandb_flag:
+                wandb.log({
+                    "total_games_processed": self.total_games_processed,
+                    "games_skipped": skipped_games,
+                    "opening_games_processed": self.game_counter,
+                    "opening_games_skipped": skipped_games_book,
+                    "total_time_seconds": total_time
+                })
+                wandb.finish()
             return True

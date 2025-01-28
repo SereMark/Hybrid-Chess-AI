@@ -38,11 +38,12 @@ def run_data_preparation_worker():
         raw_pgn = input_with_validation("Path to Raw PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
         engine = input_with_validation("Path to Chess Engine:", "engine/stockfish/stockfish-windows-x86-64-avx2.exe", "file")
         generate_book = st.checkbox("Generate Opening Book", True)
+        wandb_flag = st.checkbox("Enable Weights & Biases Logging", True)
         if generate_book:
             pgn = input_with_validation("Path to PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
             max_opening_moves = st.slider("Max Opening Moves:", 1, 30, 25)
         else:
-            pgn, max_opening_moves = None, 0
+            pgn, max_opening_moves = "", 0
         col1, col2 = st.columns(2)
         with col1:
             max_games = st.slider("Max Games:", 100, 20000, 10000)
@@ -56,12 +57,9 @@ def run_data_preparation_worker():
         engine_hash = st.slider("Engine Hash (MB):", 128, 4096, 2048, step=128)
         batch_size = st.number_input("Batch Size:", 1, 10000, 512, step=1)
     if st.button("Start Data Preparation 🏁"):
-        if generate_book:
-            paths = [raw_pgn, engine, pgn]
-        else:
-            paths = [raw_pgn, engine]
+        paths = [raw_pgn, engine] + ([pgn] if generate_book else [])
         if all(validate_path(p, "file") for p in paths):
-            execute_worker(lambda pc, sc: DataPreparationWorker(raw_pgn, max_games, min_elo, batch_size, engine, engine_depth, engine_threads, engine_hash, pgn or "", max_opening_moves, pc, sc))
+            execute_worker(lambda pc, sc: DataPreparationWorker(raw_pgn, max_games, min_elo, batch_size, engine, engine_depth, engine_threads, engine_hash, pgn, max_opening_moves, wandb_flag, pc, sc))
         else:
             st.error("⚠️ Invalid file paths.")
 
