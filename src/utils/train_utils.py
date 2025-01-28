@@ -11,24 +11,27 @@ def initialize_random_seeds(random_seed: int) -> None:
         torch.cuda.manual_seed_all(random_seed)
     torch.backends.cudnn.deterministic, torch.backends.cudnn.benchmark = True, False
 
-def initialize_optimizer(model: torch.nn.Module, optimizer_type: str, learning_rate: float, weight_decay: float) -> optim.Optimizer:
+def initialize_optimizer(model: torch.nn.Module, optimizer_type: str, learning_rate: float, weight_decay: float, momentum: float) -> optim.Optimizer:
     optimizer_type = optimizer_type.lower()
     return {
         'adamw': optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay),
-        'sgd': optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=0.9),
+        'sgd': optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=momentum),
         'adam': optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay),
-        'rmsprop': optim.RMSprop(model.parameters(), lr=learning_rate, weight_decay=weight_decay),
-    }.get(optimizer_type, optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay))
+        'rmsprop': optim.RMSprop(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=momentum),
+        'adagrad': optim.Adagrad(model.parameters(), lr=learning_rate, weight_decay=weight_decay),
+        'nadam': optim.NAdam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    }.get(optimizer_type)
 
-def initialize_scheduler(optimizer: optim.Optimizer, scheduler_type: str, total_steps: int = None):
+def initialize_scheduler(optimizer: optim.Optimizer, scheduler_type: str, total_steps: int) -> optim.lr_scheduler._LRScheduler:
     scheduler_type = scheduler_type.lower()
     return {
         'cosineannealingwarmrestarts': optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2),
-        'cosineannealing': optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10),
-        'steplr': optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1),
-        'exponentiallr': optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95),
-        'onelr': optim.lr_scheduler.OneCycleLR(optimizer, max_lr=optimizer.param_groups[0]['lr'], total_steps=total_steps)
-    }.get(scheduler_type, None)
+        'step': optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1),
+        'exponential': optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95),
+        'linear': optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=total_steps // 10),
+        'onecycle': optim.lr_scheduler.OneCycleLR(optimizer, max_lr=optimizer.param_groups[0]['lr'], total_steps=total_steps),
+        'none': None
+    }.get(scheduler_type)
 
 def compute_policy_loss(predicted_policies: torch.Tensor, target_policies: torch.Tensor, apply_smoothing: bool = True) -> torch.Tensor:
     if apply_smoothing:
@@ -45,13 +48,10 @@ def compute_total_loss(policy_loss: torch.Tensor, value_loss: torch.Tensor, poli
 def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor) -> float:
     return (predictions.argmax(1) == targets).float().sum().item() / targets.size(0) if targets.size(0) else 0.0
 
-def train_epoch(model, data_loader, device, scaler, optimizer, scheduler=None, epoch=1, skip_batches: int = 0, accumulation_steps: int = 1, batch_size: int = 1, smooth_policy_targets: bool = False, compute_accuracy_flag: bool = False, progress_callback=None, status_callback=None, policy_weight: float=1.0, value_weight: float=1.0, max_grad_norm: float = None):
+def train_epoch(model, data_loader, device, scaler, optimizer, scheduler, epoch, max_epoch, accumulation_steps, batch_size, smooth_policy_targets, compute_accuracy_flag, policy_weight, value_weight, max_grad_norm, progress_callback, status_callback):
     model.train()
     total_policy_loss, total_value_loss, correct, total = 0.0, 0.0, 0, 0
     data_iter = iter(data_loader)
-    for _ in range(skip_batches):
-        try: next(data_iter)
-        except StopIteration: break
     accumulate = 0
     for batch_idx, (inputs, policy_targets, value_targets) in enumerate(data_iter, 1):
         inputs, policy_targets, value_targets = inputs.to(device, non_blocking=True), policy_targets.to(device, non_blocking=True), value_targets.to(device, non_blocking=True)
@@ -79,15 +79,15 @@ def train_epoch(model, data_loader, device, scaler, optimizer, scheduler=None, e
         if compute_accuracy_flag:
             correct += compute_accuracy(policy_preds, policy_targets) * batch_sz
         progress_callback(batch_idx / len(data_loader) * 100)
-        status_callback(f"Epoch {epoch} - Batch {batch_idx}/{len(data_loader)} - Policy Loss: {total_policy_loss / total:.4f} - Value Loss: {total_value_loss / total:.4f}")
+        status_callback(f"Epoch {epoch}/{max_epoch} - Batch {batch_idx}/{len(data_loader)} - Policy Loss: {total_policy_loss / total:.4f} - Value Loss: {total_value_loss / total:.4f}")
         del inputs, policy_targets, value_targets, policy_preds, value_preds, loss
         torch.cuda.empty_cache()
 
-def validate_epoch(model, val_loader, device, epoch: int, smooth_policy_targets: bool = True, progress_callback=None, status_callback=None, policy_weight: float=1.0, value_weight: float=1.0):
+def validate_epoch(model, val_loader, device, epoch, max_epoch, smooth_policy_targets, progress_callback, status_callback):
     model.eval()
     val_policy_loss, val_value_loss, correct, total = 0.0, 0.0, 0, 0
     for batch_idx, (inputs, policy_targets, value_targets) in enumerate(val_loader, 1):
-        inputs, policy_targets, value_targets = inputs.to(device, non_blocking=True), policy_targets.to(device, non_blocking=True), value_targets.to(device, non_blocking=True)
+        inputs, policy_targets, value_targets = (inputs.to(device, non_blocking=True), policy_targets.to(device, non_blocking=True), value_targets.to(device, non_blocking=True))
         with torch.no_grad():
             policy_preds, value_preds = model(inputs)
             policy_loss = compute_policy_loss(policy_preds, policy_targets, smooth_policy_targets)
@@ -97,7 +97,8 @@ def validate_epoch(model, val_loader, device, epoch: int, smooth_policy_targets:
             correct += compute_accuracy(policy_preds, policy_targets) * inputs.size(0)
             total += inputs.size(0)
         progress_callback(batch_idx / len(val_loader) * 100)
-        status_callback(f"Validation - Epoch {epoch} - Batch {batch_idx}/{len(val_loader)} - Policy Loss: {val_policy_loss / total:.4f} - Value Loss: {val_value_loss / total:.4f}")
+        status_callback(f"Validation - Epoch {epoch}/{max_epoch} - Batch {batch_idx}/{len(val_loader)} - Policy Loss: {val_policy_loss / total:.4f} - Value Loss: {val_value_loss / total:.4f}")
         del inputs, policy_targets, value_targets, policy_preds, value_preds
         torch.cuda.empty_cache()
     model.train()
+    return {"policy_loss": val_policy_loss / total, "value_loss": val_value_loss / total, "accuracy": correct / total}
