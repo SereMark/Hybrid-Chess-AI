@@ -14,7 +14,7 @@ class BenchmarkWorker:
     def run(self):
         result_map = {'1-0': "1-0", '0-1': "0-1", '1/2-1/2': "1/2-1/2"}
         for game_idx in range(1, self.num_games + 1):
-            self.status_callback(f"Playing game {game_idx}/{self.num_games}")
+            self.status_callback(f"🎮 Playing game {game_idx}/{self.num_games}")
             board, game, node, moves_count = chess.Board(), chess.pgn.Game(), None, 0
             game.headers.update({
                 "Event": "Bot Benchmarking",
