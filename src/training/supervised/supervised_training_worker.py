@@ -31,7 +31,7 @@ class SupervisedWorker:
         val_loader = DataLoader(H5Dataset(self.dataset_path, np.load(self.val_indices_path)), batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, pin_memory=True)
         start_epoch = 1
         best_epoch = 0
-        best_metric = -float('inf')
+        best_metric = float('inf')
         training_start_time = time.time()
         if self.model_path and os.path.exists(self.model_path):
             checkpoint = self.checkpoint_manager.load(self.model_path, self.device, self.model, self.optimizer, self.scheduler)
