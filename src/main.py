@@ -7,7 +7,6 @@ from src.training.reinforcement.reinforcement_training_worker import Reinforceme
 from src.analysis.evaluation.evaluation_worker import EvaluationWorker
 from src.analysis.benchmark.benchmark_worker import BenchmarkWorker
 warnings.filterwarnings("ignore", message="Thread 'MainThread': missing ScriptRunContext!")
-
 st.set_page_config(page_title="Chess AI Management Dashboard", layout="wide", initial_sidebar_state="expanded")
 
 def validate_path(path, type_="file"):
@@ -21,8 +20,7 @@ def input_with_validation(label, default, type_="file"):
     return path
 
 def execute_worker(create_worker):
-    progress = st.progress(0)
-    status = st.empty()
+    progress, status = st.progress(0), st.empty()
     try:
         worker = create_worker(lambda p: progress.progress(int(p)), lambda m: status.text(m))
         status.text("🚀 Started!")
@@ -38,20 +36,20 @@ def execute_worker(create_worker):
 def run_data_preparation_worker():
     st.header("📂 Data Preparation")
     with st.expander("🛠️ Configure Parameters", True):
+        raw_pgn = input_with_validation("Path to Raw PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
+        engine = input_with_validation("Path to Chess Engine:", "engine/stockfish/stockfish-windows-x86-64-avx2.exe", "file")
         col1, col2 = st.columns(2)
         with col1:
-            raw_pgn = input_with_validation("Path to Raw PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
+            max_games = st.slider("Max Games:", 100, 20000, 10000)
         with col2:
-            engine = input_with_validation("Path to Chess Engine:", "engine/stockfish/stockfish-windows-x86-64-avx2.exe", "file")
-            max_games = st.slider("Max Games:", 100, 5000, 1000)
             min_elo = st.slider("Min ELO:", 0, 3000, 1600)
         col3, col4 = st.columns(2)
         with col3:
-            batch_size = st.number_input("Batch Size:", 1, 10000, 128, step=1)
-        with col4:
             engine_depth = st.slider("Engine Depth:", 1, 30, 20)
+        with col4:
             engine_threads = st.slider("Engine Threads:", 1, 8, 4)
-            engine_hash = st.slider("Engine Hash (MB):", 128, 2048, 512, step=128)
+        engine_hash = st.slider("Engine Hash (MB):", 128, 4096, 2048, step=128)
+        batch_size = st.number_input("Batch Size:", 1, 10000, 512, step=1)
     if st.button("Start Data Preparation 🏁"):
         if validate_path(raw_pgn, "file") and validate_path(engine, "file"):
             execute_worker(lambda pc, sc: DataPreparationWorker(raw_pgn, max_games, min_elo, batch_size, engine, engine_depth, engine_threads, engine_hash, pc, sc))
@@ -61,13 +59,14 @@ def run_data_preparation_worker():
 def run_opening_book_worker():
     st.header("📖 Opening Book Generator")
     with st.expander("🛠️ Configure Parameters", True):
-        col1, col2 = st.columns(2)
+        pgn = input_with_validation("Path to PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
+        col1, col2, col3 = st.columns(3)
         with col1:
-            pgn = input_with_validation("Path to PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
+            max_games = st.slider("Max Games:", 100, 20000, 10000)
         with col2:
-            max_games = st.slider("Max Games:", 100, 5000, 1000)
-            min_elo = st.slider("Min ELO:", 0, 3000, 1600)
-            max_moves = st.slider("Max Opening Moves:", 1, 30, 10)
+            min_elo = st.slider("Min ELO:", 0, 3000, 1800)
+        with col3:
+            max_moves = st.slider("Max Opening Moves:", 1, 30, 25)
     if st.button("Start Opening Book Generation 🏁"):
         if validate_path(pgn, "file"):
             execute_worker(lambda pc, sc: OpeningBookWorker(pgn, max_games, min_elo, max_moves, pc, sc))
@@ -79,110 +78,116 @@ def run_supervised_training_worker():
     with st.expander("🛠️ Configure Training Parameters", True):
         col1, col2 = st.columns(2)
         with col1:
-            epochs = st.number_input("Epochs:", 1, 1000, 10)
-            batch_size = st.number_input("Batch Size:", 1, 10000, 128)
-            accumulation_steps = st.number_input("Accumulation Steps:", 1, 100, 3)
-            lr = st.number_input("Learning Rate:", 1e-6, 1.0, 0.0001, format="%.6f")
+            epochs = st.number_input("Epochs:", 1, 1000, 50)
+            accumulation_steps = st.number_input("Accumulation Steps:", 1, 100, 8)
             wd = st.number_input("Weight Decay:", 0.0, 1.0, 0.0001, format="%.6f")
-            optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"])
-            momentum = st.number_input("Momentum:", 0.0, 1.0, 0.9, step=0.1) if optimizer in ["sgd", "rmsprop"] else 0.0
+            model = input_with_validation("Path to Existing Model (optional):", "", "file")
         with col2:
-            scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "step", "linear", "onecycle"])
-            num_workers = st.number_input("Worker Threads:", 1, 32, 4)
-            random_seed = st.number_input("Random Seed:", 0, 100000, 42)
-            policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 1.0, step=0.1)
-            value_weight = st.number_input("Value Weight:", 0.0, 10.0, 2.0, step=0.1)
-            grad_clip = st.number_input("Gradient Clip:", 0.0, 10.0, 0.1, step=0.1)
-    with st.expander("📁 Dataset Details", True):
+            batch_size = st.number_input("Batch Size:", 1, 10000, 512, step=1)
+            lr = st.number_input("Learning Rate:", 1e-6, 1.0, 0.0001, format="%.6f")
+            optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"], index=0)
+            chkpt_interval = st.number_input("Checkpoint Interval (Epochs):", 0, 100, 10, help="Set the interval (in epochs) for saving checkpoints. Set it to 0 for no checkpoints.")
+        if optimizer in ["sgd", "rmsprop"]:
+            momentum = st.number_input("Momentum:", 0.0, 1.0, 0.85, step=0.05)
+        else:
+            momentum = 0.0
         col3, col4 = st.columns(2)
         with col3:
-            dataset = input_with_validation("Path to Dataset:", "data/processed/dataset.h5", "file")
+            scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "step", "linear", "onecycle"], index=0)
         with col4:
-            train_idx = input_with_validation("Path to Train Indices:", "data/processed/train_indices.npy", "file")
-            val_idx = input_with_validation("Path to Validation Indices:", "data/processed/val_indices.npy", "file")
-    with st.expander("🔗 Model Options", True):
-        col5, col6 = st.columns(2)
-        with col5:
-            model = input_with_validation("Path to Existing Model (optional):", "", "file")
-        with col6:
-            chkpt_interval = st.number_input("Checkpoint Interval (Epochs):", 0, 100, 1, help="Set the interval (in epochs) for saving checkpoints. Set it to 0 for no checkpoints.")
+            num_workers = st.number_input("Number of Dataloader Workers:", 1, 32, 16)
+        random_seed = st.number_input("Random Seed:", 0, 100000, 12345)
+        policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 2.0, step=0.1)
+        value_weight = st.number_input("Value Weight:", 0.0, 10.0, 3.0, step=0.1)
+        grad_clip = st.number_input("Gradient Clip:", 0.0, 10.0, 2.0, step=0.1)
+    with st.expander("📁 Dataset Details", True):
+        dataset = input_with_validation("Path to Dataset:", "data/processed/dataset.h5", "file")
+        train_idx = input_with_validation("Path to Train Indices:", "data/processed/train_indices.npy", "file")
+        val_idx = input_with_validation("Path to Validation Indices:", "data/processed/val_indices.npy", "file")
     if st.button("Start Supervised Training 🏁"):
+        missing = [p for p in [dataset, train_idx, val_idx] if not validate_path(p, "file")] + ([model] if model and not validate_path(model, "file") else [])
         if scheduler == "onecycle" and optimizer not in ["sgd", "rmsprop"]:
             st.error("⚠️ onecycle scheduler is only compatible with optimizers supporting momentum (e.g., sgd or rmsprop).")
-            return
-        required = [dataset, train_idx, val_idx] + ([model] if model else [])
-        missing = [f for f in required if not validate_path(f, "file")]
-        if not missing:
-            try:
-                lr_val, wd_val = float(lr), float(wd)
-                execute_worker(lambda pc, sc: SupervisedWorker(int(epochs), int(batch_size), lr_val, wd_val, int(chkpt_interval) if chkpt_interval else 0, dataset, train_idx, val_idx, model if model else None,
-                                                               optimizer, scheduler, accumulation_steps, int(num_workers), int(random_seed), policy_weight, value_weight, grad_clip, momentum, pc, sc))
-            except ValueError:
-                st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
-        else:
+        elif any(lr <= 0 or wd < 0 for lr, wd in [(lr, wd)]) or any(v < 0 for v in [epochs, batch_size, accumulation_steps, num_workers, random_seed, policy_weight, value_weight, grad_clip]):
+            st.error("⚠️ Invalid numeric values.")
+        elif missing:
             st.error(f"⚠️ Missing files: {', '.join(missing)}.")
+        elif not batch_size:
+            st.error("⚠️ At least one batch size must be selected.")
+        else:
+            try:
+                execute_worker(lambda pc, sc: SupervisedWorker(int(epochs), int(batch_size), float(lr), float(wd), int(chkpt_interval) if chkpt_interval else 0, dataset, train_idx, val_idx, model or None, optimizer, scheduler, accumulation_steps, int(num_workers), int(random_seed), float(policy_weight), float(value_weight), float(grad_clip), float(momentum), pc, sc))
+            except ValueError:
+                st.error("⚠️ Invalid input values.")
 
 def run_reinforcement_training_worker():
     st.header("🛡️ Reinforcement Trainer")
     with st.expander("🛠️ Configure Training Parameters", True):
         col1, col2 = st.columns(2)
         with col1:
-            num_iter = st.number_input("Number of Iterations:", 1, 1000, 10)
-            games_per_iter = st.number_input("Games per Iteration:", 1, 10000, 1000, step=100)
-            simulations = st.number_input("Simulations per Move:", 1, 10000, 100, step=10)
-            c_puct = st.number_input("C_PUCT:", 0.0, 10.0, 1.4, step=0.1)
-            temperature = st.number_input("Temperature:", 0.0, 10.0, 1.0, step=0.1)
-        with col2:
-            epochs = st.number_input("Epochs per Iteration:", 1, 1000, 5)
-            batch_size = st.number_input("Batch Size:", 1, 10000, 128)
-            accumulation_steps = st.number_input("Accumulation Steps:", 1, 100, 3)
-            num_threads = st.number_input("Number of Threads:", 1, 32, 4)
+            num_iter = st.number_input("Number of Iterations:", 1, 1000, 200)
+            simulations = st.number_input("Simulations per Move:", 1, 10000, 1000, step=50)
+            c_puct = st.number_input("C_PUCT:", 0.0, 10.0, 1.6, step=0.1)
+            epochs = st.number_input("Epochs per Iteration:", 1, 1000, 20)
+            accumulation_steps = st.number_input("Accumulation Steps:", 1, 100, 8)
             lr = st.number_input("Learning Rate:", 1e-6, 1.0, 0.0001, format="%.6f")
+            optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"], index=0)
+            scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "step", "linear", "onecycle"], index=0)
+            policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 2.0, step=0.1)
+            grad_clip = st.number_input("Gradient Clip:", 0.0, 10.0, 2.0, step=0.1)
+        with col2:
+            games_per_iter = st.number_input("Games per Iteration:", 1, 10000, 3000, step=100)
+            temperature = st.number_input("Temperature:", 0.0, 10.0, 0.6, step=0.1)
+            num_threads = st.number_input("Number of Self-Play Threads:", 1, 32, 16)
+            batch_size = st.number_input("Batch Size:", 1, 10000, 512)
+            num_workers = st.number_input("Number of Dataloader Workers:", 1, 32, 16)
             wd = st.number_input("Weight Decay:", 0.0, 1.0, 0.0001, format="%.6f")
-            optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"])
-            momentum = st.number_input("Momentum:", 0.0, 1.0, 0.9, step=0.1) if optimizer in ["sgd", "rmsprop"] else 0.0
-            scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "step", "linear", "onecycle"])
-            num_workers = st.number_input("Worker Threads:", 1, 32, 4)
-            policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 1.0, step=0.1)
-            value_weight = st.number_input("Value Weight:", 0.0, 10.0, 2.0, step=0.1)
-            grad_clip = st.number_input("Gradient Clip:", 0.0, 10.0, 0.1, step=0.1)
+            chkpt_interval = st.number_input("Checkpoint Interval (Iterations):", 0, 100, 10, help="Set the interval (in iterations) for saving checkpoints. Set it to 0 for no checkpoints.")
+            random_seed = st.number_input("Random Seed:", 0, 100000, 12345)
+            value_weight = st.number_input("Value Weight:", 0.0, 10.0, 3.0, step=0.1)
+        if optimizer in ["sgd", "rmsprop"]:
+            momentum = st.number_input("Momentum:", 0.0, 1.0, 0.85, step=0.05)
+        else:
+            momentum = 0.0
     with st.expander("🔗 Model Options", True):
-        col3, col4 = st.columns(2)
-        with col3:
-            model = input_with_validation("Path to Pretrained Model (optional):", "", "file")
-        with col4:
-            chkpt_interval = st.number_input("Checkpoint Interval (Iterations):", 0, 100, 1, help="Set the interval (in iterations) for saving checkpoints. Set it to 0 for no checkpoints.")
-    random_seed = st.number_input("Random Seed:", 0, 100000, 42)
+        model = input_with_validation("Path to Pretrained Model (optional):", "", "file")
     if st.button("Start Reinforcement Training 🏁"):
+        missing = [model] if model and not validate_path(model, "file") else []
+        bounds_checks = [
+            (lr, 1e-6, 1.0),
+            (wd, 0.0, 1.0),
+            (c_puct, 0.0, 10.0),
+            (temperature, 0.0, 10.0)
+        ]
         if scheduler == "onecycle" and optimizer not in ["sgd", "rmsprop"]:
             st.error("⚠️ onecycle scheduler is only compatible with optimizers supporting momentum (e.g., sgd or rmsprop).")
-            return
-        if model and not validate_path(model, "file"):
-            st.error("⚠️ Invalid model path.")
-            return
-        try:
-            lr_val, wd_val = float(lr), float(wd)
-            execute_worker(lambda pc, sc: ReinforcementWorker(model if model else None, int(num_iter), int(games_per_iter), int(simulations), float(c_puct), float(temperature), int(epochs), int(batch_size), int(num_threads), int(chkpt_interval),
-                                                                int(random_seed), optimizer, lr_val, wd_val, scheduler, accumulation_steps, int(num_workers), policy_weight, value_weight, grad_clip, momentum, pc, sc))
-        except ValueError:
-            st.error("⚠️ Learning Rate and Weight Decay must be valid numbers.")
+        elif any(v < mn or v > mx for v, mn, mx in bounds_checks) or any(v < 0 for v in [num_iter, games_per_iter, simulations, epochs, batch_size, accumulation_steps, num_threads, num_workers, policy_weight, value_weight, grad_clip]):
+            st.error("⚠️ One or more parameters are out of bounds or negative.")
+        elif missing:
+            st.error(f"⚠️ Missing files: {model}.")
+        else:
+            try:
+                execute_worker(lambda pc, sc: ReinforcementWorker(
+                    model or None, int(num_iter), int(games_per_iter), int(simulations), float(c_puct), float(temperature),
+                    int(epochs), int(batch_size), int(num_threads), int(chkpt_interval), int(random_seed), optimizer,
+                    float(lr), float(wd), scheduler, accumulation_steps, int(num_workers),
+                    float(policy_weight), float(value_weight), float(grad_clip), float(momentum), pc, sc
+                ))
+            except ValueError:
+                st.error("⚠️ Invalid input values.")
 
 def run_evaluation_worker():
     st.header("📈 Evaluation")
     with st.expander("🛠️ Configure Evaluation Parameters", True):
-        col1, col2 = st.columns(2)
-        with col1:
-            model = input_with_validation("Path to Trained Model:", "models/saved_models/supervised_model.pth", "file")
-        with col2:
-            dataset_idx = input_with_validation("Path to Dataset Indices:", "data/processed/test_indices.npy", "file")
-            h5_path = input_with_validation("Path to H5 Dataset:", "data/processed/dataset.h5", "file")
+        model = input_with_validation("Path to Trained Model:", "models/saved_models/supervised_model.pth", "file")
+        dataset_idx = input_with_validation("Path to Dataset Indices:", "data/processed/test_indices.npy", "file")
+        h5_path = input_with_validation("Path to H5 Dataset:", "data/processed/dataset.h5", "file")
     if st.button("Start Evaluation 🏁"):
-        required = [model, dataset_idx, h5_path]
-        missing = [f for f in required if not validate_path(f, "file")]
-        if not missing:
-            execute_worker(lambda pc, sc: EvaluationWorker(model, dataset_idx, h5_path, pc, sc))
-        else:
+        missing = [p for p in [model, dataset_idx, h5_path] if not validate_path(p, "file")]
+        if missing:
             st.error(f"⚠️ Missing files: {', '.join(missing)}.")
+        else:
+            execute_worker(lambda pc, sc: EvaluationWorker(model, dataset_idx, h5_path, pc, sc))
 
 def run_benchmark_worker():
     st.header("🏆 Benchmarking")
@@ -191,102 +196,83 @@ def run_benchmark_worker():
         with col1:
             bot1 = input_with_validation("Path to Bot1 Model:", "models/saved_models/supervised_model.pth", "file")
             bot1_mcts = st.checkbox("Bot1 Use MCTS", True)
-            bot1_open = st.checkbox("Bot1 Use Opening Book", True)
         with col2:
             bot2 = input_with_validation("Path to Bot2 Model:", "models/saved_models/supervised_model.pth", "file")
             bot2_mcts = st.checkbox("Bot2 Use MCTS", True)
+        col3, col4 = st.columns(2)
+        with col3:
+            bot1_open = st.checkbox("Bot1 Use Opening Book", True)
+        with col4:
             bot2_open = st.checkbox("Bot2 Use Opening Book", True)
         num_games = st.number_input("Number of Games:", 1, 10000, 100)
     if st.button("Start Benchmarking 🏁"):
-        required = [bot1, bot2]
-        missing = [f for f in required if not validate_path(f, "file")]
-        if not missing:
-            execute_worker(lambda pc, sc: BenchmarkWorker(bot1, bot2, int(num_games), bot1_mcts, bot1_open, bot2_mcts, bot2_open, pc, sc))
-        else:
+        missing = [p for p in [bot1, bot2] if not validate_path(p, "file")]
+        if missing:
             st.error(f"⚠️ Missing files: {', '.join(missing)}.")
+        else:
+            execute_worker(lambda pc, sc: BenchmarkWorker(bot1, bot2, int(num_games), bot1_mcts, bot1_open, bot2_mcts, bot2_open, pc, sc))
 
 def run_hyperparameter_optimization_worker():
     st.header("🔍 Hyperparameter Optimization")
     with st.expander("🛠️ General Configuration", True):
         col1, col2 = st.columns(2)
         with col1:
-            num_trials = st.number_input("Number of Trials:", min_value=1, max_value=1000, value=100, step=1)
-        with col2:
-            timeout = st.number_input("Timeout (seconds):", min_value=10, max_value=86400, value=3600, step=10)
-    with st.expander("📁 Dataset Details", True):
-        col1, col2 = st.columns(2)
-        with col1:
+            num_trials = st.number_input("Number of Trials:", 1, 1000, 200, step=1)
             dataset_path = input_with_validation("Path to Dataset:", "data/processed/dataset.h5", "file")
+            n_jobs = st.number_input("Number of Optuna Jobs:", 1, 16, 8, step=1)
+            num_workers = st.number_input("Number of Dataloader Workers:", 1, 16, 1, step=1)
         with col2:
+            timeout = st.number_input("Timeout (seconds):", 10, 86400, 7200, step=10)
             train_indices_path = input_with_validation("Path to Train Indices:", "data/processed/train_indices.npy", "file")
-            val_indices_path = input_with_validation("Path to Validation Indices:", "data/processed/val_indices.npy", "file")
-    with st.expander("⚙️ Hardware & Random Seed", True):
-        col3, col4 = st.columns(2)
-        with col3:
-            num_workers = st.number_input("Number of Worker Threads:", min_value=1, max_value=32, value=8, step=1)
-        with col4:
-            random_seed = st.number_input("Random Seed:", min_value=0, max_value=100000, value=42, step=1)
+            random_seed = st.number_input("Random Seed:", 0, 100000, 12345, step=1)
     with st.expander("⚙️ Hyperparameter Settings", True):
-        st.subheader("Learning Parameters")
         col1, col2 = st.columns(2)
         with col1:
-            lr_min = st.number_input("Learning Rate (Min):", min_value=1e-7, max_value=1.0, value=1e-4, format="%.1e")
+            lr_min = st.number_input("Learning Rate (Min):", 1e-7, 1.0, 1e-5, format="%.1e")
+            wd_min = st.number_input("Weight Decay (Min):", 1e-7, 1.0, 1e-6, format="%.1e")
+            pw_min = st.number_input("Policy Weight (Min):", 0.0, 10.0, 1.0, step=0.1)
+            vw_min = st.number_input("Value Weight (Min):", 0.0, 10.0, 1.0, step=0.1)
+            epochs_min = st.number_input("Epochs (Min):", 1, 500, 20, step=1)
+            optimizer = st.multiselect("Optimizers:", ["adamw", "sgd", "adam", "rmsprop"], default=["adamw", "adam"])
+            grad_clip_min = st.slider("Gradient Clipping (Min):", 0.0, 5.0, 0.5, 0.1)
+            momentum_min = st.slider("Momentum (Min):", 0.5, 0.99, 0.85, 0.01) if any(opt in ["sgd", "rmsprop"] for opt in optimizer) else 0.0
+            accumulation_steps_min = st.number_input("Accumulation Steps (Min):", 1, 64, 4, step=1)
         with col2:
-            lr_max = st.number_input("Learning Rate (Max):", min_value=1e-7, max_value=1.0, value=1e-2, format="%.1e")
-        col3, col4 = st.columns(2)
-        with col3:
-            wd_min = st.number_input("Weight Decay (Min):", min_value=1e-7, max_value=1.0, value=1e-5, format="%.1e")
-        with col4:
-            wd_max = st.number_input("Weight Decay (Max):", min_value=1e-7, max_value=1.0, value=1e-2, format="%.1e")
-        st.subheader("Policy and Value Weights")
-        col1, col2 = st.columns(2)
-        with col1:
-            pw_min = st.number_input("Policy Weight (Min):", min_value=0.0, max_value=10.0, value=0.5, step=0.1)
-        with col2:
-            pw_max = st.number_input("Policy Weight (Max):", min_value=0.0, max_value=10.0, value=2.0, step=0.1)
-        col3, col4 = st.columns(2)
-        with col3:
-            vw_min = st.number_input("Value Weight (Min):", min_value=0.0, max_value=10.0, value=0.5, step=0.1)
-        with col4:
-            vw_max = st.number_input("Value Weight (Max):", min_value=0.0, max_value=10.0, value=2.0, step=0.1)
-        st.subheader("Training Parameters")
-        col1, col2 = st.columns(2)
-        with col1:
-            batch_size = st.multiselect("Batch Sizes:", [16, 32, 64, 128], default=[32, 64, 128])
-        with col2:
-            epochs_min = st.number_input("Epochs (Min):", min_value=1, max_value=500, value=10, step=1)
-            epochs_max = st.number_input("Epochs (Max):", min_value=1, max_value=500, value=50, step=1)
-        st.subheader("Optimizer & Scheduler")
-        col1, col2 = st.columns(2)
-        with col1:
-            optimizer = st.multiselect("Optimizers:", ["adamw", "sgd", "adam", "rmsprop"], default=["adamw", "adam", "sgd"])
-        with col2:
-            scheduler = st.multiselect("Schedulers:", ["cosineannealingwarmrestarts", "step", "linear", "onecycle"], default=["cosineannealingwarmrestarts", "linear", "onecycle"])
-        st.subheader("Regularization Parameters")
-        col1, col2 = st.columns(2)
-        with col1:
-            grad_clip_min = st.slider("Gradient Clipping (Min):", 0.0, 5.0, 0.1, 0.1)
-        with col2:
-            grad_clip_max = st.slider("Gradient Clipping (Max):", 0.0, 5.0, 1.0, 0.1)
-        st.subheader("Momentum & Accumulation Steps")
-        col1, col2 = st.columns(2)
-        with col1:
-            momentum_min = st.slider("Momentum (Min):", 0.5, 0.99, 0.9, 0.01) if any(opt in ["sgd", "rmsprop"] for opt in optimizer) else None
-        with col2:
-            momentum_max = st.slider("Momentum (Max):", 0.5, 0.99, 0.99, 0.01) if any(opt in ["sgd", "rmsprop"] for opt in optimizer) else None
-        col3, col4 = st.columns(2)
-        with col3:
-            accumulation_steps_min = st.number_input("Accumulation Steps (Min):", min_value=1, max_value=64, value=2, step=1)
-        with col4:
-            accumulation_steps_max = st.number_input("Accumulation Steps (Max):", min_value=1, max_value=64, value=16, step=1)
+            lr_max = st.number_input("Learning Rate (Max):", 1e-7, 1.0, 1e-3, format="%.1e")
+            wd_max = st.number_input("Weight Decay (Max):", 1e-7, 1.0, 1e-3, format="%.1e")
+            pw_max = st.number_input("Policy Weight (Max):", 0.0, 10.0, 3.0, step=0.1)
+            vw_max = st.number_input("Value Weight (Max):", 0.0, 10.0, 3.0, step=0.1)
+            epochs_max = st.number_input("Epochs (Max):", 1, 500, 100, step=1)
+            scheduler = st.multiselect("Schedulers:", ["cosineannealingwarmrestarts", "step", "linear", "onecycle"], default=["cosineannealingwarmrestarts", "onecycle"])
+            grad_clip_max = st.slider("Gradient Clipping (Max):", 0.0, 5.0, 2.0, 0.1)
+            momentum_max = st.slider("Momentum (Max):", 0.5, 0.99, 0.95, 0.01) if any(opt in ["sgd", "rmsprop"] for opt in optimizer) else 0.0
+            accumulation_steps_max = st.number_input("Accumulation Steps (Max):", 1, 64, 8, step=1)
+        batch_size = st.multiselect("Batch Sizes:", [16, 32, 64, 128, 256], default=[32, 64, 128, 256])
+    with st.expander("📁 Dataset Details", True):
+        val_indices_path = input_with_validation("Path to Validation Indices:", "data/processed/val_indices.npy", "file")
     if st.button("Start Optimization 🏁"):
-        required_paths = [dataset_path, train_indices_path, val_indices_path]
-        missing = [p for p in required_paths if not validate_path(p, "file")]
-        if not missing:
-            execute_worker(lambda pc, sc: HyperparameterOptimizationWorker(num_trials, timeout, dataset_path, train_indices_path, val_indices_path, num_workers, random_seed, lr_min, lr_max, wd_min, wd_max, batch_size, epochs_min, epochs_max, optimizer, scheduler,
-                                                                           grad_clip_min, grad_clip_max, momentum_min, momentum_max, accumulation_steps_min, accumulation_steps_max, pw_min, pw_max, vw_min, vw_max, pc, sc))
-        else:
+        missing = [p for p in [dataset_path, train_indices_path, val_indices_path] if not validate_path(p, "file")]
+        conditions = [lr_min > lr_max, wd_min > wd_max, pw_min > pw_max, vw_min > vw_max]
+        if any(conditions + ([momentum_min > momentum_max] if any(opt in ["sgd", "rmsprop"] for opt in optimizer) else [])):
+            st.error("⚠️ Minimum values cannot exceed maximum values.")
+        elif not batch_size:
+            st.error("⚠️ At least one batch size must be selected.")
+        elif not optimizer:
+            st.error("⚠️ At least one optimizer must be selected.")
+        elif not scheduler:
+            st.error("⚠️ At least one scheduler must be selected.")
+        elif missing:
             st.error(f"⚠️ Missing files: {', '.join(missing)}.")
+        else:
+            try:
+                execute_worker(lambda pc, sc: HyperparameterOptimizationWorker(
+                    num_trials, timeout, dataset_path, train_indices_path, val_indices_path, n_jobs, num_workers, random_seed,
+                    lr_min, lr_max, wd_min, wd_max, batch_size, epochs_min, epochs_max, optimizer, scheduler,
+                    grad_clip_min, grad_clip_max, momentum_min, momentum_max, accumulation_steps_min, accumulation_steps_max,
+                    pw_min, pw_max, vw_min, vw_max, pc, sc
+                ))
+            except ValueError:
+                st.error("⚠️ Invalid input values.")
 
 sections = {
     "Data Preparation": run_data_preparation_worker,
