@@ -17,9 +17,7 @@ def initialize_optimizer(model: torch.nn.Module, optimizer_type: str, learning_r
         'adamw': optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay),
         'sgd': optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=momentum),
         'adam': optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay),
-        'rmsprop': optim.RMSprop(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=momentum),
-        'adagrad': optim.Adagrad(model.parameters(), lr=learning_rate, weight_decay=weight_decay),
-        'nadam': optim.NAdam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        'rmsprop': optim.RMSprop(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=momentum)
     }.get(optimizer_type)
 
 def initialize_scheduler(optimizer: optim.Optimizer, scheduler_type: str, total_steps: int) -> optim.lr_scheduler._LRScheduler:
@@ -27,10 +25,8 @@ def initialize_scheduler(optimizer: optim.Optimizer, scheduler_type: str, total_
     return {
         'cosineannealingwarmrestarts': optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2),
         'step': optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1),
-        'exponential': optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95),
         'linear': optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=total_steps // 10),
-        'onecycle': optim.lr_scheduler.OneCycleLR(optimizer, max_lr=optimizer.param_groups[0]['lr'], total_steps=total_steps),
-        'none': None
+        'onecycle': optim.lr_scheduler.OneCycleLR(optimizer, max_lr=optimizer.param_groups[0]['lr'], total_steps=total_steps)
     }.get(scheduler_type)
 
 def compute_policy_loss(predicted_policies: torch.Tensor, target_policies: torch.Tensor, apply_smoothing: bool = True) -> torch.Tensor:

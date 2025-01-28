@@ -66,8 +66,7 @@ class ReinforcementWorker:
             policy_tensor = torch.from_numpy(np.array(all_policy, dtype=np.float32))
             value_tensor = torch.tensor(all_value, dtype=torch.float32)
             data_loader = DataLoader(TensorDataset(inputs_tensor, policy_tensor, value_tensor), batch_size=self.batch_size, shuffle=True, pin_memory=(self.device.type == "cuda"), num_workers=self.num_workers)
-            if not self.scheduler:
-                self.scheduler = initialize_scheduler(self.optimizer, self.scheduler_type, total_steps=self.num_epochs * len(data_loader))
+            self.scheduler = initialize_scheduler(self.optimizer, self.scheduler_type, total_steps=self.num_epochs * len(data_loader))
             for epoch in range(1, self.num_epochs + 1):
                 train_epoch(self.model, data_loader, self.device, self.scaler, self.optimizer, self.scheduler, epoch, self.num_epochs, self.accumulation_steps, self.batch_size, False, False, self.policy_weight, self.value_weight, self.grad_clip, self.progress_callback, self.status_callback)
             if self.checkpoint_interval and self.checkpoint_interval > 0:

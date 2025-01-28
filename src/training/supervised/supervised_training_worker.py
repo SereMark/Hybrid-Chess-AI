@@ -29,16 +29,14 @@ class SupervisedWorker:
     def run(self):
         train_loader = DataLoader(H5Dataset(self.dataset_path, np.load(self.train_indices_path)), batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, pin_memory=True)
         val_loader = DataLoader(H5Dataset(self.dataset_path, np.load(self.val_indices_path)), batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, pin_memory=True)
-        start_epoch = 1
-        best_epoch = 0
+        start_epoch, best_epoch = 1, 0
         best_metric = float('inf')
         training_start_time = time.time()
         if self.model_path and os.path.exists(self.model_path):
             checkpoint = self.checkpoint_manager.load(self.model_path, self.device, self.model, self.optimizer, self.scheduler)
             if checkpoint:
                 start_epoch = checkpoint.get('epoch', 0) + 1
-        if not self.scheduler:
-            self.scheduler = initialize_scheduler(self.optimizer, self.scheduler_type, total_steps=self.epochs * len(train_loader))
+        self.scheduler = initialize_scheduler(self.optimizer, self.scheduler_type, total_steps=self.epochs * len(train_loader))
         for epoch in range(start_epoch, self.epochs + 1):
             train_epoch(self.model, train_loader, self.device, self.scaler, self.optimizer, self.scheduler, epoch, self.epochs, self.accumulation_steps, self.batch_size, True, True, self.policy_weight, self.value_weight, self.grad_clip, self.progress_callback, self.status_callback)
             epoch_metrics = validate_epoch(self.model, val_loader, self.device, epoch, self.epochs, True, self.progress_callback, self.status_callback)
@@ -48,6 +46,5 @@ class SupervisedWorker:
                 best_epoch = epoch
             if self.checkpoint_interval and self.checkpoint_interval > 0:
                 self.checkpoint_manager.save(model=self.model, optimizer=self.optimizer, scheduler=self.scheduler, epoch=epoch)
-        training_time = time.time() - training_start_time
         self.checkpoint_manager.save_final_model(model=self.model, optimizer=self.optimizer, scheduler=self.scheduler, epoch=self.epochs, final_path=os.path.join("models", "saved_models", "supervised_model.pth"))
-        return {'metric': best_metric, 'val_loss': val_loss, 'val_accuracy': epoch_metrics["accuracy"], 'best_epoch': best_epoch, 'training_time': training_time}
+        return {'metric': best_metric, 'val_loss': val_loss, 'val_accuracy': epoch_metrics["accuracy"], 'best_epoch': best_epoch, 'training_time': time.time() - training_start_time}

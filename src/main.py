@@ -84,10 +84,10 @@ def run_supervised_training_worker():
             accumulation_steps = st.number_input("Accumulation Steps:", 1, 100, 3)
             lr = st.number_input("Learning Rate:", 1e-6, 1.0, 0.0001, format="%.6f")
             wd = st.number_input("Weight Decay:", 0.0, 1.0, 0.0001, format="%.6f")
-            optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop", "adagrad", "nadam"])
+            optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"])
             momentum = st.number_input("Momentum:", 0.0, 1.0, 0.9, step=0.1) if optimizer in ["sgd", "rmsprop"] else 0.0
         with col2:
-            scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "step", "exponential", "linear", "onecycle", "none"])
+            scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "step", "linear", "onecycle"])
             num_workers = st.number_input("Worker Threads:", 1, 32, 4)
             random_seed = st.number_input("Random Seed:", 0, 100000, 42)
             policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 1.0, step=0.1)
@@ -109,9 +109,6 @@ def run_supervised_training_worker():
     if st.button("Start Supervised Training 🏁"):
         if scheduler == "onecycle" and optimizer not in ["sgd", "rmsprop"]:
             st.error("⚠️ onecycle scheduler is only compatible with optimizers supporting momentum (e.g., sgd or rmsprop).")
-            return
-        if momentum is None and optimizer in ["sgd", "rmsprop"]:
-            st.error("⚠️ Momentum must be set for sgd or rmsprop optimizers.")
             return
         required = [dataset, train_idx, val_idx] + ([model] if model else [])
         missing = [f for f in required if not validate_path(f, "file")]
@@ -142,9 +139,9 @@ def run_reinforcement_training_worker():
             num_threads = st.number_input("Number of Threads:", 1, 32, 4)
             lr = st.number_input("Learning Rate:", 1e-6, 1.0, 0.0001, format="%.6f")
             wd = st.number_input("Weight Decay:", 0.0, 1.0, 0.0001, format="%.6f")
-            optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop", "adagrad", "nadam"])
+            optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"])
             momentum = st.number_input("Momentum:", 0.0, 1.0, 0.9, step=0.1) if optimizer in ["sgd", "rmsprop"] else 0.0
-            scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "step", "exponential", "linear", "onecycle", "none"])
+            scheduler = st.selectbox("Scheduler Type:", ["cosineannealingwarmrestarts", "step", "linear", "onecycle"])
             num_workers = st.number_input("Worker Threads:", 1, 32, 4)
             policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 1.0, step=0.1)
             value_weight = st.number_input("Value Weight:", 0.0, 10.0, 2.0, step=0.1)
@@ -159,9 +156,6 @@ def run_reinforcement_training_worker():
     if st.button("Start Reinforcement Training 🏁"):
         if scheduler == "onecycle" and optimizer not in ["sgd", "rmsprop"]:
             st.error("⚠️ onecycle scheduler is only compatible with optimizers supporting momentum (e.g., sgd or rmsprop).")
-            return
-        if momentum is None and optimizer in ["sgd", "rmsprop"]:
-            st.error("⚠️ Momentum must be set for sgd or rmsprop optimizers.")
             return
         if model and not validate_path(model, "file"):
             st.error("⚠️ Invalid model path.")
@@ -216,9 +210,9 @@ def run_hyperparameter_optimization_worker():
     with st.expander("🛠️ General Configuration", True):
         col1, col2 = st.columns(2)
         with col1:
-            num_trials = st.number_input("Number of Trials:", min_value=1, max_value=1000, value=50, step=1)
+            num_trials = st.number_input("Number of Trials:", min_value=1, max_value=1000, value=100, step=1)
         with col2:
-            timeout = st.number_input("Timeout (seconds):", min_value=10, max_value=3600, value=600, step=10)
+            timeout = st.number_input("Timeout (seconds):", min_value=10, max_value=86400, value=3600, step=10)
     with st.expander("📁 Dataset Details", True):
         col1, col2 = st.columns(2)
         with col1:
@@ -229,59 +223,60 @@ def run_hyperparameter_optimization_worker():
     with st.expander("⚙️ Hardware & Random Seed", True):
         col3, col4 = st.columns(2)
         with col3:
-            num_workers = st.number_input("Number of Worker Threads:", min_value=1, max_value=32, value=4, step=1)
+            num_workers = st.number_input("Number of Worker Threads:", min_value=1, max_value=32, value=8, step=1)
         with col4:
             random_seed = st.number_input("Random Seed:", min_value=0, max_value=100000, value=42, step=1)
     with st.expander("⚙️ Hyperparameter Settings", True):
         st.subheader("Learning Parameters")
         col1, col2 = st.columns(2)
         with col1:
-            lr_min = st.number_input("Learning Rate (Min):", min_value=1e-7, max_value=1.0, value=1e-5, format="%.1e")
+            lr_min = st.number_input("Learning Rate (Min):", min_value=1e-7, max_value=1.0, value=1e-4, format="%.1e")
         with col2:
-            lr_max = st.number_input("Learning Rate (Max):", min_value=1e-7, max_value=1.0, value=5e-3, format="%.1e")
+            lr_max = st.number_input("Learning Rate (Max):", min_value=1e-7, max_value=1.0, value=1e-2, format="%.1e")
         col3, col4 = st.columns(2)
         with col3:
-            wd_min = st.number_input("Weight Decay (Min):", min_value=1e-7, max_value=1.0, value=1e-6, format="%.1e")
+            wd_min = st.number_input("Weight Decay (Min):", min_value=1e-7, max_value=1.0, value=1e-5, format="%.1e")
         with col4:
-            wd_max = st.number_input("Weight Decay (Max):", min_value=1e-7, max_value=1.0, value=1e-1, format="%.1e")
+            wd_max = st.number_input("Weight Decay (Max):", min_value=1e-7, max_value=1.0, value=1e-2, format="%.1e")
         st.subheader("Policy and Value Weights")
         col1, col2 = st.columns(2)
         with col1:
-            pw_min = st.number_input("Policy Weight (Min):", min_value=0.0, max_value=10.0, value=0.1, step=0.1)
+            pw_min = st.number_input("Policy Weight (Min):", min_value=0.0, max_value=10.0, value=0.5, step=0.1)
         with col2:
-            pw_max = st.number_input("Policy Weight (Max):", min_value=0.0, max_value=10.0, value=5.0, step=0.1)
+            pw_max = st.number_input("Policy Weight (Max):", min_value=0.0, max_value=10.0, value=2.0, step=0.1)
+        col3, col4 = st.columns(2)
         with col3:
-            vw_min = st.number_input("Value Weight (Min):", min_value=0.0, max_value=10.0, value=0.1, step=0.1)
+            vw_min = st.number_input("Value Weight (Min):", min_value=0.0, max_value=10.0, value=0.5, step=0.1)
         with col4:
-            vw_max = st.number_input("Value Weight (Max):", min_value=0.0, max_value=10.0, value=5.0, step=0.1)
+            vw_max = st.number_input("Value Weight (Max):", min_value=0.0, max_value=10.0, value=2.0, step=0.1)
         st.subheader("Training Parameters")
         col1, col2 = st.columns(2)
         with col1:
-            batch_size = st.multiselect("Batch Sizes:", [16, 32, 64, 128, 256], default=[16, 32, 64, 128, 256])
+            batch_size = st.multiselect("Batch Sizes:", [16, 32, 64, 128], default=[32, 64, 128])
         with col2:
             epochs_min = st.number_input("Epochs (Min):", min_value=1, max_value=500, value=10, step=1)
-            epochs_max = st.number_input("Epochs (Max):", min_value=1, max_value=500, value=100, step=1)
+            epochs_max = st.number_input("Epochs (Max):", min_value=1, max_value=500, value=50, step=1)
         st.subheader("Optimizer & Scheduler")
         col1, col2 = st.columns(2)
         with col1:
-            optimizer = st.multiselect("Optimizers:", ["adamw", "sgd", "adam", "rmsprop", "adagrad", "nadam"], default=["adamw", "sgd", "adam", "rmsprop", "adagrad", "nadam"])
+            optimizer = st.multiselect("Optimizers:", ["adamw", "sgd", "adam", "rmsprop"], default=["adamw", "adam", "sgd"])
         with col2:
-            scheduler = st.multiselect("Schedulers:", ["cosineannealingwarmrestarts", "step", "exponential", "linear", "onecycle", "none"], default=["cosineannealingwarmrestarts", "step", "exponential", "linear", "onecycle", "none"])
+            scheduler = st.multiselect("Schedulers:", ["cosineannealingwarmrestarts", "step", "linear", "onecycle"], default=["cosineannealingwarmrestarts", "linear", "onecycle"])
         st.subheader("Regularization Parameters")
         col1, col2 = st.columns(2)
         with col1:
-            grad_clip_min = st.slider("Gradient Clipping (Min):", 0.0, 5.0, 0.0, 0.1)
+            grad_clip_min = st.slider("Gradient Clipping (Min):", 0.0, 5.0, 0.1, 0.1)
         with col2:
             grad_clip_max = st.slider("Gradient Clipping (Max):", 0.0, 5.0, 1.0, 0.1)
         st.subheader("Momentum & Accumulation Steps")
         col1, col2 = st.columns(2)
         with col1:
-            momentum_min = st.slider("Momentum (Min):", 0.5, 0.99, 0.6, 0.01) if any(opt in ["sgd", "rmsprop"] for opt in optimizer) else None
+            momentum_min = st.slider("Momentum (Min):", 0.5, 0.99, 0.9, 0.01) if any(opt in ["sgd", "rmsprop"] for opt in optimizer) else None
         with col2:
             momentum_max = st.slider("Momentum (Max):", 0.5, 0.99, 0.99, 0.01) if any(opt in ["sgd", "rmsprop"] for opt in optimizer) else None
         col3, col4 = st.columns(2)
         with col3:
-            accumulation_steps_min = st.number_input("Accumulation Steps (Min):", min_value=1, max_value=64, value=1, step=1)
+            accumulation_steps_min = st.number_input("Accumulation Steps (Min):", min_value=1, max_value=64, value=2, step=1)
         with col4:
             accumulation_steps_max = st.number_input("Accumulation Steps (Max):", min_value=1, max_value=64, value=16, step=1)
     if st.button("Start Optimization 🏁"):
