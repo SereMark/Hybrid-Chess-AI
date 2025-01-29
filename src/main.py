@@ -38,7 +38,7 @@ def run_data_preparation_worker():
         raw_pgn = input_with_validation("Path to Raw PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
         engine = input_with_validation("Path to Chess Engine:", "engine/stockfish/stockfish-windows-x86-64-avx2.exe", "file")
         generate_book = st.checkbox("Generate Opening Book", True)
-        wandb_flag = st.checkbox("Enable Weights & Biases Logging", True)
+        wandb_flag = st.checkbox("Enable Weights & Biases", True)
         if generate_book:
             pgn = input_with_validation("Path to PGN File:", "data/raw/lichess_db_standard_rated_2024-12.pgn", "file")
             max_opening_moves = st.slider("Max Opening Moves:", 1, 30, 25)
@@ -178,12 +178,13 @@ def run_evaluation_worker():
         model = input_with_validation("Path to Trained Model:", "models/saved_models/supervised_model.pth", "file")
         dataset_idx = input_with_validation("Path to Dataset Indices:", "data/processed/test_indices.npy", "file")
         h5_path = input_with_validation("Path to H5 Dataset:", "data/processed/dataset.h5", "file")
+        wandb_flag = st.checkbox("Enable Weights & Biases", True)
     if st.button("Start Evaluation 🏁"):
         missing = [p for p in [model, dataset_idx, h5_path] if not validate_path(p, "file")]
         if missing:
             st.error(f"⚠️ Missing files: {', '.join(missing)}.")
         else:
-            execute_worker(lambda pc, sc: EvaluationWorker(model, dataset_idx, h5_path, pc, sc))
+            execute_worker(lambda pc, sc: EvaluationWorker(model, dataset_idx, h5_path, wandb_flag, pc, sc))
 
 def run_benchmark_worker():
     st.header("🏆 Benchmarking")
@@ -201,12 +202,13 @@ def run_benchmark_worker():
         with col4:
             bot2_open = st.checkbox("Bot2 Use Opening Book", True)
         num_games = st.number_input("Number of Games:", 1, 10000, 100)
+        wandb_flag = st.checkbox("Enable Weights & Biases", True)
     if st.button("Start Benchmarking 🏁"):
         missing = [p for p in [bot1, bot2] if not validate_path(p, "file")]
         if missing:
             st.error(f"⚠️ Missing files: {', '.join(missing)}.")
         else:
-            execute_worker(lambda pc, sc: BenchmarkWorker(bot1, bot2, int(num_games), bot1_mcts, bot1_open, bot2_mcts, bot2_open, pc, sc))
+            execute_worker(lambda pc, sc: BenchmarkWorker(bot1, bot2, int(num_games), bot1_mcts, bot1_open, bot2_mcts, bot2_open, wandb_flag, pc, sc))
 
 def run_hyperparameter_optimization_worker():
     st.header("🔍 Hyperparameter Optimization")

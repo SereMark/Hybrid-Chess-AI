@@ -2,29 +2,26 @@ import os, json, time, chess, chess.pgn
 from src.analysis.benchmark.bot import Bot
 
 class BenchmarkWorker:
-    def __init__(self, bot1_path: str, bot2_path: str, num_games: int, bot1_use_mcts: bool, bot1_use_opening_book: bool, bot2_use_mcts: bool, bot2_use_opening_book: bool, progress_callback=None, status_callback=None):
+    def __init__(self, bot1_path: str, bot2_path: str, num_games: int, bot1_use_mcts: bool, bot1_use_opening_book: bool, bot2_use_mcts: bool, bot2_use_opening_book: bool, wandb_flag=False, progress_callback=None, status_callback=None):
         self.bot1 = Bot(path=bot1_path, use_mcts=bot1_use_mcts, use_opening_book=bot1_use_opening_book)
         self.bot2 = Bot(path=bot2_path, use_mcts=bot2_use_mcts, use_opening_book=bot2_use_opening_book)
         self.num_games, self.progress_callback, self.status_callback = num_games, progress_callback, status_callback
+        self.wandb = wandb_flag
         self.games_dir = os.path.join("data", "games", "benchmark")
         os.makedirs(self.games_dir, exist_ok=True)
         with open(os.path.join("data", "processed", "opening_book.json"), "r", encoding="utf-8") as f:
             self.opening_book = json.load(f)
 
     def run(self):
+        if self.wandb:
+            import wandb
+            wandb.init(entity="chess_ai", project="chess_ai_app", name="benchmark", config=self.__dict__, reinit=True)
         result_map = {'1-0': "1-0", '0-1': "0-1", '1/2-1/2': "1/2-1/2"}
+        results = {"1-0":0, "0-1":0, "1/2-1/2":0}
         for game_idx in range(1, self.num_games + 1):
             self.status_callback(f"🎮 Playing game {game_idx}/{self.num_games}")
-            board, game, node, moves_count = chess.Board(), chess.pgn.Game(), None, 0
-            game.headers.update({
-                "Event": "Bot Benchmarking",
-                "Site": "Local",
-                "Date": time.strftime("%Y.%m.%d"),
-                "Round": "-",
-                "White": "Bot1",
-                "Black": "Bot2",
-                "Result": "*"
-            })
+            board, game, node = chess.Board(), chess.pgn.Game(), None
+            game.headers.update({"Event": "Bot Benchmarking", "Site": "Local", "Date": time.strftime("%Y.%m.%d"), "Round": "-", "White": "Bot1", "Black": "Bot2", "Result": "*"})
             node = game
             while not board.is_game_over():
                 current_bot = self.bot1 if board.turn == chess.WHITE else self.bot2
@@ -33,12 +30,19 @@ class BenchmarkWorker:
                     break
                 board.push(move)
                 node = node.add_variation(move)
-                moves_count += 1
             result = result_map.get(board.result(), "1/2-1/2")
+            results[result] +=1
             game.headers["Result"] = result
             pgn_filename = os.path.join(self.games_dir, f"game_{game_idx}.pgn")
             with open(pgn_filename, "w", encoding="utf-8") as pgn_file:
                 pgn_file.write(str(game))
             self.progress_callback(game_idx / self.num_games)
             self.status_callback(f"Completed game {game_idx}/{self.num_games}")
-        return True
+            if self.wandb:
+                wandb.log({"game_result": result, "game_idx": game_idx})
+        if self.wandb:
+            wandb.log({"total_games": self.num_games, "wins_bot1": results["1-0"], "wins_bot2": results["0-1"], "draws": results["1/2-1/2"], "game_outcomes": wandb.plot.bar(
+            wandb.Table(columns=["Input", "Output", "Expected"], data=[[k, v, None] for k, v in results.items()]), "Input", "Output", title="Game Outcomes")})
+            wandb.run.summary.update(results)
+            wandb.finish()
+        return results
