@@ -17,3 +17,11 @@ dependencies:
   - optuna
   - scikit-learn
   - shap
+  - boto3
+  - azure-storage-blob
+  - paramiko
+  - pip
+  - pip:
+      - berserk
+      - google-cloud
+      - google-cloud-storage
