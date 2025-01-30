@@ -45,27 +45,21 @@ class TransformerChessModel(nn.Module):
         self.d_model = d_model
         self.seq_len = max_seq_len
 
-        # 1. Efficient Patch Embedding using Depthwise Separable Convolution
         self.patch_embedding = DepthwiseSeparableConv(input_channels, d_model)
 
-        # 2. Positional Encoding
         self.pos_encoder = LearnablePositionalEncoding(d_model, max_len=self.seq_len)
 
-        # 3. Transformer Encoder with Pre-Layer Normalization
         encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, dropout=dropout, activation='gelu', batch_first=True, norm_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
-        # 4. Shared LayerNorm for both heads
         self.shared_norm = nn.LayerNorm(d_model)
 
-        # 5. Policy Head
         self.policy_head = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
             nn.SiLU(),
             nn.Linear(d_model // 2, num_moves)
         )
 
-        # 6. Value Head
         self.value_head = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
             nn.SiLU(),
@@ -75,10 +69,8 @@ class TransformerChessModel(nn.Module):
             nn.Tanh()
         )
 
-        # 7. Attention Pooling
         self.attention_pooling = AttentionPooling(d_model)
 
-        # 8. Weight Initialization
         self._init_weights()
 
     def _init_weights(self):
@@ -98,28 +90,21 @@ class TransformerChessModel(nn.Module):
                 nn.init.ones_(module.weight)
                 nn.init.zeros_(module.bias)
             elif isinstance(module, nn.Parameter):
-                # Positional embeddings are already initialized separately
                 pass
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # 1. Patch Embedding
-        x = self.patch_embedding(x)  # Shape: (batch_size, d_model, 4, 4)
+        x = self.patch_embedding(x)
 
-        # Flatten spatial dimensions
-        x = x.flatten(2).transpose(1, 2)  # Shape: (batch_size, 16, d_model)
-        x = self.pos_encoder(x)           # Add positional encoding
+        x = x.flatten(2).transpose(1, 2)
+        x = self.pos_encoder(x)
 
-        # 2. Transformer Encoding
-        x = self.transformer_encoder(x)    # Shape: (batch_size, 16, d_model)
+        x = self.transformer_encoder(x)
 
-        # 3. Shared LayerNorm
-        x = self.shared_norm(x)           # Shape: (batch_size, 16, d_model)
+        x = self.shared_norm(x)
 
-        # 4. Aggregate features via Attention Pooling
-        x = self.attention_pooling(x)     # Shape: (batch_size, d_model)
+        x = self.attention_pooling(x)
 
-        # 5. Policy and Value Heads
-        policy = self.policy_head(x)       # Shape: (batch_size, num_moves)
-        value = self.value_head(x)         # Shape: (batch_size, 1)
+        policy = self.policy_head(x)
+        value = self.value_head(x)
 
         return policy, value

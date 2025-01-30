@@ -1,218 +1,542 @@
-import os, h5py, time, chess, chess.pgn, numpy as np, chess.engine, asyncio, platform, json
+import os
+import h5py
+import time
+import chess
+import chess.pgn
+import numpy as np
+import chess.engine
+import asyncio
+import platform
+import json
+
 from collections import defaultdict
-from src.utils.chess_utils import convert_board_to_tensor, flip_board, flip_move, get_move_mapping
+from src.utils.chess_utils import (
+    convert_board_to_tensor,
+    get_move_mapping,
+    apply_augmentations
+)
 
 class DataPreparationWorker:
-    def __init__(self, raw_pgn_file, max_games, min_elo, batch_size, engine_path, engine_depth, engine_threads, engine_hash, pgn_file, max_opening_moves, wandb_flag, progress_callback=None, status_callback=None):
-        self.raw_pgn_file, self.max_games, self.min_elo, self.batch_size = raw_pgn_file, max_games, min_elo, batch_size
-        self.engine_path, self.engine_depth, self.engine_threads, self.engine_hash = engine_path, engine_depth, engine_threads, engine_hash
-        self.pgn_file, self.max_opening_moves = pgn_file, max_opening_moves
-        self.wandb_flag, self.progress_callback, self.status_callback = wandb_flag, progress_callback, status_callback
+    def __init__(
+        self,
+        raw_pgn,
+        max_games,
+        min_elo,
+        batch_size,
+        engine_path,
+        engine_depth,
+        engine_threads,
+        engine_hash,
+        pgn_file,
+        max_opening_moves,
+        wandb_flag,
+        progress_callback=None,
+        status_callback=None,
+        skip_min_moves=0,
+        skip_max_moves=99999,
+        use_time_analysis=False,
+        analysis_time=0.5
+    ):
+        self.raw_pgn_file = raw_pgn
+        self.max_games = max_games
+        self.min_elo = min_elo
+        self.batch_size = batch_size
+
+        self.engine_path = engine_path
+        self.engine_depth = engine_depth
+        self.engine_threads = engine_threads
+        self.engine_hash = engine_hash
+
+        self.pgn_file = pgn_file
+        self.max_opening_moves = max_opening_moves
+
+        self.wandb_flag = wandb_flag
+        self.progress_callback = progress_callback or (lambda x: None)
+        self.status_callback = status_callback or (lambda x: None)
+
+        self.skip_min_moves = skip_min_moves
+        self.skip_max_moves = skip_max_moves
+        self.use_time_analysis = use_time_analysis
+        self.analysis_time = analysis_time
+
         self.positions = defaultdict(lambda: defaultdict(lambda: {"win":0,"draw":0,"loss":0,"eco":"","name":""}))
-        self.game_counter, self.start_time = 0, None
-        self.batch_inputs, self.batch_policy_targets, self.batch_value_targets = [], [], []
+        self.game_counter = 0
+        self.start_time = None
+
+        self.batch_inputs = []
+        self.batch_policy_targets = []
+        self.batch_value_targets = []
+
         self.move_mapping = get_move_mapping()
-        self.output_dir = os.path.abspath(os.path.join("data","processed"))
+        self.output_dir = os.path.abspath(os.path.join("data", "processed"))
         os.makedirs(self.output_dir, exist_ok=True)
-        self.total_games_processed, self.current_dataset_size = 0, 0
+        self.total_games_processed = 0
+        self.current_dataset_size = 0
+
+        self.elo_list = []
+        self.game_lengths = []
+        self.time_control_stats = defaultdict(int)
+
+        self.augment_flip = True
+        self.augment_mirror_rank = True
 
     def run(self):
+        import wandb
         if self.wandb_flag:
-            import wandb
-            wandb.init(entity="chess_ai", project="chess_ai_app", name="data_preparation", config=self.__dict__, reinit=True)
+            wandb.init(
+                entity="chess_ai",
+                project="chess_ai_app",
+                name="data_preparation",
+                config=self.__dict__,
+                reinit=True
+            )
+            batch_table = wandb.Table(columns=["Batch", "Batch Size", "Mean Value", "Std Value"])
+            game_table = wandb.Table(columns=["Games Processed", "Games Skipped", "Progress", "Batch Size", "Dataset Size"])
+            opening_table = wandb.Table(columns=["Opening Games Processed", "Opening Games Skipped", "Opening Progress", "Unique Positions"])
+        else:
+            batch_table = None
+            game_table = None
+            opening_table = None
+
         self.start_time = time.time()
+
+        if platform.system() == "Windows":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
         try:
-            if platform.system() == "Windows":
-                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-            self.engine = chess.engine.SimpleEngine.popen_uci(self.engine_path)
-            self.engine.configure({"Threads": self.engine_threads, "Hash": self.engine_hash})
-            self.status_callback("✅ Chess engine initialized successfully.")
-        except Exception as e:
-            self.status_callback(f"❌ Failed to initialize engine: {e}")
-            self.engine = None
-        h5_path = os.path.join(self.output_dir, "dataset.h5")
-        with h5py.File(h5_path, "w") as h5_file:
-            h5_file.create_dataset("inputs", shape=(0,25,8,8), maxshape=(None,25,8,8), dtype=np.float32, compression="lzf")
-            h5_file.create_dataset("policy_targets", shape=(0,), maxshape=(None,), dtype=np.int64, compression="lzf")
-            h5_file.create_dataset("value_targets", shape=(0,), maxshape=(None,), dtype=np.float32, compression="lzf")
-            skipped_games, last_update_time = 0, time.time()
-            with open(self.raw_pgn_file, "r", errors="ignore") as f:
-                while self.total_games_processed < self.max_games:
-                    game = chess.pgn.read_game(f)
-                    if not game:
-                        break
-                    headers = game.headers
-                    white_elo_str, black_elo_str = headers.get("WhiteElo"), headers.get("BlackElo")
-                    if not white_elo_str or not black_elo_str:
-                        skipped_games +=1
-                        continue
-                    try:
-                        white_elo, black_elo = int(white_elo_str), int(black_elo_str)
-                        if white_elo < self.min_elo or black_elo < self.min_elo:
-                            skipped_games +=1
-                            continue
-                    except:
-                        skipped_games +=1
-                        continue
-                    result_map = {"1-0":1.0, "0-1":-1.0, "1/2-1/2":0.0}
-                    game_result = result_map.get(headers.get("Result"))
-                    if game_result is None:
-                        skipped_games +=1
-                        continue
-                    board, moves = game.board(), list(game.mainline_moves())
-                    inputs, policy_targets, value_targets = [], [], []
-                    for move in moves:
-                        current_tensor = convert_board_to_tensor(board)
-                        move_idx = self.move_mapping.get_index_by_move(move)
-                        if move_idx is None:
-                            self.status_callback(f"ℹ️ Move index not found for move: {move}")
-                            board.push(move)
-                            continue
-                        if not self.engine:
-                            value_target = 0.0
-                        else:
-                            try:
-                                info = self.engine.analyse(board, chess.engine.Limit(depth=self.engine_depth))
-                                score = info["score"].pov(board.turn)
-                                if score.is_mate():
-                                    value_target = 1.0 if score.mate() >0 else -1.0
-                                else:
-                                    value_target = max(min(score.score(),1000),-1000)/1000.0
-                            except:
-                                self.status_callback("❌ Error evaluating position.")
-                                value_target = 0.0
-                        inputs.append(current_tensor)
-                        policy_targets.append(move_idx)
-                        value_targets.append(value_target)
-                        flipped = flip_board(board)
-                        flipped_move = flip_move(move)
-                        flipped_idx = self.move_mapping.get_index_by_move(flipped_move)
-                        if flipped_idx is not None:
-                            inputs.append(convert_board_to_tensor(flipped))
-                            policy_targets.append(flipped_idx)
-                            value_targets.append(-value_target)
-                        board.push(move)
-                    if not inputs:
-                        skipped_games +=1
-                        continue
-                    self.batch_inputs += inputs
-                    self.batch_policy_targets += policy_targets
-                    self.batch_value_targets += value_targets
-                    if len(self.batch_inputs) >= self.batch_size:
-                        batch_size = len(self.batch_inputs)
-                        end_idx = self.current_dataset_size + batch_size
-                        for ds, data in zip(["inputs", "policy_targets", "value_targets"], [self.batch_inputs, self.batch_policy_targets, self.batch_value_targets]):
-                            h5_file[ds].resize((end_idx,) + h5_file[ds].shape[1:])
-                            h5_file[ds][self.current_dataset_size:end_idx] = np.array(data, dtype=h5_file[ds].dtype)
-                        mean_value = np.mean(self.batch_value_targets)
-                        std_value = np.std(self.batch_value_targets)
-                        wandb.log({"batch_size": batch_size, "mean_value_targets": mean_value, "std_value_targets": std_value})
-                        self.current_dataset_size += batch_size
-                        self.batch_inputs, self.batch_policy_targets, self.batch_value_targets = [], [], []
-                    self.total_games_processed +=1
-                    if self.total_games_processed %10 ==0 or time.time()-last_update_time >5:
-                        progress = int((self.total_games_processed / self.max_games) *100)
-                        self.progress_callback(progress)
-                        status_msg = f"✅ Processed {self.total_games_processed}/{self.max_games} games. Skipped {skipped_games} games so far."
-                        self.status_callback(status_msg)
-                        if self.wandb_flag:
-                            wandb.log({
-                                "games_processed": self.total_games_processed, 
-                                "games_skipped": skipped_games, 
-                                "progress": progress,
-                                "current_batch_size": len(self.batch_inputs),
-                                "total_dataset_size": self.current_dataset_size
-                            })
-                        last_update_time = time.time()
-            if self.batch_inputs:
-                batch_size = len(self.batch_inputs)
-                end_idx = self.current_dataset_size + batch_size
-                for ds, data in zip(["inputs", "policy_targets", "value_targets"], [self.batch_inputs, self.batch_policy_targets, self.batch_value_targets]):
-                    h5_file[ds].resize((end_idx,) + h5_file[ds].shape[1:])
-                    h5_file[ds][self.current_dataset_size:end_idx] = np.array(data, dtype=h5_file[ds].dtype)
-                self.current_dataset_size += batch_size
-            if self.engine:
-                self.engine.close()
-                self.status_callback("🔍 Chess engine closed.")
-            if self.pgn_file and self.max_opening_moves >0:
-                self.status_callback("🔍 Processing Opening Book...")
-                skipped_games_book, last_update_time_book = 0, time.time()
-                try:
-                    with open(self.pgn_file, "r", encoding="utf-8", errors="ignore") as pgn_file:
-                        while self.game_counter < self.max_games:
-                            game = chess.pgn.read_game(pgn_file)
-                            if game is None:
-                                self.status_callback("🔍 Reached end of PGN file.")
+            with chess.engine.SimpleEngine.popen_uci(self.engine_path) as engine:
+                engine.configure({"Threads": self.engine_threads, "Hash": self.engine_hash})
+                self.status_callback("✅ Chess engine initialized successfully.")
+
+                h5_path = os.path.join(self.output_dir, "dataset.h5")
+                with h5py.File(h5_path, "w") as h5_file:
+                    for ds, shape, dtype in [
+                        ("inputs", (0,25,8,8), np.float32),
+                        ("policy_targets", (0,), np.int64),
+                        ("value_targets", (0,), np.float32)
+                    ]:
+                        h5_file.create_dataset(
+                            ds,
+                            shape=shape,
+                            maxshape=(None,) + shape[1:],
+                            dtype=dtype,
+                            compression="lzf"
+                        )
+
+                    skipped_games = 0
+                    last_update = time.time()
+
+                    with open(self.raw_pgn_file, "r", errors="ignore") as f:
+                        while self.total_games_processed < self.max_games:
+                            game = chess.pgn.read_game(f)
+                            if not game:
                                 break
+
+                            headers = game.headers
+                            white_elo_str = headers.get("WhiteElo")
+                            black_elo_str = headers.get("BlackElo")
+
+                            if not white_elo_str or not black_elo_str:
+                                skipped_games += 1
+                                continue
+
                             try:
-                                white_elo, black_elo = int(game.headers.get("WhiteElo",0)), int(game.headers.get("BlackElo",0))
+                                white_elo = int(white_elo_str)
+                                black_elo = int(black_elo_str)
                                 if white_elo < self.min_elo or black_elo < self.min_elo:
-                                    skipped_games_book +=1
+                                    skipped_games += 1
                                     continue
-                                outcome_map = {"1-0":"win", "0-1":"loss", "1/2-1/2":"draw"}
-                                outcome = outcome_map.get(game.headers.get("Result"))
-                                if not outcome:
-                                    skipped_games_book +=1
-                                    continue
-                                eco_code, opening_name = game.headers.get("ECO",""), game.headers.get("Opening","")
-                                board = game.board()
-                                for move_counter, move in enumerate(game.mainline_moves(),1):
-                                    if move_counter > self.max_opening_moves:
-                                        break
-                                    fen, uci_move = board.fen(), move.uci()
-                                    move_data = self.positions[fen][uci_move]
-                                    move_data[outcome] +=1
-                                    move_data["eco"] = move_data["eco"] or eco_code
-                                    move_data["name"] = move_data["name"] or opening_name
+                            except ValueError:
+                                skipped_games += 1
+                                continue
+
+                            time_control = headers.get("TimeControl", "")
+                            if time_control:
+                                self.time_control_stats[time_control] += 1
+
+                            self.elo_list.append(white_elo)
+                            self.elo_list.append(black_elo)
+
+                            result_map = {"1-0": 1.0, "0-1": -1.0, "1/2-1/2": 0.0}
+                            game_result = result_map.get(headers.get("Result"))
+                            if game_result is None:
+                                skipped_games += 1
+                                continue
+
+                            board = game.board()
+                            moves = list(game.mainline_moves())
+                            num_moves = len(moves)
+                            self.game_lengths.append(num_moves)
+
+                            if num_moves < self.skip_min_moves or num_moves > self.skip_max_moves:
+                                skipped_games += 1
+                                continue
+
+                            inputs, policy, value = [], [], []
+                            for move in moves:
+                                tensor = convert_board_to_tensor(board)
+                                move_idx = self.move_mapping.get_index_by_move(move)
+                                if move_idx is None:
                                     board.push(move)
-                                self.game_counter +=1
-                                if self.game_counter %10 ==0 or time.time()-last_update_time_book >5:
-                                    progress = min(int((self.game_counter / self.max_games)*100), 100)
-                                    self.progress_callback(progress)
-                                    self.status_callback(f"✅ Processed {self.game_counter}/{self.max_games} games for opening book. Skipped {skipped_games_book} games so far.")
-                                    if self.wandb_flag:
-                                        wandb.log({
-                                            "opening_games_processed": self.game_counter, 
-                                            "opening_games_skipped": skipped_games_book, 
-                                            "opening_progress": progress,
-                                            "unique_positions": len(self.positions)
-                                        })
-                                    last_update_time_book = time.time()
-                            except:
-                                skipped_games_book +=1
-                                self.status_callback("❌ Exception in processing game for opening book.")
-                except:
-                    self.status_callback("❌ Exception during opening book processing.")
-                    return
-                positions = {fen:dict(moves) for fen, moves in self.positions.items()}
-                book_file = os.path.abspath(os.path.join("data","processed","opening_book.json"))
-                os.makedirs(os.path.dirname(book_file), exist_ok=True)
-                try:
-                    with open(book_file, "w") as f:
-                        json.dump(positions, f, indent=4)
-                    self.status_callback(f"✅ Opening book saved at {book_file}.")
-                except:
-                    self.status_callback("❌ Failed to save opening book.")
-                    return
-            self.status_callback(f"🔍 Splitting dataset into train, validation, and test sets...")
-            train_indices_path, val_indices_path, test_indices_path = map(lambda x: os.path.join(self.output_dir, f"{x}_indices.npy"), ["train", "val", "test"])
+                                    continue
+
+                                if self.use_time_analysis:
+                                    limit = chess.engine.Limit(time=self.analysis_time)
+                                else:
+                                    limit = chess.engine.Limit(depth=self.engine_depth)
+
+                                try:
+                                    info = engine.analyse(board, limit)
+                                    score = info["score"].pov(board.turn)
+
+                                    if score.is_mate():
+                                        mate_score = score.mate()
+                                        value_target = 1.0 if mate_score > 0 else -1.0
+                                    else:
+                                        raw_score = score.score()
+                                        if raw_score is not None:
+                                            value_target = np.clip(raw_score / 1000.0, -1.0, 1.0)
+                                        else:
+                                            value_target = 0.0
+                                except chess.engine.EngineError as e:
+                                    self.status_callback(f"❌ Engine analysis error: {e}")
+                                    value_target = 0.0
+
+                                inputs.append(tensor)
+                                policy.append(move_idx)
+                                value.append(game_result if board.turn else -game_result)
+
+                                if self.augment_flip:
+                                    flipped_board, flipped_mv = apply_augmentations(board, move, method="flip")
+                                    flipped_idx = self.move_mapping.get_index_by_move(flipped_mv)
+                                    if flipped_idx is not None:
+                                        inputs.append(convert_board_to_tensor(flipped_board))
+                                        policy.append(flipped_idx)
+                                        value.append(-value_target)
+
+                                if self.augment_mirror_rank:
+                                    rank_board, rank_mv = apply_augmentations(board, move, method="mirror_rank")
+                                    rank_idx = self.move_mapping.get_index_by_move(rank_mv)
+                                    if rank_idx is not None:
+                                        inputs.append(convert_board_to_tensor(rank_board))
+                                        policy.append(rank_idx)
+                                        value.append(-value_target)
+
+                                board.push(move)
+
+                            if not inputs:
+                                skipped_games += 1
+                                continue
+
+                            self.batch_inputs.extend(inputs)
+                            self.batch_policy_targets.extend(policy)
+                            self.batch_value_targets.extend(value)
+
+                            if len(self.batch_inputs) >= self.batch_size:
+                                self._write_batch_to_h5(h5_file, batch_table, wandb)
+
+                            self.total_games_processed += 1
+
+                            if (self.total_games_processed % 10 == 0) or (time.time() - last_update > 5):
+                                progress = min(int((self.total_games_processed / self.max_games) * 100), 100)
+                                self.progress_callback(progress)
+                                self.status_callback(
+                                    f"✅ Processed {self.total_games_processed}/{self.max_games} games. "
+                                    f"Skipped {skipped_games} games."
+                                )
+                                if self.wandb_flag:
+                                    self._log_game_stats_to_wandb(
+                                        wandb, game_table,
+                                        skipped_games, progress
+                                    )
+                                last_update = time.time()
+
+                    if self.batch_inputs:
+                        self._write_batch_to_h5(h5_file, batch_table, wandb)
+
+                    self._generate_opening_book(wandb, engine, opening_table)
+
+                    self._create_train_val_test_split(h5_path, wandb)
+
+                self.status_callback(
+                    f"✅ Data Preparation completed successfully. "
+                    f"Processed {self.total_games_processed} games with {skipped_games} skipped. "
+                    f"Time: {time.time() - self.start_time:.2f} seconds."
+                )
+
+        except chess.engine.EngineError as e:
+            self.status_callback(f"❌ Failed to initialize engine: {e}")
+        except Exception as e:
+            self.status_callback(f"❌ An unexpected error occurred: {e}")
+
+        if self.wandb_flag:
+            self._final_wandb_logs()
             try:
-                with h5py.File(h5_path, "r") as h5_file:
-                    num_samples = h5_file["inputs"].shape[0]
-                    if num_samples ==0:
-                        self.status_callback("❌ No samples to split.")
-                        return
-                    indices = np.random.permutation(num_samples)
-                    train_end, val_end = int(num_samples*0.8), int(num_samples*0.9)
-                    np.save(train_indices_path, indices[:train_end])
-                    np.save(val_indices_path, indices[train_end:val_end])
-                    np.save(test_indices_path, indices[val_end:])
-                    self.status_callback(f"✅ Dataset split into Train ({train_end}), Validation ({val_end - train_end}), Test ({num_samples - val_end}) samples.")
-            except:
-                self.status_callback("❌ Error splitting dataset.")
-                return
-            total_time = time.time() - self.start_time
-            self.status_callback(f"✅ Data Preparation{' & Opening Book Generation' if self.pgn_file else ''} completed successfully. Processed {self.total_games_processed} games with {skipped_games} skipped games{' and processed opening book games' if self.pgn_file else ''} in {total_time:.2f} seconds.")
-            if self.wandb_flag:
                 wandb.finish()
-            return True
+            except Exception as e:
+                self.status_callback(f"⚠️ Error finishing wandb run: {e}")
+
+        return True
+
+    def _write_batch_to_h5(self, h5_file, batch_table, wandb):
+        batch_size = len(self.batch_inputs)
+        end_idx = self.current_dataset_size + batch_size
+        try:
+            for ds_name, data_list in zip(
+                ["inputs", "policy_targets", "value_targets"],
+                [self.batch_inputs, self.batch_policy_targets, self.batch_value_targets]
+            ):
+                ds = h5_file[ds_name]
+                ds.resize((end_idx,) + ds.shape[1:])
+                ds[self.current_dataset_size:end_idx] = np.array(data_list, dtype=ds.dtype)
+
+            mean_val = float(np.mean(self.batch_value_targets))
+            std_val = float(np.std(self.batch_value_targets))
+
+            if wandb:
+                try:
+                    batch_table.add_data(
+                        str(self.total_games_processed),
+                        batch_size,
+                        mean_val,
+                        std_val
+                    )
+                    wandb.log({
+                        "batch_size": batch_size,
+                        "mean_value_targets": mean_val,
+                        "std_value_targets": std_val,
+                        "Mean Value": wandb.plot.line(
+                            batch_table, "Batch", "Mean Value", "Mean Value Targets Over Batches"
+                        ),
+                        "Value Distribution": wandb.plot.histogram(
+                            wandb.Table(data=[[v] for v in self.batch_value_targets], columns=["value"]),
+                            "value", "Value Targets Distribution"
+                        ),
+                        "Policy vs Value": wandb.plot.scatter(
+                            wandb.Table(
+                                data=list(zip(map(str, self.batch_policy_targets), self.batch_value_targets)),
+                                columns=["Policy", "Value"]
+                            ),
+                            "Policy", "Value", "Policy vs Value Targets"
+                        )
+                    })
+                except Exception as e:
+                    self.status_callback(f"❌ Error during wandb logging: {e}")
+
+            self.current_dataset_size += batch_size
+        except Exception as e:
+            self.status_callback(f"❌ Error writing to h5py: {e}")
+        finally:
+            self.batch_inputs.clear()
+            self.batch_policy_targets.clear()
+            self.batch_value_targets.clear()
+
+    def _log_game_stats_to_wandb(self, wandb, game_table, skipped_games, progress):
+        try:
+            game_table.add_data(
+                str(self.total_games_processed),
+                skipped_games,
+                progress,
+                len(self.batch_inputs),
+                self.current_dataset_size
+            )
+            wandb.log({
+                "games_processed": self.total_games_processed,
+                "games_skipped": skipped_games,
+                "progress": progress,
+                "current_batch_size": len(self.batch_inputs),
+                "total_dataset_size": self.current_dataset_size,
+                "Games Bar": wandb.plot.bar(
+                    game_table,
+                    "Games Processed",
+                    ["Games Processed", "Games Skipped"],
+                    "Processed vs Skipped Games"
+                )
+            })
+        except Exception as e:
+            self.status_callback(f"❌ Error during wandb logging: {e}")
+
+    def _generate_opening_book(self, wandb, engine, opening_table):
+        if not self.pgn_file or not self.max_opening_moves:
+            return
+
+        self.status_callback("🔍 Processing Opening Book...")
+        skipped_book = 0
+        last_book_update = time.time()
+
+        try:
+            import wandb
+        except ImportError:
+            pass
+
+        with open(self.pgn_file, "r", encoding="utf-8", errors="ignore") as pgn_f:
+            while self.game_counter < self.max_games:
+                game = chess.pgn.read_game(pgn_f)
+                if not game:
+                    self.status_callback("🔍 Reached end of PGN file for opening book.")
+                    break
+
+                headers = game.headers
+                try:
+                    white_elo = int(headers.get("WhiteElo", 0))
+                    black_elo = int(headers.get("BlackElo", 0))
+                    if (white_elo < self.min_elo) or (black_elo < self.min_elo):
+                        skipped_book += 1
+                        continue
+
+                    outcome = {"1-0": "win", "0-1": "loss", "1/2-1/2": "draw"}.get(headers.get("Result"))
+                    if not outcome:
+                        skipped_book += 1
+                        continue
+
+                    eco = headers.get("ECO", "")
+                    name = headers.get("Opening", "")
+                    board = game.board()
+
+                    for cnt, move in enumerate(game.mainline_moves(), start=1):
+                        if cnt > self.max_opening_moves:
+                            break
+                        fen = board.fen()
+                        uci = move.uci()
+                        mdata = self.positions[fen][uci]
+                        mdata[outcome] += 1
+                        if not mdata["eco"]:
+                            mdata["eco"] = eco
+                        if not mdata["name"]:
+                            mdata["name"] = name
+                        board.push(move)
+
+                    self.game_counter += 1
+
+                    if (self.game_counter % 10 == 0) or (time.time() - last_book_update > 5):
+                        progress = min(int((self.game_counter / self.max_games) * 100), 100)
+                        self.progress_callback(progress)
+                        self.status_callback(
+                            f"✅ Processed {self.game_counter}/{self.max_games} opening games. "
+                            f"Skipped {skipped_book} games."
+                        )
+                        if wandb:
+                            try:
+                                opening_table.add_data(
+                                    str(self.game_counter),
+                                    skipped_book,
+                                    progress,
+                                    len(self.positions)
+                                )
+                                wandb.log({
+                                    "opening_games_processed": self.game_counter,
+                                    "opening_games_skipped": skipped_book,
+                                    "opening_progress": progress,
+                                    "unique_positions": len(self.positions),
+                                    "Opening Bar": wandb.plot.bar(
+                                        opening_table,
+                                        "Opening Games Processed",
+                                        ["Opening Games Processed", "Opening Games Skipped"],
+                                        "Opening Games Processed vs Skipped"
+                                    )
+                                })
+                            except Exception as e:
+                                self.status_callback(f"❌ Error during wandb logging: {e}")
+                        last_book_update = time.time()
+
+                except ValueError:
+                    skipped_book += 1
+                    self.status_callback("❌ Invalid Elo value in opening game.")
+                except Exception as e:
+                    skipped_book += 1
+                    self.status_callback(f"❌ Exception in processing opening game: {e}")
+
+        try:
+            positions_dict = {fen: dict(moves) for fen, moves in self.positions.items()}
+            book_file = os.path.join(self.output_dir, "opening_book.json")
+            with open(book_file, "w") as bf:
+                json.dump(positions_dict, bf, indent=4)
+            self.status_callback(f"✅ Opening book saved at {book_file}.")
+
+            if wandb and positions_dict:
+                opening_count = defaultdict(int)
+                for fen_data in positions_dict.values():
+                    for mv_data in fen_data.values():
+                        if mv_data["name"]:
+                            opening_count[mv_data["name"]] += 1
+                sorted_openings = sorted(opening_count.items(), key=lambda x: x[1], reverse=True)
+                top_5 = sorted_openings[:5]
+
+                wandb.log({"top_5_openings": str(top_5)})
+
+        except Exception as e:
+            self.status_callback(f"❌ Failed to save opening book: {e}")
+
+    def _create_train_val_test_split(self, h5_path, wandb):
+        self.status_callback("🔍 Splitting dataset into train, validation, and test sets...")
+        try:
+            with h5py.File(h5_path, "r") as h5_f:
+                num = h5_f["inputs"].shape[0]
+                if num == 0:
+                    self.status_callback("❌ No samples to split.")
+                    return
+                idx = np.random.permutation(num)
+                train_end = int(num * 0.8)
+                val_end = int(num * 0.9)
+                splits = {
+                    "train": idx[:train_end],
+                    "val": idx[train_end:val_end],
+                    "test": idx[val_end:]
+                }
+                for name, indices in splits.items():
+                    np.save(os.path.join(self.output_dir, f"{name}_indices.npy"), indices)
+
+                if wandb:
+                    split_table = wandb.Table(
+                        data=[
+                            ["Train", len(splits["train"])],
+                            ["Validation", len(splits["val"])],
+                            ["Test", len(splits["test"])]
+                        ],
+                        columns=["Split", "Samples"]
+                    )
+                    wandb.log({
+                        "dataset_split": wandb.plot.bar(
+                            split_table, "Split", "Samples", "Dataset Split"
+                        )
+                    })
+
+                self.status_callback(
+                    f"✅ Dataset split into Train ({len(splits['train'])}), "
+                    f"Validation ({len(splits['val'])}), Test ({len(splits['test'])}) samples."
+                )
+        except Exception as e:
+            self.status_callback(f"❌ Error splitting dataset: {e}")
+
+    def _final_wandb_logs(self):
+        import wandb
+
+        if self.elo_list:
+            elo_table = wandb.Table(data=[[e] for e in self.elo_list], columns=["ELO"])
+            wandb.log({
+                "ELO Distribution": wandb.plot.histogram(elo_table, "ELO", title="ELO Distribution")
+            })
+
+        if self.game_lengths:
+            length_table = wandb.Table(data=[[l] for l in self.game_lengths], columns=["Length"])
+            wandb.log({
+                "Game Length Distribution": wandb.plot.histogram(length_table, "Length", title="Game Length Distribution")
+            })
+
+        if self.time_control_stats:
+            tc_table = wandb.Table(columns=["TimeControl", "Count"])
+            for tc, count in self.time_control_stats.items():
+                tc_table.add_data(tc, count)
+            wandb.log({
+                "Time Control Breakdown": wandb.plot.bar(tc_table, "TimeControl", "Count", title="Time Control Stats")
+            })
+
+        dataset_artifact = wandb.Artifact("chess_dataset", type="dataset")
+        dataset_artifact.add_file(os.path.join(self.output_dir, "dataset.h5"))
+        wandb.log_artifact(dataset_artifact)
+
+        book_path = os.path.join(self.output_dir, "opening_book.json")
+        if os.path.exists(book_path):
+            book_artifact = wandb.Artifact("opening_book", type="dataset")
+            book_artifact.add_file(book_path)
+            wandb.log_artifact(book_artifact)

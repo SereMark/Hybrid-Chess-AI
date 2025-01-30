@@ -1,12 +1,7 @@
-# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / Packaging
 *.egg
 *.egg-info/
 dist/
@@ -18,28 +13,16 @@ var/
 sdist/
 wheels/
 .installed.cfg
-
-# Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
-
-# Virtual Environments
 venv/
 .env
 ENV/
 env/
-
-# PyInstaller
 *.manifest
 *.spec
-
-# Testing
 .cache/
-
-# IDE / Editor configurations
 .vscode/
-
-# Data files
 *.csv
 *.h5
 *.db
@@ -47,22 +30,13 @@ env/
 *.npy
 *.pgn
 opening_book.json
-
-# PyTorch model files
 *.pth
 *.pt
-
-# Logs
 *.log
-
-# Other
 *.bak
 *.swp
 *.tmp
 *.bin
-
-# Engines
 stockfish/
-
-# Wandb
 wandb/
+hyperopt_results/
