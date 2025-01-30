@@ -5,7 +5,7 @@ import numpy as np
 from torch.amp import GradScaler
 from multiprocessing import Pool, cpu_count
 from torch.utils.data import DataLoader, TensorDataset
-from src.models.transformer import SimpleTransformerChessModel
+from src.models.transformer import TransformerChessModel
 from src.utils.checkpoint_manager import CheckpointManager
 from src.training.reinforcement.play_and_collect_worker import PlayAndCollectWorker
 from src.utils.chess_utils import get_total_moves
@@ -18,7 +18,7 @@ class ReinforcementWorker:
         self.wandb_flag=wandb_flag
         self.progress_callback=progress_callback
         self.status_callback=status_callback
-        self.model=SimpleTransformerChessModel(get_total_moves()).to(self.device)
+        self.model=TransformerChessModel(get_total_moves()).to(self.device)
         self.optimizer=initialize_optimizer(self.model,optimizer_type,learning_rate,weight_decay,momentum)
         self.scheduler=None
         self.scaler=GradScaler(enabled=(self.device.type=="cuda"))

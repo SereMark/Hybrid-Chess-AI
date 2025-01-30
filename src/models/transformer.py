@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-class SimpleTransformerChessModel(nn.Module):
+class TransformerChessModel(nn.Module):
     def __init__(self, num_moves, feature_dim=18, d_model=96, nhead=3, num_layers=6, dim_feedforward=384, dropout=0.1):
         super().__init__()
         self.num_moves = num_moves
