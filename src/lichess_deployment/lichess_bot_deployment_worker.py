@@ -2,11 +2,11 @@ import os
 import json
 import torch
 import chess
-import berserk
 import boto3
+import berserk
+import paramiko
 from google.cloud import storage
 from azure.storage.blob import BlobServiceClient
-import paramiko
 from src.training.reinforcement.mcts import MCTS
 
 def load_model(model_path, device):
