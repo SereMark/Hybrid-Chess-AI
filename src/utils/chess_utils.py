@@ -24,14 +24,6 @@ def get_total_moves():
 def get_move_mapping():
     return move_mapping
 
-def create_legal_move_mask(b, mm):
-    r = np.zeros(mm.TOTAL_MOVES, np.float32)
-    for m in b.legal_moves:
-        i = mm.get_index_by_move(m)
-        if i is not None:
-            r[i] = 1
-    return r
-
 def flip_board(b):
     return b.mirror()
 
@@ -50,14 +42,6 @@ def mirror_move_rank(m):
     tr = 7 - chess.square_rank(m.to_square)
     tf = chess.square_file(m.to_square)
     return chess.Move(chess.square(tf, tr), chess.square(ff, fr), promotion=m.promotion)
-
-def parse_eval_from_comment(c):
-    x = re.search(r"\[%eval\s+([^\]]+)\]", c)
-    return x.group(1) if x else None
-
-def parse_clock_from_comment(c):
-    x = re.search(r"\[%clk\s+([^\]]+)\]", c)
-    return x.group(1) if x else None
 
 def gather_history(b, n=0):
     return [b.copy() for _ in range(n+1)]
