@@ -1,110 +1,81 @@
-import os
-import chess
-import torch
-import numpy as np
-from typing import Dict, Optional
+import os, chess, torch, numpy as np
 from src.training.reinforcement.mcts import MCTS
-from src.utils.chess_utils import get_total_moves, convert_board_to_tensor, get_move_mapping
-from src.models.transformer import TransformerChessModel
+from src.utils.chess_utils import get_total_moves, convert_board_to_transformer_input, get_move_mapping
+from src.models.transformer import SimpleTransformerChessModel
 
 class Bot:
-    def __init__(self, path: str, use_mcts: bool, use_opening_book: bool):
+    def __init__(self, path, use_mcts, use_opening_book):
         self.use_mcts = use_mcts
         self.use_opening_book = use_opening_book
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        self.model = TransformerChessModel(get_total_moves()).to(self.device)
+        self.model = SimpleTransformerChessModel(get_total_moves()).to(self.device)
         self._load_model_checkpoint(path)
-
         self.mcts = MCTS(self.model, self.device, c_puct=1.4, n_simulations=100) if self.use_mcts else None
-
         self.move_map = get_move_mapping()
-
-    def _load_model_checkpoint(self, path: str) -> None:
+    def _load_model_checkpoint(self, path):
         if not os.path.isfile(path):
-            raise FileNotFoundError(f"Checkpoint file not found: {path}")
-
+            raise FileNotFoundError(f"Checkpoint not found: {path}")
         try:
-            checkpoint = torch.load(path, map_location=self.device)
-            if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-                self.model.load_state_dict(checkpoint["model_state_dict"])
+            c = torch.load(path, map_location=self.device)
+            if isinstance(c, dict) and "model_state_dict" in c:
+                self.model.load_state_dict(c["model_state_dict"], strict=False)
             else:
-                self.model.load_state_dict(checkpoint)
+                self.model.load_state_dict(c, strict=False)
             self.model.eval()
         except Exception as e:
-            raise RuntimeError(f"Error loading model from {path}: {str(e)}")
-
-    def get_move(self, board: chess.Board, opening_book: Dict[str, Dict[str, Dict[str, int]]]) -> chess.Move:
+            raise RuntimeError(f"Error loading model: {e}")
+    def get_move(self, board, opening_book):
         try:
             if self.use_opening_book:
-                book_move = self._choose_book_move(board, opening_book)
-                if book_move is not None:
-                    return book_move
-
-            if self.use_mcts and self.mcts is not None:
+                bm = self._choose_book_move(board, opening_book)
+                if bm is not None:
+                    return bm
+            if self.use_mcts and self.mcts:
                 return self._choose_mcts_move(board)
-
             return self._choose_direct_policy_move(board)
-
-        except Exception as e:
-            print(f"[Bot] Error in get_move: {e}")
+        except:
             return chess.Move.null()
-
-    def _choose_book_move(self, board: chess.Board, opening_book: Dict[str, Dict[str, Dict[str, int]]]) -> Optional[chess.Move]:
-        position_data = opening_book.get(board.fen(), {})
-        if not position_data:
+    def _choose_book_move(self, board, opening_book):
+        d = opening_book.get(board.fen(), {})
+        if not d:
             return None
-
-        best_move = None
-        best_score = -1.0
-
-        for uci, stats in position_data.items():
-            total = stats.get("win", 0) + stats.get("draw", 0) + stats.get("loss", 0)
-            if total > 0:
-                score = (stats.get("win", 0) + 0.5 * stats.get("draw", 0)) / total
-                move = chess.Move.from_uci(uci)
-                if move in board.legal_moves and score > best_score:
-                    best_move = move
-                    best_score = score
-
-        return best_move
-
-    def _choose_mcts_move(self, board: chess.Board) -> chess.Move:
+        best, best_score = None, -1
+        for uci, stats in d.items():
+            t = stats.get("win",0)+stats.get("draw",0)+stats.get("loss",0)
+            if t>0:
+                s = (stats.get("win",0)+0.5*stats.get("draw",0))/t
+                mv = chess.Move.from_uci(uci)
+                if mv in board.legal_moves and s>best_score:
+                    best, best_score = mv, s
+        return best
+    def _choose_mcts_move(self, board):
         self.mcts.set_root_node(board.copy())
         probs = self.mcts.get_move_probs(temperature=1e-3)
-
-        if board.fullmove_number == 1 and board.turn == chess.WHITE and len(probs) > 1:
-            moves, move_probs = list(probs.keys()), np.array(list(probs.values()), dtype=np.float32)
-            noise = np.random.dirichlet([0.3] * len(moves))
-            move_probs = 0.75 * move_probs + 0.25 * noise
-            move_probs /= move_probs.sum()
-            probs = dict(zip(moves, move_probs))
-
+        if board.fullmove_number==1 and board.turn==chess.WHITE and len(probs)>1:
+            mv_list = list(probs.keys())
+            arr = np.array(list(probs.values()), dtype=np.float32)
+            noise = np.random.dirichlet([0.3]*len(mv_list))
+            arr = 0.75*arr + 0.25*noise
+            arr /= arr.sum()
+            probs = dict(zip(mv_list, arr))
         return max(probs, key=probs.get) if probs else chess.Move.null()
-
-    def _choose_direct_policy_move(self, board: chess.Board) -> chess.Move:
-        tensor = torch.from_numpy(convert_board_to_tensor(board)).float().unsqueeze(0).to(self.device)
-
+    def _choose_direct_policy_move(self, board):
+        x = torch.from_numpy(convert_board_to_transformer_input(board)).float().unsqueeze(0).to(self.device)
         with torch.no_grad():
-            logits, _ = self.model(tensor)
+            logits, _ = self.model(x)
             policy = torch.softmax(logits[0], dim=0).cpu().numpy()
-
-        legal_moves = list(board.legal_moves)
-        if not legal_moves:
+        legals = list(board.legal_moves)
+        if not legals:
             return chess.Move.null()
-
-        action_probs = {}
-        for mv in legal_moves:
+        ap = {}
+        for mv in legals:
             idx = self.move_map.get_index_by_move(mv)
-            prob = max(policy[idx], 1e-12)
-            action_probs[mv] = prob
-
-        total_prob = sum(action_probs.values())
-        if total_prob > 0:
-            for mv in action_probs:
-                action_probs[mv] /= total_prob
+            pr = policy[idx] if idx is not None else 1e-12
+            if pr<1e-12: pr=1e-12
+            ap[mv] = pr
+        s = sum(ap.values())
+        if s>0:
+            for mv in ap: ap[mv]/=s
         else:
-            for mv in action_probs:
-                action_probs[mv] = 1.0 / len(legal_moves)
-
-        return max(action_probs, key=action_probs.get)
+            for mv in ap: ap[mv]=1/len(legals)
+        return max(ap, key=ap.get)

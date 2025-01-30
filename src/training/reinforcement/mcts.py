@@ -3,7 +3,7 @@ import chess
 import torch
 import numpy as np
 
-from src.utils.chess_utils import convert_board_to_tensor, get_move_mapping
+from src.utils.chess_utils import convert_board_to_transformer_input, get_move_mapping
 
 class TreeNode:
     def __init__(self, parent, prior_p, board, move):
@@ -55,7 +55,7 @@ class MCTS:
         self.move_mapping = get_move_mapping()
 
     def _policy_value_fn(self, board: chess.Board):
-        board_tensor = torch.from_numpy(convert_board_to_tensor(board)).float().unsqueeze(0).to(self.device)
+        board_tensor = torch.from_numpy(convert_board_to_transformer_input(board)).float().unsqueeze(0).to(self.device)
         with torch.no_grad():
             policy_logits, value_out = self.model(board_tensor)
         policy = torch.softmax(policy_logits[0], dim=0).cpu().numpy()
