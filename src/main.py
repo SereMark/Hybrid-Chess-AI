@@ -38,12 +38,10 @@ def input_with_validation(
     path = st.text_input(label, default_value, help=help_text, key=unique_key)
 
     if path:
-        valid = validate_path(path, path_type)
-        entity = label.split()[-1] if label.split() else path_type.capitalize()
-        if valid:
-            st.markdown(f"✅ **Valid {entity} path**")
+        if validate_path(path, path_type):
+            st.markdown(f"✅ **Valid Path**")
         else:
-            st.markdown(f"⚠️ **Invalid {entity} path**")
+            st.markdown(f"⚠️ **Invalid Path**")
     return path
 
 def execute_worker(create_worker):
