@@ -121,7 +121,7 @@ def data_preparation_tab():
         )
         skip_min_moves, skip_max_moves = skip_moves_range
         use_time_analysis = st.checkbox("Use Time-based Engine Analysis", value=False, key="dp_use_time_analysis")
-        analysis_time = st.slider("Analysis Time per Move (seconds)", 0.1, 5.0, 0.5, step=0.1, key="dp_analysis_time")
+        analysis_time = st.slider("Analysis Time per Move (seconds)", 0.1, 5.0, 0.5, step=0.1, key="dp_analysis_time") if use_time_analysis else None
 
     if st.button("Start Data Preparation", key="dp_start_button"):
         paths_to_check = [raw_pgn, engine] + ([pgn] if generate_book else [])
