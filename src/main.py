@@ -12,7 +12,6 @@ from src.lichess_deployment.lichess_bot_deployment_worker import LichessBotDeplo
 
 warnings.filterwarnings("ignore", message="Thread 'MainThread': missing ScriptRunContext!")
 
-
 st.set_page_config(
     page_title="Chess AI Management Dashboard",
     page_icon="♟️",
@@ -66,7 +65,6 @@ def execute_worker(create_worker):
     except Exception as e:
         status.text(f"⚠️ Error: {e}")
 
-
 def data_preparation_tab():
     st.subheader("Data Preparation")
     st.write("Process PGN data, optionally generate an opening book, and prepare a dataset for training.")
@@ -103,7 +101,7 @@ def data_preparation_tab():
     with col1:
         max_games = st.slider("Max Games:", 100, 20000, 10000, key="dp_max_games")
     with col2:
-        min_elo = st.slider("Min ELO:", 0, 3000, 1600, key="dp_min_elo")
+        min_elo = st.slider("ELO Range:", 0, 3000, (1600, 2400), key="dp_elo_range", step=50)
 
     col3, col4 = st.columns(2)
     with col3:
@@ -115,18 +113,27 @@ def data_preparation_tab():
     batch_size = st.number_input("Batch Size:", 1, 10000, 512, step=1, key="dp_batch_size")
 
     with st.expander("Advanced Filtering"):
-        skip_min_moves = st.slider("Skip games with fewer than X moves", 0, 20, 5, key="dp_skip_min")
-        skip_max_moves = st.slider("Skip games with more than X moves", 20, 500, 200, key="dp_skip_max")
+        skip_moves_range = st.slider(
+            "Skip games with X moves",
+            min_value=0,
+            max_value=500,
+            value=(5, 200),
+            step=1,
+            key="dp_skip_moves"
+        )
+        skip_min_moves, skip_max_moves = skip_moves_range
         use_time_analysis = st.checkbox("Use Time-based Engine Analysis", value=False, key="dp_use_time_analysis")
         analysis_time = st.slider("Analysis Time per Move (seconds)", 0.1, 5.0, 0.5, step=0.1, key="dp_analysis_time")
 
     if st.button("Start Data Preparation", key="dp_start_button"):
         paths_to_check = [raw_pgn, engine] + ([pgn] if generate_book else [])
         if all(validate_path(path, "file") for path in paths_to_check):
+            min_elo_val, max_elo_val = min_elo
             execute_worker(lambda pc, sc: DataPreparationWorker(
                 raw_pgn=raw_pgn,
                 max_games=max_games,
-                min_elo=min_elo,
+                min_elo=min_elo_val,
+                max_elo=max_elo_val,
                 batch_size=batch_size,
                 engine_path=engine,
                 engine_depth=engine_depth,
@@ -144,7 +151,6 @@ def data_preparation_tab():
             ))
         else:
             st.error("⚠️ Invalid file paths. Please check your inputs.")
-
 
 def supervised_training_tab():
     st.subheader("Supervised Trainer")
@@ -257,7 +263,6 @@ def supervised_training_tab():
                 status_callback=sc
             ))
 
-
 def reinforcement_training_tab():
     st.subheader("Reinforcement Trainer")
     st.write("Configure and start reinforcement learning for your chess model.")
@@ -338,7 +343,6 @@ def reinforcement_training_tab():
                 status_callback=sc
             ))
 
-
 def evaluation_tab():
     st.subheader("Evaluation")
     st.write("Evaluate a trained model on a reserved test set.")
@@ -376,7 +380,6 @@ def evaluation_tab():
                 progress_callback=pc,
                 status_callback=sc
             ))
-
 
 def benchmarking_tab():
     st.subheader("Benchmarking")
@@ -423,7 +426,6 @@ def benchmarking_tab():
                 status_callback=sc
             ))
 
-
 def hyperparameter_optimization_tab():
     st.subheader("Hyperparameter Optimization")
     st.write("Use Optuna to find the best hyperparameters for your supervised training.")
@@ -454,51 +456,93 @@ def hyperparameter_optimization_tab():
     with st.expander("Hyperparameter Settings", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
-            lr_min = st.number_input("LR (Min):", 1e-7, 1.0, 1e-5, format="%.1e", key="hopt_lr_min")
-            wd_min = st.number_input("Weight Decay (Min):", 1e-7, 1.0, 1e-6, format="%.1e", key="hopt_wd_min")
-            pw_min = st.number_input("Policy Weight (Min):", 0.0, 10.0, 1.0, step=0.1, key="hopt_pw_min")
-            vw_min = st.number_input("Value Weight (Min):", 0.0, 10.0, 1.0, step=0.1, key="hopt_vw_min")
-            epochs_min = st.number_input("Epochs (Min):", 1, 500, 20, key="hopt_epochs_min")
-            optimizer_opts = st.multiselect(
-                "Optimizers:",
-                ["adamw", "sgd", "adam", "rmsprop"],
-                default=["adamw", "adam"],
-                key="hopt_optimizer_opts"
+            lr_range = st.slider(
+                "Learning Rate Range:",
+                1e-7,
+                1.0,
+                (1e-5, 1e-3),
+                format="%.1e",
+                key="hopt_lr_range"
             )
-            grad_clip_min = st.slider("Gradient Clip (Min):", 0.0, 5.0, 0.5, 0.1, key="hopt_grad_clip_min")
-
-            momentum_min = 0.0
-            if any(opt in ["sgd", "rmsprop"] for opt in optimizer_opts):
-                momentum_min = st.slider("Momentum (Min):", 0.5, 0.99, 0.85, 0.01, key="hopt_momentum_min")
-
-            accumulation_steps_min = st.number_input("Accumulation Steps (Min):", 1, 64, 4, key="hopt_accum_steps_min")
-            
+            wd_range = st.slider(
+                "Weight Decay Range:",
+                1e-7,
+                1.0,
+                (1e-6, 1e-3),
+                format="%.1e",
+                key="hopt_wd_range"
+            )
+            pw_range = st.slider(
+                "Policy Weight Range:",
+                0.0,
+                10.0,
+                (1.0, 3.0),
+                step=0.1,
+                key="hopt_pw_range"
+            )
+            vw_range = st.slider(
+                "Value Weight Range:",
+                0.0,
+                10.0,
+                (1.0, 3.0),
+                step=0.1,
+                key="hopt_vw_range"
+            )
+            epochs_range = st.slider(
+                "Epochs Range:",
+                1,
+                500,
+                (20, 100),
+                key="hopt_epochs_range"
+            )
+            grad_clip_range = st.slider(
+                "Gradient Clip Range:",
+                0.0,
+                5.0,
+                (0.5, 2.0),
+                0.1,
+                key="hopt_grad_clip_range"
+            )
+            accumulation_steps_range = st.slider(
+                "Accumulation Steps Range:",
+                1,
+                64,
+                (4, 8),
+                key="hopt_accum_steps_range"
+            )
+        
         with col2:
-            lr_max = st.number_input("LR (Max):", 1e-7, 1.0, 1e-3, format="%.1e", key="hopt_lr_max")
-            wd_max = st.number_input("Weight Decay (Max):", 1e-7, 1.0, 1e-3, format="%.1e", key="hopt_wd_max")
-            pw_max = st.number_input("Policy Weight (Max):", 0.0, 10.0, 3.0, step=0.1, key="hopt_pw_max")
-            vw_max = st.number_input("Value Weight (Max):", 0.0, 10.0, 3.0, step=0.1, key="hopt_vw_max")
-            epochs_max = st.number_input("Epochs (Max):", 1, 500, 100, key="hopt_epochs_max")
             scheduler_opts = st.multiselect(
                 "Schedulers:",
                 ["cosineannealingwarmrestarts", "step", "linear", "onecycle"],
                 default=["cosineannealingwarmrestarts", "onecycle"],
                 key="hopt_scheduler_opts"
             )
-            grad_clip_max = st.slider("Gradient Clip (Max):", 0.0, 5.0, 2.0, 0.1, key="hopt_grad_clip_max")
+            batch_size_options = st.multiselect(
+                "Batch Sizes:",
+                [16, 32, 64, 128, 256],
+                default=[32, 64, 128, 256],
+                key="hopt_batch_sizes"
+            )
 
-            momentum_max = 0.0
+            optimizer_opts = st.multiselect(
+                "Optimizers:",
+                ["adamw", "sgd", "adam", "rmsprop"],
+                default=["adamw", "adam"],
+                key="hopt_optimizer_opts"
+            )
+
             if any(opt in ["sgd", "rmsprop"] for opt in optimizer_opts):
-                momentum_max = st.slider("Momentum (Max):", 0.5, 0.99, 0.95, 0.01, key="hopt_momentum_max")
-
-            accumulation_steps_max = st.number_input("Accumulation Steps (Max):", 1, 64, 8, key="hopt_accum_steps_max")
-        
-        batch_size_options = st.multiselect(
-            "Batch Sizes:",
-            [16, 32, 64, 128, 256],
-            default=[32, 64, 128, 256],
-            key="hopt_batch_sizes"
-        )
+                momentum_range = st.slider(
+                    "Momentum Range:",
+                    0.5,
+                    0.99,
+                    (0.85, 0.95),
+                    0.01,
+                    key="hopt_momentum_range"
+                )
+            else:
+                momentum_range = (0.0, 0.0)
 
     with st.expander("Dataset Details", expanded=False):
         val_indices_path = input_with_validation(
@@ -511,6 +555,19 @@ def hyperparameter_optimization_tab():
     if st.button("Start Hyperparameter Optimization", key="hopt_start_button"):
         required_paths = [dataset_path, train_indices_path, val_indices_path]
         missing = [p for p in required_paths if not validate_path(p, "file")]
+
+        lr_min, lr_max = lr_range
+        wd_min, wd_max = wd_range
+        pw_min, pw_max = pw_range
+        vw_min, vw_max = vw_range
+        epochs_min, epochs_max = epochs_range
+        grad_clip_min, grad_clip_max = grad_clip_range
+        accumulation_steps_min, accumulation_steps_max = accumulation_steps_range
+
+        if any(opt in ["sgd", "rmsprop"] for opt in optimizer_opts):
+            momentum_min, momentum_max = momentum_range
+        else:
+            momentum_min, momentum_max = 0.0, 0.0
 
         if lr_min > lr_max or wd_min > wd_max or pw_min > pw_max or vw_min > vw_max:
             st.error("⚠️ Min values cannot exceed max values (LR/WD/PW/VW).")
@@ -596,19 +653,22 @@ def lichess_deployment_tab():
         "Lichess Bot API Token:",
         value="",
         type="password",
-        help="Your Lichess bot account token. Must have the 'bot:play' scope."
+        help="Your Lichess bot account token. Must have the 'bot:play' scope.",
+        key="lichess_token"
     )
     time_control = st.selectbox(
         "Preferred Time Control:",
         ["1+0 (Bullet)", "3+2 (Blitz)", "5+0 (Blitz)", "15+10 (Rapid)", "Classical"],
-        index=1
+        index=1,
+        key="lichess_time_control"
     )
     rating_min, rating_max = st.slider(
         "Opponent Rating Range:",
         min_value=800,
         max_value=3000,
         value=(1200, 2400),
-        step=50
+        step=50,
+        key="lichess_rating_range"
     )
     use_mcts = st.checkbox("Use MCTS in Bot Play", value=True, key="lichess_use_mcts")
 
@@ -616,7 +676,8 @@ def lichess_deployment_tab():
     cloud_provider = st.selectbox(
         "Cloud Provider:",
         ["AWS", "Google Cloud", "Azure", "Other"],
-        index=0
+        index=0,
+        key="lichess_cloud_provider"
     )
     st.write(
         "Select your desired cloud provider where the bot engine will be hosted. "

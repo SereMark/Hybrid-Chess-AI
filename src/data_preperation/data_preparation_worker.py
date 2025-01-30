@@ -3,10 +3,11 @@ from collections import defaultdict
 from src.utils.chess_utils import convert_board_to_transformer_input, get_move_mapping, flip_board, flip_move, mirror_rank, mirror_move_rank
 
 class DataPreparationWorker:
-    def __init__(self, raw_pgn, max_games, min_elo, batch_size, engine_path, engine_depth, engine_threads, engine_hash, pgn_file, max_opening_moves, wandb_flag, progress_callback=None, status_callback=None, skip_min_moves=0, skip_max_moves=99999, use_time_analysis=False, analysis_time=0.5):
+    def __init__(self, raw_pgn, max_games, min_elo, max_elo, batch_size, engine_path, engine_depth, engine_threads, engine_hash, pgn_file, max_opening_moves, wandb_flag, progress_callback=None, status_callback=None, skip_min_moves=0, skip_max_moves=99999, use_time_analysis=False, analysis_time=0.5):
         self.raw_pgn_file = raw_pgn
         self.max_games = max_games
         self.min_elo = min_elo
+        self.max_elo = max_elo
         self.batch_size = batch_size
         self.engine_path = engine_path
         self.engine_depth = engine_depth
@@ -82,7 +83,7 @@ class DataPreparationWorker:
                             try:
                                 we2 = int(we)
                                 be2 = int(be)
-                                if we2<self.min_elo or be2<self.min_elo:
+                                if we2<self.min_elo or be2<self.min_elo or we2>self.max_elo or be2>self.max_elo:
                                     skipped_games+=1
                                     continue
                             except:
@@ -168,7 +169,7 @@ class DataPreparationWorker:
                                 last_update=time.time()
                     if self.batch_inputs:
                         self._write_batch_to_h5(h5_file,batch_table,wandb)
-                    self._generate_opening_book(wandb,engine,opening_table)
+                    self._generate_opening_book(wandb,opening_table)
                     self._create_train_val_test_split(h5_path,wandb)
                 self.status_callback("✅ Data Preparation completed successfully. Processed {} games with {} skipped. Time: {:.2f} seconds.".format(self.total_games_processed,skipped_games,time.time()-self.start_time))
         except chess.engine.EngineError as e:
@@ -217,7 +218,7 @@ class DataPreparationWorker:
             wandb.log({"games_processed":self.total_games_processed,"games_skipped":sk,"progress":pr,"current_batch_size":len(self.batch_inputs),"total_dataset_size":self.current_dataset_size})
         except:
             pass
-    def _generate_opening_book(self,wandb,engine,ot):
+    def _generate_opening_book(self,wandb,ot):
         if not self.pgn_file or not self.max_opening_moves:
             return
         self.status_callback("🔍 Processing Opening Book...")
@@ -233,7 +234,7 @@ class DataPreparationWorker:
                 try:
                     we=int(h.get("WhiteElo",0))
                     be=int(h.get("BlackElo",0))
-                    if we<self.min_elo or be<self.min_elo:
+                    if we<self.min_elo or be<self.min_elo or we>self.max_elo or be>self.max_elo:
                         sb+=1
                         continue
                     om={"1-0":"win","0-1":"loss","1/2-1/2":"draw"}
