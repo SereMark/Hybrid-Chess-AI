@@ -70,7 +70,6 @@ class SupervisedWorker:
             if self.checkpoint_manager.checkpoint_interval>0 and epoch%self.checkpoint_manager.checkpoint_interval==0:
                 self.checkpoint_manager.save(self.model,self.optimizer,self.scheduler,epoch)
             if self.wandb_flag:
-                import wandb
                 wandb.log({"epoch":epoch,"train/policy_loss":train_metrics["policy_loss"],"train/value_loss":train_metrics["value_loss"],"train/accuracy":train_metrics["accuracy"],"val/policy_loss":val_metrics["policy_loss"],"val/value_loss":val_metrics["value_loss"],"val/accuracy":val_metrics["accuracy"],"val/composite_loss":val_loss,"learning_rate":self.scheduler.get_last_lr()[0]})
             if self.use_early_stopping:
                 if val_loss<self.best_val_loss:
@@ -85,7 +84,6 @@ class SupervisedWorker:
         self.checkpoint_manager.save(self.model,self.optimizer,self.scheduler,self.epochs,os.path.join("models","saved_models","supervised_model.pth"))
         training_time=time.time()-training_start
         if self.wandb_flag:
-            import wandb
             wandb.run.summary.update({"best_composite_loss":best_metric,"training_time":training_time})
             try:
                 wandb.finish()

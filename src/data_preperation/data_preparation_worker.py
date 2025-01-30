@@ -177,7 +177,6 @@ class DataPreparationWorker:
             self.status_callback("❌ An unexpected error occurred: {}".format(e))
         if self.wandb_flag:
             self._final_wandb_logs()
-            import wandb
             try:
                 wandb.finish()
             except Exception as e:

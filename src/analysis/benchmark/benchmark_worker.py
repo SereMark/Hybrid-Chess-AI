@@ -83,14 +83,12 @@ class BenchmarkWorker:
             if self.switch_colors:
                 color_tracker = not color_tracker
             if self.wandb_flag:
-                import wandb
                 wandb.log({"game_index":g,"game_result":r,"game_duration_sec":dur,"moves_made":moves,"bot1_wins_so_far":b1,"bot2_wins_so_far":b2,"draws_so_far":dr})
         avg_dur = float(np.mean(durations)) if durations else 0.0
         avg_moves = float(np.mean(move_counts)) if move_counts else 0.0
         self.status_callback(f"All {self.num_games} games done.")
         self.status_callback(f"Results: Bot1={b1}, Bot2={b2}, draws={dr}, total_unfinished={results['*']}")
         if self.wandb_flag:
-            import wandb
             wandb.log({"total_games":self.num_games,"wins_bot1":b1,"wins_bot2":b2,"draws":dr,"unfinished":results["*"],"avg_game_duration":avg_dur,"avg_moves_per_game":avg_moves})
             final_data = [["1-0",b1],["0-1",b2],["1/2-1/2",dr],["*",results["*"]]]
             tb = wandb.Table(columns=["Result","Count"], data=final_data)

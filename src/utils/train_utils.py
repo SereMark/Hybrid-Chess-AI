@@ -92,8 +92,6 @@ def validate_epoch(model, loader, device, epoch, max_epoch, prog_cb, status_cb, 
     val_v_loss = 0
     correct = 0
     total = 0
-    if use_wandb:
-        import wandb
     with torch.no_grad():
         for idx, (inp, pol, val) in enumerate(loader, start=1):
             inp = inp.to(device, non_blocking=True)
@@ -109,10 +107,8 @@ def validate_epoch(model, loader, device, epoch, max_epoch, prog_cb, status_cb, 
             total += bs
             batch_correct = (p_pred.argmax(dim=1)==pol).float().sum().item()
             correct+=batch_correct
-            if use_wandb:
-                wandb.log({"val_policy_loss": p_loss.item(),"val_value_loss": v_loss.item(),"val_step_accuracy": batch_correct/bs})
             if prog_cb:
                 prog_cb(idx/len(loader)*100)
             if status_cb and idx%10==0:
-                status_cb("Validation Epoch {}/{} | Batch {}/{} | Policy Loss: {:.4f} | Value Loss: {:.4f}".format(epoch,max_epoch,idx,len(loader),val_p_loss/total,val_v_loss/total))
+                status_cb(f"Validation Epoch {epoch}/{max_epoch} | Batch {idx}/{len(loader)} | Policy Loss: {val_p_loss / total:.4f} | Value Loss: {val_v_loss / total:.4f}")
     return {"policy_loss": val_p_loss/total if total else 0,"value_loss": val_v_loss/total if total else 0,"accuracy": correct/total if total else 0}

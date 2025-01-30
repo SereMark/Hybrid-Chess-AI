@@ -92,7 +92,6 @@ class ReinforcementWorker:
             else:
                 stats['avg_game_length']=0.0
             if self.wandb_flag:
-                import wandb
                 wandb.log({"iteration":iteration,"total_games":stats['total_games'],"wins":stats['wins'],"losses":stats['losses'],"draws":stats['draws'],"avg_game_length":stats['avg_game_length']})
                 if stats['results']:
                     wandb.log({"results_histogram":wandb.Histogram(stats['results'])})
@@ -125,7 +124,6 @@ class ReinforcementWorker:
                     f.write(str(game))
         self.checkpoint_manager.save(self.model,self.optimizer,self.scheduler,self.num_iterations,os.path.join("models","saved_models","reinforcement_model.pth"))
         if self.wandb_flag:
-            import wandb
             wandb.run.summary.update({"best_metric":self.best_metric,"best_iteration":self.best_iteration,"training_time":time.time()-training_start})
             try:
                 wandb.finish()
