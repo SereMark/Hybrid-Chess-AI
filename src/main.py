@@ -117,7 +117,7 @@ def data_preparation_tab():
     with st.expander("Advanced Filtering"):
         skip_min_moves = st.slider("Skip games with fewer than X moves", 0, 20, 5, key="dp_skip_min")
         skip_max_moves = st.slider("Skip games with more than X moves", 20, 500, 200, key="dp_skip_max")
-        use_time_analysis = st.checkbox("Use Time-based Engine Analysis?", value=False, key="dp_use_time_analysis")
+        use_time_analysis = st.checkbox("Use Time-based Engine Analysis", value=False, key="dp_use_time_analysis")
         analysis_time = st.slider("Analysis Time per Move (seconds)", 0.1, 5.0, 0.5, step=0.1, key="dp_analysis_time")
 
     if st.button("Start Data Preparation", key="dp_start_button"):
