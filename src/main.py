@@ -112,7 +112,7 @@ def data_preparation_tab():
 
     with st.expander("Advanced Filtering"):
         skip_moves_range = st.slider(
-            "Skip games with X moves",
+            "Skip games with moves outside range:",
             min_value=0,
             max_value=500,
             value=(5, 200),

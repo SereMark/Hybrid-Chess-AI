@@ -56,10 +56,9 @@ class DataPreparationWorker:
             with chess.engine.SimpleEngine.popen_uci(self.engine_path) as engine:
                 engine.configure({"Threads":self.engine_threads,"Hash":self.engine_hash})
                 self.status_callback("✅ Chess engine initialized successfully.")
-                feature_dim = 14
                 h5_path = os.path.join(self.output_dir,"dataset.h5")
                 with h5py.File(h5_path,"w") as h5_file:
-                    h5_file.create_dataset("inputs",(0,64,feature_dim),maxshape=(None,64,feature_dim),dtype=np.float32,compression="lzf")
+                    h5_file.create_dataset("inputs",(0,64,18),maxshape=(None,64,18),dtype=np.float32,compression="lzf")
                     h5_file.create_dataset("policy_targets",(0,),maxshape=(None,),dtype=np.int64,compression="lzf")
                     h5_file.create_dataset("value_targets",(0,),maxshape=(None,),dtype=np.float32,compression="lzf")
                     skipped_games = 0
