@@ -8,6 +8,7 @@ from src.training.supervised.supervised_training_worker import SupervisedWorker
 from src.training.reinforcement.reinforcement_training_worker import ReinforcementWorker
 from src.analysis.evaluation.evaluation_worker import EvaluationWorker
 from src.analysis.benchmark.benchmark_worker import BenchmarkWorker
+from src.lichess_deployment.lichess_bot_deployment_worker import LichessBotDeploymentWorker
 
 warnings.filterwarnings("ignore", message="Thread 'MainThread': missing ScriptRunContext!")
 
@@ -567,6 +568,91 @@ def hyperparameter_optimization_tab():
             status_callback=sc
         ))
 
+def lichess_deployment_tab():
+    st.subheader("Lichess Bot Deployment")
+    st.write(
+        "Configure and deploy your Lichess bot to the cloud, integrating your AI model, opening book, "
+        "and MCTS logic. Provide your Lichess bot token, cloud settings, and engine paths below."
+    )
+
+    st.markdown("### Chess Engine & Model Integration")
+    model_path = input_with_validation(
+        label="Model Path:",
+        default_value="models/saved_models/chess_model.pth",
+        path_type="file",
+        help_text="Path to your trained model file.",
+        key="lichess_model_path"
+    )
+    opening_book_path = input_with_validation(
+        label="Opening Book JSON Path:",
+        default_value="data/openings/book.json",
+        path_type="file",
+        help_text="Path to your opening book JSON.",
+        key="lichess_opening_book_path"
+    )
+
+    st.markdown("### Lichess Bot Settings")
+    lichess_token = st.text_input(
+        "Lichess Bot API Token:",
+        value="",
+        type="password",
+        help="Your Lichess bot account token. Must have the 'bot:play' scope."
+    )
+    time_control = st.selectbox(
+        "Preferred Time Control:",
+        ["1+0 (Bullet)", "3+2 (Blitz)", "5+0 (Blitz)", "15+10 (Rapid)", "Classical"],
+        index=1
+    )
+    rating_min, rating_max = st.slider(
+        "Opponent Rating Range:",
+        min_value=800,
+        max_value=3000,
+        value=(1200, 2400),
+        step=50
+    )
+    use_mcts = st.checkbox("Use MCTS in Bot Play", value=True, key="lichess_use_mcts")
+
+    st.markdown("### Cloud Deployment")
+    cloud_provider = st.selectbox(
+        "Cloud Provider:",
+        ["AWS", "Google Cloud", "Azure", "Other"],
+        index=0
+    )
+    st.write(
+        "Select your desired cloud provider where the bot engine will be hosted. "
+        "Make sure you have proper credentials set up."
+    )
+
+    st.markdown("### Deploy or Refresh")
+    st.write(
+        "Click the button below to upload/refresh your bot deployment in the cloud and authorize the bot "
+        "to play on Lichess using the provided token."
+    )
+
+    if st.button("Deploy / Refresh Lichess Bot", key="lichess_deploy_button"):
+        if not validate_path(model_path, "file"):
+            st.error("⚠️ Invalid model file path.")
+            return
+        if not validate_path(opening_book_path, "file"):
+            st.error("⚠️ Invalid opening book path.")
+            return
+        if not lichess_token.strip():
+            st.error("⚠️ Lichess token is required.")
+            return
+
+        execute_worker(
+            lambda progress_cb, status_cb: LichessBotDeploymentWorker(
+                model_path=model_path,
+                opening_book_path=opening_book_path,
+                lichess_token=lichess_token,
+                time_control=time_control,
+                rating_range=(rating_min, rating_max),
+                use_mcts=use_mcts,
+                cloud_provider=cloud_provider,
+                progress_callback=progress_cb,
+                status_callback=status_cb
+            )
+        )
 
 def main():
     tabs = st.tabs([
@@ -575,7 +661,8 @@ def main():
         "Reinforcement Trainer",
         "Evaluation",
         "Benchmarking",
-        "Hyperparameter Optimization"
+        "Hyperparameter Optimization",
+        "Lichess Deployment"
     ])
 
     with tabs[0]:
@@ -590,6 +677,8 @@ def main():
         benchmarking_tab()
     with tabs[5]:
         hyperparameter_optimization_tab()
+    with tabs[6]:
+        lichess_deployment_tab()
 
 
 if __name__ == "__main__":

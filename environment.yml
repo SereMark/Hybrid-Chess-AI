@@ -16,3 +16,4 @@ dependencies:
   - wandb
   - optuna
   - scikit-learn
+  - shap
