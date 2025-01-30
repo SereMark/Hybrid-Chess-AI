@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 class SimpleTransformerChessModel(nn.Module):
     def __init__(self, num_moves, feature_dim=18, d_model=96, nhead=3, num_layers=6, dim_feedforward=384, dropout=0.1):
@@ -22,7 +21,3 @@ class SimpleTransformerChessModel(nn.Module):
         w = torch.softmax(self.attention_pool(x), 1)
         p = (x*w).sum(1)
         return self.policy_head(p), self.value_head(p)
-
-def policy_loss_with_mask(logits, move_indices, legal_masks):
-    m = logits.masked_fill(legal_masks==0, float('-inf'))
-    return F.cross_entropy(m, move_indices, reduction='mean')

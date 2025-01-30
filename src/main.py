@@ -10,7 +10,7 @@ from src.analysis.evaluation.evaluation_worker import EvaluationWorker
 from src.analysis.benchmark.benchmark_worker import BenchmarkWorker
 from src.lichess_deployment.lichess_bot_deployment_worker import LichessBotDeploymentWorker
 
-warnings.filterwarnings("ignore", message="Thread 'MainThread': missing ScriptRunContext!")
+warnings.filterwarnings("ignore", message="Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.")
 
 st.set_page_config(
     page_title="Chess AI Management Dashboard",
@@ -157,7 +157,7 @@ def supervised_training_tab():
     col1, col2 = st.columns(2)
     with col1:
         epochs = st.number_input("Epochs:", 1, 1000, 50, key="sup_epochs")
-        accumulation_steps = st.number_input("Accumulation Steps:", 1, 100, 8, key="sup_accum_steps")
+        accumulation_steps = st.number_input("Accumulation Steps:", 1, 100, 2, key="sup_accum_steps")
         wd = st.number_input("Weight Decay:", 0.0, 1.0, 0.0001, format="%.6f", key="sup_wd")
         model = input_with_validation(
             label="Existing Model (optional):",
@@ -167,10 +167,10 @@ def supervised_training_tab():
             key="sup_model_path"
         )
     with col2:
-        batch_size = st.number_input("Batch Size:", 1, 10000, 512, step=1, key="sup_batch_size")
-        lr = st.number_input("Learning Rate:", 1e-6, 1.0, 0.0001, format="%.6f", key="sup_lr")
+        batch_size = st.number_input("Batch Size:", 1, 10000, 256, step=1, key="sup_batch_size")
+        lr = st.number_input("Learning Rate:", 1e-6, 1.0, 0.0005, format="%.6f", key="sup_lr")
         optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"], index=0, key="sup_optimizer")
-        chkpt_interval = st.number_input("Checkpoint Interval (Epochs):", 0, 100, 10, key="sup_chkpt_int")
+        chkpt_interval = st.number_input("Checkpoint Interval (Epochs):", 0, 100, 5, key="sup_chkpt_int")
 
     if optimizer in ["sgd", "rmsprop"]:
         momentum = st.number_input("Momentum:", 0.0, 1.0, 0.85, step=0.05, key="sup_momentum")
@@ -181,7 +181,7 @@ def supervised_training_tab():
     with col3:
         scheduler = st.selectbox(
             "Scheduler Type:",
-            ["cosineannealingwarmrestarts", "step", "linear", "onecycle"], 
+            ["onecycle", "step", "linear", "cosineannealingwarmrestarts"], 
             index=0,
             key="sup_scheduler"
         )
@@ -189,9 +189,9 @@ def supervised_training_tab():
         num_workers = st.number_input("Number of Dataloader Workers:", 1, 32, 16, key="sup_num_workers")
 
     random_seed = st.number_input("Random Seed:", 0, 100000, 12345, key="sup_random_seed")
-    policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 2.0, step=0.1, key="sup_policy_weight")
-    value_weight = st.number_input("Value Weight:", 0.0, 10.0, 3.0, step=0.1, key="sup_value_weight")
-    grad_clip = st.number_input("Gradient Clip:", 0.0, 10.0, 2.0, step=0.1, key="sup_grad_clip")
+    policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 3.0, step=0.1, key="sup_policy_weight")
+    value_weight = st.number_input("Value Weight:", 0.0, 10.0, 2.0, step=0.1, key="sup_value_weight")
+    grad_clip = st.number_input("Gradient Clip:", 0.0, 10.0, 5.0, step=0.1, key="sup_grad_clip")
 
     st.markdown("---")
     st.markdown("#### Dataset Details")
