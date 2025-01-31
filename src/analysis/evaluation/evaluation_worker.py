@@ -1,4 +1,4 @@
-import os, torch, numpy as np, random
+import os, torch, numpy as np, random, time
 from torch.utils.data import DataLoader
 from torch.nn.functional import mse_loss, smooth_l1_loss
 from src.models.transformer import TransformerCNNChessModel
@@ -19,7 +19,7 @@ class EvaluationWorker:
         if self.wandb_flag:
             try:
                 import wandb
-                wandb.init(entity="chess_ai", project="chess_ai_app", name="evaluation", config=self.__dict__, reinit=True)
+                wandb.init(entity="chess_ai", project="chess_ai_app", name=f"evaluation_{time.strftime('%Y%m%d-%H%M%S')}", config=self.__dict__, reinit=True)
             except ImportError:
                 self.status_callback("wandb not installed, proceeding without logging.")
                 self.wandb_flag = False

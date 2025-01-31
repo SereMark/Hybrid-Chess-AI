@@ -46,8 +46,8 @@ class SupervisedWorker:
     def run(self):
         if self.wandb_flag:
             import wandb
-            wandb.init(entity="chess_ai",project="chess_ai_app",name="supervised_training",config={k:v for k,v in self.__dict__.items() if not callable(v)},reinit=True)
-            wandb.watch(self.model,log="parameters",log_freq=100)
+            wandb.init(entity="chess_ai",project="chess_ai_app",name=f"supervised_training_{time.strftime('%Y%m%d-%H%M%S')}",config={k:v for k,v in self.__dict__.items() if not callable(v)},reinit=True)
+            wandb.watch(self.model,log="all",log_freq=100)
         train_loader = DataLoader(H5Dataset(self.dataset_path, self.train_indices),batch_size=self.batch_size,shuffle=True,num_workers=self.num_workers,pin_memory=(self.device.type=='cuda'),persistent_workers=(self.num_workers>0))
         val_loader = DataLoader(H5Dataset(self.dataset_path, self.val_indices),batch_size=self.batch_size,shuffle=False,num_workers=self.num_workers,pin_memory=(self.device.type=='cuda'),persistent_workers=(self.num_workers>0))
         if self.start_epoch>self.epochs:
@@ -60,8 +60,8 @@ class SupervisedWorker:
         best_metric = float('inf')
         training_start = time.time()
         for epoch in range(self.start_epoch,self.epochs+1):
-            train_metrics = train_epoch(self.model,train_loader,self.device,self.scaler,self.optimizer,self.scheduler,epoch,self.epochs,self.accumulation_steps,True,self.policy_weight,self.value_weight,self.grad_clip,self.progress_callback,self.status_callback,self.wandb_flag)
-            val_metrics = validate_epoch(self.model,val_loader,self.device,epoch,self.epochs,self.progress_callback,self.status_callback,self.wandb_flag)
+            _ = train_epoch(self.model,train_loader,self.device,self.scaler,self.optimizer,self.scheduler,epoch,self.epochs,self.accumulation_steps,True,self.policy_weight,self.value_weight,self.grad_clip,self.progress_callback,self.status_callback,self.wandb_flag)
+            val_metrics = validate_epoch(self.model,val_loader,self.device,epoch,self.epochs,self.progress_callback,self.status_callback)
             val_loss = self.policy_weight*val_metrics["policy_loss"]+self.value_weight*val_metrics["value_loss"]
             if val_loss<best_metric:
                 best_metric=val_loss
@@ -69,7 +69,7 @@ class SupervisedWorker:
             if self.checkpoint_manager.checkpoint_interval>0 and epoch%self.checkpoint_manager.checkpoint_interval==0:
                 self.checkpoint_manager.save(self.model,self.optimizer,self.scheduler,epoch)
             if self.wandb_flag:
-                wandb.log({"epoch":epoch,"train/policy_loss":train_metrics["policy_loss"],"train/value_loss":train_metrics["value_loss"],"train/accuracy":train_metrics["accuracy"],"val/policy_loss":val_metrics["policy_loss"],"val/value_loss":val_metrics["value_loss"],"val/accuracy":val_metrics["accuracy"],"val/composite_loss":val_loss,"learning_rate":self.scheduler.get_last_lr()[0]})
+                wandb.log({"val/policy_loss":val_metrics["policy_loss"],"val/value_loss":val_metrics["value_loss"],"val/accuracy":val_metrics["accuracy"],"val/composite_loss":val_loss,"learning_rate":self.scheduler.get_last_lr()[0]})
             if self.use_early_stopping:
                 if val_loss<self.best_val_loss:
                     self.best_val_loss=val_loss

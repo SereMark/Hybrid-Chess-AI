@@ -41,7 +41,7 @@ class DataPreparationWorker:
     def run(self):
         import wandb
         if self.wandb_flag:
-            wandb.init(entity="chess_ai", project="chess_ai_app", name="data_preparation", config=self.__dict__, reinit=True)
+            wandb.init(entity="chess_ai", project="chess_ai_app", name=f"data_preparation_{time.strftime('%Y%m%d-%H%M%S')}", config=self.__dict__, reinit=True)
             batch_table = wandb.Table(columns=["Batch","Batch Size","Mean Value","Std Value"])
             game_table = wandb.Table(columns=["Games Processed","Games Skipped","Progress","Batch Size","Dataset Size"])
             opening_table = wandb.Table(columns=["Opening Games Processed","Opening Games Skipped","Opening Progress","Unique Positions"])

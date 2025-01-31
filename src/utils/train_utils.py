@@ -1,8 +1,8 @@
-from torch.amp import autocast
 import torch
 import random
 import numpy as np
 import torch.optim as optim
+from torch.amp import autocast
 import torch.nn.functional as F
 
 def initialize_random_seeds(seed):
@@ -38,11 +38,7 @@ def initialize_scheduler(optimizer, scheduler_type, total_steps):
 
 def train_epoch(model, loader, device, scaler, optimizer, scheduler, epoch, max_epoch, accum_steps, compute_acc, p_w, v_w, max_grad, prog_cb, status_cb, use_wandb):
     model.train()
-    total_p_loss = 0
-    total_v_loss = 0
-    correct = 0
-    total = 0
-    accum = 0
+    total_p_loss, total_v_loss, correct, total, accum = 0, 0, 0, 0, 0
     if use_wandb:
         import wandb
     for idx, (inp, pol, val) in enumerate(loader, start=1):
@@ -56,15 +52,16 @@ def train_epoch(model, loader, device, scaler, optimizer, scheduler, epoch, max_
             if pol.dim() == 1:
                 p_loss = F.cross_entropy(p_pred, pol, label_smoothing=0.1)
             else:
-                p_loss = -(pol*F.log_softmax(p_pred, dim=1)).sum(dim=1).mean()
+                p_loss = F.kl_div(F.log_softmax(p_pred, dim=1), pol, reduction="batchmean", log_target=False)
             v_loss = F.mse_loss(v_pred.view(-1), val)
             loss = (p_w*p_loss+v_w*v_loss)/accum_steps
         scaler.scale(loss).backward()
         accum += 1
+        grad_norm = float('nan')
         if (accum%accum_steps==0) or (idx==len(loader)):
             if max_grad>0:
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad)
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad)
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad(set_to_none=True)
@@ -74,24 +71,24 @@ def train_epoch(model, loader, device, scaler, optimizer, scheduler, epoch, max_
         total_p_loss += p_loss.item()*bs
         total_v_loss += v_loss.item()*bs
         total += bs
-        batch_correct = 0
-        if compute_acc and pol.dim()==1:
-            batch_correct = (p_pred.argmax(dim=1)==pol).float().sum().item()
-        if use_wandb:
-            wandb.log({"train_policy_loss": p_loss.item(),"train_value_loss": v_loss.item(),"train_step_accuracy": batch_correct/bs if (compute_acc and pol.dim()==1) else float('nan'),"learning_rate": scheduler.get_last_lr()[0]})
-        correct+=batch_correct
+        batch_correct = (p_pred.argmax(dim=1) == pol).float().sum().item() if compute_acc and pol.dim() == 1 else 0
+        correct += batch_correct
+        if use_wandb and idx % 10 == 0:
+            wandb.log({
+                "train/policy_loss": p_loss.item(),
+                "train/value_loss": v_loss.item(),
+                "train/accuracy": batch_correct/bs if compute_acc and pol.dim()==1 else float('nan'),
+                "train/grad_norm": grad_norm.item(),
+                "learning_rate": scheduler.get_last_lr()[0]})
         if prog_cb:
             prog_cb(idx/len(loader)*100)
         if status_cb and idx%10==0:
-            status_cb("Epoch {}/{} | Batch {}/{} | Policy Loss: {:.4f} | Value Loss: {:.4f}".format(epoch,max_epoch,idx,len(loader),total_p_loss/total,total_v_loss/total))
+            status_cb(f"📊 Epoch {epoch}/{max_epoch} | 📦 Batch {idx}/{len(loader)} | 🎯 Policy Loss: {total_p_loss/total:.4f} | 💰 Value Loss: {total_v_loss/total:.4f} | ✅ Accuracy: {correct/total:.4f}")
     return {"policy_loss": total_p_loss/total if total else 0,"value_loss": total_v_loss/total if total else 0,"accuracy": correct/total if (compute_acc and total) else 0}
 
-def validate_epoch(model, loader, device, epoch, max_epoch, prog_cb, status_cb, use_wandb):
+def validate_epoch(model, loader, device, epoch, max_epoch, prog_cb, status_cb):
     model.eval()
-    val_p_loss = 0
-    val_v_loss = 0
-    correct = 0
-    total = 0
+    val_p_loss, val_v_loss, correct, total = 0, 0, 0, 0
     with torch.no_grad():
         for idx, (inp, pol, val) in enumerate(loader, start=1):
             inp = inp.to(device, non_blocking=True)
@@ -110,5 +107,5 @@ def validate_epoch(model, loader, device, epoch, max_epoch, prog_cb, status_cb, 
             if prog_cb:
                 prog_cb(idx/len(loader)*100)
             if status_cb and idx%10==0:
-                status_cb(f"Validation Epoch {epoch}/{max_epoch} | Batch {idx}/{len(loader)} | Policy Loss: {val_p_loss / total:.4f} | Value Loss: {val_v_loss / total:.4f}")
+                status_cb(f"🔍 Validation Epoch {epoch}/{max_epoch} | 📦 Batch {idx}/{len(loader)} | 🎯 Policy Loss: {val_p_loss/total:.4f} | 💰 Value Loss: {val_v_loss/total:.4f} | ✅ Accuracy: {correct/total:.4f}")
     return {"policy_loss": val_p_loss/total if total else 0,"value_loss": val_v_loss/total if total else 0,"accuracy": correct/total if total else 0}

@@ -55,7 +55,7 @@ class ReinforcementWorker:
     def run(self):
         if self.wandb_flag:
             import wandb
-            wandb.init(entity="chess_ai",project="chess_ai_app",name="reinforcement_training",config={k:v for k,v in self.__dict__.items() if not callable(v)},reinit=True)
+            wandb.init(entity="chess_ai",project="chess_ai_app",name=f"reinforcement_training_{time.strftime('%Y%m%d-%H%M%S')}",config={k:v for k,v in self.__dict__.items() if not callable(v)},reinit=True)
             wandb.watch(self.model,log="parameters",log_freq=100)
         training_start=time.time()
         if self.start_iteration>self.num_iterations:
