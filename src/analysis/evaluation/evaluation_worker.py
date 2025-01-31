@@ -104,7 +104,7 @@ class EvaluationWorker:
                 logits_list.append(out.cpu())
                 p = (i/total_batches)*100
                 self.progress_callback(p)
-                self.status_callback(f"Evaluating batch {i}/{total_batches} [acc={acc:.4f}]")
+                self.status_callback(f"🚀 Evaluating batch {i}/{total_batches} | 🎯 Acc={acc:.4f}")
         torch.cuda.empty_cache()
         if logits_list:
             logits_cat = torch.cat(logits_list, dim=0).numpy()
