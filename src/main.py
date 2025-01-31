@@ -586,7 +586,7 @@ def lichess_deployment_tab():
     time_control = st.selectbox(
         "Preferred Time Control:",
         ["Classical", "3+2 (Blitz)", "5+0 (Blitz)", "15+10 (Rapid)", "1+0 (Bullet)"],
-        index=1,
+        index=0,
         key="lichess_time_control"
     )
     rating_min, rating_max = st.slider(
@@ -603,7 +603,7 @@ def lichess_deployment_tab():
     hosting_provider = st.selectbox(
         "Hosting Provider:",
         ["Local", "AWS", "Google Cloud", "Azure", "Other"],
-        index=1,
+        index=0,
         key="lichess_hosting_provider"
     )
     if hosting_provider.lower() == "local":
