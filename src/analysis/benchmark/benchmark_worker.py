@@ -26,7 +26,9 @@ class BenchmarkWorker:
     def run(self):
         if self.wandb_flag:
             import wandb
-            wandb.init(entity="chess_ai",project="chess_ai_app",name=f"benchmark_{time.strftime('%Y%m%d-%H%M%S')}",config=self.__dict__,reinit=True)
+            config_to_log = self.__dict__.copy()
+            config_to_log.pop('opening_book', None)
+            wandb.init(entity="chess_ai",project="chess_ai_app",name=f"benchmark_{time.strftime('%Y%m%d-%H%M%S')}",config=config_to_log,reinit=True)
         results = {"1-0":0,"0-1":0,"1/2-1/2":0,"*":0}
         durations, move_counts = [], []
         b1, b2, dr = 0, 0, 0
