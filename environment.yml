@@ -25,3 +25,4 @@ dependencies:
       - berserk
       - google-cloud
       - google-cloud-storage
+      - torch-geometric
