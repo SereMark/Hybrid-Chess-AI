@@ -3,6 +3,7 @@ import json
 import torch
 import chess
 import boto3
+import shutil
 import berserk
 import paramiko
 from google.cloud import storage
@@ -27,14 +28,14 @@ def choose_opening_move(board, opening_book):
     return None
 
 class LichessBotDeploymentWorker:
-    def __init__(self, model_path, opening_book_path, lichess_token, time_control, rating_range, use_mcts, cloud_provider, progress_callback, status_callback):
+    def __init__(self, model_path, opening_book_path, lichess_token, time_control, rating_range, use_mcts, hosting_provider, progress_callback, status_callback):
         self.model_path = model_path
         self.opening_book_path = opening_book_path
         self.lichess_token = lichess_token
         self.time_control = time_control
         self.rating_range = rating_range
         self.use_mcts = use_mcts
-        self.cloud_provider = cloud_provider
+        self.hosting_provider = hosting_provider
         self.progress_callback = progress_callback
         self.status_callback = status_callback
         self.model = None
@@ -66,9 +67,9 @@ class LichessBotDeploymentWorker:
             raise
 
     def deploy_to_cloud(self):
-        self.status_callback(f"Deploying to {self.cloud_provider}...")
+        self.status_callback(f"Deploying to {self.hosting_provider}...")
         self.progress_callback(10)
-        provider = self.cloud_provider.strip().lower()
+        provider = self.hosting_provider.strip().lower()
         try:
             if provider == "aws":
                 self._deploy_aws()
@@ -78,8 +79,10 @@ class LichessBotDeploymentWorker:
                 self._deploy_azure()
             elif provider == "other":
                 self._deploy_other()
+            elif provider == "local":
+                self._deploy_local()
             else:
-                self.status_callback("Cloud provider not recognized. Skipping deployment step.")
+                self.status_callback("Hosting provider not recognized. Skipping deployment step.")
                 self.progress_callback(100)
                 return
             self.progress_callback(100)
@@ -163,6 +166,23 @@ class LichessBotDeploymentWorker:
         sftp.close()
         ssh.close()
 
+    def _deploy_local(self):
+        self.status_callback("Deploying locally on the current machine...")
+        local_deployment_dir = os.environ.get("LOCAL_DEPLOYMENT_DIR", "local_deployment")
+        os.makedirs(local_deployment_dir, exist_ok=True)
+        model_dest = os.path.join(local_deployment_dir, os.path.basename(self.model_path))
+        book_dest = os.path.join(local_deployment_dir, os.path.basename(self.opening_book_path))
+        self.status_callback("Copying model to local deployment directory...")
+        shutil.copy2(self.model_path, model_dest)
+        self.progress_callback(30)
+        self.status_callback("Copying opening book to local deployment directory...")
+        shutil.copy2(self.opening_book_path, book_dest)
+        self.progress_callback(60)
+        self.status_callback("Local deployment files have been set up.")
+        self.progress_callback(90)
+        self.status_callback("Local deployment complete. The bot will now run on this machine.")
+        self.progress_callback(100)
+    
     def start_bot(self):
         self.status_callback("Starting Lichess bot...")
         try:

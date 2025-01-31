@@ -557,20 +557,20 @@ def hyperparameter_optimization_tab():
 def lichess_deployment_tab():
     st.subheader("Lichess Bot Deployment")
     st.write(
-        "Configure and deploy your Lichess bot to the cloud, integrating your AI model, opening book, "
-        "and MCTS logic. Provide your Lichess bot token, cloud settings, and engine paths below."
+        "Configure and deploy your Lichess bot either to a cloud provider or host it locally on this machine. "
+        "Integrate your AI model, opening book, and MCTS logic. Provide your Lichess bot token, hosting settings, and engine paths below."
     )
     st.markdown("### Chess Engine & Model Integration")
     model_path = input_with_validation(
         label="Model Path:",
-        default_value="models/saved_models/chess_model.pth",
+        default_value="models/saved_models/supervised_model.pth",
         path_type="file",
         help_text="Path to your trained model file.",
         key="lichess_model_path"
     )
     opening_book_path = input_with_validation(
         label="Opening Book JSON Path:",
-        default_value="data/openings/book.json",
+        default_value="data/processed/opening_book.json",
         path_type="file",
         help_text="Path to your opening book JSON.",
         key="lichess_opening_book_path"
@@ -585,7 +585,7 @@ def lichess_deployment_tab():
     )
     time_control = st.selectbox(
         "Preferred Time Control:",
-        ["1+0 (Bullet)", "3+2 (Blitz)", "5+0 (Blitz)", "15+10 (Rapid)", "Classical"],
+        ["Classical", "3+2 (Blitz)", "5+0 (Blitz)", "15+10 (Rapid)", "1+0 (Bullet)"],
         index=1,
         key="lichess_time_control"
     )
@@ -598,21 +598,25 @@ def lichess_deployment_tab():
         key="lichess_rating_range"
     )
     use_mcts = st.checkbox("Use MCTS in Bot Play", value=True, key="lichess_use_mcts")
-    st.markdown("### Cloud Deployment")
-    cloud_provider = st.selectbox(
-        "Cloud Provider:",
-        ["AWS", "Google Cloud", "Azure", "Other"],
-        index=0,
-        key="lichess_cloud_provider"
+    
+    st.markdown("### Hosting Deployment")
+    hosting_provider = st.selectbox(
+        "Hosting Provider:",
+        ["Local", "AWS", "Google Cloud", "Azure", "Other"],
+        index=1,
+        key="lichess_hosting_provider"
     )
-    st.write(
-        "Select your desired cloud provider where the bot engine will be hosted. "
-        "Make sure you have proper credentials set up."
-    )
+    if hosting_provider.lower() == "local":
+        st.write("The bot will be hosted on this machine locally. No cloud deployment steps are required.")
+    else:
+        st.write(
+            "Select your desired cloud provider where the bot engine will be hosted. "
+            "Make sure you have proper credentials set up in your environment."
+        )
+    
     st.markdown("### Deploy or Refresh")
     st.write(
-        "Click the button below to upload/refresh your bot deployment in the cloud and authorize the bot "
-        "to play on Lichess using the provided token."
+        "Click the button below to deploy/refresh your bot and authorize it to play on Lichess using the provided token."
     )
     if st.button("Deploy / Refresh Lichess Bot", key="lichess_deploy_button"):
         if not validate_path(model_path, "file"):
@@ -632,7 +636,7 @@ def lichess_deployment_tab():
                 time_control=time_control,
                 rating_range=(rating_min, rating_max),
                 use_mcts=use_mcts,
-                cloud_provider=cloud_provider,
+                hosting_provider=hosting_provider,
                 progress_callback=progress_cb,
                 status_callback=status_cb
             )
