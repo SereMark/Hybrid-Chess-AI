@@ -54,8 +54,6 @@ class Bot:
         if board.fullmove_number==1 and board.turn==chess.WHITE and len(probs)>1:
             mv_list = list(probs.keys())
             arr = np.array(list(probs.values()), dtype=np.float32)
-            noise = np.random.dirichlet([0.3]*len(mv_list))
-            arr = 0.75*arr + 0.25*noise
             arr /= arr.sum()
             probs = dict(zip(mv_list, arr))
         return max(probs, key=probs.get) if probs else chess.Move.null()
