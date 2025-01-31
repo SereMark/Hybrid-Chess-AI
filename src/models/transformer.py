@@ -20,7 +20,7 @@ class TransformerEncoderLayerPreLN(nn.Module):
     def __init__(self, d_model, nhead, dim_ff, dropout):
         super().__init__()
         self.norm1 = nn.LayerNorm(d_model)
-        self.attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
         self.dropout1 = nn.Dropout(dropout)
         self.norm2 = nn.LayerNorm(d_model)
         self.ffn = nn.Sequential(
@@ -31,9 +31,9 @@ class TransformerEncoderLayerPreLN(nn.Module):
             nn.Dropout(dropout)
         )
 
-    def forward(self, src, attn_mask=None, key_pad_mask=None):
+    def forward(self, src, src_mask=None, src_key_padding_mask=None, is_causal=None):
         src2 = self.norm1(src)
-        attn_out, _ = self.attn(src2, src2, src2, attn_mask=attn_mask, key_padding_mask=key_pad_mask)
+        attn_out, _ = self.self_attn(src2, src2, src2, attn_mask=src_mask, key_padding_mask=src_key_padding_mask)
         src = src + self.dropout1(attn_out)
         src2 = self.norm2(src)
         return src + self.ffn(src2)
