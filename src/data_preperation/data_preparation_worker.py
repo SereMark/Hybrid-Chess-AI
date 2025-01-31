@@ -58,7 +58,7 @@ class DataPreparationWorker:
                 self.status_callback("✅ Chess engine initialized successfully.")
                 h5_path = os.path.join(self.output_dir,"dataset.h5")
                 with h5py.File(h5_path,"w") as h5_file:
-                    h5_file.create_dataset("inputs",(0,64,18),maxshape=(None,64,18),dtype=np.float32,compression="lzf")
+                    h5_file.create_dataset("inputs",(0,64,144),maxshape=(None,64,144),dtype=np.float32,compression="lzf")
                     h5_file.create_dataset("policy_targets",(0,),maxshape=(None,),dtype=np.int64,compression="lzf")
                     h5_file.create_dataset("value_targets",(0,),maxshape=(None,),dtype=np.float32,compression="lzf")
                     skipped_games = 0
@@ -189,7 +189,7 @@ class DataPreparationWorker:
             i_np = np.array(self.batch_inputs,dtype=np.float32)
             p_np = np.array(self.batch_policy_targets,dtype=np.int64)
             v_np = np.array(self.batch_value_targets,dtype=np.float32)
-            h5_file["inputs"].resize((e,64,i_np.shape[2]))
+            h5_file["inputs"].resize((e,64,144))
             h5_file["policy_targets"].resize((e,))
             h5_file["value_targets"].resize((e,))
             h5_file["inputs"][self.current_dataset_size:e,:,:] = i_np
@@ -198,14 +198,11 @@ class DataPreparationWorker:
             m = float(np.mean(v_np))
             s = float(np.std(v_np))
             if wandb:
-                try:
-                    batch_table.add_data(str(self.total_games_processed),bs,m,s)
-                    wandb.log({"batch_size":bs,"mean_value_targets":m,"std_value_targets":s})
-                except:
-                    pass
+                batch_table.add_data(str(self.total_games_processed),bs,m,s)
+                wandb.log({"batch_size":bs,"mean_value_targets":m,"std_value_targets": s})
             self.current_dataset_size+=bs
-        except:
-            self.status_callback("❌ Error writing to HDF5")
+        except (ValueError, KeyError, TypeError) as write_e:
+            self.status_callback(f"❌ Error writing to HDF5:{write_e}")
         finally:
             self.batch_inputs.clear()
             self.batch_policy_targets.clear()

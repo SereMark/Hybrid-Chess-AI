@@ -4,7 +4,7 @@ import torch_geometric.nn as pyg_nn
 import torch.nn.functional as F
 
 class GNNChessModel(nn.Module):
-    def __init__(self, num_moves, feature_dim=18, hidden_dim=128, gnn_layers=4, heads=4, dropout=0.2):
+    def __init__(self, num_moves, feature_dim=144, hidden_dim=128, gnn_layers=4, heads=4, dropout=0.2):
         super().__init__()
         self.gnn_layers = nn.ModuleList()
         self.gnn_layers.append(pyg_nn.GATConv(feature_dim, hidden_dim, heads=heads, dropout=dropout, concat=False))

@@ -52,7 +52,7 @@ class SinusoidalPositionalEncoding(nn.Module):
         return self.pe[:seq_len].unsqueeze(0)
 
 class TransformerCNNChessModel(nn.Module):
-    def __init__(self, num_moves, feature_dim=18, d_model=96, nhead=3, layers=6, dim_ff=192, dropout=0.1, max_pos=64):
+    def __init__(self, num_moves, feature_dim=144, d_model=96, nhead=3, layers=6, dim_ff=192, dropout=0.1, max_pos=64):
         super().__init__()
         self.initial_conv = nn.Conv2d(feature_dim, d_model, 1)
         self.conv_blocks = nn.Sequential(

@@ -218,7 +218,7 @@ class EvaluationWorker:
         try:
             self.status_callback("Testing robustness on edge cases (synthetic boards)...")
             edges = []
-            b = torch.zeros((1,64,18), dtype=torch.float32, device=self.device)
+            b = torch.zeros((1,64,144), dtype=torch.float32, device=self.device)
             b[0,0,0] = 1 
             edges.append(b)
             results = []

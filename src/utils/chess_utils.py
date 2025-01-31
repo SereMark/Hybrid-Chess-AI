@@ -83,9 +83,14 @@ def convert_single_board(b):
     return x
 
 def convert_board_to_transformer_input(b):
-    boards = [b.copy()]
-    # for _ in range(8):
-    #     if not board.move_stack: break
-    #     board.pop()
-    #     boards.insert(0, board.copy())
+    temp_board = b.copy()
+    boards = [temp_board.copy()]
+    history = list(temp_board.move_stack)
+    for _ in range(7):
+        if not history: break
+        history.pop()
+        temp_board.pop()
+        boards.insert(0, temp_board.copy())
+    while len(boards) < 8:
+        boards.insert(0, boards[0].copy())
     return np.concatenate([convert_single_board(x) for x in boards], axis=1)
