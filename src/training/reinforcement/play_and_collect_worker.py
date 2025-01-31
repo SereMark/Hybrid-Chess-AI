@@ -3,7 +3,7 @@ import chess
 import torch
 import numpy as np
 from src.training.reinforcement.mcts import MCTS
-from src.models.transformer import TransformerChessModel
+from src.models.transformer import TransformerCNNChessModel
 from src.utils.train_utils import initialize_random_seeds
 from src.utils.chess_utils import convert_board_to_transformer_input, get_move_mapping, get_total_moves
 
@@ -12,7 +12,7 @@ class PlayAndCollectWorker:
     def run_process(cls, model_state_dict, device_type, simulations, c_puct, temperature, games_per_process, seed):
         initialize_random_seeds(seed)
         device=torch.device(device_type)
-        model=TransformerChessModel(get_total_moves())
+        model=TransformerCNNChessModel(get_total_moves())
         try:
             model.load_state_dict(model_state_dict,strict=False)
         except:

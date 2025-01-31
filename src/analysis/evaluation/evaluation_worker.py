@@ -2,7 +2,7 @@ import os, torch, numpy as np, random
 from torch.utils.data import DataLoader
 from torch.nn.functional import mse_loss, smooth_l1_loss
 from src.utils.datasets import H5Dataset
-from src.models.transformer import TransformerChessModel
+from src.models.transformer import TransformerCNNChessModel
 from src.utils.train_utils import initialize_random_seeds
 from src.utils.chess_utils import get_total_moves
 
@@ -57,7 +57,7 @@ class EvaluationWorker:
         except Exception as e:
             self.status_callback(f"Error loading model checkpoint: {e}")
             return None
-        m = TransformerChessModel(num_moves=get_total_moves()).to(self.device)
+        m = TransformerCNNChessModel(num_moves=get_total_moves()).to(self.device)
         m.eval()
         try:
             if isinstance(c, dict) and "model_state_dict" in c:

@@ -5,7 +5,7 @@ import numpy as np
 from torch.amp import GradScaler
 from torch.utils.data import DataLoader
 from src.utils.datasets import H5Dataset
-from src.models.transformer import TransformerChessModel
+from src.models.transformer import TransformerCNNChessModel
 from src.utils.checkpoint_manager import CheckpointManager
 from src.utils.chess_utils import get_total_moves
 from src.utils.train_utils import initialize_optimizer, initialize_scheduler, initialize_random_seeds, validate_epoch, train_epoch
@@ -14,7 +14,7 @@ class SupervisedWorker:
     def __init__(self, epochs, batch_size, lr, weight_decay, checkpoint_interval, dataset_path, train_indices_path, val_indices_path, model_path, optimizer, scheduler, accumulation_steps, num_workers, random_seed, policy_weight, value_weight, grad_clip, momentum, wandb_flag, use_early_stopping=False, early_stopping_patience=5, progress_callback=None, status_callback=None):
         initialize_random_seeds(random_seed)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.model = TransformerChessModel(num_moves=get_total_moves()).to(self.device)
+        self.model = TransformerCNNChessModel(num_moves=get_total_moves()).to(self.device)
         self.optimizer = initialize_optimizer(self.model, optimizer, lr, weight_decay, momentum)
         self.scheduler_type = scheduler
         self.scheduler = None

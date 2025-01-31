@@ -1,14 +1,14 @@
 import os, chess, torch, numpy as np
 from src.training.reinforcement.mcts import MCTS
 from src.utils.chess_utils import get_total_moves, convert_board_to_transformer_input, get_move_mapping
-from src.models.transformer import TransformerChessModel
+from src.models.transformer import TransformerCNNChessModel
 
 class Bot:
     def __init__(self, path, use_mcts, use_opening_book):
         self.use_mcts = use_mcts
         self.use_opening_book = use_opening_book
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = TransformerChessModel(get_total_moves()).to(self.device)
+        self.model = TransformerCNNChessModel(get_total_moves()).to(self.device)
         self._load_model_checkpoint(path)
         self.mcts = MCTS(self.model, self.device, c_puct=1.4, n_simulations=100) if self.use_mcts else None
         self.move_map = get_move_mapping()
