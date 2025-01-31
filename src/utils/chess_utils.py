@@ -1,5 +1,15 @@
-import chess, numpy as np, re
+import h5py, torch
+import chess, numpy as np
 from itertools import product
+from torch.utils.data import Dataset
+
+class H5Dataset(Dataset):
+    def __init__(s, p, i): s.p, s.i, s.f = p, i, None
+    def __len__(s): return len(s.i)
+    def __getitem__(s, x): 
+        s.f = s.f or h5py.File(s.p, 'r')
+        return tuple(torch.tensor(s.f[k][s.i[x]], dtype=t) for k, t in zip(['inputs', 'policy_targets', 'value_targets'], [torch.float32, torch.long, torch.float32]))
+    def __del__(s): s.f and s.f.close()
 
 class MoveMapping:
     def __init__(self):
@@ -43,9 +53,6 @@ def mirror_move_rank(m):
     tf = chess.square_file(m.to_square)
     return chess.Move(chess.square(tf, tr), chess.square(ff, fr), promotion=m.promotion)
 
-def gather_history(b, n=0):
-    return [b.copy() for _ in range(n+1)]
-
 def convert_single_board(b):
     x = np.zeros((64, 18), np.float32)
     piece_map = {
@@ -75,7 +82,10 @@ def convert_single_board(b):
         x[:,17] = 1
     return x
 
-def convert_board_to_transformer_input(b, history=0):
-    boards = gather_history(b, history)
-    states = [convert_single_board(x) for x in boards]
-    return np.concatenate(states, axis=1)
+def convert_board_to_transformer_input(b):
+    boards = [b.copy()]
+    # for _ in range(8):
+    #     if not board.move_stack: break
+    #     board.pop()
+    #     boards.insert(0, board.copy())
+    return np.concatenate([convert_single_board(x) for x in boards], axis=1)

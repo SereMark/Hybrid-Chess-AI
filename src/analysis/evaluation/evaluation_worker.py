@@ -1,10 +1,9 @@
 import os, torch, numpy as np, random
 from torch.utils.data import DataLoader
 from torch.nn.functional import mse_loss, smooth_l1_loss
-from src.utils.datasets import H5Dataset
 from src.models.transformer import TransformerCNNChessModel
 from src.utils.train_utils import initialize_random_seeds
-from src.utils.chess_utils import get_total_moves
+from src.utils.chess_utils import H5Dataset, get_total_moves
 
 class EvaluationWorker:
     def __init__(self, model_path, indices_path, h5_path, wandb_flag=False, progress_callback=None, status_callback=None):
@@ -83,8 +82,7 @@ class EvaluationWorker:
         if len(test_indices)==0:
             self.status_callback("Test set empty, aborting.")
             return None
-        ds = H5Dataset(self.h5_path, test_indices)
-        loader = DataLoader(ds, batch_size=1024, shuffle=False, num_workers=0, pin_memory=(self.device.type=="cuda"))
+        loader = DataLoader(H5Dataset(self.h5_path, test_indices), batch_size=1024, shuffle=False, num_workers=0, pin_memory=(self.device.type=="cuda"))
         if len(loader)==0:
             self.status_callback("No valid batches in test set.")
             return None

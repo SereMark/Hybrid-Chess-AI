@@ -4,10 +4,9 @@ import time
 import numpy as np
 from torch.amp import GradScaler
 from torch.utils.data import DataLoader
-from src.utils.datasets import H5Dataset
 from src.models.transformer import TransformerCNNChessModel
 from src.utils.checkpoint_manager import CheckpointManager
-from src.utils.chess_utils import get_total_moves
+from src.utils.chess_utils import H5Dataset, get_total_moves
 from src.utils.train_utils import initialize_optimizer, initialize_scheduler, initialize_random_seeds, validate_epoch, train_epoch
 
 class SupervisedWorker:
