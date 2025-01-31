@@ -129,7 +129,7 @@ class DataPreparationWorker:
                                 except:
                                     self.status_callback("❌ Engine error")
                                     v=0.0
-                                fv = gr if b.turn else -gr
+                                fv = v if b.turn else -v
                                 self.batch_inputs.append(inp)
                                 self.batch_policy_targets.append(mid)
                                 self.batch_value_targets.append(fv)
