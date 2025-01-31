@@ -169,7 +169,7 @@ def supervised_training_tab():
     with col2:
         batch_size = st.number_input("Batch Size:", 1, 10000, 128, step=1, key="sup_batch_size")
         lr = st.number_input("Learning Rate:", 1e-6, 1.0, 3e-4, format="%.6f", key="sup_lr")
-        optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"], index=0, value="adamw", key="sup_optimizer")
+        optimizer = st.selectbox("Optimizer Type:", ["adamw", "sgd", "adam", "rmsprop"], index=0, key="sup_optimizer")
         chkpt_interval = st.number_input("Checkpoint Interval (Epochs):", 0, 100, 5, key="sup_chkpt_int")
 
     if optimizer in ["sgd", "rmsprop"]:
@@ -181,9 +181,8 @@ def supervised_training_tab():
     with col3:
         scheduler = st.selectbox(
             "Scheduler Type:",
-            ["onecycle", "step", "linear", "cosineannealingwarmrestarts"], 
+            ["cosineannealingwarmrestarts", "step", "linear", "onecycle"], 
             index=0,
-            value="cosineannealingwarmrestarts",
             key="sup_scheduler"
         )
     with col4:
