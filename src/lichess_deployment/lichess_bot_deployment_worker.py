@@ -255,36 +255,25 @@ class LichessBotDeploymentWorker:
 
     def _make_move(self, client: berserk.Client, game_id: str, board: chess.Board) -> None:
         try:
-            move_start_time = time.time()
             best_move: Optional[chess.Move] = None
-            method_used: Optional[str] = None
-            extra_stats: Dict[str, Any] = {}
             if self.opening_book:
                 best_move = choose_opening_move(board, self.opening_book)
                 if best_move:
-                    method_used = "opening_book"
-                    extra_stats["opening_book_move"] = best_move.uci()
                     logger.info(f"Using opening book move: {best_move.uci()}")
             if best_move is None and self.mcts:
                 mcts_start = time.time()
                 self.mcts.set_root_node(board)
                 move_probs = self.mcts.get_move_probs()
                 mcts_time = time.time() - mcts_start
-                extra_stats["mcts_time_sec"] = mcts_time
                 if move_probs:
                     best_move = max(move_probs, key=move_probs.get)
-                    method_used = "mcts"
-                    extra_stats["mcts_move_probabilities"] = {move.uci(): prob for move, prob in move_probs.items()}
-                    extra_stats["mcts_selected_probability"] = move_probs.get(best_move)
                     logger.info(f"MCTS selected move: {best_move.uci()} (in {mcts_time:.3f} sec)")
                 else:
                     logger.warning("MCTS returned no moves.")
             if best_move is None and self.enable_model_eval_fallback and self.model is not None:
                 eval_start = time.time()
-                best_move = self._evaluate_moves(board, extra_stats)
+                best_move = self._evaluate_moves(board)
                 eval_time = time.time() - eval_start
-                method_used = "model_eval"
-                extra_stats["model_eval_time_sec"] = eval_time
                 logger.info(f"Model evaluation selected move: {best_move.uci()} (in {eval_time:.3f} sec)")
             if best_move is None:
                 legal_moves = list(board.legal_moves)
@@ -300,7 +289,6 @@ class LichessBotDeploymentWorker:
                         logger.warning(f"No legal moves available in game {game_id}")
                         return
                 best_move = legal_moves[0]
-                extra_stats["default_move"] = best_move.uci()
                 logger.info(f"Defaulted to first legal move: {best_move.uci()}")
             if best_move not in board.legal_moves:
                 logger.error(f"Selected move {best_move.uci()} is not legal in game {game_id}.")
@@ -312,7 +300,7 @@ class LichessBotDeploymentWorker:
             logger.exception(f"Failed to make move in game {game_id}: {e}")
             raise
 
-    def _evaluate_moves(self, board: chess.Board, extra_stats: Dict[str, Any]) -> chess.Move:
+    def _evaluate_moves(self, board: chess.Board) -> chess.Move:
         legal_moves = list(board.legal_moves)
         current_color = board.turn
         best_move = None
@@ -329,7 +317,6 @@ class LichessBotDeploymentWorker:
             elif current_color == chess.BLACK and score < best_score:
                 best_score = score
                 best_move = move
-        extra_stats["move_evaluations"] = move_evaluations
         return best_move if best_move is not None else legal_moves[0]
 
     def _evaluate_board(self, board: chess.Board) -> float:
