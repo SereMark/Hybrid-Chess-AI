@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import wandb
 import torch
 import chess
 import random
@@ -208,10 +209,12 @@ class LichessBotDeploymentWorker:
                 client.bots.accept_challenge(challenge['id'])
                 self.status_callback(f"Accepted challenge from rating {challenger_rating}. Playing game...")
                 logger.info(f"Accepted challenge from rating {challenger_rating}")
+                if self.wandb_flag: wandb.log({"challenge_rating": challenger_rating, "challenge_accepted": True, "phase": "challenge_response"})
             else:
                 client.bots.decline_challenge(challenge['id'])
                 self.status_callback(f"Declined challenge from rating {challenger_rating}.")
                 logger.info(f"Declined challenge from rating {challenger_rating}")
+                if self.wandb_flag: wandb.log({"challenge_rating": challenger_rating, "challenge_accepted": False, "phase": "challenge_response"})
         except Exception as e:
             logger.exception(f"Error handling challenge event: {e}")
             self.status_callback(f"Error handling challenge event: {e}")
@@ -239,6 +242,7 @@ class LichessBotDeploymentWorker:
                     if board.is_game_over():
                         result = board.result()
                         logger.info(f"Game {game_id} over with result {result}")
+                        if self.wandb_flag: wandb.log({"game_id": game_id, "result": result, "num_moves": len(moves_str.split()), "phase": "game_over"})
                         break
                     if board.turn == bot_color:
                         self._make_move(client, game_id, board)
@@ -247,6 +251,7 @@ class LichessBotDeploymentWorker:
                 if board.is_game_over():
                     result = board.result()
                     logger.info(f"Game {game_id} over with result {result}")
+                    if self.wandb_flag: wandb.log({"game_id": game_id, "result": result, "num_moves": len(moves_str.split()), "phase": "game_over"})
                     break
             if self.save_game_logs:
                 self._save_game_pgn(game_id, moves_str)
@@ -268,6 +273,7 @@ class LichessBotDeploymentWorker:
                 if move_probs:
                     best_move = max(move_probs, key=move_probs.get)
                     logger.info(f"MCTS selected move: {best_move.uci()} (in {mcts_time:.3f} sec)")
+                    if self.wandb_flag: wandb.log({"mcts_time": mcts_time, "selected_move": best_move.uci(), "phase": "mcts_move_selection", "game_id": game_id})
                 else:
                     logger.warning("MCTS returned no moves.")
             if best_move is None and self.enable_model_eval_fallback and self.model is not None:
@@ -275,6 +281,7 @@ class LichessBotDeploymentWorker:
                 best_move = self._evaluate_moves(board)
                 eval_time = time.time() - eval_start
                 logger.info(f"Model evaluation selected move: {best_move.uci()} (in {eval_time:.3f} sec)")
+                if self.wandb_flag: wandb.log({"model_eval_time": eval_time, "selected_move": best_move.uci(), "phase": "model_eval_fallback", "game_id": game_id})
             if best_move is None:
                 legal_moves = list(board.legal_moves)
                 if not legal_moves:
@@ -296,6 +303,7 @@ class LichessBotDeploymentWorker:
             board.push(best_move)
             client.bots.make_move(game_id, best_move.uci())
             logger.info(f"Made move {best_move.uci()} in game {game_id}")
+            if self.wandb_flag: wandb.log({"move_made": best_move.uci(), "game_id": game_id, "phase": "move_made"})
         except Exception as e:
             logger.exception(f"Failed to make move in game {game_id}: {e}")
             raise
@@ -317,6 +325,7 @@ class LichessBotDeploymentWorker:
             elif current_color == chess.BLACK and score < best_score:
                 best_score = score
                 best_move = move
+        if self.wandb_flag: wandb.log({"move_evaluations": move_evaluations, "phase": "model_eval_moves"})
         return best_move if best_move is not None else legal_moves[0]
 
     def _evaluate_board(self, board: chess.Board) -> float:
@@ -344,6 +353,7 @@ class LichessBotDeploymentWorker:
             with open(pgn_path, "w") as pgn_file:
                 pgn_file.write(str(pgn_game))
             logger.info(f"Saved game {game_id} PGN log at {pgn_path}")
+            if self.wandb_flag: wandb.log({"pgn_log_saved": True, "game_id": game_id, "phase": "pgn_saved"})
         except Exception as e:
             logger.exception(f"Failed to save PGN log for game {game_id}: {e}")
 
