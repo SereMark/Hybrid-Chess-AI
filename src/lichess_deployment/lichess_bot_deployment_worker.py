@@ -129,7 +129,6 @@ class LichessBotDeploymentWorker:
         enable_model_eval_fallback: bool,
         progress_callback: Callable[[int], None],
         status_callback: Callable[[str], None],
-        log_dir: str = "game_logs"
     ) -> None:
         self.model_path = model_path
         self.opening_book_path = opening_book_path
@@ -142,7 +141,6 @@ class LichessBotDeploymentWorker:
         self.auto_resign = auto_resign
         self.save_game_logs = save_game_logs
         self.enable_model_eval_fallback = enable_model_eval_fallback
-        self.log_dir = log_dir
         self.progress_callback = progress_callback
         self.status_callback = status_callback
 
@@ -151,10 +149,7 @@ class LichessBotDeploymentWorker:
         self.mcts: Optional[MCTS] = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.bot_id: Optional[str] = None
-
-        if self.save_game_logs:
-            os.makedirs(self.log_dir, exist_ok=True)
-
+        
         logger.setLevel(logging.INFO)
 
         self._initialize_engine()
@@ -390,7 +385,8 @@ class LichessBotDeploymentWorker:
                     move = chess.Move.from_uci(move_uci)
                     node = node.add_variation(move)
                     board.push(move)
-            pgn_path = os.path.join(self.log_dir, f"{game_id}.pgn")
+            pgn_path = os.path.join("data", "games", "lichess", f"{game_id}.pgn")
+            os.makedirs(os.path.dirname(pgn_path), exist_ok=True)
             with open(pgn_path, "w") as pgn_file:
                 pgn_file.write(str(pgn_game))
             logger.info(f"Saved game {game_id} PGN log at {pgn_path}")
