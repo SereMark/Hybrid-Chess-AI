@@ -6,38 +6,14 @@ import optuna
 import os
 
 class HyperparameterOptimizationWorker:
-    def __init__(
-        self,
-        num_trials,
-        timeout,
-        dataset_path,
-        train_indices_path,
-        val_indices_path,
-        n_jobs,
-        num_workers,
-        random_seed,
-        lr_min,
-        lr_max,
-        wd_min,
-        wd_max,
-        batch_size_options,
-        epochs_min,
-        epochs_max,
-        optimizer_options,
-        scheduler_options,
-        grad_clip_min,
-        grad_clip_max,
-        momentum_min,
-        momentum_max,
-        accumulation_steps_min,
-        accumulation_steps_max,
-        policy_weight_min,
-        policy_weight_max,
-        value_weight_min,
-        value_weight_max,
-        progress_callback=None,
-        status_callback=None
-    ):
+    def __init__(self, num_trials, timeout, dataset_path, train_indices_path,
+                 val_indices_path, n_jobs, num_workers, random_seed,
+                 lr_min, lr_max, wd_min, wd_max, batch_size_options,
+                 epochs_min, epochs_max, optimizer_options, scheduler_options,
+                 grad_clip_min, grad_clip_max, momentum_min, momentum_max,
+                 accumulation_steps_min, accumulation_steps_max,
+                 policy_weight_min, policy_weight_max, value_weight_min, value_weight_max,
+                 progress_callback=None, status_callback=None):
         self.num_trials = num_trials
         self.timeout = timeout
         self.dataset_path = dataset_path
@@ -67,7 +43,6 @@ class HyperparameterOptimizationWorker:
         self.value_weight_max = value_weight_max
         self.progress_callback = progress_callback or (lambda x: None)
         self.status_callback = status_callback or (lambda x: None)
-
         self.db_name = "optimization_results.db"
         self.study_name = "HPO_Study"
 
@@ -82,12 +57,10 @@ class HyperparameterOptimizationWorker:
         accumulation_steps = trial.suggest_int("accumulation_steps", self.accumulation_steps_min, self.accumulation_steps_max)
         policy_weight = trial.suggest_float("policy_weight", self.policy_weight_min, self.policy_weight_max)
         value_weight = trial.suggest_float("value_weight", self.value_weight_min, self.value_weight_max)
-
         if optimizer in ["sgd", "rmsprop"]:
             momentum = trial.suggest_float("momentum", self.momentum_min, self.momentum_max)
         else:
             momentum = 0.0
-
         worker = SupervisedWorker(
             epochs=epochs,
             batch_size=batch_size,
@@ -113,10 +86,8 @@ class HyperparameterOptimizationWorker:
             progress_callback=None,
             status_callback=None
         )
-
         results = worker.run()
         best_val_loss = results.get("best_composite_loss", float("inf"))
-
         trial.set_user_attr("learning_rate", lr)
         trial.set_user_attr("weight_decay", wd)
         trial.set_user_attr("batch_size", batch_size)
@@ -129,7 +100,6 @@ class HyperparameterOptimizationWorker:
         trial.set_user_attr("value_weight", value_weight)
         trial.set_user_attr("momentum", momentum)
         trial.set_user_attr("training_time", results.get("training_time", 0.0))
-
         return best_val_loss
 
     def run(self) -> bool:
@@ -137,7 +107,6 @@ class HyperparameterOptimizationWorker:
             optuna.delete_study(study_name=self.study_name, storage=f"sqlite:///{self.db_name}")
         except Exception:
             pass
-
         study = optuna.create_study(
             study_name=self.study_name,
             storage=f"sqlite:///{self.db_name}",
@@ -146,17 +115,13 @@ class HyperparameterOptimizationWorker:
             pruner=MedianPruner(),
             load_if_exists=False
         )
-
         def trial_callback(study: optuna.Study, trial: optuna.Trial):
-            completed_trials = len([t for t in study.get_trials(deepcopy=False) if t.state in (TrialState.COMPLETE, TrialState.PRUNED)])
+            completed_trials = len([t for t in study.get_trials(deepcopy=False)
+                                     if t.state in (TrialState.COMPLETE, TrialState.PRUNED)])
             progress_percent = (completed_trials / self.num_trials) * 100
             self.progress_callback(progress_percent)
-
             current_best = study.best_value if study.best_value is not None else float('inf')
-            self.status_callback(
-                f"Trial {completed_trials}/{self.num_trials} ended. Current Best Loss: {current_best:.4f}"
-            )
-
+            self.status_callback(f"Trial {completed_trials}/{self.num_trials} ended. Current Best Loss: {current_best:.4f}")
         try:
             study.optimize(
                 self.objective,
@@ -168,14 +133,9 @@ class HyperparameterOptimizationWorker:
         except Exception as e:
             self.status_callback(f"Optimization failed: {e}")
             return False
-
         best_trial = study.best_trial
         best_loss = study.best_value
-        self.status_callback(
-            f"✅ Hyperparameter Optimization finished. Best Loss: {best_loss:.5f}, "
-            f"Trial {best_trial.number} with parameters: {best_trial.params}"
-        )
-
+        self.status_callback(f"✅ Hyperparameter Optimization finished. Best Loss: {best_loss:.5f}, Trial {best_trial.number} with parameters: {best_trial.params}")
         results_dir = "hyperopt_results"
         os.makedirs(results_dir, exist_ok=True)
         with open(os.path.join(results_dir, "best_trial.txt"), "w") as f:
@@ -186,5 +146,4 @@ class HyperparameterOptimizationWorker:
             f.write("\nUser Attributes:\n")
             for k, v in best_trial.user_attrs.items():
                 f.write(f"{k}: {v}\n")
-
-        return True 
+        return True
