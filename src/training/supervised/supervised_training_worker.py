@@ -9,7 +9,7 @@ from src.utils.checkpoint_manager import CheckpointManager
 from src.utils.chess_utils import H5Dataset, get_total_moves
 from src.utils.train_utils import (initialize_optimizer, initialize_scheduler,
                                    initialize_random_seeds, validate_epoch, train_epoch)
-from src.utils.common import init_wandb_run, wandb_watch, wandb_log, finish_wandb
+from src.utils.common import wandb_log
 try:
     import wandb
 except ImportError:
@@ -59,8 +59,7 @@ class SupervisedWorker:
 
     def run(self):
         if self.wandb_flag and wandb is not None:
-            init_wandb_run("supervised_training_"+time.strftime("%Y%m%d-%H%M%S"), {k: v for k, v in self.__dict__.items() if not callable(v)})
-            wandb_watch(self.model, log="all", log_freq=100)
+            wandb.watch(self.model, log="all", log_freq=100)
         train_loader = DataLoader(H5Dataset(self.dataset_path, self.train_indices),
                                   batch_size=self.batch_size, shuffle=True,
                                   num_workers=self.num_workers,
@@ -117,5 +116,4 @@ class SupervisedWorker:
         training_time = time.time() - training_start
         if self.wandb_flag and wandb is not None:
             wandb.run.summary.update({"best_composite_loss": best_metric, "training_time": training_time})
-            finish_wandb()
         return {"best_composite_loss": best_metric, "training_time": training_time}

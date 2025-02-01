@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from src.models.transformer import TransformerCNNChessModel
 from src.training.reinforcement.mcts import MCTS
 from src.utils.chess_utils import convert_board_to_transformer_input
-from src.utils.common import load_model_from_checkpoint, init_wandb_run, wandb_log
+from src.utils.common import load_model_from_checkpoint, wandb_log
 try:
     import wandb
 except ImportError:
@@ -122,8 +122,6 @@ class LichessBotDeploymentWorker:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.bot_id: Optional[str] = None
         logger.setLevel(logging.INFO)
-        if self.wandb_flag and wandb is not None:
-            init_wandb_run("lichess_game_"+time.strftime("%Y%m%d-%H%M%S"), self.__dict__)
         self._initialize_engine()
 
     def _log_wandb(self, log_data: dict) -> None:

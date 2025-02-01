@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from torch.nn.functional import mse_loss, smooth_l1_loss
 from src.utils.train_utils import initialize_random_seeds
 from src.utils.chess_utils import H5Dataset
-from src.utils.common import load_model_from_checkpoint, init_wandb_run, wandb_log, finish_wandb
+from src.utils.common import load_model_from_checkpoint, wandb_log
 try:
     import wandb
 except ImportError:
@@ -26,21 +26,16 @@ class EvaluationWorker:
         self.max_scatter_points = 5000
 
     def run(self):
-        if self.wandb_flag and wandb is not None:
-            init_wandb_run("evaluation_"+time.strftime("%Y%m%d-%H%M%S"), self.__dict__)
         initialize_random_seeds(42)
         model = self._load_model()
         if model is None:
-            finish_wandb()
             return False
         loader = self._prepare_test_loader()
         if loader is None:
-            finish_wandb()
             return False
         preds, actuals, batch_accs, logits = self._inference(model, loader)
         if len(preds) == 0 or len(actuals) == 0:
             self.status_callback("No predictions; evaluation aborted.")
-            finish_wandb()
             return False
         overall_acc = float(np.mean(preds == actuals))
         avg_batch_acc = float(np.mean(batch_accs))
@@ -144,7 +139,6 @@ class EvaluationWorker:
             wandb_log({"actual_vs_predicted_scatter": wandb.plot.scatter(sct, "Actual", "Predicted", title="Actual vs. Predicted")})
             wandb.run.summary.update({"final_accuracy": overall_acc, "average_batch_accuracy": avg_batch_acc})
         self.status_callback(f"Done. Overall accuracy={overall_acc:.4f}.")
-        finish_wandb()
 
     def _gradient_sensitivity_analysis(self, model, loader, num_samples=1):
         try:

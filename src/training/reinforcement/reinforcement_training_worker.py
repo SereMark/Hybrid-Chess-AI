@@ -11,7 +11,7 @@ from src.training.reinforcement.play_and_collect_worker import PlayAndCollectWor
 from src.utils.chess_utils import get_total_moves
 from src.utils.train_utils import (initialize_optimizer, initialize_scheduler,
                                    initialize_random_seeds, train_epoch)
-from src.utils.common import init_wandb_run, wandb_log, finish_wandb
+from src.utils.common import wandb_log
 try:
     import wandb
 except ImportError:
@@ -68,7 +68,6 @@ class ReinforcementWorker:
 
     def run(self):
         if self.wandb_flag and wandb is not None:
-            init_wandb_run("reinforcement_training_"+time.strftime("%Y%m%d-%H%M%S"), self.__dict__)
             wandb.watch(self.model, log="parameters", log_freq=100)
         training_start = time.time()
         if self.start_iteration > self.num_iterations:
@@ -160,5 +159,4 @@ class ReinforcementWorker:
             wandb.run.summary.update({"best_metric": self.best_metric,
                                         "best_iteration": self.best_iteration,
                                         "training_time": time.time() - training_start})
-            finish_wandb()
         return True

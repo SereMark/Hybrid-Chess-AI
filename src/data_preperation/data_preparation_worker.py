@@ -11,7 +11,7 @@ import json
 from collections import defaultdict
 from src.utils.chess_utils import (convert_board_to_transformer_input, get_move_mapping,
                                    flip_board, flip_move, mirror_rank, mirror_move_rank)
-from src.utils.common import init_wandb_run, wandb_log, finish_wandb
+from src.utils.common import wandb_log
 try:
     import wandb
 except ImportError:
@@ -61,7 +61,6 @@ class DataPreparationWorker:
 
     def run(self):
         if self.wandb_flag and wandb is not None:
-            wandb_run = init_wandb_run("data_preparation_"+time.strftime("%Y%m%d-%H%M%S"), self.__dict__)
             batch_table = wandb.Table(columns=["Batch", "Batch Size", "Mean Value", "Std Value"])
             game_table = wandb.Table(columns=["Games Processed", "Games Skipped", "Progress", "Batch Size", "Dataset Size"])
             opening_table = wandb.Table(columns=["Opening Games Processed", "Opening Games Skipped", "Opening Progress", "Unique Positions"])
@@ -197,7 +196,6 @@ class DataPreparationWorker:
             self.status_callback(f"❌ An unexpected error occurred: {e}")
         if self.wandb_flag and wandb is not None:
             self._final_wandb_logs()
-            finish_wandb()
         return True
 
     def _write_batch_to_h5(self, h5_file, batch_table):

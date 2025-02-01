@@ -1,11 +1,11 @@
-import os, streamlit as st
+import os, time, wandb, streamlit as st
+from src.analysis.benchmark.benchmark_worker import BenchmarkWorker
+from src.analysis.evaluation.evaluation_worker import EvaluationWorker
 from src.data_preperation.data_preparation_worker import DataPreparationWorker
-from src.training.hyperparameter_optimization.hyperparameter_optimization_worker import HyperparameterOptimizationWorker
 from src.training.supervised.supervised_training_worker import SupervisedWorker
 from src.training.reinforcement.reinforcement_training_worker import ReinforcementWorker
-from src.analysis.evaluation.evaluation_worker import EvaluationWorker
-from src.analysis.benchmark.benchmark_worker import BenchmarkWorker
 from src.lichess_deployment.lichess_bot_deployment_worker import LichessBotDeploymentWorker
+from src.training.hyperparameter_optimization.hyperparameter_optimization_worker import HyperparameterOptimizationWorker
 
 st.set_page_config(page_title="Chess AI Management Dashboard", page_icon="♟️", layout="wide")
 
@@ -26,11 +26,23 @@ def input_with_validation(label: str, default_value: str = "", path_type: str = 
 def execute_worker(create_worker):
     progress = st.progress(0)
     status = st.empty()
+    wandb_run = None
     try:
         worker = create_worker(
             lambda p: progress.progress(int(p)),
             lambda m: status.text(m)
         )
+        if getattr(worker, 'wandb_flag', False):
+            try:
+                wandb_run = wandb.init(
+                    entity="chess_ai",
+                    project="chess_ai_app",
+                    name=f"{worker.__class__.__name__}_{time.strftime('%Y%m%d-%H%M%S')}",
+                    config={k: v for k, v in worker.__dict__.items() if not callable(v) and k not in ['progress_callback', 'status_callback']},
+                    reinit=True
+                )
+            except Exception as e:
+                status.text(f"⚠️ Error initializing Weights & Biases: {e}")
         status.text("🚀 Started!")
         result = worker.run()
         if result:
@@ -41,6 +53,12 @@ def execute_worker(create_worker):
             status.text("⚠️ Failed.")
     except Exception as e:
         status.text(f"⚠️ Error: {e}")
+    finally:
+        if wandb_run is not None:
+            try:
+                wandb_run.finish()
+            except Exception as e:
+                status.text(f"⚠️ Error finishing Weights & Biases: {e}")
 def data_preparation_tab():
     st.subheader("Data Preparation")
     st.write("Process PGN data, optionally generate an opening book, and prepare a dataset for training.")

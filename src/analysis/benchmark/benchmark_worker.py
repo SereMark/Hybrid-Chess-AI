@@ -5,7 +5,7 @@ import numpy as np
 import chess
 import chess.pgn
 from src.analysis.benchmark.bot import Bot
-from src.utils.common import init_wandb_run, wandb_log, finish_wandb
+from src.utils.common import wandb_log
 try:
     import wandb
 except ImportError:
@@ -38,8 +38,6 @@ class BenchmarkWorker:
             self.status_callback("Opening book file not found.")
 
     def run(self):
-        if self.wandb_flag and wandb is not None:
-            init_wandb_run("benchmark_"+time.strftime("%Y%m%d-%H%M%S"), self.__dict__)
         results = {"1-0": 0, "0-1": 0, "1/2-1/2": 0, "*": 0}
         durations, move_counts = [], []
         bot1_wins, bot2_wins, draws = 0, 0, 0
@@ -124,5 +122,4 @@ class BenchmarkWorker:
                 "avg_game_duration": avg_duration,
                 "avg_moves_per_game": avg_moves
             })
-            finish_wandb()
         return results

@@ -16,22 +16,6 @@ def load_model_from_checkpoint(model_path, device):
     model.eval()
     return model
 
-def init_wandb_run(run_name, config, entity="chess_ai", project="chess_ai_app", reinit=True):
-    if wandb is not None:
-        return wandb.init(entity=entity, project=project, name=run_name, config=config, reinit=reinit)
-    return None
-
 def wandb_log(data):
     if wandb is not None:
         wandb.log(data)
-
-def wandb_watch(model, log="all", log_freq=100):
-    if wandb is not None:
-        wandb.watch(model, log=log, log_freq=log_freq)
-
-def finish_wandb():
-    if wandb is not None:
-        try:
-            wandb.finish()
-        except Exception:
-            pass
