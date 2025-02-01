@@ -154,7 +154,11 @@ def supervised_training_tab():
         )
     with col4:
         num_workers = st.number_input("Number of Dataloader Workers:", 1, 32, 8, key="sup_num_workers")
-    random_seed = st.number_input("Random Seed:", 0, 100000, 42, key="sup_random_seed")
+    random_seed_input = st.text_input("Random Seed (leave empty for None):", value="42", key="sup_random_seed")
+    try:
+        random_seed = int(random_seed_input) if random_seed_input.strip() != "" else None
+    except ValueError:
+        random_seed = None
     policy_weight = st.number_input("Policy Weight:", 0.0, 10.0, 1.0, step=0.1, key="sup_policy_weight")
     value_weight = st.number_input("Value Weight:", 0.0, 10.0, 1.0, step=0.1, key="sup_value_weight")
     grad_clip = st.number_input("Gradient Clip:", 0.0, 10.0, 1.0, step=0.1, key="sup_grad_clip")
@@ -211,7 +215,7 @@ def supervised_training_tab():
                 scheduler=scheduler,
                 accumulation_steps=accumulation_steps,
                 num_workers=int(num_workers),
-                random_seed=int(random_seed),
+                random_seed=random_seed,
                 policy_weight=float(policy_weight),
                 value_weight=float(value_weight),
                 grad_clip=float(grad_clip),
@@ -245,8 +249,12 @@ def reinforcement_training_tab():
         num_workers = st.number_input("Number of Dataloader Workers:", 1, 32, 16, key="rein_num_workers")
         wd = st.number_input("Weight Decay:", 0.0, 1.0, 0.0001, format="%.6f", key="rein_wd")
         chkpt_interval = st.number_input("Checkpoint Interval (Iterations):", 0, 100, 10, key="rein_chkpt_interval")
-        random_seed = st.number_input("Random Seed:", 0, 100000, 12345, key="rein_random_seed")
-        value_weight = st.number_input("Value Weight:", 0.0, 10.0, 3.0, step=0.1, key="rein_value_weight")
+    random_seed_input = st.text_input("Random Seed (leave empty for None):", value="42", key="rein_random_seed")
+    try:
+        random_seed = int(random_seed_input) if random_seed_input.strip() != "" else None
+    except ValueError:
+        random_seed = None
+    value_weight = st.number_input("Value Weight:", 0.0, 10.0, 3.0, step=0.1, key="rein_value_weight")
     if optimizer in ["sgd", "rmsprop"]:
         momentum = st.number_input("Momentum:", 0.0, 1.0, 0.85, step=0.05, key="rein_momentum")
     else:
@@ -280,7 +288,7 @@ def reinforcement_training_tab():
                 batch_size=int(batch_size),
                 num_selfplay_threads=int(num_threads),
                 checkpoint_interval=int(chkpt_interval),
-                random_seed=int(random_seed),
+                random_seed=random_seed,
                 optimizer_type=optimizer,
                 learning_rate=float(lr),
                 weight_decay=float(wd),
@@ -395,7 +403,11 @@ def hyperparameter_optimization_tab():
                 path_type="file",
                 key="hopt_train_indices"
             )
-            random_seed = st.number_input("Random Seed:", 0, 100000, 12345, step=1, key="hopt_random_seed")
+            random_seed_input = st.text_input("Random Seed (leave empty for None):", value="42", key="hopt_random_seed")
+            try:
+                random_seed = int(random_seed_input) if random_seed_input.strip() != "" else None
+            except ValueError:
+                random_seed = None
     with st.expander("Hyperparameter Settings", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -531,7 +543,7 @@ def hyperparameter_optimization_tab():
             val_indices_path=val_indices_path,
             n_jobs=int(n_jobs),
             num_workers=int(num_workers),
-            random_seed=int(random_seed),
+            random_seed=random_seed,
             lr_min=float(lr_min),
             lr_max=float(lr_max),
             wd_min=float(wd_min),
