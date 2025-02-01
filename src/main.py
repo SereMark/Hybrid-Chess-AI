@@ -605,6 +605,7 @@ def lichess_deployment_tab():
     st.markdown("### Advanced Options")
     save_game_logs = st.checkbox("Save Game Logs (PGN)", value=False, key="lichess_save_logs")
     enable_model_eval_fallback = st.checkbox("Enable Model-based Evaluation Fallback", value=True, key="lichess_model_eval_fallback")
+    wandb_flag = st.checkbox("Enable Weights & Biases", True, key="lichess_wandb")
     st.markdown("### Deploy or Control Bot")
     st.write("Click the button below to deploy/refresh your bot with the settings provided.")
     if st.button("Deploy / Refresh Lichess Bot", key="lichess_deploy_button"):
@@ -630,6 +631,7 @@ def lichess_deployment_tab():
                 auto_resign=auto_resign,
                 save_game_logs=save_game_logs,
                 enable_model_eval_fallback=enable_model_eval_fallback,
+                wandb_flag=wandb_flag,
                 progress_callback=progress_cb,
                 status_callback=status_cb
             )

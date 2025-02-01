@@ -4,6 +4,7 @@ import time
 import random
 import torch
 import chess
+import wandb
 import chess.pgn
 import berserk
 import threading
@@ -127,6 +128,7 @@ class LichessBotDeploymentWorker:
         auto_resign: bool,
         save_game_logs: bool,
         enable_model_eval_fallback: bool,
+        wandb_flag: bool,
         progress_callback: Callable[[int], None],
         status_callback: Callable[[str], None],
     ) -> None:
@@ -141,6 +143,7 @@ class LichessBotDeploymentWorker:
         self.auto_resign = auto_resign
         self.save_game_logs = save_game_logs
         self.enable_model_eval_fallback = enable_model_eval_fallback
+        self.wandb_flag = wandb_flag
         self.progress_callback = progress_callback
         self.status_callback = status_callback
 
@@ -149,21 +152,43 @@ class LichessBotDeploymentWorker:
         self.mcts: Optional[MCTS] = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.bot_id: Optional[str] = None
-        
+
         logger.setLevel(logging.INFO)
 
+        if self.wandb_flag and wandb.run is None:
+            wandb.init(
+                entity="chess_ai",
+                project="chess_ai_app",
+                name=f"lichess_game_{time.strftime('%Y%m%d-%H%M%S')}",
+                config=self.__dict__,
+                reinit=True
+            )
+
         self._initialize_engine()
+
+    def _log_wandb(self, log_data: dict) -> None:
+        if self.wandb_flag:
+            wandb.log(log_data)
 
     def _initialize_engine(self) -> None:
         try:
             self.status_callback("Loading model...")
             logger.info(f"Loading model from {self.model_path}")
             self.model = load_model(self.model_path, self.device)
+            self._log_wandb({
+                "event": "model_loaded",
+                "model_path": self.model_path,
+                "device": str(self.device)
+            })
             self.progress_callback(25)
 
             self.status_callback("Loading opening book...")
             logger.info(f"Loading opening book from {self.opening_book_path}")
             self.opening_book = load_opening_book(self.opening_book_path)
+            self._log_wandb({
+                "event": "opening_book_loaded",
+                "opening_book_path": self.opening_book_path
+            })
             self.progress_callback(50)
 
             if self.use_mcts:
@@ -175,16 +200,23 @@ class LichessBotDeploymentWorker:
                     n_simulations=self.mcts_simulations
                 )
                 logger.info(f"MCTS initialized with {self.mcts_simulations} simulations and c_puct={self.mcts_c_puct:.2f}")
+                self._log_wandb({
+                    "event": "mcts_initialized",
+                    "n_simulations": self.mcts_simulations,
+                    "c_puct": self.mcts_c_puct
+                })
             else:
                 self.mcts = None
 
             self.progress_callback(75)
             self.status_callback("Chess engine compiled successfully.")
+            self._log_wandb({"event": "engine_initialized"})
             self.progress_callback(100)
         except Exception as e:
             error_msg = f"Engine initialization failed: {e}"
             self.status_callback(error_msg)
             logger.exception(error_msg)
+            self._log_wandb({"event": "engine_init_error", "error": str(e)})
             raise
 
     def start_bot(self) -> None:
@@ -200,6 +232,11 @@ class LichessBotDeploymentWorker:
             bot_profile_url = f"https://lichess.org/@/{self.bot_id}"
             self.status_callback(f"Logged in as {self.bot_id}. Challenge the bot at: {bot_profile_url}")
             logger.info(f"Logged in as {self.bot_id}. Challenge your bot at: {bot_profile_url}")
+            self._log_wandb({
+                "event": "bot_logged_in",
+                "bot_id": self.bot_id,
+                "lichess_profile": bot_profile_url
+            })
 
             while True:
                 try:
@@ -229,12 +266,14 @@ class LichessBotDeploymentWorker:
                 except Exception as e:
                     logger.exception(f"Error in event stream: {e}")
                     self.status_callback(f"Streaming error: {e}. Reconnecting in 5 seconds...")
+                    self._log_wandb({"event": "stream_error", "error": str(e)})
                     time.sleep(5)
 
         except Exception as e:
             error_msg = f"Error starting bot or streaming events: {e}"
             self.status_callback(error_msg)
             logger.exception(error_msg)
+            self._log_wandb({"event": "bot_start_error", "error": str(e)})
             raise
 
     def _handle_challenge_event(self, client: berserk.Client, challenge: Dict[str, Any]) -> None:
@@ -244,18 +283,34 @@ class LichessBotDeploymentWorker:
             if challenger_rating is None:
                 logger.warning("Challenge missing rating information. Declining challenge.")
                 client.bots.decline_challenge(challenge['id'])
+                self._log_wandb({
+                    "event": "challenge_declined",
+                    "reason": "missing_rating",
+                    "challenge_id": challenge['id']
+                })
                 return
             if self.rating_range[0] <= challenger_rating <= self.rating_range[1]:
                 client.bots.accept_challenge(challenge['id'])
                 self.status_callback(f"Accepted challenge from rating {challenger_rating}. Playing game...")
                 logger.info(f"Accepted challenge from rating {challenger_rating}")
+                self._log_wandb({
+                    "event": "challenge_accepted",
+                    "challenger_rating": challenger_rating,
+                    "challenge_id": challenge['id']
+                })
             else:
                 client.bots.decline_challenge(challenge['id'])
                 self.status_callback(f"Declined challenge from rating {challenger_rating}.")
                 logger.info(f"Declined challenge from rating {challenger_rating}")
+                self._log_wandb({
+                    "event": "challenge_declined",
+                    "challenger_rating": challenger_rating,
+                    "challenge_id": challenge['id']
+                })
         except Exception as e:
             logger.exception(f"Error handling challenge event: {e}")
             self.status_callback(f"Error handling challenge event: {e}")
+            self._log_wandb({"event": "challenge_error", "error": str(e)})
 
     def _play_game(self, client: berserk.Client, game_info: Dict[str, Any], bot_color: bool) -> None:
         game_id = game_info.get('id')
@@ -263,9 +318,16 @@ class LichessBotDeploymentWorker:
             logger.error("Game information missing game ID.")
             return
 
-        logger.info(f"Starting game {game_id} as {'White' if bot_color == chess.WHITE else 'Black'}")
+        color_str = 'White' if bot_color == chess.WHITE else 'Black'
+        logger.info(f"Starting game {game_id} as {color_str}")
+        self._log_wandb({
+            "event": "game_started",
+            "game_id": game_id,
+            "bot_color": color_str,
+        })
         board = chess.Board()
         moves_str = ""
+        game_start_time = time.time()
         try:
             for event in client.bots.stream_game_state(game_id):
                 state_type = event.get('type')
@@ -291,32 +353,58 @@ class LichessBotDeploymentWorker:
                     logger.info(f"Game {game_id} over with result {result}")
                     break
 
+            game_duration = time.time() - game_start_time
+            total_moves = len(moves_str.split())
+            self._log_wandb({
+                "event": "game_over",
+                "game_id": game_id,
+                "result": board.result(),
+                "total_moves": total_moves,
+                "duration_sec": game_duration
+            })
+
             if self.save_game_logs:
                 self._save_game_pgn(game_id, moves_str)
         except Exception as e:
             logger.exception(f"Error during game {game_id}: {e}")
+            self._log_wandb({"event": "game_error", "game_id": game_id, "error": str(e)})
 
     def _make_move(self, client: berserk.Client, game_id: str, board: chess.Board) -> None:
         try:
+            move_start_time = time.time()
             best_move: Optional[chess.Move] = None
+            method_used: Optional[str] = None
+            extra_stats: Dict[str, Any] = {}
 
             if self.opening_book:
                 best_move = choose_opening_move(board, self.opening_book)
                 if best_move:
+                    method_used = "opening_book"
+                    extra_stats["opening_book_move"] = best_move.uci()
                     logger.info(f"Using opening book move: {best_move.uci()}")
 
             if best_move is None and self.mcts:
+                mcts_start = time.time()
                 self.mcts.set_root_node(board)
                 move_probs = self.mcts.get_move_probs()
+                mcts_time = time.time() - mcts_start
+                extra_stats["mcts_time_sec"] = mcts_time
                 if move_probs:
                     best_move = max(move_probs, key=move_probs.get)
-                    logger.info(f"MCTS selected move: {best_move.uci()}")
+                    method_used = "mcts"
+                    extra_stats["mcts_move_probabilities"] = {move.uci(): prob for move, prob in move_probs.items()}
+                    extra_stats["mcts_selected_probability"] = move_probs.get(best_move)
+                    logger.info(f"MCTS selected move: {best_move.uci()} (in {mcts_time:.3f} sec)")
                 else:
                     logger.warning("MCTS returned no moves.")
 
             if best_move is None and self.enable_model_eval_fallback and self.model is not None:
-                best_move = self._evaluate_moves(board)
-                logger.info(f"Model evaluation selected move: {best_move.uci()}")
+                eval_start = time.time()
+                best_move = self._evaluate_moves(board, extra_stats)
+                eval_time = time.time() - eval_start
+                method_used = "model_eval"
+                extra_stats["model_eval_time_sec"] = eval_time
+                logger.info(f"Model evaluation selected move: {best_move.uci()} (in {eval_time:.3f} sec)")
 
             if best_move is None:
                 legal_moves = list(board.legal_moves)
@@ -332,28 +420,57 @@ class LichessBotDeploymentWorker:
                         logger.warning(f"No legal moves available in game {game_id}")
                         return
                 best_move = legal_moves[0]
+                method_used = "default"
+                extra_stats["default_move"] = best_move.uci()
                 logger.info(f"Defaulted to first legal move: {best_move.uci()}")
 
             if best_move not in board.legal_moves:
                 logger.error(f"Selected move {best_move.uci()} is not legal in game {game_id}.")
                 return
 
+            thinking_time = time.time() - move_start_time
+
+            move_number = board.fullmove_number if board.turn == chess.WHITE else board.fullmove_number - 1
+
+            self._log_wandb({
+                "event": "move_selected",
+                "game_id": game_id,
+                "move_number": move_number,
+                "method": method_used,
+                "selected_move": best_move.uci(),
+                "board_fen": board.fen(),
+                "thinking_time_sec": thinking_time,
+                **extra_stats
+            })
+
             board.push(best_move)
             uci_move = best_move.uci()
             client.bots.make_move(game_id, uci_move)
             logger.info(f"Made move {uci_move} in game {game_id}")
+
+            self._log_wandb({
+                "event": "move_made",
+                "game_id": game_id,
+                "move_number": move_number,
+                "move": uci_move,
+                "board_fen": board.fen()
+            })
         except Exception as e:
             logger.exception(f"Failed to make move in game {game_id}: {e}")
+            self._log_wandb({"event": "move_error", "game_id": game_id, "error": str(e)})
             raise
 
-    def _evaluate_moves(self, board: chess.Board) -> chess.Move:
+    def _evaluate_moves(self, board: chess.Board, extra_stats: Dict[str, Any]) -> chess.Move:
         legal_moves = list(board.legal_moves)
         current_color = board.turn
         best_move = None
         best_score = -float('inf') if current_color == chess.WHITE else float('inf')
+        move_evaluations = {}
+
         for move in legal_moves:
             board.push(move)
             score = self._evaluate_board(board)
+            move_evaluations[move.uci()] = score
             board.pop()
             if current_color == chess.WHITE and score > best_score:
                 best_score = score
@@ -361,6 +478,13 @@ class LichessBotDeploymentWorker:
             elif current_color == chess.BLACK and score < best_score:
                 best_score = score
                 best_move = move
+
+        extra_stats["move_evaluations"] = move_evaluations
+        self._log_wandb({
+            "event": "move_evaluations",
+            "board_fen": board.fen(),
+            "evaluations": move_evaluations
+        })
         if best_move is None:
             best_move = legal_moves[0]
         return best_move
@@ -390,8 +514,14 @@ class LichessBotDeploymentWorker:
             with open(pgn_path, "w") as pgn_file:
                 pgn_file.write(str(pgn_game))
             logger.info(f"Saved game {game_id} PGN log at {pgn_path}")
+            self._log_wandb({
+                "event": "pgn_saved",
+                "game_id": game_id,
+                "pgn_path": pgn_path
+            })
         except Exception as e:
             logger.exception(f"Failed to save PGN log for game {game_id}: {e}")
+            self._log_wandb({"event": "pgn_save_error", "game_id": game_id, "error": str(e)})
 
     def run(self) -> None:
         try:
