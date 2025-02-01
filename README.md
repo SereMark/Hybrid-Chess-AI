@@ -243,9 +243,9 @@ The project is managed via Conda using the provided `environment.yml`. Key depen
 
 - **Python 3.11**  
 - **PyTorch 2.5.1 with CUDA 12.4 support**  
-- **NumPy & Matplotlib**  
-- **python-chess & h5py**  
-- **ONNX**  
+- **NumPy**  
+- **python-chess**
+- **h5py**  
 - **Streamlit**  
 - **Weights & Biases (wandb)**  
 - **Optuna**  
