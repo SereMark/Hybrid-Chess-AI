@@ -1,19 +1,15 @@
 import os
-import torch
 import time
+import torch
+import wandb
 import numpy as np
 from torch.amp import GradScaler
 from torch.utils.data import DataLoader
-from src.models.transformer import TransformerCNNChessModel
 from src.utils.checkpoint_manager import CheckpointManager
+from src.models.transformer import TransformerCNNChessModel
 from src.utils.chess_utils import H5Dataset, get_total_moves
 from src.utils.train_utils import (initialize_optimizer, initialize_scheduler,
                                    initialize_random_seeds, validate_epoch, train_epoch)
-from src.utils.common import wandb_log
-try:
-    import wandb
-except ImportError:
-    wandb = None
 
 class SupervisedWorker:
     def __init__(self, epochs, batch_size, lr, weight_decay, checkpoint_interval,
@@ -58,7 +54,7 @@ class SupervisedWorker:
                 self.start_epoch = self.loaded_checkpoint['epoch'] + 1
 
     def run(self):
-        if self.wandb_flag and wandb is not None:
+        if self.wandb_flag:
             wandb.watch(self.model, log="all", log_freq=100)
         train_loader = DataLoader(H5Dataset(self.dataset_path, self.train_indices),
                                   batch_size=self.batch_size, shuffle=True,
@@ -93,8 +89,8 @@ class SupervisedWorker:
                 self.checkpoint_manager.save(self.model, self.optimizer, self.scheduler, epoch, None)
             if self.checkpoint_manager.checkpoint_interval > 0 and epoch % self.checkpoint_manager.checkpoint_interval == 0:
                 self.checkpoint_manager.save(self.model, self.optimizer, self.scheduler, epoch)
-            if self.wandb_flag and wandb is not None:
-                wandb_log({
+            if self.wandb_flag:
+                wandb.log({
                     "val/policy_loss": val_metrics["policy_loss"],
                     "val/value_loss": val_metrics["value_loss"],
                     "val/accuracy": val_metrics["accuracy"],
@@ -114,6 +110,6 @@ class SupervisedWorker:
         final_model_path = os.path.join("models", "saved_models", "supervised_model.pth")
         self.checkpoint_manager.save(self.model, self.optimizer, self.scheduler, self.epochs, final_model_path)
         training_time = time.time() - training_start
-        if self.wandb_flag and wandb is not None:
+        if self.wandb_flag:
             wandb.run.summary.update({"best_composite_loss": best_metric, "training_time": training_time})
         return {"best_composite_loss": best_metric, "training_time": training_time}

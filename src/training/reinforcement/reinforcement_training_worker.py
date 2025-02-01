@@ -1,21 +1,17 @@
 import os
 import time
 import torch
+import wandb
 import numpy as np
 from torch.amp import GradScaler
 from multiprocessing import Pool, cpu_count
-from torch.utils.data import DataLoader, TensorDataset
-from src.models.transformer import TransformerCNNChessModel
-from src.utils.checkpoint_manager import CheckpointManager
-from src.training.reinforcement.play_and_collect_worker import PlayAndCollectWorker
 from src.utils.chess_utils import get_total_moves
+from torch.utils.data import DataLoader, TensorDataset
+from src.utils.checkpoint_manager import CheckpointManager
+from src.models.transformer import TransformerCNNChessModel
+from src.training.reinforcement.play_and_collect_worker import PlayAndCollectWorker
 from src.utils.train_utils import (initialize_optimizer, initialize_scheduler,
                                    initialize_random_seeds, train_epoch)
-from src.utils.common import wandb_log
-try:
-    import wandb
-except ImportError:
-    wandb = None
 
 class ReinforcementWorker:
     def __init__(self, model_path, num_iterations, num_games_per_iteration,
@@ -67,7 +63,7 @@ class ReinforcementWorker:
                 self.start_iteration = self.loaded_checkpoint["iteration"] + 1
 
     def run(self):
-        if self.wandb_flag and wandb is not None:
+        if self.wandb_flag:
             wandb.watch(self.model, log="parameters", log_freq=100)
         training_start = time.time()
         if self.start_iteration > self.num_iterations:
@@ -101,8 +97,8 @@ class ReinforcementWorker:
                 stats['results'].extend(worker_stats.get('results', []))
             stats['total_games'] = len(stats['results'])
             stats['avg_game_length'] = float(np.mean(stats['game_lengths'])) if stats['game_lengths'] else 0.0
-            if self.wandb_flag and wandb is not None:
-                wandb_log({
+            if self.wandb_flag:
+                wandb.log({
                     "iteration": iteration,
                     "total_games": stats['total_games'],
                     "wins": stats['wins'],
@@ -111,9 +107,9 @@ class ReinforcementWorker:
                     "avg_game_length": stats['avg_game_length']
                 })
                 if stats['results']:
-                    wandb_log({"results_histogram": wandb.Histogram(stats['results'])})
+                    wandb.log({"results_histogram": wandb.Histogram(stats['results'])})
                 if stats['game_lengths']:
-                    wandb_log({"game_length_histogram": wandb.Histogram(stats['game_lengths'])})
+                    wandb.log({"game_length_histogram": wandb.Histogram(stats['game_lengths'])})
             current_metric = float('inf')
             if all_inputs:
                 inputs_tensor = torch.from_numpy(np.array(all_inputs, dtype=np.float32))
@@ -142,12 +138,11 @@ class ReinforcementWorker:
                     self.checkpoint_manager.save(self.model, self.optimizer, self.scheduler, iteration, None)
             if self.checkpoint_interval > 0 and iteration % self.checkpoint_interval == 0:
                 self.checkpoint_manager.save(self.model, self.optimizer, self.scheduler, iteration)
-            if self.wandb_flag and wandb is not None:
-                wandb_log({
+            if self.wandb_flag:
+                wandb.log({
                     "iteration": iteration,
                     "learning_rate": self.scheduler.get_last_lr()[0]
                 })
-            import os
             os.makedirs("data/games/self-play", exist_ok=True)
             for idx, game in enumerate(pgn_games, start=1):
                 filename = os.path.join("data", "games", "self-play", f"game_{int(time.time())}_{idx}.pgn")
@@ -155,7 +150,7 @@ class ReinforcementWorker:
                     f.write(str(game))
         self.checkpoint_manager.save(self.model, self.optimizer, self.scheduler, self.num_iterations,
                                       os.path.join("models", "saved_models", "reinforcement_model.pth"))
-        if self.wandb_flag and wandb is not None:
+        if self.wandb_flag:
             wandb.run.summary.update({"best_metric": self.best_metric,
                                         "best_iteration": self.best_iteration,
                                         "training_time": time.time() - training_start})

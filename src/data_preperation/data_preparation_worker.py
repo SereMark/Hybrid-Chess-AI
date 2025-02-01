@@ -1,21 +1,17 @@
 import os
 import h5py
 import time
+import json
+import wandb
 import chess
+import asyncio
+import platform
 import chess.pgn
 import numpy as np
 import chess.engine
-import asyncio
-import platform
-import json
 from collections import defaultdict
 from src.utils.chess_utils import (convert_board_to_transformer_input, get_move_mapping,
                                    flip_board, flip_move, mirror_rank, mirror_move_rank)
-from src.utils.common import wandb_log
-try:
-    import wandb
-except ImportError:
-    wandb = None
 
 class DataPreparationWorker:
     def __init__(self, raw_pgn, max_games, min_elo, max_elo, batch_size,
@@ -60,7 +56,7 @@ class DataPreparationWorker:
         self.augment_mirror_rank = True
 
     def run(self):
-        if self.wandb_flag and wandb is not None:
+        if self.wandb_flag:
             batch_table = wandb.Table(columns=["Batch", "Batch Size", "Mean Value", "Std Value"])
             game_table = wandb.Table(columns=["Games Processed", "Games Skipped", "Progress", "Batch Size", "Dataset Size"])
             opening_table = wandb.Table(columns=["Opening Games Processed", "Opening Games Skipped", "Opening Progress", "Unique Positions"])
@@ -182,7 +178,7 @@ class DataPreparationWorker:
                                 progress = min(int((self.total_games_processed / self.max_games) * 100), 100)
                                 self.progress_callback(progress)
                                 self.status_callback(f"✅ Processed {self.total_games_processed}/{self.max_games} games. Skipped {skipped_games} games.")
-                                if self.wandb_flag and wandb is not None:
+                                if self.wandb_flag:
                                     self._log_game_stats_to_wandb(game_table, skipped_games, progress)
                                 last_update = time.time()
                     if self.batch_inputs:
@@ -194,7 +190,7 @@ class DataPreparationWorker:
             self.status_callback(f"❌ Failed to initialize engine: {e}")
         except Exception as e:
             self.status_callback(f"❌ An unexpected error occurred: {e}")
-        if self.wandb_flag and wandb is not None:
+        if self.wandb_flag:
             self._final_wandb_logs()
         return True
 
@@ -213,8 +209,8 @@ class DataPreparationWorker:
             h5_file["value_targets"][self.current_dataset_size:end_index] = v_np
             m = float(np.mean(v_np))
             s = float(np.std(v_np))
-            if self.wandb_flag and wandb is not None:
-                wandb_log({"batch_size": batch_size, "mean_value_targets": m, "std_value_targets": s})
+            if self.wandb_flag:
+                wandb.log({"batch_size": batch_size, "mean_value_targets": m, "std_value_targets": s})
                 batch_table.add_data(str(self.total_games_processed), batch_size, m, s)
             self.current_dataset_size += batch_size
         except (ValueError, KeyError, TypeError) as e:
@@ -226,15 +222,14 @@ class DataPreparationWorker:
 
     def _log_game_stats_to_wandb(self, game_table, skipped, progress):
         try:
-            if wandb is not None:
-                game_table.add_data(str(self.total_games_processed), skipped, progress, len(self.batch_inputs), self.current_dataset_size)
-                wandb_log({
-                    "games_processed": self.total_games_processed,
-                    "games_skipped": skipped,
-                    "progress": progress,
-                    "current_batch_size": len(self.batch_inputs),
-                    "total_dataset_size": self.current_dataset_size
-                })
+            game_table.add_data(str(self.total_games_processed), skipped, progress, len(self.batch_inputs), self.current_dataset_size)
+            wandb.log({
+                "games_processed": self.total_games_processed,
+                "games_skipped": skipped,
+                "progress": progress,
+                "current_batch_size": len(self.batch_inputs),
+                "total_dataset_size": self.current_dataset_size
+            })
         except:
             pass
 
@@ -282,9 +277,9 @@ class DataPreparationWorker:
                         progress = min(int((self.game_counter / self.max_games) * 100), 100)
                         self.progress_callback(progress)
                         self.status_callback(f"✅ Processed {self.game_counter}/{self.max_games} opening games. Skipped {skipped_opening} games.")
-                        if self.wandb_flag and wandb is not None:
+                        if self.wandb_flag:
                             try:
-                                wandb_log({
+                                wandb.log({
                                     "opening_games_processed": self.game_counter,
                                     "opening_games_skipped": skipped_opening,
                                     "opening_progress": progress,
@@ -323,8 +318,8 @@ class DataPreparationWorker:
                 }
                 for split, idx in splits.items():
                     np.save(os.path.join(self.output_dir, f"{split}_indices.npy"), idx)
-                if self.wandb_flag and wandb is not None:
-                    wandb_log({
+                if self.wandb_flag:
+                    wandb.log({
                         "train_size": len(splits["train"]),
                         "val_size": len(splits["val"]),
                         "test_size": len(splits["test"])
@@ -334,20 +329,18 @@ class DataPreparationWorker:
             self.status_callback("❌ Error splitting dataset.")
 
     def _final_wandb_logs(self):
-        if self.wandb_flag and wandb is not None:
+        if self.wandb_flag:
             if self.elo_list:
                 et = wandb.Table(data=[[e] for e in self.elo_list], columns=["ELO"])
-                wandb_log({"ELO Distribution": wandb.plot.histogram(et, "ELO", "ELO Distribution")})
+                wandb.log({"ELO Distribution": wandb.plot.histogram(et, "ELO", "ELO Distribution")})
             if self.game_lengths:
                 lt = wandb.Table(data=[[l] for l in self.game_lengths], columns=["Length"])
-                wandb_log({"Game Length Distribution": wandb.plot.histogram(lt, "Length", "Game Length Distribution")})
+                wandb.log({"Game Length Distribution": wandb.plot.histogram(lt, "Length", "Game Length Distribution")})
             if self.time_control_stats:
                 tc = wandb.Table(columns=["TimeControl", "Count"])
                 for k, v in self.time_control_stats.items():
                     tc.add_data(k, v)
-                wandb_log({"Time Control Breakdown": wandb.plot.bar(tc, "TimeControl", "Count", "Time Control Stats")})
-            import os
-            from src.utils import common
+                wandb.log({"Time Control Breakdown": wandb.plot.bar(tc, "TimeControl", "Count", "Time Control Stats")})
             da = wandb.Artifact("chess_dataset", type="dataset")
             da.add_file(os.path.join(self.output_dir, "dataset.h5"))
             wandb.log_artifact(da)

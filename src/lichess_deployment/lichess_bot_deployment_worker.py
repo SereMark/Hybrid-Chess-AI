@@ -1,22 +1,19 @@
-import json
 import os
+import json
 import time
-import random
 import torch
+import wandb
 import chess
-import chess.pgn
+import random
 import berserk
-import threading
 import logging
+import threading
+import chess.pgn
+from src.training.reinforcement.mcts import MCTS
+from src.utils.chess_utils import get_total_moves
 from typing import Any, Callable, Dict, Optional, Tuple
 from src.models.transformer import TransformerCNNChessModel
-from src.training.reinforcement.mcts import MCTS
 from src.utils.chess_utils import convert_board_to_transformer_input
-from src.utils.common import load_model_from_checkpoint, wandb_log
-try:
-    import wandb
-except ImportError:
-    wandb = None
 
 logger = logging.getLogger("LichessBot")
 logger.setLevel(logging.INFO)
@@ -125,14 +122,18 @@ class LichessBotDeploymentWorker:
         self._initialize_engine()
 
     def _log_wandb(self, log_data: dict) -> None:
-        if self.wandb_flag and wandb is not None:
-            wandb_log(log_data)
+        if self.wandb_flag:
+            wandb.log(log_data)
 
     def _initialize_engine(self) -> None:
         try:
             self.status_callback("Loading model...")
             logger.info(f"Loading model from {self.model_path}")
-            self.model = load_model_from_checkpoint(self.model_path, self.device)
+            checkpoint = torch.load(self.model_path, map_location=self.device)
+            self.model = TransformerCNNChessModel(num_moves=get_total_moves()).to(self.device)
+            if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint: self.model.load_state_dict(checkpoint["model_state_dict"], strict=False)
+            else: self.model.load_state_dict(checkpoint, strict=False)
+            self.model.eval()
             self._log_wandb({"event": "model_loaded", "model_path": self.model_path, "device": str(self.device)})
             self.progress_callback(25)
             self.status_callback("Loading opening book...")

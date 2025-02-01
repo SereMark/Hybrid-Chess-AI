@@ -1,3 +1,4 @@
+import wandb
 import torch
 import random
 import numpy as np
@@ -27,7 +28,6 @@ def initialize_optimizer(model, optimizer_type, lr, wd, momentum):
     return opt
 
 def initialize_scheduler(optimizer, scheduler_type, total_steps):
-    import torch
     sched_dict = {
         'cosineannealingwarmrestarts': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2),
         'step': torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1),
@@ -74,8 +74,7 @@ def train_epoch(model, loader, device, scaler, optimizer, scheduler, epoch, max_
         batch_correct = (p_pred.argmax(dim=1) == pol).float().sum().item() if compute_acc and pol.dim() == 1 else 0
         correct += batch_correct
         if use_wandb and idx % 10 == 0:
-            from src.utils.common import wandb_log
-            wandb_log({
+            wandb.log({
                 "train/policy_loss": p_loss.item(),
                 "train/value_loss": v_loss.item(),
                 "train/accuracy": batch_correct / bs if compute_acc and pol.dim() == 1 else float('nan'),

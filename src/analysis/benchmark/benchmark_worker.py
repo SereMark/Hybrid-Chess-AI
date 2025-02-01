@@ -1,15 +1,11 @@
 import os
 import json
 import time
-import numpy as np
+import wandb
 import chess
 import chess.pgn
+import numpy as np
 from src.analysis.benchmark.bot import Bot
-from src.utils.common import wandb_log
-try:
-    import wandb
-except ImportError:
-    wandb = None
 
 class BenchmarkWorker:
     def __init__(self, bot1_path, bot2_path, num_games, bot1_use_mcts,
@@ -99,8 +95,8 @@ class BenchmarkWorker:
             self.status_callback(f"Game {game_index} finished result={result} in {duration:.2f}s")
             if self.switch_colors:
                 color_tracker = not color_tracker
-            if self.wandb_flag and wandb is not None:
-                wandb_log({
+            if self.wandb_flag:
+                wandb.log({
                     "game_index": game_index,
                     "game_result": result,
                     "game_duration_sec": duration,
@@ -112,8 +108,8 @@ class BenchmarkWorker:
         avg_duration = float(np.mean(durations)) if durations else 0.0
         avg_moves = float(np.mean(move_counts)) if move_counts else 0.0
         self.status_callback(f"All {self.num_games} games done. Results: Bot1={bot1_wins}, Bot2={bot2_wins}, Draws={draws}, Unfinished={results.get('*', 0)}")
-        if self.wandb_flag and wandb is not None:
-            wandb_log({
+        if self.wandb_flag:
+            wandb.log({
                 "total_games": self.num_games,
                 "wins_bot1": bot1_wins,
                 "wins_bot2": bot2_wins,

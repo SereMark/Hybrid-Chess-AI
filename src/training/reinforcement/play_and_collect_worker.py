@@ -1,5 +1,6 @@
 import time
 import torch
+import chess.pgn
 import numpy as np
 from src.training.reinforcement.mcts import MCTS
 from src.models.transformer import TransformerCNNChessModel
@@ -22,7 +23,6 @@ class PlayAndCollectWorker:
         pgn_games = []
         stats = {"wins": 0, "losses": 0, "draws": 0, "game_lengths": [], "results": []}
         move_mapping = get_move_mapping()
-        import chess.pgn
         game = chess.pgn.Game()
         for _ in range(games_per_process):
             board = chess.Board()

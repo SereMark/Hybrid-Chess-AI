@@ -1,9 +1,9 @@
-from src.training.supervised.supervised_training_worker import SupervisedWorker
-from optuna.pruners import MedianPruner
-from optuna.samplers import TPESampler
-from optuna.trial import TrialState
-import optuna
 import os
+import optuna
+from optuna.trial import TrialState
+from optuna.samplers import TPESampler
+from optuna.pruners import MedianPruner
+from src.training.supervised.supervised_training_worker import SupervisedWorker
 
 class HyperparameterOptimizationWorker:
     def __init__(self, num_trials, timeout, dataset_path, train_indices_path,
