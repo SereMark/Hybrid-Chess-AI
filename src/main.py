@@ -556,10 +556,7 @@ def hyperparameter_optimization_tab():
         ))
 def lichess_deployment_tab():
     st.subheader("Lichess Bot Deployment")
-    st.write(
-        "Configure and deploy your Lichess bot either to a cloud provider or host it locally on this machine. "
-        "Integrate your AI model, opening book, and MCTS logic. Provide your Lichess bot token, hosting settings, and engine paths below."
-    )
+    st.write("Configure and deploy your bot to play on Lichess.")
     st.markdown("### Chess Engine & Model Integration")
     model_path = input_with_validation(
         label="Model Path:",
@@ -598,26 +595,18 @@ def lichess_deployment_tab():
         key="lichess_rating_range"
     )
     use_mcts = st.checkbox("Use MCTS in Bot Play", value=True, key="lichess_use_mcts")
-    
-    st.markdown("### Hosting Deployment")
-    hosting_provider = st.selectbox(
-        "Hosting Provider:",
-        ["Local", "AWS", "Google Cloud", "Azure", "Other"],
-        index=0,
-        key="lichess_hosting_provider"
-    )
-    if hosting_provider.lower() == "local":
-        st.write("The bot will be hosted on this machine locally. No cloud deployment steps are required.")
+    if use_mcts:
+        mcts_simulations = st.slider("MCTS Simulations:", min_value=100, max_value=2000, value=800, step=100, key="lichess_mcts_simulations")
+        mcts_c_puct = st.slider("MCTS c_puct:", min_value=0.1, max_value=5.0, value=1.4, step=0.1, key="lichess_mcts_c_puct")
     else:
-        st.write(
-            "Select your desired cloud provider where the bot engine will be hosted. "
-            "Make sure you have proper credentials set up in your environment."
-        )
-    
-    st.markdown("### Deploy or Refresh")
-    st.write(
-        "Click the button below to deploy/refresh your bot and authorize it to play on Lichess using the provided token."
-    )
+        mcts_simulations = None
+        mcts_c_puct = None
+    auto_resign = st.checkbox("Enable Auto-Resign", value=False, key="lichess_auto_resign")
+    st.markdown("### Advanced Options")
+    save_game_logs = st.checkbox("Save Game Logs (PGN)", value=False, key="lichess_save_logs")
+    enable_model_eval_fallback = st.checkbox("Enable Model-based Evaluation Fallback", value=True, key="lichess_model_eval_fallback")
+    st.markdown("### Deploy or Control Bot")
+    st.write("Click the button below to deploy/refresh your bot with the settings provided.")
     if st.button("Deploy / Refresh Lichess Bot", key="lichess_deploy_button"):
         if not validate_path(model_path, "file"):
             st.error("⚠️ Invalid model file path.")
@@ -636,7 +625,11 @@ def lichess_deployment_tab():
                 time_control=time_control,
                 rating_range=(rating_min, rating_max),
                 use_mcts=use_mcts,
-                hosting_provider=hosting_provider,
+                mcts_simulations=mcts_simulations,
+                mcts_c_puct=mcts_c_puct,
+                auto_resign=auto_resign,
+                save_game_logs=save_game_logs,
+                enable_model_eval_fallback=enable_model_eval_fallback,
                 progress_callback=progress_cb,
                 status_callback=status_cb
             )
