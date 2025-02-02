@@ -64,7 +64,7 @@ def data_preparation_tab():
     st.write("Process PGN data, optionally generate an opening book, and prepare a dataset for training.")
     raw_pgn = input_with_validation(
         label="Raw PGN File Path:",
-        default_value="data/raw/lichess_db_standard_rated_2024-12.pgn",
+        default_value="data/raw/lichess_db_standard_rated_2025-01.pgn",
         path_type="file",
         help_text="Path to your raw PGN file.",
         key="dp_raw_pgn"
@@ -81,7 +81,7 @@ def data_preparation_tab():
     if generate_book:
         pgn = input_with_validation(
             label="PGN File For Opening Book:",
-            default_value="data/raw/lichess_db_standard_rated_2024-12.pgn",
+            default_value="data/raw/lichess_db_standard_rated_2025-01.pgn",
             path_type="file",
             key="dp_opening_pgn"
         )

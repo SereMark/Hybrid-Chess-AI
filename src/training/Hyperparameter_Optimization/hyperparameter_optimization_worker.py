@@ -1,5 +1,4 @@
-import os
-import optuna
+import os, optuna
 from optuna.trial import TrialState
 from optuna.samplers import TPESampler
 from optuna.pruners import MedianPruner
