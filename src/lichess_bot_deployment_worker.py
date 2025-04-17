@@ -1,7 +1,6 @@
 import os
 import json
 import time
-import wandb
 import torch
 import chess
 import random
@@ -9,10 +8,10 @@ import berserk
 import logging
 import threading
 import chess.pgn
-from src.training.reinforcement.mcts import MCTS
-from src.utils.chess_utils import get_total_moves, convert_board_to_input
+from utils.mcts import MCTS
+from src.cnn import CNNModel
 from typing import Any,Dict,Optional
-from src.models.cnn import CNNModel
+from src.utils.chess_utils import get_total_moves, convert_board_to_input
 
 logger=logging.getLogger("LichessBot")
 logger.setLevel(logging.INFO)
@@ -68,7 +67,7 @@ def determine_bot_color(g:Dict[str,Any],bot_id:str)->Optional[bool]:
     return None
 
 class LichessBotDeploymentWorker:
-    def __init__(self,model_path,opening_book_path,lichess_token,time_control,rating_range,use_mcts,mcts_simulations,mcts_c_puct,auto_resign,save_game_logs,enable_model_eval_fallback,wandb_flag,progress_callback,status_callback):
+    def __init__(self,model_path,opening_book_path,lichess_token,time_control,rating_range,use_mcts,mcts_simulations,mcts_c_puct,auto_resign,save_game_logs,enable_model_eval_fallback):
         self.model_path=model_path
         self.opening_book_path=opening_book_path
         self.lichess_token=lichess_token
@@ -80,9 +79,6 @@ class LichessBotDeploymentWorker:
         self.auto_resign=auto_resign
         self.save_game_logs=save_game_logs
         self.enable_model_eval_fallback=enable_model_eval_fallback
-        self.wandb_flag=wandb_flag
-        self.progress_callback=progress_callback
-        self.status_callback=status_callback
         self.model:Optional[CNNModel]=None
         self.opening_book:Optional[Dict[str,Any]]=None
         self.mcts:Optional[MCTS]=None
@@ -93,35 +89,25 @@ class LichessBotDeploymentWorker:
 
     def _initialize_engine(self)->None:
         try:
-            self.status_callback("Loading model...")
             logger.info(f"Loading model from {self.model_path}")
             c=torch.load(self.model_path,map_location=self.device)
             self.model=CNNModel(num_moves=get_total_moves()).to(self.device)
             if isinstance(c,dict)and"model_state_dict"in c:self.model.load_state_dict(c["model_state_dict"],strict=False)
             else:self.model.load_state_dict(c,strict=False)
             self.model.eval()
-            self.progress_callback(25)
-            self.status_callback("Loading opening book...")
             logger.info(f"Loading opening book from {self.opening_book_path}")
             self.opening_book=load_opening_book(self.opening_book_path)
-            self.progress_callback(50)
             if self.use_mcts:
-                self.status_callback("Initializing MCTS...")
                 self.mcts=MCTS(model=self.model,device=self.device,c_puct=self.mcts_c_puct,n_simulations=self.mcts_simulations)
                 logger.info(f"MCTS initialized with {self.mcts_simulations} simulations and c_puct={self.mcts_c_puct:.2f}")
             else:
                 self.mcts=None
-            self.progress_callback(75)
-            self.status_callback("Chess engine compiled successfully.")
-            self.progress_callback(100)
         except Exception as e:
             em=f"Engine initialization failed: {e}"
-            self.status_callback(em)
             logger.exception(em)
             raise
 
     def start_bot(self)->None:
-        self.status_callback("Starting Lichess bot...")
         logger.info("Starting Lichess bot...")
         try:
             s=berserk.TokenSession(self.lichess_token)
@@ -130,7 +116,6 @@ class LichessBotDeploymentWorker:
             self.bot_id=a.get('id')
             if not self.bot_id:raise ValueError("Bot ID not found in account information.")
             url=f"https://lichess.org/@/{self.bot_id}"
-            self.status_callback(f"Logged in as {self.bot_id}. Challenge the bot at: {url}")
             logger.info(f"Logged in as {self.bot_id}. Challenge your bot at: {url}")
             while True:
                 try:
@@ -147,7 +132,6 @@ class LichessBotDeploymentWorker:
                                 continue
                             bc=determine_bot_color(g,self.bot_id)
                             if bc is None:
-                                self.status_callback("Bot color could not be determined. Skipping game.")
                                 logger.warning(f"Bot color could not be determined for game {g.get('id')}")
                                 continue
                             th=threading.Thread(target=self._play_game,args=(c,g,bc),daemon=True)
@@ -156,11 +140,9 @@ class LichessBotDeploymentWorker:
                             logger.debug(f"Unhandled event type: {t}")
                 except Exception as e:
                     logger.exception(f"Error in event stream: {e}")
-                    self.status_callback(f"Streaming error: {e}. Reconnecting in 5 seconds...")
                     time.sleep(5)
         except Exception as e:
             em=f"Error starting bot or streaming events: {e}"
-            self.status_callback(em)
             logger.exception(em)
             raise
 
@@ -173,17 +155,12 @@ class LichessBotDeploymentWorker:
                 return
             if self.rating_range[0]<=cr<=self.rating_range[1]:
                 client.bots.accept_challenge(ch['id'])
-                self.status_callback(f"Accepted challenge from rating {cr}. Playing game...")
                 logger.info(f"Accepted challenge from rating {cr}")
-                if self.wandb_flag:wandb.log({"challenge_rating":cr,"challenge_accepted":True,"phase":"challenge_response"})
             else:
                 client.bots.decline_challenge(ch['id'])
-                self.status_callback(f"Declined challenge from rating {cr}.")
                 logger.info(f"Declined challenge from rating {cr}")
-                if self.wandb_flag:wandb.log({"challenge_rating":cr,"challenge_accepted":False,"phase":"challenge_response"})
         except Exception as e:
             logger.exception(f"Error handling challenge event: {e}")
-            self.status_callback(f"Error handling challenge event: {e}")
 
     def _play_game(self,client:berserk.Client,game_info:Dict[str,Any],bot_color:bool)->None:
         gid=game_info.get('id')
@@ -208,7 +185,6 @@ class LichessBotDeploymentWorker:
                     if b.is_game_over():
                         r=b.result()
                         logger.info(f"Game {gid} over with result {r}")
-                        if self.wandb_flag:wandb.log({"game_id":gid,"result":r,"num_moves":len(ms.split()),"phase":"game_over"})
                         break
                     if b.turn==bot_color:
                         self._make_move(client,gid,b)
@@ -217,7 +193,6 @@ class LichessBotDeploymentWorker:
                 if b.is_game_over():
                     r=b.result()
                     logger.info(f"Game {gid} over with result {r}")
-                    if self.wandb_flag:wandb.log({"game_id":gid,"result":r,"num_moves":len(ms.split()),"phase":"game_over"})
                     break
             if self.save_game_logs:
                 self._save_game_pgn(gid,ms)
@@ -238,7 +213,6 @@ class LichessBotDeploymentWorker:
                 if mp:
                     bm=max(mp,key=mp.get)
                     logger.info(f"MCTS selected move: {bm.uci()} (in {dt:.3f} sec)")
-                    if self.wandb_flag:wandb.log({"mcts_time":dt,"selected_move":bm.uci(),"phase":"mcts_move_selection","game_id":gid})
                 else:
                     logger.warning("MCTS returned no moves.")
             if bm is None and self.enable_model_eval_fallback and self.model:
@@ -246,7 +220,6 @@ class LichessBotDeploymentWorker:
                 bm=self._evaluate_moves(b)
                 dt=time.time()-et
                 logger.info(f"Model evaluation selected move: {bm.uci()} (in {dt:.3f} sec)")
-                if self.wandb_flag:wandb.log({"model_eval_time":dt,"selected_move":bm.uci(),"phase":"model_eval_fallback","game_id":gid})
             if bm is None:
                 lm=list(b.legal_moves)
                 if not lm:
@@ -268,7 +241,6 @@ class LichessBotDeploymentWorker:
             b.push(bm)
             client.bots.make_move(gid,bm.uci())
             logger.info(f"Made move {bm.uci()} in game {gid}")
-            if self.wandb_flag:wandb.log({"move_made":bm.uci(),"game_id":gid,"phase":"move_made"})
         except Exception as e:
             logger.exception(f"Failed to make move in game {gid}: {e}")
             raise
@@ -288,7 +260,6 @@ class LichessBotDeploymentWorker:
                 bs=s;bm=m
             elif c==chess.BLACK and s<bs:
                 bs=s;bm=m
-        if self.wandb_flag:wandb.log({"move_evaluations":mv,"phase":"model_eval_moves"})
         return bm if bm else lm[0]
 
     def _evaluate_board(self,b:chess.Board)->float:
@@ -316,7 +287,6 @@ class LichessBotDeploymentWorker:
             with open(p,"w")as f:
                 f.write(str(g))
             logger.info(f"Saved game {gid} PGN log at {p}")
-            if self.wandb_flag:wandb.log({"pgn_log_saved":True,"game_id":gid,"phase":"pgn_saved"})
         except Exception as e:
             logger.exception(f"Failed to save PGN log for game {gid}: {e}")
 
@@ -325,6 +295,5 @@ class LichessBotDeploymentWorker:
             self.start_bot()
         except Exception as e:
             em=f"Pipeline failed: {e}"
-            self.status_callback(em)
             logger.exception(em)
             raise

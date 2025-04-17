@@ -1,6 +1,4 @@
-import os
-import time
-import torch
+import os, time, torch
 
 class CheckpointManager:
     def __init__(self, checkpoint_dir, checkpoint_type, checkpoint_interval):

@@ -2,23 +2,100 @@ import os
 import time
 import torch
 import wandb
+import chess.pgn
 import numpy as np
+from utils.mcts import MCTS
+from src.cnn import CNNModel
 from torch.amp import GradScaler
 from multiprocessing import Pool,cpu_count
-from src.utils.chess_utils import get_total_moves
 from torch.utils.data import DataLoader,TensorDataset
 from src.utils.checkpoint_manager import CheckpointManager
-from src.models.cnn import CNNModel
-from src.training.reinforcement.play_and_collect_worker import PlayAndCollectWorker
+from src.utils.chess_utils import get_total_moves,convert_board_to_input,get_move_mapping
 from src.utils.train_utils import initialize_optimizer,initialize_scheduler,initialize_random_seeds,train_epoch
 
+class PlayAndCollectWorker:
+    @classmethod
+    def run_process(cls,model_state_dict,device_type,simulations,c_puct,temperature,games_per_process,seed):
+        initialize_random_seeds(seed)
+        d=torch.device(device_type)
+        model=CNNModel(get_total_moves())
+        try:
+            model.load_state_dict(model_state_dict,strict=False)
+        except:
+            return([],[],[],{},[])
+        model.to(d).eval()
+        inps,pols,vals=[],[],[]
+        res=[]
+        pgns=[]
+        s={"wins":0,"losses":0,"draws":0,"game_lengths":[],"results":[]}
+        mm=get_move_mapping()
+        g=chess.pgn.Game()
+        for _ in range(games_per_process):
+            b=chess.Board()
+            mcts=MCTS(model,d,c_puct,simulations)
+            mcts.set_root_node(b)
+            st=[]
+            mp=[]
+            cp=[]
+            mc=0
+            g=chess.pgn.Game()
+            g.headers.update({"Event":"Reinforcement Self-Play","Site":"Self-Play","Date":time.strftime("%Y.%m.%d"),"Round":"-","White":"Agent","Black":"Opponent","Result":"*"})
+            node=g
+            while not b.is_game_over()and mc<200:
+                ap=mcts.get_move_probs(temperature)
+                if mc==0 and ap:
+                    ml=list(ap.keys())
+                    no=np.random.dirichlet([0.3]*len(ml))
+                    for i,mv in enumerate(ml):
+                        ap[mv]=0.75*ap[mv]+0.25*no[i]
+                if not ap:break
+                ma=list(ap.keys())
+                probs=np.array(list(ap.values()),dtype=np.float32)
+                probs/=probs.sum()
+                move=np.random.choice(ma,p=probs)
+                st.append(convert_board_to_input(b))
+                pa=np.zeros(get_total_moves(),dtype=np.float32)
+                for mv,pr in ap.items():
+                    idx=mm.get_index_by_move(mv)
+                    if idx is not None and 0<=idx<get_total_moves():
+                        pa[idx]=pr
+                mp.append(pa)
+                cp.append(b.turn)
+                try:
+                    b.push(move)
+                except ValueError:
+                    break
+                node=node.add_variation(move)
+                mcts.update_with_move(move)
+                mc+=1
+            dmap={'1-0':1.0,'0-1':-1.0,'1/2-1/2':0.0}
+            out=dmap.get(b.result(),0.0)
+            wr=[]
+            for pl in cp:
+                sg=out if pl==chess.WHITE else -out
+                wr.append(sg)
+            g.headers["Result"]='1-0'if out>0 else'0-1'if out<0 else'1/2-1/2'
+            ex=chess.pgn.StringExporter(headers=True,variations=True,comments=True)
+            gs=g.accept(ex)
+            pgns.append(gs)
+            inps.extend(st)
+            pols.extend(mp)
+            vals.extend(wr)
+            res.append(out)
+            s['game_lengths'].append(mc)
+            s['results'].append(out)
+            if out==1.0:
+                s['wins']+=1
+            elif out==-1.0:
+                s['losses']+=1
+            else:
+                s['draws']+=1
+        return(inps,pols,vals,s,pgns)
+
 class ReinforcementWorker:
-    def __init__(self,model_path,num_iterations,num_games_per_iteration,simulations_per_move,c_puct,temperature,epochs_per_iteration,batch_size,num_selfplay_threads,checkpoint_interval,random_seed,optimizer_type,learning_rate,weight_decay,scheduler_type,accumulation_steps,num_workers,policy_weight,value_weight,grad_clip,momentum,wandb_flag,progress_callback=None,status_callback=None):
+    def __init__(self,model_path,num_iterations,num_games_per_iteration,simulations_per_move,c_puct,temperature,epochs_per_iteration,batch_size,num_selfplay_threads,checkpoint_interval,random_seed,optimizer_type,learning_rate,weight_decay,scheduler_type,accumulation_steps,num_workers,policy_weight,value_weight,grad_clip,momentum):
         initialize_random_seeds(random_seed)
         self.device=torch.device("cuda"if torch.cuda.is_available()else"cpu")
-        self.wandb_flag=wandb_flag
-        self.progress_callback=progress_callback
-        self.status_callback=status_callback
         self.model=CNNModel(get_total_moves()).to(self.device)
         self.optimizer=initialize_optimizer(self.model,optimizer_type,learning_rate,weight_decay,momentum)
         self.scheduler=None
@@ -54,14 +131,11 @@ class ReinforcementWorker:
             if self.loaded_checkpoint and"iteration"in self.loaded_checkpoint:
                 self.start_iteration=self.loaded_checkpoint["iteration"]+1
     def run(self):
-        if self.wandb_flag:
-            wandb.watch(self.model,log="parameters",log_freq=100)
+        wandb.watch(self.model,log="parameters",log_freq=100)
         st=time.time()
         if self.start_iteration>self.num_iterations:
             raise ValueError("Start iteration exceeds total iterations.")
         for it in range(self.start_iteration,self.num_iterations+1):
-            if self.status_callback:
-                self.status_callback(f"🔁 Iteration {it}/{self.num_iterations} 🎮 Generating self-play data...")
             npcp=min(self.num_selfplay_threads,cpu_count())
             gpp,r=divmod(self.num_games_per_iteration,npcp)
             seeds=[self.random_seed+it*1000+i+int(time.time())for i in range(npcp)]
@@ -87,19 +161,18 @@ class ReinforcementWorker:
                 s['results'].extend(ws.get('results',[]))
             s['total_games']=len(s['results'])
             s['avg_game_length']=float(np.mean(s['game_lengths']))if s['game_lengths']else 0.0
-            if self.wandb_flag:
-                wandb.log({
-                    "iteration":it,
-                    "total_games":s['total_games'],
-                    "wins":s['wins'],
-                    "losses":s['losses'],
-                    "draws":s['draws'],
-                    "avg_game_length":s['avg_game_length']
-                })
-                if s['results']:
-                    wandb.log({"results_histogram":wandb.Histogram(s['results'])})
-                if s['game_lengths']:
-                    wandb.log({"game_length_histogram":wandb.Histogram(s['game_lengths'])})
+            wandb.log({
+                "iteration":it,
+                "total_games":s['total_games'],
+                "wins":s['wins'],
+                "losses":s['losses'],
+                "draws":s['draws'],
+                "avg_game_length":s['avg_game_length']
+            })
+            if s['results']:
+                wandb.log({"results_histogram":wandb.Histogram(s['results'])})
+            if s['game_lengths']:
+                wandb.log({"game_length_histogram":wandb.Histogram(s['game_lengths'])})
             cm=float('inf')
             if ai:
                 itensor=torch.from_numpy(np.array(ai,dtype=np.float32))
@@ -112,7 +185,7 @@ class ReinforcementWorker:
                     if self.loaded_checkpoint and'scheduler_state_dict'in self.loaded_checkpoint:
                         self.scheduler.load_state_dict(self.loaded_checkpoint['scheduler_state_dict'])
                 for ep in range(1,self.epochs_per_iteration+1):
-                    tm=train_epoch(self.model,dl,self.device,self.scaler,self.optimizer,self.scheduler,ep,self.epochs_per_iteration,self.accumulation_steps,False,self.policy_weight,self.value_weight,self.grad_clip,self.progress_callback,self.status_callback,self.wandb_flag)
+                    tm=train_epoch(self.model,dl,self.device,self.scaler,self.optimizer,self.scheduler,self.accumulation_steps,False,self.policy_weight,self.value_weight,self.grad_clip,True)
                 cm=self.policy_weight*tm["policy_loss"]+self.value_weight*tm["value_loss"]
                 if cm<self.best_metric:
                     self.best_metric=cm
@@ -120,17 +193,15 @@ class ReinforcementWorker:
                     self.checkpoint_manager.save(self.model,self.optimizer,self.scheduler,it,None)
             if self.checkpoint_interval>0 and it%self.checkpoint_interval==0:
                 self.checkpoint_manager.save(self.model,self.optimizer,self.scheduler,it)
-            if self.wandb_flag:
-                wandb.log({
-                    "iteration":it,
-                    "learning_rate":self.scheduler.get_last_lr()[0]
-                })
+            wandb.log({
+                "iteration":it,
+                "learning_rate":self.scheduler.get_last_lr()[0]
+            })
             os.makedirs("data/games/self-play",exist_ok=True)
             for idx,g in enumerate(pgns,1):
                 fn=os.path.join("data","games","self-play",f"game_{int(time.time())}_{idx}.pgn")
                 with open(fn,"w",encoding="utf-8")as f:
                     f.write(str(g))
         self.checkpoint_manager.save(self.model,self.optimizer,self.scheduler,self.num_iterations,os.path.join("models","saved_models","reinforcement_model.pth"))
-        if self.wandb_flag:
-            wandb.run.summary.update({"best_metric":self.best_metric,"best_iteration":self.best_iteration,"training_time":time.time()-st})
+        wandb.run.summary.update({"best_metric":self.best_metric,"best_iteration":self.best_iteration,"training_time":time.time()-st})
         return True

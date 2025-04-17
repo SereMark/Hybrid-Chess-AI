@@ -1,7 +1,7 @@
 import os,json,time,torch,wandb,chess,chess.pgn,numpy as np
-from src.training.reinforcement.mcts import MCTS
+from utils.mcts import MCTS
+from src.cnn import CNNModel
 from src.utils.chess_utils import get_total_moves,convert_board_to_input,get_move_mapping
-from src.models.cnn import CNNModel
 
 class Bot:
     def __init__(self,p,mcts,book):
@@ -41,8 +41,8 @@ class Bot:
         except:return chess.Move.null()
 
 class BenchmarkWorker:
-    def __init__(self,p1,p2,n,g1m,g1b,g2m,g2b,wandb_flag=False,progress_callback=None,status_callback=None,switch=False):
-        self.n=n;self.wb_flag=wandb_flag;self.pc=progress_callback or (lambda *_:None);self.sc=status_callback or (lambda *_:None);self.sw=switch
+    def __init__(self,p1,p2,n,g1m,g1b,g2m,g2b,switch=False):
+        self.n=n;self.sw=switch
         self.bot1=Bot(p1,g1m,g1b);self.bot2=Bot(p2,g2m,g2b);self.dir=os.path.join('data','games','benchmark');os.makedirs(self.dir,exist_ok=True)
         obp=os.path.join('data','processed','opening_book.json')
         try:self.ob=json.load(open(obp)) if os.path.isfile(obp) else{}
@@ -50,7 +50,6 @@ class BenchmarkWorker:
         self._wb=None
     @property
     def wb(self):
-        if not self.wb_flag:return None
         return self._wb
     def run(self):
         res={'1-0':0,'0-1':0,'1/2-1/2':0,'*':0};dur=[],mc=[];b1=b2=d=0;b1s=b2s=ds=[]
@@ -73,7 +72,6 @@ class BenchmarkWorker:
                 else:b1+=1
             elif r=='1/2-1/2':d+=1
             b1s.append(b1);b2s.append(b2);ds.append(d)
-            self.pc(100*gi/self.n);self.sc(f'Game{gi} {r} {dta:.2f}s')
             if self.wb:self.wb.log({'game_idx':gi,'result':r,'duration':dta,'moves':mvs,'bot1':b1,'bot2':b2,'draws':d})
             if self.sw:col=not col
         ad=float(np.mean(dur)) if dur else 0;am=float(np.mean(mc)) if mc else 0

@@ -1,5 +1,4 @@
-import torch
-import torch.nn as nn
+import torch, torch.nn as nn
 
 class ResidualUnit(nn.Module):
     def __init__(self) -> None:
@@ -19,21 +18,18 @@ class ResidualUnit(nn.Module):
 class CNNModel(nn.Module):
     def __init__(self, num_moves: int) -> None:
         super().__init__()
-        # Initial convolutional block
         self.initial_block = nn.Sequential(
             nn.Conv2d(25, 48, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(48),
             nn.ReLU(inplace=True)
         )
 
-        # Residual layers
         self.residual_layers = nn.Sequential(
             ResidualUnit(),
             ResidualUnit(),
             ResidualUnit()
         )
 
-        # Policy head
         self.policy_head = nn.Sequential(
             nn.Conv2d(48, 2, kernel_size=1, bias=False),
             nn.BatchNorm2d(2),
@@ -42,7 +38,6 @@ class CNNModel(nn.Module):
             nn.Linear(2 * 8 * 8, num_moves)
         )
 
-        # Value head
         self.value_head = nn.Sequential(
             nn.Conv2d(48, 1, kernel_size=1, bias=False),
             nn.BatchNorm2d(1),
@@ -54,7 +49,6 @@ class CNNModel(nn.Module):
             nn.Tanh()
         )
 
-        # Initialize weights
         for module in self.modules():
             if isinstance(module, nn.Conv2d):
                 nn.init.kaiming_normal_(module.weight, nonlinearity="relu")

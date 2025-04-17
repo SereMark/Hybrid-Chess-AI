@@ -3,15 +3,15 @@ import time
 import torch
 import wandb
 import numpy as np
+from src.cnn import CNNModel
 from torch.amp import GradScaler
 from torch.utils.data import DataLoader
 from src.utils.checkpoint_manager import CheckpointManager
-from src.models.cnn import CNNModel
 from src.utils.chess_utils import H5Dataset,get_total_moves
 from src.utils.train_utils import initialize_optimizer,initialize_scheduler,initialize_random_seeds,validate_epoch,train_epoch
 
 class SupervisedWorker:
-    def __init__(self,epochs,batch_size,lr,weight_decay,checkpoint_interval,dataset_path,train_indices_path,val_indices_path,model_path,optimizer,scheduler,accumulation_steps,num_workers,random_seed,policy_weight,value_weight,grad_clip,momentum,wandb_flag,use_early_stopping=False,early_stopping_patience=5,progress_callback=None,status_callback=None):
+    def __init__(self,epochs,batch_size,lr,weight_decay,checkpoint_interval,dataset_path,train_indices_path,val_indices_path,model_path,optimizer,scheduler,accumulation_steps,num_workers,random_seed,policy_weight,value_weight,grad_clip,momentum,wandb_flag,use_early_stopping=False,early_stopping_patience=5):
         initialize_random_seeds(random_seed)
         self.device=torch.device('cuda'if torch.cuda.is_available()else'cpu')
         self.model=CNNModel(num_moves=get_total_moves()).to(self.device)
@@ -19,8 +19,6 @@ class SupervisedWorker:
         self.scheduler_type=scheduler
         self.scheduler=None
         self.wandb_flag=wandb_flag
-        self.progress_callback=progress_callback
-        self.status_callback=status_callback
         self.epochs=epochs
         self.batch_size=batch_size
         self.accumulation_steps=accumulation_steps
@@ -59,8 +57,8 @@ class SupervisedWorker:
         bm=float('inf')
         st=time.time()
         for e in range(self.start_epoch,self.epochs+1):
-            tm=train_epoch(self.model,train_loader,self.device,self.scaler,self.optimizer,self.scheduler,e,self.epochs,self.accumulation_steps,True,self.policy_weight,self.value_weight,self.grad_clip,self.progress_callback,self.status_callback,self.wandb_flag)
-            vm=validate_epoch(self.model,val_loader,self.device,e,self.epochs,self.progress_callback,self.status_callback)
+            _=train_epoch(self.model,train_loader,self.device,self.scaler,self.optimizer,self.scheduler,self.accumulation_steps,True,self.policy_weight,self.value_weight,self.grad_clip,self.wandb_flag)
+            vm=validate_epoch(self.model,val_loader,self.device)
             cl=self.policy_weight*vm["policy_loss"]+self.value_weight*vm["value_loss"]
             if cl<bm:
                 bm=cl
@@ -82,8 +80,6 @@ class SupervisedWorker:
                 else:
                     self.early_stop_counter+=1
                     if self.early_stop_counter>=self.early_stopping_patience:
-                        if self.status_callback:
-                            self.status_callback(f"🔴 Early stopping triggered at epoch {e}")
                         break
         fp=os.path.join("models","saved_models","supervised_model.pth")
         self.checkpoint_manager.save(self.model,self.optimizer,self.scheduler,self.epochs,fp)

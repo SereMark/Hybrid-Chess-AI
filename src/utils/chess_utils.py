@@ -1,27 +1,15 @@
-import h5py
-import torch
-import chess
-import numpy as np
+import h5py, torch, chess, numpy as np
 from itertools import product
 from torch.utils.data import Dataset
 
 class H5Dataset(Dataset):
-    def __init__(self,path,indices):
-        self.path=path
-        self.indices=indices
-        self.file=None
-    def __len__(self):
-        return len(self.indices)
+    def __init__(self,path,indices): self.path,self.indices,self.file=path,indices,None
+    def __len__(self): return len(self.indices)
     def __getitem__(self,x):
-        if self.file is None:
-            self.file=h5py.File(self.path,"r")
-        return tuple(
-            torch.tensor(self.file[k][self.indices[x]],dtype=t)
-            for k,t in zip(["inputs","policy_targets","value_targets"],[torch.float32,torch.long,torch.float32])
-        )
+        if self.file is None: self.file=h5py.File(self.path,"r")
+        return tuple(torch.tensor(self.file[k][self.indices[x]],dtype=t) for k,t in zip(["inputs","policy_targets","value_targets"],[torch.float32,torch.long,torch.float32]))
     def __del__(self):
-        if self.file:
-            self.file.close()
+        if self.file: self.file.close()
 
 class MoveMapping:
     def __init__(self):
@@ -42,30 +30,8 @@ class MoveMapping:
 
 move_mapping=MoveMapping()
 
-def get_total_moves():
-    return move_mapping.TOTAL_MOVES
-
-def get_move_mapping():
-    return move_mapping
-
-def flip_board(b):
-    return b.mirror()
-
-def flip_move(m):
-    return chess.Move(chess.square_mirror(m.from_square),chess.square_mirror(m.to_square),promotion=m.promotion)
-
-def mirror_rank(b):
-    p=b.fen().split()
-    r=p[0].split("/")
-    rr="/".join(reversed(r))+" "+" ".join(p[1:])
-    return chess.Board(rr)
-
-def mirror_move_rank(m):
-    fr=7-chess.square_rank(m.from_square)
-    ff=chess.square_file(m.from_square)
-    tr=7-chess.square_rank(m.to_square)
-    tf=chess.square_file(m.to_square)
-    return chess.Move(chess.square(tf,tr),chess.square(ff,fr),promotion=m.promotion)
+def get_total_moves(): return move_mapping.TOTAL_MOVES
+def get_move_mapping(): return move_mapping
 
 def convert_board_to_input(b):
     x = np.zeros((64, 18), np.float32)
@@ -77,21 +43,14 @@ def convert_board_to_input(b):
     }
     for sq, piece in b.piece_map().items():
         i = pm.get((piece.piece_type, piece.color))
-        if i is not None:
-            x[sq, i] = 1
-    if b.turn:
-        x[:, 12] = 1
+        if i is not None: x[sq, i] = 1
+    if b.turn: x[:, 12] = 1
     ep = b.ep_square
-    if ep is not None:
-        x[ep, 13] = 1
-    if b.has_kingside_castling_rights(chess.WHITE):
-        x[:, 14] = 1
-    if b.has_queenside_castling_rights(chess.WHITE):
-        x[:, 15] = 1
-    if b.has_kingside_castling_rights(chess.BLACK):
-        x[:, 16] = 1
-    if b.has_queenside_castling_rights(chess.BLACK):
-        x[:, 17] = 1
+    if ep is not None: x[ep, 13] = 1
+    if b.has_kingside_castling_rights(chess.WHITE): x[:, 14] = 1
+    if b.has_queenside_castling_rights(chess.WHITE): x[:, 15] = 1
+    if b.has_kingside_castling_rights(chess.BLACK): x[:, 16] = 1
+    if b.has_queenside_castling_rights(chess.BLACK): x[:, 17] = 1
     x = x.transpose(1, 0).reshape(18, 8, 8)
     pad = np.zeros((7, 8, 8), dtype=np.float32)
     return np.concatenate([x, pad], axis=0)

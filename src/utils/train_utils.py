@@ -39,7 +39,7 @@ def initialize_scheduler(optimizer, scheduler_type, total_steps):
         raise ValueError("Invalid scheduler type")
     return sched
 
-def train_epoch(model, loader, device, scaler, optimizer, scheduler, epoch, max_epoch, accum_steps, compute_acc, p_w, v_w, max_grad, prog_cb, status_cb, use_wandb):
+def train_epoch(model, loader, device, scaler, optimizer, scheduler, accum_steps, compute_acc, p_w, v_w, max_grad, wandb_flag):
     model.train()
     total_p_loss, total_v_loss, correct, total, accum = 0, 0, 0, 0, 0
     for idx, (inp, pol, val) in enumerate(loader, start=1):
@@ -73,7 +73,7 @@ def train_epoch(model, loader, device, scaler, optimizer, scheduler, epoch, max_
         total += bs
         batch_correct = (p_pred.argmax(dim=1) == pol).float().sum().item() if compute_acc and pol.dim() == 1 else 0
         correct += batch_correct
-        if use_wandb and idx % 10 == 0:
+        if wandb_flag and idx % 10 == 0:
             wandb.log({
                 "train/policy_loss": p_loss.item(),
                 "train/value_loss": v_loss.item(),
@@ -81,17 +81,13 @@ def train_epoch(model, loader, device, scaler, optimizer, scheduler, epoch, max_
                 "train/grad_norm": grad_norm if isinstance(grad_norm, float) else grad_norm.item(),
                 "learning_rate": scheduler.get_last_lr()[0]
             })
-        if prog_cb:
-            prog_cb(idx / len(loader) * 100)
-        if status_cb and idx % 10 == 0:
-            status_cb(f"📊 Epoch {epoch}/{max_epoch} | Batch {idx}/{len(loader)} | Policy Loss: {total_p_loss/total:.4f} | Value Loss: {total_v_loss/total:.4f} | Accuracy: {correct/total:.4f}")
     return {
         "policy_loss": total_p_loss / total if total else 0,
         "value_loss": total_v_loss / total if total else 0,
         "accuracy": correct / total if (compute_acc and total) else 0
     }
 
-def validate_epoch(model, loader, device, epoch, max_epoch, prog_cb, status_cb):
+def validate_epoch(model, loader, device):
     model.eval()
     val_p_loss, val_v_loss, correct, total = 0, 0, 0, 0
     with torch.no_grad():
@@ -109,10 +105,6 @@ def validate_epoch(model, loader, device, epoch, max_epoch, prog_cb, status_cb):
             total += bs
             batch_correct = (p_pred.argmax(dim=1) == pol).float().sum().item()
             correct += batch_correct
-            if prog_cb:
-                prog_cb(idx / len(loader) * 100)
-            if status_cb and idx % 10 == 0:
-                status_cb(f"🔍 Validation Epoch {epoch}/{max_epoch} | Batch {idx}/{len(loader)} | Policy Loss: {val_p_loss/total:.4f} | Value Loss: {val_v_loss/total:.4f} | Accuracy: {correct/total:.4f}")
     return {
         "policy_loss": val_p_loss / total if total else 0,
         "value_loss": val_v_loss / total if total else 0,

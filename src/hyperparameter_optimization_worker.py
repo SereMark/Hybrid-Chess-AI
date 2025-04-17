@@ -1,8 +1,7 @@
 import os, optuna
-from optuna.trial import TrialState
 from optuna.samplers import TPESampler
 from optuna.pruners import MedianPruner
-from src.training.supervised.supervised_training_worker import SupervisedWorker
+from src.supervised_training_worker import SupervisedWorker
 
 class HyperparameterOptimizationWorker:
     def __init__(self, num_trials, timeout, dataset_path, train_indices_path,
@@ -11,8 +10,7 @@ class HyperparameterOptimizationWorker:
                  epochs_min, epochs_max, optimizer_options, scheduler_options,
                  grad_clip_min, grad_clip_max, momentum_min, momentum_max,
                  accumulation_steps_min, accumulation_steps_max,
-                 policy_weight_min, policy_weight_max, value_weight_min, value_weight_max,
-                 progress_callback=None, status_callback=None):
+                 policy_weight_min, policy_weight_max, value_weight_min, value_weight_max):
         self.num_trials = num_trials
         self.timeout = timeout
         self.dataset_path = dataset_path
@@ -40,8 +38,6 @@ class HyperparameterOptimizationWorker:
         self.policy_weight_max = policy_weight_max
         self.value_weight_min = value_weight_min
         self.value_weight_max = value_weight_max
-        self.progress_callback = progress_callback or (lambda x: None)
-        self.status_callback = status_callback or (lambda x: None)
         self.db_name = "optimization_results.db"
         self.study_name = "HPO_Study"
 
@@ -82,8 +78,6 @@ class HyperparameterOptimizationWorker:
             wandb_flag=False,
             use_early_stopping=False,
             early_stopping_patience=5,
-            progress_callback=None,
-            status_callback=None
         )
         results = worker.run()
         best_val_loss = results.get("best_composite_loss", float("inf"))
@@ -114,26 +108,17 @@ class HyperparameterOptimizationWorker:
             pruner=MedianPruner(),
             load_if_exists=False
         )
-        def trial_callback(study: optuna.Study, trial: optuna.Trial):
-            completed_trials = len([t for t in study.get_trials(deepcopy=False) if t.state in (TrialState.COMPLETE, TrialState.PRUNED)])
-            progress_percent = (completed_trials / self.num_trials) * 100
-            self.progress_callback(progress_percent)
-            current_best = study.best_value if study.best_value is not None else float('inf')
-            self.status_callback(f"Trial {completed_trials}/{self.num_trials} ended. Current Best Loss: {current_best:.4f}")
         try:
             study.optimize(
                 self.objective,
                 n_trials=self.num_trials,
                 timeout=self.timeout if self.timeout > 0 else None,
-                n_jobs=self.n_jobs,
-                callbacks=[trial_callback]
+                n_jobs=self.n_jobs
             )
         except Exception as e:
-            self.status_callback(f"Optimization failed: {e}")
             return False
         best_trial = study.best_trial
         best_loss = study.best_value
-        self.status_callback(f"✅ Hyperparameter Optimization finished. Best Loss: {best_loss:.5f}, Trial {best_trial.number} with parameters: {best_trial.params}")
         results_dir = "hyperopt_results"
         os.makedirs(results_dir, exist_ok=True)
         with open(os.path.join(results_dir, "best_trial.txt"), "w") as f:

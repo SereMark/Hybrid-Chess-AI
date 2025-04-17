@@ -1,22 +1,20 @@
-import os,random,torch,wandb,shap
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
+import os,random,torch,wandb,shap
 from sklearn import metrics
+from src.cnn import CNNModel
 from torch.utils.data import DataLoader
-from torch.nn.functional import mse_loss,smooth_l1_loss,cross_entropy
-from src.utils.chess_utils import H5Dataset,get_total_moves
 from src.utils.train_utils import initialize_random_seeds
-from src.models.cnn import CNNModel
+from src.utils.chess_utils import H5Dataset,get_total_moves
+from torch.nn.functional import mse_loss,smooth_l1_loss,cross_entropy
 
 class EvaluationWorker:
-    def __init__(self,model_path,indices_path,h5_path,wandb_flag=False,progress_callback=None,status_callback=None):
-        self.mp=model_path;self.ip=indices_path;self.hp=h5_path;self.wb_flag=wandb_flag
+    def __init__(self,model_path,indices_path,h5_path):
+        self.mp=model_path;self.ip=indices_path;self.hp=h5_path
         self.dev=torch.device('cuda'if torch.cuda.is_available()else'cpu')
-        self.pc=progress_callback or (lambda *_:None);self.sc=status_callback or (lambda *_:None)
         self.msp=7500;self._wb=None
     @property
     def wb(self):
-        if not self.wb_flag:return None
         return self._wb
     def run(self):
         initialize_random_seeds(42)
@@ -52,7 +50,6 @@ class EvaluationWorker:
                 o=m(x)[0];pr=o.argmax(1)
                 acc=(pr==y).float().mean().item()
                 p+=pr.cpu().numpy().tolist();a+=y.cpu().numpy().tolist();lg.append(o.cpu());ba.append(acc)
-                self.pc(bi/tb*100);self.sc(f'🚀 Batch {bi}/{tb}|Acc={acc:.4f}')
                 if self.wb:self.wb.log({'batch_idx':bi,'batch_accuracy':acc})
         lgc=torch.cat(lg,0).numpy() if lg else np.empty((0,))
         torch.cuda.empty_cache();return np.array(p),np.array(a),ba,lgc
