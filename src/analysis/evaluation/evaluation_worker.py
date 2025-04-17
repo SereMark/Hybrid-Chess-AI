@@ -1,225 +1,137 @@
-import os
-import shap
-import wandb
-import torch
-import random
+import os,random,torch,wandb,shap
+import matplotlib.pyplot as plt
 import numpy as np
+from sklearn import metrics
 from torch.utils.data import DataLoader
+from torch.nn.functional import mse_loss,smooth_l1_loss,cross_entropy
 from src.utils.chess_utils import H5Dataset,get_total_moves
-from torch.nn.functional import mse_loss,smooth_l1_loss
 from src.utils.train_utils import initialize_random_seeds
 from src.models.cnn import CNNModel
 
 class EvaluationWorker:
     def __init__(self,model_path,indices_path,h5_path,wandb_flag=False,progress_callback=None,status_callback=None):
-        self.model_path=model_path
-        self.indices_path=indices_path
-        self.h5_path=h5_path
-        self.wandb_flag=wandb_flag
-        self.device=torch.device("cuda"if torch.cuda.is_available()else"cpu")
-        self.progress_callback=progress_callback or (lambda x:None)
-        self.status_callback=status_callback or (lambda x:None)
-        self.max_scatter_points=5000
+        self.mp=model_path;self.ip=indices_path;self.hp=h5_path;self.wb_flag=wandb_flag
+        self.dev=torch.device('cuda'if torch.cuda.is_available()else'cpu')
+        self.pc=progress_callback or (lambda *_:None);self.sc=status_callback or (lambda *_:None)
+        self.msp=7500;self._wb=None
+    @property
+    def wb(self):
+        if not self.wb_flag:return None
+        return self._wb
     def run(self):
         initialize_random_seeds(42)
-        m=self._load_model()
-        if m is None:return False
-        l=self._prepare_test_loader()
-        if l is None:return False
-        p,a,ba,lg=self._inference(m,l)
-        if len(p)==0 or len(a)==0:
-            self.status_callback("No predictions; evaluation aborted.")
-            return False
-        oa=float(np.mean(p==a))
-        ab=float(np.mean(ba))
-        self._compute_and_log_metrics(p,a,oa,ab)
-        self._gradient_sensitivity_analysis(m,l)
-        self._feature_importance_knockout(m,l)
-        self._prediction_error_analysis(lg,a)
-        self._robustness_test(m)
-        self._explainability_tools(m,l)
-        self.status_callback(f"Evaluation complete. Overall={oa:.4f}, AvgBatch={ab:.4f}")
+        m=self._load_model();l=self._prep_loader()
+        if m is None or l is None:return False
+        p,a,ba,lg=self._infer(m,l)
+        if len(p)==0:return False
+        oa=float(np.mean(p==a));aba=float(np.mean(ba))
+        self._metrics(p,a,oa,aba);self._grad(m,l);self._knock(m,l);self._err(lg,a);self._edge(m);self._shap(m,l)
+        self.sc(f'Evaluation complete. Overall={oa:.4f}, AvgBatch={aba:.4f}')
+        if self.wb:self.wb.finish()
         return True
     def _load_model(self):
-        if not os.path.isfile(self.model_path):
-            self.status_callback(f"Model checkpoint not found: {self.model_path}")
-            return None
+        if not os.path.isfile(self.mp):self.sc(f'Model missing: {self.mp}');return None
         try:
-            c=torch.load(self.model_path,map_location=self.device)
-            m=CNNModel(num_moves=get_total_moves()).to(self.device)
-            if isinstance(c,dict)and"model_state_dict"in c:m.load_state_dict(c["model_state_dict"],strict=False)
-            else:m.load_state_dict(c,strict=False)
-            m.eval()
-        except Exception as e:
-            self.status_callback(f"Error loading model checkpoint: {e}")
-            return None
-        return m
-    def _prepare_test_loader(self):
-        if not os.path.isfile(self.indices_path):
-            self.status_callback(f"Indices file not found: {self.indices_path}")
-            return None
-        if not os.path.isfile(self.h5_path):
-            self.status_callback(f"H5 dataset file not found: {self.h5_path}")
-            return None
-        try:
-            ti=np.load(self.indices_path)
-        except Exception as e:
-            self.status_callback(f"Error loading indices: {e}")
-            return None
-        if len(ti)==0:
-            self.status_callback("Test set empty, aborting.")
-            return None
-        d=DataLoader(H5Dataset(self.h5_path,ti),batch_size=1024,shuffle=False,num_workers=0,pin_memory=(self.device.type=="cuda"))
-        if len(d)==0:
-            self.status_callback("No valid batches in test set.")
-            return None
-        return d
-    def _inference(self,m,loader):
-        p,a,ba,lg=[],[],[],[]
-        tb=len(loader)
-        self.status_callback("Starting evaluation...")
+            ck=torch.load(self.mp,map_location=self.dev)
+            m=CNNModel(num_moves=get_total_moves()).to(self.dev)
+            m.load_state_dict(ck['model_state_dict'] if isinstance(ck,dict)and'model_state_dict'in ck else ck,strict=False)
+            m.eval();return m
+        except Exception as e:self.sc(f'Load err: {e}');return None
+    def _prep_loader(self):
+        for p,_ in[(self.ip,'Idx'),(self.hp,'H5')]:
+            if not os.path.isfile(p):self.sc('File missing');return None
+        try:ti=np.load(self.ip)
+        except Exception as e:self.sc(f'Idx err: {e}');return None
+        if len(ti)==0:self.sc('Empty test');return None
+        return DataLoader(H5Dataset(self.hp,ti),batch_size=1024,shuffle=False,num_workers=0,pin_memory=(self.dev.type=='cuda'))
+    def _infer(self,m,l):
+        p,a,ba,lg=[],[],[],[];tb=len(l);self.sc('Eval...')
         with torch.no_grad():
-            for i,(inp,pol,_) in enumerate(loader,1):
-                inp=inp.to(self.device,non_blocking=True)
-                pol=pol.to(self.device,non_blocking=True)
-                o=m(inp)[0]
-                pr=o.argmax(dim=1)
-                acc=(pr==pol).float().mean().item()
-                ba.append(acc)
-                p.extend(pr.cpu().numpy())
-                a.extend(pol.cpu().numpy())
-                lg.append(o.cpu())
-                self.progress_callback(i/tb*100)
-                self.status_callback(f"🚀 Evaluating batch {i}/{tb} | Acc={acc:.4f}")
-        torch.cuda.empty_cache()
-        if lg:
-            lgc=torch.cat(lg,dim=0).numpy()
-        else:
-            lgc=np.array([])
-        return np.array(p),np.array(a),ba,lgc
-    def _compute_and_log_metrics(self,p,a,oa,ab):
-        self.status_callback("Computing advanced metrics...")
-        ul=np.unique(np.concatenate([a,p]))
-        if len(ul)>1:
-            lti={l:i for i,l in enumerate(ul)}
-            ai=np.vectorize(lti.get)(a)
-            pi=np.vectorize(lti.get)(p)
-        else:
-            self.status_callback("One-class scenario, skipping confusion matrix.")
-            ai,pi=a,p
-        if self.wandb_flag:
-            wandb.log({"accuracy":oa,"average_batch_accuracy":ab})
-            if len(ul)>1 and len(ul)<=50:
-                wandb.log({"confusion_matrix":wandb.plot.confusion_matrix(probs=None,y_true=ai,preds=pi,class_names=[str(x)for x in ul])})
-            if len(ul)==2:
-                oha=np.zeros((len(a),2),dtype=np.float32)
-                ohp=np.zeros((len(p),2),dtype=np.float32)
-                for i,(x,y) in enumerate(zip(ai,pi)):
-                    oha[i,x]=1
-                    ohp[i,y]=1
-                wandb.log({
-                    "pr_curve":wandb.plot.pr_curve(oha,ohp,[str(x)for x in ul]),
-                    "roc_curve":wandb.plot.roc_curve(oha,ohp,[str(x)for x in ul])
-                })
-            c=np.bincount(pi,minlength=len(ul))
-            td=[(str(lb),int(ct))for lb,ct in zip(ul,c)] if len(ul)<=50 else[]
-            if td:
-                tb=wandb.Table(data=td,columns=["Class","Count"])
-                wandb.log({"prediction_distribution":wandb.plot.bar(tb,"Class","Count",title="Predicted Class Distribution")})
-            si=random.sample(range(len(a)),min(self.max_scatter_points,len(a)))
-            sd=list(zip(a[si],p[si]))
-            st=wandb.Table(data=sd,columns=["Actual","Predicted"])
-            wandb.log({"actual_vs_predicted_scatter":wandb.plot.scatter(st,"Actual","Predicted",title="Actual vs. Predicted")})
-            wandb.run.summary.update({"final_accuracy":oa,"average_batch_accuracy":ab})
-        self.status_callback(f"Done. Overall accuracy={oa:.4f}.")
-    def _gradient_sensitivity_analysis(self,m,loader,num_samples=1):
+            for bi,(x,y,_) in enumerate(l,1):
+                x,y=x.to(self.dev,non_blocking=True),y.to(self.dev,non_blocking=True)
+                o=m(x)[0];pr=o.argmax(1)
+                acc=(pr==y).float().mean().item()
+                p+=pr.cpu().numpy().tolist();a+=y.cpu().numpy().tolist();lg.append(o.cpu());ba.append(acc)
+                self.pc(bi/tb*100);self.sc(f'🚀 Batch {bi}/{tb}|Acc={acc:.4f}')
+                if self.wb:self.wb.log({'batch_idx':bi,'batch_accuracy':acc})
+        lgc=torch.cat(lg,0).numpy() if lg else np.empty((0,))
+        torch.cuda.empty_cache();return np.array(p),np.array(a),ba,lgc
+    def _cm_fig(self,cm,cls):
+        f,a=plt.subplots(figsize=(6,5));im=a.imshow(cm);a.figure.colorbar(im,ax=a)
+        a.set(xticks=range(len(cls)),yticks=range(len(cls)),xticklabels=cls,yticklabels=cls,ylabel='True',xlabel='Pred',title='Confusion')
+        plt.setp(a.get_xticklabels(),rotation=45,ha='right')
+        th=cm.max()/2
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):a.text(j,i,cm[i,j],ha='center',va='center',color='white'if cm[i,j]>th else'black')
+        f.tight_layout();return f
+    def _pr_fig(self,y,t):
+        pr,rc,_=metrics.precision_recall_curve(y,t);ap=metrics.average_precision_score(y,t)
+        f,a=plt.subplots();a.plot(rc,pr);a.set(xlabel='Recall',ylabel='Precision',title=f'PR(AP={ap:.3f})');return f
+    def _roc_fig(self,y,t):
+        fpr,tpr,_=metrics.roc_curve(y,t);auc=metrics.auc(fpr,tpr)
+        f,a=plt.subplots();a.plot(fpr,tpr);a.plot([0,1],[0,1],'--');a.set(xlabel='FPR',ylabel='TPR',title=f'ROC(AUC={auc:.3f})');return f
+    def _metrics(self,p,a,oa,aba):
+        wb=self.wb;cls=np.unique(np.concatenate([a,p]));sc={'overall_accuracy':oa,'average_batch_accuracy':aba}
+        if wb:wb.log(sc);wb.summary.update(sc)
+        if len(cls)<=50:
+            cm=metrics.confusion_matrix(a,p,labels=cls)
+            if wb:wb.log({'cm':wandb.Image(self._cm_fig(cm,[str(c)for c in cls]))})
+            pc=cm.diagonal()/cm.sum(1,where=cm.sum(1)!=0)
+            f,ax=plt.subplots(figsize=(8,4));ax.bar(range(len(cls)),pc);ax.set(xticks=range(len(cls)),xticklabels=[str(c)for c in cls],ylabel='Acc',xlabel='Class',title='Per‑class');plt.setp(ax.get_xticklabels(),rotation=45,ha='right');f.tight_layout()
+            if wb:wb.log({'per_class':wandb.Image(f)});plt.close(f)
+        if len(cls)==2:
+            yt=(a==cls[1]).astype(int);ys=(p==cls[1]).astype(int)
+            if wb:wb.log({'pr':wandb.Image(self._pr_fig(yt,ys)),'roc':wandb.Image(self._roc_fig(yt,ys))})
+        if wb and len(a)>2:
+            idx=random.sample(range(len(a)),min(self.msp,len(a)));tab=wandb.Table(data=list(zip(a[idx],p[idx])),columns=['A','P'])
+            wb.log({'scatter':wandb.plot.scatter(tab,'A','P',title='A vs P')})
+    def _grad(self,m,l,n=1):
         try:
-            self.status_callback("Performing gradient-based sensitivity analysis...")
-            di=iter(loader)
-            for _ in range(num_samples):
-                inp,pol,_=next(di)
-                inp=inp.to(self.device)
-                pol=pol.to(self.device)
-                inp.requires_grad_(True)
-                o=m(inp)[0]
-                l=torch.nn.functional.cross_entropy(o,pol.long())
-                l.backward()
-                g=inp.grad.detach().abs().mean(dim=0).cpu().numpy()
-                if self.wandb_flag:
-                    bd=[[i,float(v)]for i,v in enumerate(g.mean(axis=0))]
-                    bt=wandb.Table(data=bd,columns=["FeatureIndex","GradientMean"])
-                    wandb.log({"gradient_sensitivity":wandb.plot.bar(bt,"FeatureIndex","GradientMean",title="Gradient-Based Sensitivity")})
-                inp.grad=None
-        except StopIteration:pass
-        except Exception as e:
-            self.status_callback(f"Error in gradient analysis: {e}")
-    def _feature_importance_knockout(self,m,loader,knock_idx=0):
+            self.sc('Grad...');it=iter(l)
+            for _ in range(n):
+                x,y,_=next(it);x,y=x.to(self.dev),y.to(self.dev);x.requires_grad_(True)
+                loss=cross_entropy(m(x)[0],y.long());loss.backward()
+                g=x.grad.abs().mean(0).cpu().numpy()
+                f,ax=plt.subplots(figsize=(6,3));ax.bar(range(g.shape[-1]),g.mean(0));ax.set(xlabel='Feat',ylabel='|dL/dx|',title='Grad');f.tight_layout()
+                if self.wb:self.wb.log({'grad':wandb.Image(f)});plt.close(f);x.grad=None
+        except Exception as e:self.sc(f'Grad err:{e}')
+    def _knock(self,m,l,k=0):
         try:
-            self.status_callback("Performing feature knockout tests...")
-            c=0
-            t=0
-            for inp,pol,_ in loader:
-                inp=inp.to(self.device)
-                pol=pol.to(self.device)
-                if knock_idx<inp.size(2):
-                    inp[:,:,knock_idx]=0
-                with torch.no_grad():
-                    o=m(inp)[0]
-                    pr=o.argmax(dim=1)
-                    c+=(pr==pol).float().sum().item()
-                    t+=pol.size(0)
+            self.sc('Knockout...');c=t=0
+            for x,y,_ in l:
+                x,y=x.to(self.dev),y.to(self.dev)
+                if k<x.size(2):x[:,:,k]=0
+                with torch.no_grad():pr=m(x)[0].argmax(1);c+=(pr==y).float().sum().item();t+=y.size(0)
             acc=c/t if t else 0
-            if self.wandb_flag:wandb.log({"knockout_feature_index":knock_idx,"knockout_accuracy":acc})
-            self.status_callback(f"Knockout accuracy with feature {knock_idx} removed: {acc:.4f}")
-        except Exception as e:
-            self.status_callback(f"Error in feature knockout: {e}")
-    def _prediction_error_analysis(self,lg,a):
+            if self.wb:self.wb.log({'ko_idx':k,'ko_acc':acc})
+            self.sc(f'Knock idx{k}acc{acc:.4f}')
+        except Exception as e:self.sc(f'Knock err:{e}')
+    def _err(self,lg,a):
         try:
-            self.status_callback("Analyzing prediction errors with MSE and Huber metrics...")
+            self.sc('Err...')
             if lg.size==0:return
-            i=np.arange(len(a))
-            sl=lg[i,a]
-            st=torch.tensor(sl,dtype=torch.float32)
-            me=float(mse_loss(st,torch.zeros_like(st)))
-            hu=float(smooth_l1_loss(st,torch.zeros_like(st)))
-            if self.wandb_flag:
-                wandb.log({"pred_error_mse":me,"pred_error_huber":hu})
-            self.status_callback(f"MSE: {me:.4f}, Huber: {hu:.4f}")
-        except Exception as e:
-            self.status_callback(f"Error in error analysis: {e}")
-    def _robustness_test(self,m):
+            s=lg[np.arange(len(a)),a]
+            mse=float(mse_loss(torch.tensor(s),torch.zeros_like(torch.tensor(s))))
+            hub=float(smooth_l1_loss(torch.tensor(s),torch.zeros_like(torch.tensor(s))))
+            if self.wb:self.wb.log({'mse':mse,'huber':hub})
+            self.sc(f'MSE{mse:.4f}Huber{hub:.4f}')
+        except Exception as e:self.sc(f'Err met{e}')
+    def _edge(self,m):
         try:
-            self.status_callback("Testing robustness on edge cases...")
-            ec=torch.zeros((1,64,144),dtype=torch.float32,device=self.device)
-            ec[0,0,0]=1
-            with torch.no_grad():
-                o=m(ec)[0]
-                v=o.argmax(dim=1).cpu().item()
-            if self.wandb_flag:
-                wandb.log({"edge_case_results":v})
-            self.status_callback(f"Edge case result: {v}")
-        except Exception as e:
-            self.status_callback(f"Error in robustness test: {e}")
-    def _explainability_tools(self,m,loader,num_samples=1):
+            self.sc('Edge...');ec=torch.zeros((1,64,144),device=self.dev);ec[0,0,0]=1
+            with torch.no_grad():v=m(ec)[0].argmax(1).item()
+            if self.wb:self.wb.log({'edge_pred':v})
+            self.sc(f'Edge{v}')
+        except Exception as e:self.sc(f'Edge err:{e}')
+    def _shap(self,m,l,n=1):
         try:
-            self.status_callback("Explaining model decisions with SHAP/LIME if available...")
-            di=iter(loader)
-            s=[]
-            for _ in range(num_samples):
-                try:
-                    i,_,_=next(di)
-                    s.append(i[0].numpy())
-                except StopIteration:
-                    break
-            if not s:return
-            def ff(x):
-                xt=torch.from_numpy(x).float().to(self.device)
-                with torch.no_grad():
-                    o=m(xt)[0]
-                return o.cpu().numpy()
-            ex=shap.Explainer(ff,np.array(s))
-            sv=ex(s)
-            if self.wandb_flag and hasattr(sv,"values"):
-                wandb.log({"shap_values_example":str(sv.values)})
-        except Exception as e:
-            self.status_callback(f"Error in explainability: {e}")
+            self.sc('SHAP...');samp=[];it=iter(l)
+            for _ in range(n):
+                try:x,_,_=next(it);samp.append(x[0].numpy())
+                except StopIteration:break
+            if not samp:return
+            def f(xn):xt=torch.from_numpy(xn).float().to(self.dev);return m(xt)[0].cpu().numpy()
+            sv=shap.Explainer(f,np.array(samp))(samp)
+            if self.wb and hasattr(sv,'values'):
+                fig=shap.plots.bar(sv,show=False);self.wb.log({'shap':wandb.Image(fig)});plt.close('all')
+        except Exception as e:self.sc(f'SHAP err:{e}')
