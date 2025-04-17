@@ -115,8 +115,7 @@ class HyperparameterOptimizationWorker:
             load_if_exists=False
         )
         def trial_callback(study: optuna.Study, trial: optuna.Trial):
-            completed_trials = len([t for t in study.get_trials(deepcopy=False)
-                                     if t.state in (TrialState.COMPLETE, TrialState.PRUNED)])
+            completed_trials = len([t for t in study.get_trials(deepcopy=False) if t.state in (TrialState.COMPLETE, TrialState.PRUNED)])
             progress_percent = (completed_trials / self.num_trials) * 100
             self.progress_callback(progress_percent)
             current_best = study.best_value if study.best_value is not None else float('inf')
