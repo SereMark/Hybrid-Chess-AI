@@ -199,7 +199,7 @@ class DataPipeline:
             p_np = np.array(batch_policies, dtype=np.int64)
             v_np = np.array(batch_values, dtype=np.float32)
             
-            h5_file["inputs"].resize((end_index, 25, 8, 8))
+            h5_file["inputs"].resize((end_index, 184, 8, 8))
             h5_file["policy_targets"].resize((end_index,))
             h5_file["value_targets"].resize((end_index,))
             
@@ -267,8 +267,8 @@ class DataPipeline:
         h5_path = os.path.join(self.output_dir, "dataset.h5")
         with h5py.File(h5_path, "w") as h5_file:
             h5_file.create_dataset(
-                "inputs", (0, 25, 8, 8),
-                maxshape=(None, 25, 8, 8),
+                "inputs", (0, 184, 8, 8),
+                maxshape=(None, 184, 8, 8),
                 dtype=np.float32,
                 compression="gzip",
                 compression_opts=1

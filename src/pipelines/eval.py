@@ -423,7 +423,7 @@ class EvalPipeline:
         try:
             print("Analyzing edge cases...")
             
-            edge_input = torch.zeros((1, 25, 8, 8), device=self.device)
+            edge_input = torch.zeros((1, 184, 8, 8), device=self.device)
             edge_input[0, 0, 0, 0] = 1
             
             with torch.no_grad():

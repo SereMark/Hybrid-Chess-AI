@@ -60,8 +60,10 @@ def calculate_material_score(board):
     values = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, 
               chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
     
-    white_material = sum(values[piece.piece_type] for piece in board.pieces(color=chess.WHITE))
-    black_material = sum(values[piece.piece_type] for piece in board.pieces(color=chess.BLACK))
+    white_material = sum(len(board.pieces(piece_type, chess.WHITE)) * value 
+                         for piece_type, value in values.items())
+    black_material = sum(len(board.pieces(piece_type, chess.BLACK)) * value 
+                         for piece_type, value in values.items())
     
     return white_material - black_material
 
