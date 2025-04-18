@@ -9,11 +9,12 @@ import numpy as np
 import torch
 from tqdm.auto import tqdm
 
-from src.utils.config import Config
-from src.utils.chess import board_to_input, get_move_map, get_move_count
-from src.utils.tpu import get_tpu
 from src.model import ChessModel
 from src.utils.mcts import MCTS
+from src.utils.tpu import get_tpu
+from src.utils.config import Config
+from src.utils.chess import BoardHistory
+from src.utils.chess import board_to_input, get_move_map, get_move_count
 
 class ChessBot:
     def __init__(self, model_path, use_mcts=True, use_book=True, name="ChessAI"):
@@ -37,6 +38,8 @@ class ChessBot:
         ) if use_mcts else None
         
         self.move_map = get_move_map()
+        
+        self.board_history = BoardHistory(max_history=7)
     
     def _load_model(self, model_path):
         if not os.path.isfile(model_path):
@@ -55,7 +58,14 @@ class ChessBot:
         except Exception as e:
             raise RuntimeError(f"Error loading model: {e}")
     
+    def reset_history(self, board):
+        self.board_history = BoardHistory(max_history=7)
+        self.board_history.add_board(board.copy())
+    
     def get_move(self, board, book):
+        if len(self.board_history) == 0:
+            self.reset_history(board)
+        
         try:
             if self.use_book and book:
                 fen = board.fen()
@@ -76,6 +86,9 @@ class ChessBot:
                                 best_move, best_score = move, score
                     
                     if best_move:
+                        board_copy = board.copy()
+                        board_copy.push(best_move)
+                        self.board_history.add_board(board_copy)
                         return best_move
             
             if self.use_mcts and self.mcts:
@@ -89,11 +102,15 @@ class ChessBot:
                         action_probs[move] = 0.75 * action_probs[move] + 0.25 * noise[i]
                 
                 if action_probs:
-                    return max(action_probs, key=action_probs.get)
+                    best_move = max(action_probs, key=action_probs.get)
+                    board_copy = board.copy()
+                    board_copy.push(best_move)
+                    self.board_history.add_board(board_copy)
+                    return best_move
                 else:
                     return chess.Move.null()
             
-            input_tensor = torch.from_numpy(board_to_input(board)).float().unsqueeze(0).to(self.device)
+            input_tensor = torch.from_numpy(board_to_input(board, self.board_history)).float().unsqueeze(0).to(self.device)
             
             with torch.no_grad():
                 policy_logits, _ = self.model(input_tensor)
@@ -113,7 +130,14 @@ class ChessBot:
                 for move in move_probs:
                     move_probs[move] = 1.0 / len(move_probs)
             
-            return max(move_probs, key=move_probs.get) if move_probs else chess.Move.null()
+            best_move = max(move_probs, key=move_probs.get) if move_probs else chess.Move.null()
+            
+            if best_move != chess.Move.null():
+                board_copy = board.copy()
+                board_copy.push(best_move)
+                self.board_history.add_board(board_copy)
+                
+            return best_move
         
         except Exception as e:
             print(f"Error getting move: {e}")

@@ -6,8 +6,9 @@ import chess
 import chess.pgn
 import numpy as np
 import concurrent.futures
-from collections import defaultdict
 from tqdm.auto import tqdm
+from collections import defaultdict
+from src.utils.chess import BoardHistory
 
 from src.utils.config import Config
 from src.utils.chess import board_to_input, get_move_map
@@ -102,6 +103,9 @@ class DataPipeline:
         node = game
         move_count = 0
         
+        board_history = BoardHistory(max_history=7)
+        board_history.add_board(board.copy())
+        
         while node.variations:
             next_node = node.variation(0)
             move = next_node.move
@@ -110,11 +114,12 @@ class DataPipeline:
             if move not in board.legal_moves:
                 break
                 
-            inp = board_to_input(board)
+            inp = board_to_input(board, board_history)
             
             mid = self.move_map.idx_by_move(move)
             if mid is None:
                 board.push(move)
+                board_history.add_board(board.copy())
                 node = next_node
                 continue
                 
@@ -125,6 +130,12 @@ class DataPipeline:
             values.append(final_value)
             
             if self.augment_flip:
+                flipped_history = BoardHistory(max_history=7)
+                
+                for hist_board in board_history.get_history():
+                    flipped_hist_board = hist_board.mirror()
+                    flipped_history.add_board(flipped_hist_board)
+                
                 flipped_board = board.mirror()
                 flipped_move = chess.Move(
                     chess.square_mirror(move.from_square),
@@ -134,12 +145,13 @@ class DataPipeline:
                 
                 flipped_id = self.move_map.idx_by_move(flipped_move)
                 if flipped_id is not None:
-                    flipped_input = board_to_input(flipped_board)
+                    flipped_input = board_to_input(flipped_board, flipped_history)
                     inputs.append(flipped_input)
                     policies.append(flipped_id)
                     values.append(-final_value)
             
             board.push(move)
+            board_history.add_board(board.copy())
             node = next_node
         
         stats = {

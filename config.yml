@@ -46,12 +46,12 @@ data:
     min_elo: 2000
 
 training:
-  checkpoint_interval: 2
+  checkpoint_interval: 1
   prod:
     checkpoint_interval: 5
 
 supervised:
-  epochs: 10
+  epochs: 2
   lr: 0.001
   weight_decay: 0.0001
   optimizer: adamw
@@ -70,10 +70,10 @@ supervised:
     patience: 7
 
 reinforcement:
-  iters: 5
-  games_per_iter: 50
+  iters: 2
+  games_per_iter: 5
   sims_per_move: 100
-  epochs_per_iter: 3
+  epochs_per_iter: 2
   c_puct: 1.4
   temp: 0.5
   threads: 2

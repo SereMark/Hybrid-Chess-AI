@@ -9,12 +9,13 @@ from torch.amp import GradScaler
 from torch.utils.data import DataLoader, TensorDataset
 from concurrent.futures import ProcessPoolExecutor
 
-from src.utils.config import Config
-from src.utils.train import set_seed, get_optimizer, get_scheduler, get_device, train_epoch
-from src.utils.checkpoint import Checkpoint
-from src.utils.chess import board_to_input, get_move_map, get_move_count
 from src.model import ChessModel
 from src.utils.mcts import MCTS
+from src.utils.config import Config
+from src.utils.chess import BoardHistory
+from src.utils.checkpoint import Checkpoint
+from src.utils.chess import board_to_input, get_move_map, get_move_count
+from src.utils.train import set_seed, get_optimizer, get_scheduler, get_device, train_epoch
 
 class SelfPlay:
     @staticmethod
@@ -54,6 +55,9 @@ class SelfPlay:
             mcts = MCTS(model, device, c_puct, sims)
             mcts.set_root(board)
             
+            board_history = BoardHistory(max_history=7)
+            board_history.add_board(board.copy())
+            
             states = []
             move_probs = []
             players = []
@@ -84,7 +88,7 @@ class SelfPlay:
                 if not action_probs:
                     break
                 
-                states.append(board_to_input(board))
+                states.append(board_to_input(board, board_history))
                 
                 policy_vector = np.zeros(get_move_count(), dtype=np.float32)
                 for move, prob in action_probs.items():
@@ -103,6 +107,7 @@ class SelfPlay:
                 
                 try:
                     board.push(move)
+                    board_history.add_board(board.copy())
                 except ValueError:
                     break
                 

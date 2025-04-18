@@ -1,5 +1,6 @@
 import os
 import time
+import yaml
 import wandb
 import optuna
 import numpy as np
@@ -42,6 +43,8 @@ class HyperoptPipeline:
         
         self.db_name = os.path.join(self.results_dir, "optimization.db")
         self.study_name = f"HPO_{self.config.mode}"
+        
+        self.config_path = os.path.join('/content/drive/MyDrive/chess_ai', 'config.yml')
     
     def setup(self):
         print("Setting up hyperparameter optimization...")
@@ -243,6 +246,67 @@ class HyperoptPipeline:
             print(f"Error in trial {trial.number}: {e}")
             return float('inf')
     
+    def update_config_with_best_params(self, best_params):
+        if self.config.mode != "prod":
+            print("Config update skipped: Not in production mode")
+            return False
+            
+        if not os.path.exists(self.config_path):
+            print(f"Config update skipped: Config file not found at {self.config_path}")
+            return False
+            
+        try:
+            print(f"Updating config file with best hyperparameters...")
+            
+            with open(self.config_path, 'r') as f:
+                config_data = yaml.safe_load(f)
+                
+            if 'supervised' not in config_data:
+                config_data['supervised'] = {}
+            if 'prod' not in config_data['supervised']:
+                config_data['supervised']['prod'] = {}
+                
+            if 'model' not in config_data:
+                config_data['model'] = {}
+            if 'prod' not in config_data['model']:
+                config_data['model']['prod'] = {}
+                
+            if 'data' not in config_data:
+                config_data['data'] = {}
+            if 'prod' not in config_data['data']:
+                config_data['data']['prod'] = {}
+                
+            config_data['supervised']['prod']['lr'] = best_params.get('lr', config_data['supervised']['prod'].get('lr', 0.001))
+            config_data['supervised']['prod']['weight_decay'] = best_params.get('weight_decay', config_data['supervised']['prod'].get('weight_decay', 0.0001))
+            config_data['data']['prod']['batch'] = best_params.get('batch_size', config_data['data']['prod'].get('batch', 128))
+            config_data['supervised']['prod']['epochs'] = best_params.get('epochs', config_data['supervised']['prod'].get('epochs', 20))
+            config_data['supervised']['prod']['optimizer'] = best_params.get('optimizer', config_data['supervised']['prod'].get('optimizer', 'adamw'))
+            config_data['supervised']['prod']['scheduler'] = best_params.get('scheduler', config_data['supervised']['prod'].get('scheduler', 'onecycle'))
+            config_data['supervised']['prod']['grad_clip'] = best_params.get('grad_clip', config_data['supervised']['prod'].get('grad_clip', 1.0))
+            config_data['supervised']['prod']['accum_steps'] = best_params.get('accum_steps', config_data['supervised']['prod'].get('accum_steps', 2))
+            config_data['supervised']['prod']['policy_weight'] = best_params.get('policy_weight', config_data['supervised']['prod'].get('policy_weight', 1.0))
+            config_data['supervised']['prod']['value_weight'] = best_params.get('value_weight', config_data['supervised']['prod'].get('value_weight', 1.0))
+            config_data['model']['prod']['channels'] = best_params.get('channels', config_data['model']['prod'].get('channels', 64))
+            
+            if 'momentum' in best_params:
+                config_data['supervised']['prod']['momentum'] = best_params['momentum']
+                
+            with open(self.config_path, 'w') as f:
+                yaml.dump(config_data, f, default_flow_style=False, sort_keys=False)
+                
+            print(f"Config file updated successfully at {self.config_path}")
+            
+            backup_path = f"{self.config_path}.bak.{time.strftime('%Y%m%d_%H%M%S')}"
+            with open(backup_path, 'w') as f:
+                yaml.dump(config_data, f, default_flow_style=False, sort_keys=False)
+                
+            print(f"Config backup created at {backup_path}")
+            return True
+            
+        except Exception as e:
+            print(f"Error updating config file: {e}")
+            return False
+    
     def run(self):
         if not self.setup():
             return False
@@ -294,6 +358,8 @@ class HyperoptPipeline:
             for key, value in best_trial.user_attrs.items():
                 print(f"  {key}: {value}")
             print("=" * 50)
+            
+            self.update_config_with_best_params(best_trial.params)
             
             with open(os.path.join(self.results_dir, "best_trial.txt"), "w") as f:
                 f.write(f"Best Value (Composite Loss) = {best_value:.6f}\n")

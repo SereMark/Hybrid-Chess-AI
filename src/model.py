@@ -58,7 +58,7 @@ class ChessModel(nn.Module):
     def __init__(self, moves, ch=64, use_tpu=False):
         super().__init__()
         self.input = nn.Sequential(
-            nn.Conv2d(25, ch, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.Conv2d(23 * 8, ch, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(ch),
             nn.ReLU(inplace=True)
         )
