@@ -46,7 +46,8 @@ class ChessBot:
             raise FileNotFoundError(f"Model file not found: {model_path}")
         
         try:
-            checkpoint = torch.load(model_path, map_location=self.device)
+            tpu = get_tpu()
+            checkpoint = tpu.load(model_path)
             
             if isinstance(checkpoint, dict) and 'model' in checkpoint:
                 self.model.load_state_dict(checkpoint['model'], strict=False)
@@ -56,7 +57,20 @@ class ChessBot:
             self.model.eval()
             print(f"Model loaded from {model_path}")
         except Exception as e:
-            raise RuntimeError(f"Error loading model: {e}")
+            try:
+                print(f"First load attempt failed: {e}, trying fallback method...")
+                checkpoint = torch.load(model_path, map_location='cpu')
+                
+                if isinstance(checkpoint, dict) and 'model' in checkpoint:
+                    self.model.load_state_dict(checkpoint['model'], strict=False)
+                else:
+                    self.model.load_state_dict(checkpoint, strict=False)
+                    
+                self.model.to(self.device)
+                self.model.eval()
+                print(f"Model loaded using fallback method")
+            except Exception as e2:
+                raise RuntimeError(f"Error loading model (all methods failed): {e2}")
     
     def reset_history(self, board):
         self.board_history = BoardHistory(max_history=7)

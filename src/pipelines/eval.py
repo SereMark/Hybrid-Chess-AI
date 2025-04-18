@@ -110,7 +110,12 @@ class EvalPipeline:
                 use_tpu=self.use_tpu
             ).to(self.device)
             
-            checkpoint = torch.load(self.model_path, map_location=self.device)
+            try:
+                tpu = get_tpu()
+                checkpoint = tpu.load(self.model_path)
+            except Exception as e:
+                print(f"TPU loading failed: {e}, falling back to CPU loading")
+                checkpoint = torch.load(self.model_path, map_location='cpu')
             
             if isinstance(checkpoint, dict) and 'model' in checkpoint:
                 model.load_state_dict(checkpoint['model'], strict=False)
@@ -121,6 +126,8 @@ class EvalPipeline:
             return model
         except Exception as e:
             print(f"Error loading model: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def prepare_data(self):

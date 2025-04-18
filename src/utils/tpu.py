@@ -46,9 +46,24 @@ class TPU:
     
     def save(self, model, path):
         if self.available:
-            self.xm.save(model.state_dict(), path)
+            cpu_state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+            torch.save(cpu_state_dict, path)
         else:
             torch.save(model.state_dict(), path)
+
+    def load(self, path, map_location=None):
+        try:
+            if map_location is None:
+                map_location = self.get_device()
+            
+            return torch.load(path, map_location=map_location)
+        except RuntimeError as e:
+            if "torch.storage.UntypedStorage (tagged with xla:0)" in str(e):
+                print("Detected TPU storage location issue, attempting fix...")
+                checkpoint = torch.load(path, map_location='cpu')
+                return checkpoint
+            else:
+                raise
 
 _tpu_instance = None
 

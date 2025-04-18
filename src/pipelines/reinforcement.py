@@ -11,6 +11,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 from src.model import ChessModel
 from src.utils.mcts import MCTS
+from src.utils.tpu import get_tpu
 from src.utils.config import Config
 from src.utils.chess import BoardHistory
 from src.utils.checkpoint import Checkpoint
@@ -34,11 +35,22 @@ class SelfPlay:
         model = ChessModel(get_move_count())
         
         try:
-            model.load_state_dict(model_state, strict=False)
+            updated_state = {}
+            for k, v in model_state.items():
+                if isinstance(v, torch.Tensor):
+                    updated_state[k] = v.to(device)
+                else:
+                    updated_state[k] = v
+                    
+            model.load_state_dict(updated_state, strict=False)
         except Exception as e:
             print(f"Error loading model state: {e}")
-            return [], [], [], {}, []
-            
+            try:
+                model.load_state_dict(model_state, strict=False)
+            except Exception as e2:
+                print(f"Both loading methods failed: {e2}")
+                return [], [], [], {}, []
+                
         model.to(device).eval()
         
         inputs, policies, values = [], [], []
@@ -228,10 +240,42 @@ class ReinforcementPipeline:
             print(f"Error accessing model: {e}")
             
         if self.model_path and os.path.exists(self.model_path):
-            loaded_checkpoint = self.ckpt.load(
-                self.model_path, self.device, self.model, self.optimizer, self.scheduler
-            )
-            print("Successfully loaded supervised model")
+            try:
+                tpu = get_tpu()
+                checkpoint = tpu.load(self.model_path)
+                
+                if isinstance(checkpoint, dict):
+                    if 'model' in checkpoint:
+                        self.model.load_state_dict(checkpoint['model'], strict=False)
+                        if 'optimizer' in checkpoint and self.optimizer:
+                            try:
+                                self.optimizer.load_state_dict(checkpoint['optimizer'])
+                            except Exception as e:
+                                print(f"Could not load optimizer state: {e}")
+                        if 'scheduler' in checkpoint and self.scheduler:
+                            try:
+                                self.scheduler.load_state_dict(checkpoint['scheduler'])
+                            except Exception as e:
+                                print(f"Could not load scheduler state: {e}")
+                    else:
+                        self.model.load_state_dict(checkpoint, strict=False)
+                else:
+                    self.model.load_state_dict(checkpoint, strict=False)
+                    
+                print("Successfully loaded supervised model")
+            except Exception as e:
+                print(f"Error loading supervised model: {e}, trying fallback method...")
+                try:
+                    checkpoint = torch.load(self.model_path, map_location='cpu')
+                    
+                    if isinstance(checkpoint, dict) and 'model' in checkpoint:
+                        self.model.load_state_dict(checkpoint['model'], strict=False)
+                    else:
+                        self.model.load_state_dict(checkpoint, strict=False)
+                        
+                    print("Successfully loaded supervised model using fallback method")
+                except Exception as e2:
+                    print(f"All loading methods failed: {e2}")
         
         if self.config.get('wandb.enabled', True):
             try:
