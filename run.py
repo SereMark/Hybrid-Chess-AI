@@ -12,7 +12,6 @@ import threading
 from dataclasses import dataclass
 from enum import Enum
 from contextlib import contextmanager
-from google.colab import drive
 
 class PipelineStatus(Enum):
     PENDING = "pending"
@@ -74,7 +73,7 @@ PIPELINES = {
     'reinforcement': PipelineConfig(
         name='reinforcement', 
         description="Improves model through self-play reinforcement learning",
-        dependencies=['supervised', 'data'],
+        dependencies=['supervised'],
         class_name='ReinforcementPipeline',
         requirements=PIPELINE_REQUIREMENTS['reinforcement']
     ),
@@ -88,7 +87,7 @@ PIPELINES = {
     'benchmark': PipelineConfig(
         name='benchmark', 
         description="Compares model performance against other engines",
-        dependencies=['supervised', 'data'],
+        dependencies=['supervised'],
         class_name='BenchmarkPipeline',
         requirements=PIPELINE_REQUIREMENTS['benchmark']
     )
@@ -137,6 +136,9 @@ class Style:
     SYMBOL_PLAY = "▶"
     SYMBOL_STAR = "★"
     SYMBOL_GEAR = "⚙"
+    SYMBOL_CIRCLE = "○"
+    SYMBOL_CHECKED = "✓"
+    SYMBOL_SKIP = "↷"
 
 class Console:
     @staticmethod
@@ -332,10 +334,6 @@ def spinner_context(message: str):
 
 def setup_colab_environment() -> str:
     with spinner_context("Setting up Colab environment"):
-        if not os.path.exists('/content/drive/MyDrive'):
-            Console.info("Mounting Google Drive...")
-            drive.mount('/content/drive')
-        
         project_dir = '/content/drive/MyDrive/chess_ai'
         
         if not os.path.exists(project_dir):
@@ -355,6 +353,18 @@ def setup_colab_environment() -> str:
 
     Console.success(f"Environment ready at: {project_dir}")
     return project_dir
+
+def detect_completed_pipelines() -> Dict[str, bool]:
+    completed = {}
+    
+    completed['data'] = os.path.exists('/content/drive/MyDrive/chess_ai/data/dataset.h5')
+    completed['supervised'] = os.path.exists('/content/drive/MyDrive/chess_ai/models/supervised_model.pth')
+    completed['reinforcement'] = os.path.exists('/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth')
+    completed['hyperopt'] = os.path.exists('/content/drive/MyDrive/chess_ai/models/hyperparams.json')
+    completed['eval'] = os.path.exists('/content/drive/MyDrive/chess_ai/evaluation/evaluation_results.json')
+    completed['benchmark'] = os.path.exists('/content/drive/MyDrive/chess_ai/benchmark/stockfish_benchmark_summary.txt')
+    
+    return completed
 
 def check_and_install_dependencies(pipelines: List[str]) -> None:
     Console.section("Checking Dependencies")
@@ -402,7 +412,8 @@ class Configuration:
         self.path = config_path
         self.mode = mode
         self.data = self._load()
-        
+        self.overrides = {}
+    
     def _load(self) -> Dict:
         if not os.path.exists(self.path):
             Console.warning(f"Config file not found: {self.path}")
@@ -412,6 +423,9 @@ class Configuration:
             return yaml.safe_load(f)
     
     def get(self, key: str, default: Any = None) -> Any:
+        if key in self.overrides:
+            return self.overrides[key]
+            
         keys = key.split('.')
         
         if len(keys) > 1 and keys[0] in self.data:
@@ -435,6 +449,9 @@ class Configuration:
             else:
                 return default
         return current
+        
+    def set_override(self, key: str, value: Any) -> None:
+        self.overrides[key] = value
 
 def load_configuration(config_path: str, mode: str) -> Configuration:
     with spinner_context(f"Loading configuration ({mode} mode)"):
@@ -443,43 +460,151 @@ def load_configuration(config_path: str, mode: str) -> Configuration:
     Console.success(f"Configuration loaded: {config_path}")
     return config
 
-def resolve_dependencies(selected_pipelines: List[str]) -> List[str]:
-    with spinner_context("Resolving pipeline dependencies"):
-        required = set(selected_pipelines)
-        
-        added = True
-        while added:
-            added = False
-            for pipeline in list(required):
-                if pipeline in PIPELINES:
-                    for dependency in PIPELINES[pipeline].dependencies:
-                        if dependency not in required:
-                            required.add(dependency)
-                            added = True
-        
-        ordered = [p for p in PIPELINE_ORDER if p in required]
+def resolve_dependencies(selected_pipelines: List[str], completed: Dict[str, bool], 
+                                force_rerun_deps: bool = False) -> Tuple[List[str], List[str]]:
+    required = set(selected_pipelines)
+    skipped_deps = []
     
-    added_deps = [p for p in ordered if p not in selected_pipelines]
-    if added_deps:
-        Console.info("Added required dependencies:")
-        for dep in added_deps:
-            needed_by = [p for p in selected_pipelines if dep in PIPELINES[p].dependencies]
-            print(f"  {Style.CYAN}{Style.SYMBOL_BULLET}{Style.RESET} {dep} "
-                  f"{Style.MUTED}(needed by: {', '.join(needed_by)}){Style.RESET}")
+    pending_deps = []
+    for pipeline in selected_pipelines:
+        if pipeline in PIPELINES:
+            for dependency in PIPELINES[pipeline].dependencies:
+                if dependency not in required:
+                    if not force_rerun_deps and completed.get(dependency, False):
+                        skipped_deps.append(dependency)
+                    else:
+                        pending_deps.append(dependency)
+                        required.add(dependency)
     
-    return ordered
+    while pending_deps:
+        current_dep = pending_deps.pop(0)
+        for sub_dep in PIPELINES[current_dep].dependencies:
+            if sub_dep not in required:
+                if not force_rerun_deps and completed.get(sub_dep, False):
+                    skipped_deps.append(sub_dep)
+                else:
+                    pending_deps.append(sub_dep)
+                    required.add(sub_dep)
+    
+    ordered = [p for p in PIPELINE_ORDER if p in required]
+    return ordered, skipped_deps
 
-def load_pipeline(name: str) -> Any:
-    module_path = f"src.pipelines.{name}"
+def select_pipelines() -> Tuple[List[str], bool]:
+    completed = detect_completed_pipelines()
     
-    with spinner_context(f"Loading pipeline module: {name}"):
+    Console.section("Pipeline Status")
+    for name in PIPELINE_ORDER:
+        status = f"{Style.SUCCESS}{Style.SYMBOL_CHECKED} Completed{Style.RESET}" if completed.get(name, False) else f"{Style.MUTED}{Style.SYMBOL_CIRCLE} Not run{Style.RESET}"
+        print(f"  {Style.BOLD}{name.ljust(14)}{Style.RESET} - {status}")
+    print()
+    
+    pipeline_options = []
+    for name, config in PIPELINES.items():
+        status_icon = f"{Style.SUCCESS}{Style.SYMBOL_CHECKED}{Style.RESET} " if completed.get(name, False) else ""
+        pipeline_options.append((name, f"{status_icon}{config.description}"))
+    
+    preset_options = [
+        ("all", "Run all pipelines (full training workflow)"),
+        ("training", "Run data, supervised, and reinforcement pipelines"),
+        ("evaluation", "Run data, eval, and benchmark pipelines"),
+        ("custom", "Select specific pipelines to run"),
+        ("continue", "Continue from where you left off (run incomplete pipelines)")
+    ]
+    
+    default_choice = "all"
+    if completed.get('data', False) and not completed.get('supervised', False):
+        default_choice = "training"
+    elif completed.get('supervised', False) and not completed.get('eval', False):
+        default_choice = "evaluation"
+    elif any(completed.values()) and not all(completed.values()):
+        default_choice = "continue"
+    
+    choice = Console.menu("Select pipeline workflow", preset_options, default_choice)
+    
+    selected = []
+    if choice == "all":
+        selected = list(PIPELINES.keys())
+    elif choice == "training":
+        selected = ["data", "supervised", "reinforcement"]
+    elif choice == "evaluation":
+        selected = ["data", "eval", "benchmark"]
+    elif choice == "continue":
+        selected = [name for name, is_completed in completed.items() if not is_completed]
+        if not selected:
+            Console.success("All pipelines have already been completed!")
+            selected = Console.multi_select("Select pipelines to re-run", pipeline_options)
+    elif choice == "custom":
+        selected = Console.multi_select("Select pipelines to run", pipeline_options)
+    
+    force_rerun_deps = False
+    has_dependencies = any(len(PIPELINES[p].dependencies) > 0 for p in selected if p in PIPELINES)
+    
+    if has_dependencies:
+        resolved, skipped = resolve_dependencies(selected, completed)
+        additional_deps = [dep for dep in resolved if dep not in selected]
+        
+        if additional_deps:
+            Console.section("Dependency Management")
+            print(f"{Style.INFO}Selected pipelines require these dependencies:{Style.RESET}")
+            for dep in additional_deps:
+                dep_status = f"{Style.SUCCESS}{Style.SYMBOL_CHECKED} Already completed{Style.RESET}" if completed.get(dep, False) else f"{Style.MUTED}{Style.SYMBOL_CIRCLE} Not yet run{Style.RESET}"
+                print(f"  {Style.CYAN}{Style.SYMBOL_BULLET}{Style.RESET} {dep} - {dep_status}")
+            
+            if any(completed.get(dep, False) for dep in additional_deps):
+                options = [
+                    ("skip", "Skip already completed dependencies (use existing outputs)"),
+                    ("rerun", "Re-run all dependencies (regenerate all data)")
+                ]
+                dep_choice = Console.menu("How would you like to handle dependencies?", options, "skip")
+                force_rerun_deps = dep_choice == "rerun"
+    
+    return selected, force_rerun_deps
+
+def show_advanced_pipeline_options(pipeline_name: str, config: Configuration) -> Dict:
+    Console.section(f"Configure {pipeline_name.upper()} Pipeline Options")
+    options = {}
+    
+    if pipeline_name == "data":
+        max_games = Console.input("Maximum games to process", str(config.get('data.max_games', 10000)))
+        min_elo = Console.input("Minimum player ELO rating", str(config.get('data.min_elo', 2000)))
         try:
-            module = importlib.import_module(module_path)
-            pipeline_class = getattr(module, PIPELINES[name].class_name)
-            return pipeline_class
-        except Exception as e:
-            Console.error(f"Failed to load pipeline {name}: {e}")
-            raise
+            options['data.max_games'] = int(max_games)
+            options['data.min_elo'] = int(min_elo)
+        except ValueError:
+            Console.warning("Invalid numeric input, using default values")
+        
+    elif pipeline_name == "supervised":
+        epochs = Console.input("Training epochs", str(config.get('supervised.epochs', 10)))
+        batch = Console.input("Batch size", str(config.get('data.batch', 128)))
+        lr = Console.input("Learning rate", str(config.get('supervised.lr', 0.001)))
+        try:
+            options['supervised.epochs'] = int(epochs)
+            options['data.batch'] = int(batch)
+            options['supervised.lr'] = float(lr)
+        except ValueError:
+            Console.warning("Invalid numeric input, using default values")
+        
+    elif pipeline_name == "reinforcement":
+        iters = Console.input("Self-play iterations", str(config.get('reinforcement.iters', 10)))
+        games = Console.input("Games per iteration", str(config.get('reinforcement.games_per_iter', 100)))
+        sims = Console.input("MCTS simulations per move", str(config.get('reinforcement.sims_per_move', 100)))
+        try:
+            options['reinforcement.iters'] = int(iters)
+            options['reinforcement.games_per_iter'] = int(games)
+            options['reinforcement.sims_per_move'] = int(sims)
+        except ValueError:
+            Console.warning("Invalid numeric input, using default values")
+        
+    elif pipeline_name == "benchmark":
+        games = Console.input("Number of benchmark games", str(config.get('benchmark.games', 10)))
+        elo = Console.input("Stockfish ELO rating", str(config.get('benchmark.stockfish_elo', 1500)))
+        try:
+            options['benchmark.games'] = int(games)
+            options['benchmark.stockfish_elo'] = int(elo)
+        except ValueError:
+            Console.warning("Invalid numeric input, using default values")
+    
+    return options
 
 def run_pipeline(pipeline_name: str, config: Configuration) -> PipelineResult:
     Console.section(f"Running {pipeline_name.upper()} Pipeline")
@@ -516,6 +641,86 @@ def run_pipeline(pipeline_name: str, config: Configuration) -> PipelineResult:
             error=str(e)
         )
 
+def load_pipeline(name: str) -> Any:
+    module_path = f"src.pipelines.{name}"
+    
+    with spinner_context(f"Loading pipeline module: {name}"):
+        try:
+            module = importlib.import_module(module_path)
+            pipeline_class = getattr(module, PIPELINES[name].class_name)
+            return pipeline_class
+        except Exception as e:
+            Console.error(f"Failed to load pipeline {name}: {e}")
+            raise
+
+def show_execution_plan(pipelines: List[str], skipped: List[str], config_overrides: Dict[str, Dict] = None):
+    Console.section("Pipeline Execution Plan")
+    
+    print(f"{Style.BOLD}Execution order:{Style.RESET}")
+    
+    flow = ""
+    for i, pipeline in enumerate(pipelines):
+        if i > 0:
+            flow += f" {Style.BLUE}{Style.SYMBOL_ARROW}{Style.RESET} "
+        flow += f"{Style.CYAN}{pipeline}{Style.RESET}"
+    
+    print(f"  {flow}")
+    
+    if skipped:
+        print(f"\n{Style.BOLD}Skipped dependencies:{Style.RESET}")
+        for dep in skipped:
+            print(f"  {Style.MUTED}{Style.SYMBOL_SKIP} {dep} (using existing output){Style.RESET}")
+    
+    print(f"\n{Style.BOLD}Pipeline details:{Style.RESET}")
+    for i, pipeline in enumerate(pipelines, 1):
+        dependencies = PIPELINES[pipeline].dependencies
+        deps_str = f"{Style.MUTED}(depends on: {', '.join(dependencies)}){Style.RESET}" if dependencies else ""
+        
+        config_str = ""
+        if config_overrides and pipeline in config_overrides and config_overrides[pipeline]:
+            config_str = f" {Style.YELLOW}[custom config]{Style.RESET}"
+            
+        print(f"  {Style.CYAN}{i}.{Style.RESET} {Style.BOLD}{pipeline}{Style.RESET}{config_str} - "
+              f"{PIPELINES[pipeline].description} {deps_str}")
+        
+        if config_overrides and pipeline in config_overrides and config_overrides[pipeline]:
+            for key, value in config_overrides[pipeline].items():
+                print(f"     {Style.MUTED}- {key.split('.')[-1]}: {value}{Style.RESET}")
+
+def monitor_system_resources():
+    try:
+        import psutil
+        import GPUtil
+        
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        memory_percent = memory.percent
+        
+        disk = psutil.disk_usage('/content/drive')
+        disk_percent = disk.percent
+        disk_free_gb = disk.free / (1024 ** 3)
+        
+        gpu_info = ""
+        try:
+            gpus = GPUtil.getGPUs()
+            if gpus:
+                gpu = gpus[0]
+                gpu_info = f" | GPU: {gpu.memoryUsed}MB/{gpu.memoryTotal}MB ({gpu.memoryUtil:.1%})"
+        except:
+            pass
+        
+        Console.section("System Resources")
+        print(f"CPU: {cpu_percent}% | Memory: {memory_percent}% | Disk: {disk_percent}% ({disk_free_gb:.1f}GB free){gpu_info}")
+        
+        if memory_percent > 90:
+            Console.warning("Memory usage is very high. Pipeline performance may be impacted.")
+        if disk_percent > 90:
+            Console.warning(f"Disk space is low. Only {disk_free_gb:.1f}GB free on Google Drive.")
+        if cpu_percent > 90:
+            Console.warning("CPU usage is very high. Pipeline processing may be slower.")
+    except:
+        pass
+
 def print_pipeline_summary(results: List[PipelineResult]) -> None:
     Console.section("Pipeline Execution Summary")
     
@@ -551,53 +756,6 @@ def print_pipeline_summary(results: List[PipelineResult]) -> None:
         Console.error(f"Some pipelines failed: {', '.join(failed)}")
         Console.info("Check logs for more details.")
 
-def show_execution_plan(pipelines: List[str]) -> None:
-    Console.section("Pipeline Execution Plan")
-    
-    print(f"{Style.BOLD}Execution order:{Style.RESET}")
-    
-    flow = ""
-    for i, pipeline in enumerate(pipelines):
-        if i > 0:
-            flow += f" {Style.BLUE}{Style.SYMBOL_ARROW}{Style.RESET} "
-        flow += f"{Style.CYAN}{pipeline}{Style.RESET}"
-    
-    print(f"  {flow}")
-    print()
-    
-    print(f"{Style.BOLD}Pipeline details:{Style.RESET}")
-    for i, pipeline in enumerate(pipelines, 1):
-        dependencies = PIPELINES[pipeline].dependencies
-        deps_str = f"{Style.MUTED}(depends on: {', '.join(dependencies)}){Style.RESET}" if dependencies else ""
-        print(f"  {Style.CYAN}{i}.{Style.RESET} {Style.BOLD}{pipeline}{Style.RESET} - "
-              f"{PIPELINES[pipeline].description} {deps_str}")
-    
-def select_pipelines() -> List[str]:
-    pipeline_options = [(name, config.description) for name, config in PIPELINES.items()]
-    
-    options_with_descriptions = [
-        ("all", "Run all pipelines (full training workflow)"),
-        ("training", "Run data, supervised, and reinforcement pipelines"),
-        ("evaluation", "Run data, eval, and benchmark pipelines"),
-        ("custom", "Select specific pipelines to run")
-    ]
-    
-    choice = Console.menu("Select pipeline workflow", options_with_descriptions, "all")
-    
-    if choice == "all":
-        return list(PIPELINES.keys())
-    
-    if choice == "training":
-        return ["data", "supervised", "reinforcement"]
-    
-    if choice == "evaluation":
-        return ["data", "eval", "benchmark"]
-    
-    if choice == "custom":
-        return Console.multi_select("Select pipelines to run", pipeline_options, ["data"])
-    
-    return []
-
 def select_mode() -> str:
     mode_options = [
         ("test", "Test mode - faster with smaller datasets, good for testing workflows"),
@@ -627,22 +785,37 @@ def main() -> int:
         Console.feature("Model evaluation and benchmarking")
         
         print()
+        monitor_system_resources()
+        
         mode = select_mode()
         
         config_path = os.path.join(project_dir, 'config.yml')
         config = load_configuration(config_path, mode)
         
-        selected_pipelines = select_pipelines() 
+        selected_pipelines, force_rerun = select_pipelines() 
         
         if not selected_pipelines:
             Console.error("No pipelines selected. Exiting.")
             return 0
         
-        ordered_pipelines = resolve_dependencies(selected_pipelines)
+        completed = detect_completed_pipelines()
+        ordered_pipelines, skipped_deps = resolve_dependencies(
+            selected_pipelines, completed, force_rerun
+        )
         
         check_and_install_dependencies(ordered_pipelines)
         
-        show_execution_plan(ordered_pipelines)
+        config_overrides = {}
+        customize = Console.input("Would you like to customize pipeline parameters?", "n")
+        if customize.lower() == 'y':
+            for pipeline in ordered_pipelines:
+                customized = show_advanced_pipeline_options(pipeline, config)
+                if customized:
+                    config_overrides[pipeline] = customized
+                    for key, value in customized.items():
+                        config.set_override(key, value)
+        
+        show_execution_plan(ordered_pipelines, skipped_deps, config_overrides)
         
         confirm = Console.input("Proceed with execution?", "y")
         if confirm.lower() != 'y':
@@ -672,6 +845,16 @@ def main() -> int:
             print(f"\n{status_style}{status_symbol} {pipeline} completed in {pipeline_time:.2f}s{Style.RESET}")
             print(f"{Style.MUTED}Total elapsed time: {elapsed_total:.2f}s{Style.RESET}")
             
+            if not result.succeeded:
+                dependents = [p for p in ordered_pipelines[i:] 
+                             if pipeline in PIPELINES[p].dependencies]
+                if dependents:
+                    Console.warning(f"This failure may affect later pipelines: {', '.join(dependents)}")
+                    choice = Console.input("Continue with execution?", "y")
+                    if choice.lower() != 'y':
+                        Console.error("Execution aborted by user after pipeline failure.")
+                        break
+            
             progress.update(1)
         
         print_pipeline_summary(results)
@@ -682,6 +865,9 @@ def main() -> int:
             
             if "benchmark" in [r.name for r in results if r.succeeded]:
                 Console.info("Check the benchmark results in the Google Drive folder.")
+        else:
+            failed = [r.name for r in results if not r.succeeded]
+            Console.info("You can re-run failed pipelines later with: 'custom' selection option.")
         
         return 0 if all(result.succeeded for result in results) else 1
         
