@@ -4,6 +4,7 @@ import json
 import wandb
 import chess
 import chess.pgn
+import chess.engine
 import numpy as np
 import torch
 from tqdm.auto import tqdm
@@ -14,8 +15,8 @@ from src.utils.tpu import get_tpu
 from src.model import ChessModel
 from src.utils.mcts import MCTS
 
-class Bot:
-    def __init__(self, model_path, use_mcts=True, use_book=True, name="Bot"):
+class ChessBot:
+    def __init__(self, model_path, use_mcts=True, use_book=True, name="ChessAI"):
         self.name = name
         self.use_mcts = use_mcts
         self.use_book = use_book
@@ -83,9 +84,9 @@ class Bot:
                 
                 if board.fullmove_number == 1 and board.turn == chess.WHITE and len(action_probs) > 1:
                     moves_list = list(action_probs.keys())
-                    probs = np.array(list(action_probs.values()), dtype=np.float32)
-                    probs /= probs.sum()
-                    action_probs = dict(zip(moves_list, probs))
+                    noise = np.random.dirichlet([0.3] * len(moves_list))
+                    for i, move in enumerate(moves_list):
+                        action_probs[move] = 0.75 * action_probs[move] + 0.25 * noise[i]
                 
                 if action_probs:
                     return max(action_probs, key=action_probs.get)
@@ -118,6 +119,60 @@ class Bot:
             print(f"Error getting move: {e}")
             return chess.Move.null()
 
+class StockfishBot:
+    def __init__(self, stockfish_path=None, elo=1500, time_limit=0.1, depth=None, name="Stockfish"):
+        self.name = name
+        self.elo = elo
+        self.time_limit = time_limit
+        self.depth = depth
+        self.stockfish_path = stockfish_path
+        self.engine = None
+        self.transport = None
+        self.setup()
+    
+    def setup(self):
+        try:
+            if not self.stockfish_path or not os.path.isfile(self.stockfish_path):
+                raise FileNotFoundError("Stockfish not found. Please provide a valid path in the config.")
+            
+            self.engine = chess.engine.SimpleEngine.popen_uci(self.stockfish_path)
+            
+            if self.elo:
+                self.engine.configure({"UCI_LimitStrength": True, "UCI_Elo": self.elo})
+            
+            print(f"Stockfish engine initialized with ELO: {self.elo} from path: {self.stockfish_path}")
+        except Exception as e:
+            print(f"Error setting up Stockfish: {e}")
+            raise
+    
+    def _check_command(self, command):
+        try:
+            import subprocess
+            result = subprocess.run([command], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=1)
+            return result.returncode == 0
+        except Exception:
+            return False
+    
+    def get_move(self, board, _=None):
+        if not self.engine:
+            print("Stockfish engine not initialized")
+            return chess.Move.null()
+        
+        try:
+            if self.depth:
+                result = self.engine.play(board, chess.engine.Limit(depth=self.depth))
+            else:
+                result = self.engine.play(board, chess.engine.Limit(time=self.time_limit))
+            
+            return result.move
+        except Exception as e:
+            print(f"Error getting move from Stockfish: {e}")
+            return chess.Move.null()
+    
+    def close(self):
+        if self.engine:
+            self.engine.quit()
+
 class BenchmarkPipeline:
     def __init__(self, config: Config):
         self.config = config
@@ -127,8 +182,13 @@ class BenchmarkPipeline:
         self.opening_book = config.get('benchmark.opening_book', True)
         self.switch_colors = True
         
-        self.model1_path = None
-        self.model2_path = None
+        self.stockfish_path = config.get('benchmark.stockfish_path', 'engines/stockfish-ubuntu-x86-64-avx2')
+        self.stockfish_elo = config.get('benchmark.stockfish_elo', 1500)
+        self.stockfish_time = config.get('benchmark.stockfish_time', 0.1)
+        self.stockfish_depth = config.get('benchmark.stockfish_depth', None)
+        
+        self.model_path = None
+        self.model_type = None
         
         self.book = {}
         
@@ -140,20 +200,20 @@ class BenchmarkPipeline:
         print("Setting up benchmark pipeline...")
         
         try:
-            model1_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
-            model2_path = '/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'
+            reinforcement_model_path = '/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'
+            supervised_model_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
             
-            if os.path.exists(model1_path):
-                self.model1_path = model1_path
-                print(f"Using supervised model: {self.model1_path}")
+            if os.path.exists(reinforcement_model_path):
+                self.model_path = reinforcement_model_path
+                self.model_type = "Reinforcement"
+                print(f"Using reinforcement learning model: {self.model_path}")
+            elif os.path.exists(supervised_model_path):
+                self.model_path = supervised_model_path
+                self.model_type = "Supervised"
+                print(f"Using supervised learning model: {self.model_path}")
             else:
-                print("Supervised model not found")
-                
-            if os.path.exists(model2_path):
-                self.model2_path = model2_path
-                print(f"Using reinforcement model: {self.model2_path}")
-            else:
-                print("Reinforcement model not found")
+                print("No model found for benchmarking")
+                return False
             
             book_path = '/content/drive/MyDrive/chess_ai/data/opening_book.json'
             if os.path.exists(book_path):
@@ -161,33 +221,31 @@ class BenchmarkPipeline:
                     self.book = json.load(f)
                 print(f"Loaded opening book with {len(self.book)} positions")
             else:
-                print("Opening book not found")
+                print("Opening book not found, starting without book")
                 self.book = {}
                 
         except Exception as e:
-            print(f"Error setting up: {e}")
-        
-        if not self.model1_path or not self.model2_path:
-            print("Error: Need two distinct models for benchmarking")
+            print(f"Error setting up benchmark: {e}")
             return False
         
-        if self.model1_path == self.model2_path:
-            print("Error: Model paths are identical")
+        if not self.model_path:
+            print("Error: No model available for benchmarking")
             return False
         
         if self.config.get('wandb.enabled', True):
             try:
                 wandb.init(
                     project=self.config.get('wandb.project', 'chess_ai'),
-                    name=f"benchmark_{self.config.mode}_{time.strftime('%Y%m%d_%H%M%S')}",
+                    name=f"stockfish_benchmark_{self.config.mode}_{time.strftime('%Y%m%d_%H%M%S')}",
                     config={
                         "mode": self.config.mode,
                         "games": self.games,
-                        "model1_path": self.model1_path,
-                        "model2_path": self.model2_path,
+                        "model_path": self.model_path,
+                        "model_type": self.model_type,
                         "mcts": self.mcts,
                         "opening_book": self.opening_book,
-                        "switch_colors": self.switch_colors
+                        "switch_colors": self.switch_colors,
+                        "stockfish_elo": self.stockfish_elo
                     }
                 )
             except Exception as e:
@@ -200,31 +258,32 @@ class BenchmarkPipeline:
             return False
         
         try:
-            bot1 = Bot(
-                self.model1_path, 
+            chess_ai = ChessBot(
+                self.model_path, 
                 use_mcts=self.mcts, 
                 use_book=self.opening_book,
-                name="SupervisedBot"
+                name=f"{self.model_type}AI"
             )
             
-            bot2 = Bot(
-                self.model2_path, 
-                use_mcts=self.mcts, 
-                use_book=self.opening_book,
-                name="ReinforcementBot"
+            stockfish = StockfishBot(
+                stockfish_path=self.stockfish_path,
+                elo=self.stockfish_elo,
+                time_limit=self.stockfish_time,
+                depth=self.stockfish_depth,
+                name="Stockfish"
             )
             
             results = {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0}
             durations = []
             move_counts = []
-            bot1_wins = 0
-            bot2_wins = 0
+            chess_ai_wins = 0
+            stockfish_wins = 0
             draws = 0
             win_history = []
             
-            white_is_bot1 = True
+            ai_plays_white = True
             
-            print(f"Running {self.games} benchmark games...")
+            print(f"Running {self.games} benchmark games against Stockfish (ELO: {self.stockfish_elo})...")
             
             for game_idx in tqdm(range(1, self.games + 1)):
                 game_start = time.time()
@@ -232,11 +291,11 @@ class BenchmarkPipeline:
                 board = chess.Board()
                 game = chess.pgn.Game()
                 
-                white_name = bot1.name if white_is_bot1 else bot2.name
-                black_name = bot2.name if white_is_bot1 else bot1.name
+                white_name = chess_ai.name if ai_plays_white else stockfish.name
+                black_name = stockfish.name if ai_plays_white else chess_ai.name
                 
                 game.headers.update({
-                    'Event': 'Benchmark',
+                    'Event': 'Stockfish Benchmark',
                     'Site': 'Colab',
                     'Date': time.strftime('%Y.%m.%d'),
                     'Round': str(game_idx),
@@ -249,12 +308,15 @@ class BenchmarkPipeline:
                 moves_played = 0
                 
                 while not board.is_game_over():
-                    current_bot = bot1 if (board.turn == chess.WHITE) == white_is_bot1 else bot2
+                    ai_turn = (board.turn == chess.WHITE and ai_plays_white) or \
+                              (board.turn == chess.BLACK and not ai_plays_white)
                     
-                    move = current_bot.get_move(board, self.book)
+                    current_player = chess_ai if ai_turn else stockfish
+                    
+                    move = current_player.get_move(board, self.book)
                     
                     if move == chess.Move.null() or move not in board.legal_moves:
-                        print(f"Invalid move from {current_bot.name}")
+                        print(f"Invalid move from {current_player.name}")
                         break
                     
                     board.push(move)
@@ -275,19 +337,19 @@ class BenchmarkPipeline:
                 move_counts.append(moves_played)
                 
                 if result == '1-0':
-                    if white_is_bot1:
-                        bot1_wins += 1
+                    if ai_plays_white:
+                        chess_ai_wins += 1
                     else:
-                        bot2_wins += 1
+                        stockfish_wins += 1
                 elif result == '0-1':
-                    if white_is_bot1:
-                        bot2_wins += 1
+                    if ai_plays_white:
+                        stockfish_wins += 1
                     else:
-                        bot1_wins += 1
+                        chess_ai_wins += 1
                 elif result == '1/2-1/2':
                     draws += 1
                 
-                win_history.append((bot1_wins, bot2_wins, draws))
+                win_history.append((chess_ai_wins, stockfish_wins, draws))
                 
                 if wandb.run is not None:
                     wandb.log({
@@ -295,49 +357,55 @@ class BenchmarkPipeline:
                         'result': result,
                         'duration': game_duration,
                         'moves': moves_played,
-                        'bot1_wins': bot1_wins,
-                        'bot2_wins': bot2_wins,
-                        'draws': draws
+                        'chess_ai_wins': chess_ai_wins,
+                        'stockfish_wins': stockfish_wins,
+                        'draws': draws,
+                        'ai_plays_white': ai_plays_white
                     })
                 
                 if self.switch_colors:
-                    white_is_bot1 = not white_is_bot1
+                    ai_plays_white = not ai_plays_white
+            
+            stockfish.close()
             
             avg_duration = float(np.mean(durations)) if durations else 0
             avg_moves = float(np.mean(move_counts)) if move_counts else 0
+            win_rate = chess_ai_wins / (chess_ai_wins + stockfish_wins + draws) if (chess_ai_wins + stockfish_wins + draws) > 0 else 0
             
-            print("\nBenchmark Results:")
-            print(f"Bot1 ({bot1.name}) wins: {bot1_wins}")
-            print(f"Bot2 ({bot2.name}) wins: {bot2_wins}")
+            print("\nBenchmark Results vs Stockfish:")
+            print(f"{chess_ai.name} wins: {chess_ai_wins}")
+            print(f"Stockfish wins: {stockfish_wins}")
             print(f"Draws: {draws}")
             print(f"Unfinished games: {results['*']}")
+            print(f"Win rate: {win_rate:.2%}")
             print(f"Average game duration: {avg_duration:.2f} seconds")
             print(f"Average moves per game: {avg_moves:.1f}")
             
             if wandb.run is not None:
                 wandb.log({
                     'total_games': self.games,
-                    'bot1_wins': bot1_wins,
-                    'bot2_wins': bot2_wins,
+                    'chess_ai_wins': chess_ai_wins,
+                    'stockfish_wins': stockfish_wins,
                     'draws': draws,
                     'unfinished': results['*'],
+                    'win_rate': win_rate,
                     'avg_duration': avg_duration,
                     'avg_moves': avg_moves
                 })
                 
                 results_table = wandb.Table(
                     data=[
-                        ['1-0', results['1-0']],
-                        ['0-1', results['0-1']],
-                        ['1/2-1/2', results['1/2-1/2']],
-                        ['*', results['*']]
+                        ['ChessAI Win', chess_ai_wins],
+                        ['Stockfish Win', stockfish_wins],
+                        ['Draw', draws],
+                        ['Unfinished', results['*']]
                     ],
                     columns=['Result', 'Count']
                 )
                 
                 history_table = wandb.Table(
                     data=[(i+1, w[0], w[1], w[2]) for i, w in enumerate(win_history)],
-                    columns=['Game', 'Bot1', 'Bot2', 'Draws']
+                    columns=['Game', 'ChessAI', 'Stockfish', 'Draws']
                 )
                 
                 wandb.log({
@@ -345,34 +413,43 @@ class BenchmarkPipeline:
                         results_table, 'Result', 'Count', title='Results Distribution'
                     ),
                     'win_history': wandb.plot.line(
-                        history_table, 'Game', ['Bot1', 'Bot2', 'Draws'], 
+                        history_table, 'Game', ['ChessAI', 'Stockfish', 'Draws'], 
                         title='Cumulative Results'
                     )
                 })
                 
                 wandb.finish()
             
-            summary_path = os.path.join(self.output_dir, 'benchmark_summary.txt')
+            summary_path = os.path.join(self.output_dir, 'stockfish_benchmark_summary.txt')
             with open(summary_path, 'w') as f:
-                f.write(f"Bot1 ({bot1.name}): {bot1_wins} wins\n")
-                f.write(f"Bot2 ({bot2.name}): {bot2_wins} wins\n")
+                f.write(f"Model: {chess_ai.name}\n")
+                f.write(f"Stockfish ELO: {self.stockfish_elo}\n")
+                f.write(f"Games played: {self.games}\n\n")
+                f.write(f"ChessAI wins: {chess_ai_wins}\n")
+                f.write(f"Stockfish wins: {stockfish_wins}\n")
                 f.write(f"Draws: {draws}\n")
                 f.write(f"Unfinished: {results['*']}\n")
+                f.write(f"Win rate: {win_rate:.2%}\n\n")
                 f.write(f"Average duration: {avg_duration:.2f} seconds\n")
                 f.write(f"Average moves: {avg_moves:.1f}\n")
+                f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
             
             print(f"Saved benchmark results to {summary_path}")
             print(f"Saved game PGNs to {self.games_dir}")
             
             return {
-                'bot1_wins': bot1_wins,
-                'bot2_wins': bot2_wins,
+                'chess_ai_wins': chess_ai_wins,
+                'stockfish_wins': stockfish_wins,
                 'draws': draws,
-                'unfinished': results['*']
+                'unfinished': results['*'],
+                'win_rate': win_rate,
+                'model_used': self.model_type
             }
             
         except Exception as e:
             print(f"Error during benchmark: {e}")
+            import traceback
+            traceback.print_exc()
             if wandb.run is not None:
                 wandb.finish()
             return False

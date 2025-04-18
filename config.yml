@@ -114,8 +114,14 @@ benchmark:
   games: 10
   mcts: true
   opening_book: true
+  stockfish_path: engines/stockfish-ubuntu-x86-64-avx2
+  stockfish_elo: 1500
+  stockfish_time: 0.1
+  stockfish_depth: null
   prod:
     games: 200
+    stockfish_elo: 2000
+    stockfish_time: 0.5
 
 paths:
   drive_root: chess_ai
