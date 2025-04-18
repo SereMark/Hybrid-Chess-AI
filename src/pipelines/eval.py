@@ -46,8 +46,8 @@ class EvalPipeline:
         print("Setting up evaluation pipeline...")
         
         model_paths = [
-            ('models/reinforcement_model.pth', 'Reinforcement'),
-            ('models/supervised_model.pth', 'Supervised')
+            ('/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth', 'Reinforcement'),
+            ('/content/drive/MyDrive/chess_ai/models/supervised_model.pth', 'Supervised')
         ]
         
         drive = get_drive()

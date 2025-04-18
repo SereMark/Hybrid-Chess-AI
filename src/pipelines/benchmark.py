@@ -144,7 +144,7 @@ class BenchmarkPipeline:
             drive = get_drive()
             
             try:
-                model1_path = 'models/supervised_model.pth'
+                model1_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
                 local_model1_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
                 os.makedirs(os.path.dirname(local_model1_path), exist_ok=True)
                 self.model1_path = drive.load(model1_path, local_model1_path)
@@ -153,7 +153,7 @@ class BenchmarkPipeline:
                 print("Supervised model not found in Drive")
             
             try:
-                model2_path = 'models/reinforcement_model.pth'
+                model2_path = '/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'
                 local_model2_path = '/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'
                 os.makedirs(os.path.dirname(local_model2_path), exist_ok=True)
                 self.model2_path = drive.load(model2_path, local_model2_path)
