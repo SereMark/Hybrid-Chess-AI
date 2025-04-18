@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 from google.colab import drive
 import glob
 
@@ -17,25 +18,47 @@ class Drive:
         self.mounted = False
         self.project_dir = None
     
-    def mount(self):
+    def mount(self, max_retries=3):
         if not self.mounted:
-            drive.mount(self.mount_path)
-            self.mounted = True
+            for attempt in range(max_retries):
+                try:
+                    print(f"Attempting to mount Google Drive (attempt {attempt+1}/{max_retries})...")
+                    drive.mount(self.mount_path)
+                    self.mounted = True
+                    print("Drive mounted successfully.")
+                    break
+                except Exception as e:
+                    print(f"Mount attempt {attempt+1} failed: {e}")
+                    if attempt < max_retries - 1:
+                        print("Retrying in 2 seconds...")
+                        time.sleep(2)
+                    else:
+                        raise RuntimeError(f"Failed to mount Google Drive after {max_retries} attempts") from e
         return self.mount_path
     
     def setup(self, project_name):
         self.mount()
         self.project_dir = os.path.join(self.mount_path, 'MyDrive', project_name)
+        
+        if not os.path.exists(self.project_dir):
+            print(f"Project directory not found: {self.project_dir}")
+            create = input("Create project directory? (y/n) [y]: ").strip().lower() or 'y'
+            if create != 'y':
+                raise FileNotFoundError(f"Project directory not found: {self.project_dir}")
+        
         os.makedirs(self.project_dir, exist_ok=True)
+        print(f"Project directory: {self.project_dir}")
         
         for dir_name in ['data', 'models', 'logs', 'checkpoints']:
-            os.makedirs(os.path.join(self.project_dir, dir_name), exist_ok=True)
+            dir_path = os.path.join(self.project_dir, dir_name)
+            os.makedirs(dir_path, exist_ok=True)
+            print(f"Ensured directory exists: {dir_path}")
             
         return self.project_dir
     
     def path(self, relative_path):
         if not self.project_dir:
-            raise ValueError("Project directory not set")
+            raise ValueError("Project directory not set. Call setup() first.")
         return os.path.join(self.project_dir, relative_path)
     
     def save(self, source_path, relative_destination):
@@ -46,6 +69,7 @@ class Drive:
         os.makedirs(os.path.dirname(dest_path), exist_ok=True)
         
         shutil.copy2(source_path, dest_path)
+        print(f"Saved file: {dest_path}")
         return dest_path
     
     def load(self, relative_path, local_destination=None):
@@ -57,14 +81,17 @@ class Drive:
         if local_destination:
             os.makedirs(os.path.dirname(local_destination), exist_ok=True)
             shutil.copy2(source_path, local_destination)
+            print(f"Loaded file to: {local_destination}")
             return local_destination
         
+        print(f"Loaded file: {source_path}")
         return source_path
     
     def list(self, relative_path, pattern=None):
         dir_path = self.path(relative_path)
         
         if not os.path.exists(dir_path):
+            print(f"Directory not found: {dir_path}")
             return []
         
         if pattern:
@@ -83,7 +110,11 @@ class Drive:
         local_path = os.path.join(local_dir, os.path.basename(relative_dataset_path))
         
         if not os.path.exists(local_path):
+            print(f"Copying dataset from drive to local: {os.path.basename(drive_path)}")
             shutil.copy2(drive_path, local_path)
+            print(f"Dataset copied to: {local_path}")
+        else:
+            print(f"Using cached dataset: {local_path}")
             
         return local_path
 
