@@ -572,21 +572,6 @@ def show_execution_plan(pipelines: List[str]) -> None:
         print(f"  {Style.CYAN}{i}.{Style.RESET} {Style.BOLD}{pipeline}{Style.RESET} - "
               f"{PIPELINES[pipeline].description} {deps_str}")
     
-    estimated_time = {
-        'data': "5-30 min", 
-        'hyperopt': "30-120 min", 
-        'supervised': "20-90 min", 
-        'reinforcement': "60-240 min", 
-        'eval': "5-15 min", 
-        'benchmark': "10-30 min"
-    }
-    
-    total_min = sum(int(t.split('-')[0]) for p, t in estimated_time.items() if p in pipelines)
-    total_max = sum(int(t.split('-')[1]) for p, t in estimated_time.items() if p in pipelines)
-    
-    print(f"\n{Style.BOLD}Estimated time:{Style.RESET} {Style.YELLOW}{total_min}-{total_max} minutes{Style.RESET}")
-    print(f"  {Style.MUTED}(Note: Times may vary based on dataset size and hardware){Style.RESET}")
-
 def select_pipelines() -> List[str]:
     pipeline_options = [(name, config.description) for name, config in PIPELINES.items()]
     
