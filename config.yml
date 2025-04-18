@@ -31,8 +31,8 @@ data:
   train_idx: data/train_indices_small.npy
   val_idx: data/val_indices_small.npy
   test_idx: data/test_indices_small.npy
-  pgn: data/games_small.pgn
-  raw_pgn: data/lichess_small.pgn
+  pgn: data/lichess_db_standard_rated_2025-03.pgn
+  raw_pgn: data/lichess_db_standard_rated_2025-03.pgn
   max_games: 1000
   min_elo: 1600
   max_elo: 3000
@@ -42,8 +42,8 @@ data:
     train_idx: data/train_indices.npy
     val_idx: data/val_indices.npy
     test_idx: data/test_indices.npy
-    pgn: data/games.pgn
-    raw_pgn: data/lichess.pgn
+    pgn: data/lichess_db_standard_rated_2025-03.pgn
+    raw_pgn: data/lichess_db_standard_rated_2025-03.pgn
     max_games: 500000
     min_elo: 2000
 
