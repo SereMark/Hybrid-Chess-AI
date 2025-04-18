@@ -1,0 +1,385 @@
+import os
+import time
+import wandb
+import optuna
+import numpy as np
+from optuna.samplers import TPESampler
+from optuna.pruners import MedianPruner
+from torch.utils.data import DataLoader
+
+from src.utils.config import Config
+from src.utils.drive import get_drive
+from src.utils.train import (
+    set_seed, get_optimizer, get_scheduler,
+    get_device, train_epoch, validate
+)
+from src.utils.chess import H5Dataset, get_move_count
+from src.model import ChessModel
+
+class HyperoptPipeline:
+    def __init__(self, config: Config):
+        self.config = config
+        
+        self.seed = config.get('project.seed', 42)
+        set_seed(self.seed)
+        
+        self.trials = config.get('hyperopt.trials', 10)
+        self.timeout = config.get('hyperopt.timeout', 3600)
+        self.jobs = config.get('hyperopt.jobs', 1)
+        
+        self.lr_range = config.get('hyperopt.lr_range', [0.0001, 0.01])
+        self.wd_range = config.get('hyperopt.wd_range', [0.00001, 0.001])
+        self.batch_sizes = config.get('hyperopt.batch_sizes', [64, 128, 256])
+        self.epochs_range = config.get('hyperopt.epochs_range', [5, 20])
+        self.optimizers = config.get('hyperopt.optimizers', ["adam", "adamw"])
+        self.schedulers = config.get('hyperopt.schedulers', ["linear", "onecycle"])
+        
+        self.dataset = config.get('data.dataset', 'data/dataset.h5')
+        self.train_idx = config.get('data.train_idx', 'data/train_indices.npy')
+        self.val_idx = config.get('data.val_idx', 'data/val_indices.npy')
+        
+        self.results_dir = '/content/hyperopt_results'
+        os.makedirs(self.results_dir, exist_ok=True)
+        
+        self.db_name = os.path.join(self.results_dir, "optimization.db")
+        self.study_name = f"HPO_{self.config.mode}"
+    
+    def setup(self):
+        print("Setting up hyperparameter optimization...")
+        
+        try:
+            drive = get_drive()
+            local_dataset = '/content/data/dataset.h5'
+            local_train_idx = '/content/data/train_indices.npy'
+            local_val_idx = '/content/data/val_indices.npy'
+            
+            os.makedirs('/content/data', exist_ok=True)
+            
+            try:
+                self.dataset = drive.get_dataset(self.dataset, local_dataset)
+                self.train_idx = drive.load(self.train_idx, local_train_idx)
+                self.val_idx = drive.load(self.val_idx, local_val_idx)
+                
+                print(f"Loaded dataset: {self.dataset}")
+                print(f"Loaded train indices: {self.train_idx}")
+                print(f"Loaded validation indices: {self.val_idx}")
+            except FileNotFoundError:
+                print("Using original paths...")
+                
+        except Exception as e:
+            print(f"Error loading dataset files: {e}")
+            print("Using original paths...")
+        
+        if self.config.get('wandb.enabled', True):
+            try:
+                wandb.init(
+                    project=self.config.get('wandb.project', 'chess_ai'),
+                    name=f"hyperopt_{self.config.mode}_{time.strftime('%Y%m%d_%H%M%S')}",
+                    config={
+                        "mode": self.config.mode,
+                        "trials": self.trials,
+                        "timeout": self.timeout,
+                        "jobs": self.jobs,
+                        "lr_range": self.lr_range,
+                        "wd_range": self.wd_range,
+                        "batch_sizes": self.batch_sizes,
+                        "epochs_range": self.epochs_range,
+                        "optimizers": self.optimizers,
+                        "schedulers": self.schedulers
+                    }
+                )
+            except Exception as e:
+                print(f"Error initializing wandb: {e}")
+                
+        return True
+    
+    def objective(self, trial):
+        lr = trial.suggest_float("lr", self.lr_range[0], self.lr_range[1], log=True)
+        weight_decay = trial.suggest_float("weight_decay", self.wd_range[0], self.wd_range[1], log=True)
+        batch_size = trial.suggest_categorical("batch_size", self.batch_sizes)
+        epochs = trial.suggest_int("epochs", self.epochs_range[0], self.epochs_range[1])
+        optimizer_type = trial.suggest_categorical("optimizer", self.optimizers)
+        scheduler_type = trial.suggest_categorical("scheduler", self.schedulers)
+        
+        grad_clip = trial.suggest_float("grad_clip", 0.0, 5.0)
+        accum_steps = trial.suggest_int("accum_steps", 1, 8)
+        policy_weight = trial.suggest_float("policy_weight", 0.5, 2.0)
+        value_weight = trial.suggest_float("value_weight", 0.5, 2.0)
+        
+        if optimizer_type in ["sgd", "rmsprop"]:
+            momentum = trial.suggest_float("momentum", 0.5, 0.99)
+        else:
+            momentum = 0.0
+        
+        channels = trial.suggest_categorical("channels", [32, 48, 64, 96])
+        
+        trial_start = time.time()
+        
+        print(f"\nTrial {trial.number}: {trial.params}")
+        print("-" * 50)
+        
+        try:
+            device_info = get_device()
+            device = device_info["device"]
+            device_type = device_info["type"]
+            use_tpu = device_type == "tpu"
+            
+            train_indices = np.load(self.train_idx)
+            val_indices = np.load(self.val_idx)
+            
+            if self.config.mode == "test":
+                if len(train_indices) > 10000:
+                    np.random.shuffle(train_indices)
+                    train_indices = train_indices[:10000]
+                if len(val_indices) > 2000:
+                    np.random.shuffle(val_indices)
+                    val_indices = val_indices[:2000]
+            
+            train_dataset = H5Dataset(self.dataset, train_indices)
+            val_dataset = H5Dataset(self.dataset, val_indices)
+            
+            workers = min(4, os.cpu_count() or 2)
+            pin_memory = device_type == "gpu"
+            
+            train_loader = DataLoader(
+                train_dataset,
+                batch_size=batch_size,
+                shuffle=True,
+                num_workers=workers,
+                pin_memory=pin_memory
+            )
+            
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                num_workers=workers,
+                pin_memory=pin_memory
+            )
+            
+            model = ChessModel(
+                moves=get_move_count(),
+                ch=channels,
+                use_tpu=use_tpu
+            ).to(device)
+            
+            optimizer = get_optimizer(
+                model, optimizer_type, lr, weight_decay, momentum
+            )
+            
+            total_steps = epochs * len(train_loader)
+            scheduler = get_scheduler(optimizer, scheduler_type, total_steps)
+            
+            best_val_loss = float('inf')
+            early_stop_counter = 0
+            early_stopping_patience = 5
+            
+            for epoch in range(1, epochs + 1):
+                train_metrics = train_epoch(
+                    model,
+                    train_loader,
+                    device_info,
+                    optimizer,
+                    policy_weight,
+                    value_weight,
+                    accum_steps,
+                    grad_clip,
+                    scheduler,
+                    compute_accuracy=True,
+                    log_interval=100
+                )
+                
+                val_metrics = validate(model, val_loader, device_info)
+                
+                composite_loss = policy_weight * val_metrics["policy_loss"] + value_weight * val_metrics["value_loss"]
+                
+                trial.report(composite_loss, epoch)
+                
+                if trial.should_prune():
+                    print(f"Trial {trial.number} pruned at epoch {epoch}")
+                    raise optuna.exceptions.TrialPruned()
+                
+                if composite_loss < best_val_loss:
+                    best_val_loss = composite_loss
+                    early_stop_counter = 0
+                else:
+                    early_stop_counter += 1
+                    if early_stop_counter >= early_stopping_patience:
+                        print(f"Early stopping triggered at epoch {epoch}")
+                        break
+                
+                print(f"Epoch {epoch}/{epochs} - "
+                      f"Train Loss: {train_metrics['policy_loss']:.4f}/{train_metrics['value_loss']:.4f}, "
+                      f"Val Loss: {val_metrics['policy_loss']:.4f}/{val_metrics['value_loss']:.4f}, "
+                      f"Loss: {composite_loss:.4f}")
+            
+            final_policy_loss = val_metrics["policy_loss"]
+            final_value_loss = val_metrics["value_loss"]
+            final_accuracy = val_metrics["accuracy"]
+            final_loss = policy_weight * final_policy_loss + value_weight * final_value_loss
+            
+            training_time = time.time() - trial_start
+            
+            trial.set_user_attr("policy_loss", final_policy_loss)
+            trial.set_user_attr("value_loss", final_value_loss)
+            trial.set_user_attr("accuracy", final_accuracy)
+            trial.set_user_attr("time", training_time)
+            
+            if wandb.run is not None:
+                wandb.log({
+                    "trial": trial.number,
+                    "policy_loss": final_policy_loss,
+                    "value_loss": final_value_loss,
+                    "accuracy": final_accuracy,
+                    "loss": final_loss,
+                    "time": training_time,
+                    **trial.params
+                })
+            
+            print(f"Trial {trial.number} finished with loss: {final_loss:.6f}")
+            
+            return final_loss
+            
+        except optuna.exceptions.TrialPruned:
+            raise
+        except Exception as e:
+            print(f"Error in trial {trial.number}: {e}")
+            return float('inf')
+    
+    def run(self):
+        if not self.setup():
+            return False
+        
+        try:
+            if wandb.run is not None:
+                trials_table = wandb.Table(columns=[
+                    "trial", "value", "lr", "weight_decay", "batch_size",
+                    "optimizer", "scheduler", "epochs", "policy_weight", "value_weight",
+                    "grad_clip", "channels", "time"
+                ])
+            
+            try:
+                optuna.delete_study(study_name=self.study_name, storage=f"sqlite:///{self.db_name}")
+            except Exception:
+                pass
+            
+            study = optuna.create_study(
+                study_name=self.study_name,
+                storage=f"sqlite:///{self.db_name}",
+                direction="minimize",
+                sampler=TPESampler(seed=self.seed),
+                pruner=MedianPruner(n_warmup_steps=5),
+                load_if_exists=False
+            )
+            
+            print(f"Starting hyperparameter optimization with {self.trials} trials")
+            print(f"Timeout: {self.timeout} seconds")
+            print(f"Parallel jobs: {self.jobs}")
+            
+            study.optimize(
+                self.objective,
+                n_trials=self.trials,
+                timeout=self.timeout if self.timeout > 0 else None,
+                n_jobs=self.jobs,
+                show_progress_bar=True
+            )
+            
+            best_trial = study.best_trial
+            best_value = study.best_value
+            
+            print("\n" + "=" * 50)
+            print(f"Best trial: {best_trial.number}")
+            print(f"Best value (composite loss): {best_value:.6f}")
+            print("Best hyperparameters:")
+            for param, value in best_trial.params.items():
+                print(f"  {param}: {value}")
+            print("User attributes:")
+            for key, value in best_trial.user_attrs.items():
+                print(f"  {key}: {value}")
+            print("=" * 50)
+            
+            with open(os.path.join(self.results_dir, "best_trial.txt"), "w") as f:
+                f.write(f"Best Value (Composite Loss) = {best_value:.6f}\n")
+                f.write(f"Best Trial = {best_trial.number}\n\n")
+                
+                f.write("Parameters:\n")
+                for k, v in best_trial.params.items():
+                    f.write(f"{k}: {v}\n")
+                
+                f.write("\nUser Attributes:\n")
+                for k, v in best_trial.user_attrs.items():
+                    f.write(f"{k}: {v}\n")
+            
+            if wandb.run is not None:
+                wandb.run.summary.update({
+                    "best_trial": best_trial.number,
+                    "best_loss": best_value,
+                    **{f"best_{k}": v for k, v in best_trial.params.items()},
+                    "best_time": best_trial.user_attrs.get("time", 0)
+                })
+                
+                for trial in study.trials:
+                    if trial.state == optuna.trial.TrialState.COMPLETE:
+                        row = [
+                            trial.number,
+                            trial.value,
+                            trial.params.get("lr", None),
+                            trial.params.get("weight_decay", None),
+                            trial.params.get("batch_size", None),
+                            trial.params.get("optimizer", None),
+                            trial.params.get("scheduler", None),
+                            trial.params.get("epochs", None),
+                            trial.params.get("policy_weight", None),
+                            trial.params.get("value_weight", None),
+                            trial.params.get("grad_clip", None),
+                            trial.params.get("channels", None),
+                            trial.user_attrs.get("time", None)
+                        ]
+                        trials_table.add_data(*row)
+                
+                try:
+                    importance = optuna.importance.get_param_importances(study)
+                    importance_table = wandb.Table(columns=["parameter", "importance"])
+                    
+                    for param, score in importance.items():
+                        importance_table.add_data(param, score)
+                    
+                    wandb.log({
+                        "param_importance": wandb.plot.bar(
+                            importance_table, "parameter", "importance", 
+                            title="Parameter Importance"
+                        ),
+                        "trials": trials_table
+                    })
+                except Exception as e:
+                    print(f"Error calculating parameter importance: {e}")
+                
+                try:
+                    fig = optuna.visualization.plot_parallel_coordinate(study)
+                    wandb.log({"parallel_coord": wandb.Image(fig)})
+                except Exception as e:
+                    print(f"Error creating parallel coordinate plot: {e}")
+                
+                wandb.finish()
+            
+            try:
+                drive = get_drive()
+                drive.save(
+                    os.path.join(self.results_dir, "best_trial.txt"),
+                    os.path.join("hyperopt_results", "best_trial.txt")
+                )
+                drive.save(
+                    self.db_name,
+                    os.path.join("hyperopt_results", "optimization.db")
+                )
+                print("Saved hyperopt results to Google Drive")
+            except Exception as e:
+                print(f"Error saving results to Google Drive: {e}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error during hyperparameter optimization: {e}")
+            if wandb.run is not None:
+                wandb.finish()
+            return False

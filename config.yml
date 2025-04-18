@@ -1,0 +1,126 @@
+project:
+  name: chess_ai
+  seed: 42
+
+wandb:
+  project: chess_ai
+  enabled: true
+
+hardware:
+  tpu: false
+  workers: 2
+  pin_memory: true
+  prefetch: 2
+  mixed_precision: true
+  prod:
+    tpu: true
+    workers: 8
+    prefetch: 4
+
+model:
+  channels: 32
+  blocks: 3
+  attention: true
+  prod:
+    channels: 96
+    blocks: 6
+
+data:
+  batch: 128
+  dataset: data/dataset_small.h5
+  train_idx: data/train_indices_small.npy
+  val_idx: data/val_indices_small.npy
+  test_idx: data/test_indices_small.npy
+  pgn: data/games_small.pgn
+  raw_pgn: data/lichess_small.pgn
+  max_games: 1000
+  min_elo: 1600
+  max_elo: 3000
+  prod:
+    batch: 512
+    dataset: data/dataset.h5
+    train_idx: data/train_indices.npy
+    val_idx: data/val_indices.npy
+    test_idx: data/test_indices.npy
+    pgn: data/games.pgn
+    raw_pgn: data/lichess.pgn
+    max_games: 500000
+    min_elo: 2000
+
+training:
+  checkpoint_interval: 2
+  prod:
+    checkpoint_interval: 5
+
+supervised:
+  epochs: 10
+  lr: 0.001
+  weight_decay: 0.0001
+  optimizer: adamw
+  scheduler: onecycle
+  accum_steps: 2
+  policy_weight: 1.0
+  value_weight: 1.0
+  grad_clip: 1.0
+  momentum: 0.9
+  early_stop: true
+  patience: 3
+  prod:
+    epochs: 50
+    lr: 0.0005
+    accum_steps: 4
+    patience: 7
+
+reinforcement:
+  iters: 5
+  games_per_iter: 50
+  sims_per_move: 100
+  epochs_per_iter: 3
+  c_puct: 1.4
+  temp: 0.5
+  threads: 2
+  prod:
+    iters: 20
+    games_per_iter: 1000
+    sims_per_move: 800
+    epochs_per_iter: 10
+    threads: 16
+
+eval:
+  max_samples: 1000
+  prod:
+    max_samples: 10000
+
+hyperopt:
+  trials: 10
+  timeout: 3600
+  jobs: 1
+  lr_range: [0.0001, 0.01]
+  wd_range: [0.00001, 0.001]
+  batch_sizes: [64, 128]
+  epochs_range: [5, 10]
+  optimizers: ["adam", "adamw"]
+  schedulers: ["linear", "step"]
+  prod:
+    trials: 100
+    timeout: 172800
+    jobs: 4
+    lr_range: [0.00001, 0.01]
+    wd_range: [0.000001, 0.001]
+    batch_sizes: [128, 256, 512, 1024]
+    epochs_range: [15, 40]
+    optimizers: ["adam", "adamw", "sgd", "rmsprop"]
+    schedulers: ["linear", "step", "cosine", "onecycle"]
+
+benchmark:
+  games: 10
+  mcts: true
+  opening_book: true
+  prod:
+    games: 200
+
+paths:
+  drive_root: chess_ai
+  models: models
+  data: data
+  logs: logs
