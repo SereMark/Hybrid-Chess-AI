@@ -39,7 +39,7 @@ class EvalPipeline:
         self.dataset = config.get('data.dataset', 'data/dataset.h5')
         self.test_idx = config.get('data.test_idx', 'data/test_indices.npy')
         
-        self.output_dir = '/content/evaluation'
+        self.output_dir = '/content/drive/MyDrive/chess_ai/evaluation'
         os.makedirs(self.output_dir, exist_ok=True)
     
     def setup(self):
@@ -74,10 +74,10 @@ class EvalPipeline:
             return False
         
         try:
-            local_dataset = '/content/data/dataset.h5'
-            local_test_idx = '/content/data/test_indices.npy'
+            local_dataset = '/content/drive/MyDrive/chess_ai/data/dataset.h5'
+            local_test_idx = '/content/drive/MyDrive/chess_ai/data/test_indices.npy'
             
-            os.makedirs('/content/data', exist_ok=True)
+            os.makedirs('/content/drive/MyDrive/chess_ai/data', exist_ok=True)
             
             try:
                 self.dataset = drive.load(self.dataset, local_dataset)

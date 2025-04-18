@@ -28,8 +28,7 @@ class DataPipeline:
         self.max_elo = config.get('data.max_elo', 3000)
         self.batch = config.get('data.batch', 1024)
         
-        self.raw_pgn = config.get('data.raw_pgn', 'data/raw.pgn')
-        self.pgn = config.get('data.pgn', 'data/games.pgn')
+        self.raw_pgn = config.get('data.raw_pgn', 'data/lichess_db_standard_rated_2025-03.pgn')
         
         self.augment_flip = True
         
@@ -39,7 +38,7 @@ class DataPipeline:
         self.batch_policies = []
         self.batch_values = []
         self.move_map = get_move_map()
-        self.output_dir = '/content/data'
+        self.output_dir = '/content/drive/MyDrive/chess_ai/data'
         os.makedirs(self.output_dir, exist_ok=True)
         self.games_processed = 0
         self.dataset_size = 0
@@ -69,7 +68,7 @@ class DataPipeline:
                 
         try:
             drive = get_drive()
-            local_raw_pgn = '/content/data/raw.pgn'
+            local_raw_pgn = '/content/drive/MyDrive/chess_ai/data/lichess_db_standard_rated_2025-03.pgn'
             os.makedirs(os.path.dirname(local_raw_pgn), exist_ok=True)
             
             self.raw_pgn = drive.load(self.raw_pgn, local_raw_pgn)

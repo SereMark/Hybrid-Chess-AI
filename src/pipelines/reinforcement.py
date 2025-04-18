@@ -209,11 +209,11 @@ class ReinforcementPipeline:
     def setup(self):
         print("Setting up reinforcement learning pipeline...")
         
-        supervised_model_path = os.path.join('/content/models', 'supervised_model.pth')
+        supervised_model_path = os.path.join('/content/drive/MyDrive/chess_ai/models', 'supervised_model.pth')
         
         try:
             drive = get_drive()
-            local_model_path = '/content/models/supervised_model.pth'
+            local_model_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
             os.makedirs(os.path.dirname(local_model_path), exist_ok=True)
             
             try:
@@ -264,7 +264,7 @@ class ReinforcementPipeline:
         self.setup()
         start_time = time.time()
         
-        games_dir = os.path.join('/content/data/games/self-play')
+        games_dir = os.path.join('/content/drive/MyDrive/chess_ai/data/games/self-play')
         os.makedirs(games_dir, exist_ok=True)
         
         try:
@@ -444,7 +444,7 @@ class ReinforcementPipeline:
                         "iteration_time": iter_time
                     })
             
-            final_path = os.path.join('/content/models', 'reinforcement_model.pth')
+            final_path = os.path.join('/content/drive/MyDrive/chess_ai/models', 'reinforcement_model.pth')
             os.makedirs(os.path.dirname(final_path), exist_ok=True)
             
             self.ckpt.save(

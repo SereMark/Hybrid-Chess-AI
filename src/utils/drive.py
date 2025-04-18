@@ -37,7 +37,7 @@ class Drive:
         
         return source_path
     
-    def get_dataset(self, relative_dataset_path, local_dir='/content/data'):
+    def get_dataset(self, relative_dataset_path, local_dir='/content/drive/MyDrive/chess_ai/data'):
         drive_path = self.path(relative_dataset_path)
         
         if not os.path.exists(drive_path):

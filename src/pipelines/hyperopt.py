@@ -38,7 +38,7 @@ class HyperoptPipeline:
         self.train_idx = config.get('data.train_idx', 'data/train_indices.npy')
         self.val_idx = config.get('data.val_idx', 'data/val_indices.npy')
         
-        self.results_dir = '/content/hyperopt_results'
+        self.results_dir = '/content/drive/MyDrive/chess_ai/hyperopt_results'
         os.makedirs(self.results_dir, exist_ok=True)
         
         self.db_name = os.path.join(self.results_dir, "optimization.db")
@@ -49,11 +49,11 @@ class HyperoptPipeline:
         
         try:
             drive = get_drive()
-            local_dataset = '/content/data/dataset.h5'
-            local_train_idx = '/content/data/train_indices.npy'
-            local_val_idx = '/content/data/val_indices.npy'
+            local_dataset = '/content/drive/MyDrive/chess_ai/data/dataset.h5'
+            local_train_idx = '/content/drive/MyDrive/chess_ai/data/train_indices.npy'
+            local_val_idx = '/content/drive/MyDrive/chess_ai/data/val_indices.npy'
             
-            os.makedirs('/content/data', exist_ok=True)
+            os.makedirs('/content/drive/MyDrive/chess_ai/data', exist_ok=True)
             
             try:
                 self.dataset = drive.get_dataset(self.dataset, local_dataset)

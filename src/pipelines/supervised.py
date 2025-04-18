@@ -80,11 +80,11 @@ class SupervisedPipeline:
     def setup(self):
         try:
             drive = get_drive()
-            local_dataset = '/content/data/dataset.h5'
-            local_train_idx = '/content/data/train_indices.npy'
-            local_val_idx = '/content/data/val_indices.npy'
+            local_dataset = '/content/drive/MyDrive/chess_ai/data/dataset.h5'
+            local_train_idx = '/content/drive/MyDrive/chess_ai/data/train_indices.npy'
+            local_val_idx = '/content/drive/MyDrive/chess_ai/data/val_indices.npy'
             
-            os.makedirs('/content/data', exist_ok=True)
+            os.makedirs('/content/drive/MyDrive/chess_ai/data', exist_ok=True)
             
             self.dataset = drive.get_dataset(self.dataset, local_dataset)
             self.train_idx = drive.load(self.train_idx, local_train_idx)
@@ -244,7 +244,7 @@ class SupervisedPipeline:
                             print(f"Early stopping at epoch {epoch}")
                             break
             
-            final_path = os.path.join('/content/models', 'supervised_model.pth')
+            final_path = os.path.join('/content/drive/MyDrive/chess_ai/models', 'supervised_model.pth')
             os.makedirs(os.path.dirname(final_path), exist_ok=True)
             self.ckpt.save(
                 self.model, self.optimizer, self.scheduler, self.epochs, final_path

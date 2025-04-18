@@ -133,7 +133,7 @@ class BenchmarkPipeline:
         
         self.book = {}
         
-        self.output_dir = '/content/benchmark'
+        self.output_dir = '/content/drive/MyDrive/chess_ai/benchmark'
         self.games_dir = os.path.join(self.output_dir, 'games')
         os.makedirs(self.games_dir, exist_ok=True)
     
@@ -145,7 +145,7 @@ class BenchmarkPipeline:
             
             try:
                 model1_path = 'models/supervised_model.pth'
-                local_model1_path = '/content/models/supervised_model.pth'
+                local_model1_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
                 os.makedirs(os.path.dirname(local_model1_path), exist_ok=True)
                 self.model1_path = drive.load(model1_path, local_model1_path)
                 print(f"Loaded model 1 from Drive: {self.model1_path}")
@@ -154,24 +154,24 @@ class BenchmarkPipeline:
             
             try:
                 model2_path = 'models/reinforcement_model.pth'
-                local_model2_path = '/content/models/reinforcement_model.pth'
+                local_model2_path = '/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'
                 os.makedirs(os.path.dirname(local_model2_path), exist_ok=True)
                 self.model2_path = drive.load(model2_path, local_model2_path)
                 print(f"Loaded model 2 from Drive: {self.model2_path}")
             except FileNotFoundError:
                 print("Reinforcement model not found in Drive")
                 
-            if not self.model1_path and os.path.exists('/content/models/supervised_model.pth'):
-                self.model1_path = '/content/models/supervised_model.pth'
+            if not self.model1_path and os.path.exists('/content/drive/MyDrive/chess_ai/models/supervised_model.pth'):
+                self.model1_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
                 print(f"Using local supervised model: {self.model1_path}")
             
-            if not self.model2_path and os.path.exists('/content/models/reinforcement_model.pth'):
-                self.model2_path = '/content/models/reinforcement_model.pth'
+            if not self.model2_path and os.path.exists('/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'):
+                self.model2_path = '/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'
                 print(f"Using local reinforcement model: {self.model2_path}")
             
             try:
                 book_path = 'data/opening_book.json'
-                local_book_path = '/content/data/opening_book.json'
+                local_book_path = '/content/drive/MyDrive/chess_ai/data/opening_book.json'
                 os.makedirs(os.path.dirname(local_book_path), exist_ok=True)
                 
                 drive.load(book_path, local_book_path)
