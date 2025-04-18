@@ -13,6 +13,12 @@ from src.utils.config import Config
 from src.utils.drive import get_drive
 from src.utils.chess import board_to_input, get_move_map
 
+def _create_position_stats():
+    return {"win": 0, "draw": 0, "loss": 0, "eco": "", "name": ""}
+
+def _create_inner_defaultdict():
+    return defaultdict(_create_position_stats)
+
 class DataPipeline:
     def __init__(self, config: Config):
         self.config = config
@@ -27,7 +33,7 @@ class DataPipeline:
         
         self.augment_flip = True
         
-        self.positions = defaultdict(lambda: defaultdict(lambda: {"win": 0, "draw": 0, "loss": 0, "eco": "", "name": ""}))
+        self.positions = defaultdict(_create_inner_defaultdict)
         self.game_counter = 0
         self.batch_inputs = []
         self.batch_policies = []
