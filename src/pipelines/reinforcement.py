@@ -10,7 +10,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from concurrent.futures import ProcessPoolExecutor
 
 from src.utils.config import Config
-from src.utils.drive import get_drive
 from src.utils.train import set_seed, get_optimizer, get_scheduler, get_device, train_epoch
 from src.utils.checkpoint import Checkpoint
 from src.utils.chess import board_to_input, get_move_map, get_move_count
@@ -212,22 +211,16 @@ class ReinforcementPipeline:
         supervised_model_path = os.path.join('/content/drive/MyDrive/chess_ai/models', 'supervised_model.pth')
         
         try:
-            drive = get_drive()
             local_model_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
             os.makedirs(os.path.dirname(local_model_path), exist_ok=True)
             
-            try:
-                drive_model_path = os.path.join('models', 'supervised_model.pth')
-                self.model_path = drive.load(drive_model_path, local_model_path)
-                print(f"Loaded supervised model from Drive: {self.model_path}")
-            except FileNotFoundError:
-                if os.path.exists(supervised_model_path):
-                    self.model_path = supervised_model_path
-                    print(f"Using local supervised model: {self.model_path}")
-                else:
-                    print("No supervised model found, starting from scratch")
+            if os.path.exists(local_model_path):
+                self.model_path = local_model_path
+                print(f"Using supervised model: {self.model_path}")
+            else:
+                print("No supervised model found, starting from scratch")
         except Exception as e:
-            print(f"Error loading model: {e}")
+            print(f"Error accessing model: {e}")
             
         if self.model_path and os.path.exists(self.model_path):
             loaded_checkpoint = self.ckpt.load(
@@ -452,13 +445,7 @@ class ReinforcementPipeline:
                 self.iters, path=final_path
             )
             
-            try:
-                drive = get_drive()
-                drive_model_path = os.path.join('models', 'reinforcement_model.pth')
-                drive.save(final_path, drive_model_path)
-                print(f"Saved final model to Drive: {drive_model_path}")
-            except Exception as e:
-                print(f"Error saving model to Drive: {e}")
+            print(f"Saved final model to: {final_path}")
             
             total_time = time.time() - start_time
             print(f"Reinforcement learning completed in {total_time:.2f}s")

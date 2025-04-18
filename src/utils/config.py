@@ -1,5 +1,4 @@
-import os
-import yaml
+import os, yaml
 
 class Config:
     _instance = None
@@ -50,9 +49,3 @@ class Config:
             else:
                 return default
         return current
-
-def get_config(config_path=None, mode=None):
-    instance = Config(config_path, mode if mode else "test")
-    if mode is not None and config_path is None:
-        instance.set_mode(mode)
-    return instance

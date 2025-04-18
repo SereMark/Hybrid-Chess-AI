@@ -6,7 +6,6 @@ from torch.amp import GradScaler
 from torch.utils.data import DataLoader
 
 from src.utils.config import Config
-from src.utils.drive import get_drive
 from src.utils.train import (
     set_seed, get_optimizer, get_scheduler,
     get_device, train_epoch, validate
@@ -79,22 +78,21 @@ class SupervisedPipeline:
     
     def setup(self):
         try:
-            drive = get_drive()
             local_dataset = '/content/drive/MyDrive/chess_ai/data/dataset.h5'
             local_train_idx = '/content/drive/MyDrive/chess_ai/data/train_indices.npy'
             local_val_idx = '/content/drive/MyDrive/chess_ai/data/val_indices.npy'
             
             os.makedirs('/content/drive/MyDrive/chess_ai/data', exist_ok=True)
             
-            self.dataset = drive.get_dataset(self.dataset, local_dataset)
-            self.train_idx = drive.load(self.train_idx, local_train_idx)
-            self.val_idx = drive.load(self.val_idx, local_val_idx)
+            self.dataset = local_dataset
+            self.train_idx = local_train_idx
+            self.val_idx = local_val_idx
             
-            print(f"Loaded dataset: {self.dataset}")
-            print(f"Loaded train indices: {self.train_idx}")
-            print(f"Loaded validation indices: {self.val_idx}")
+            print(f"Using dataset: {self.dataset}")
+            print(f"Using train indices: {self.train_idx}")
+            print(f"Using validation indices: {self.val_idx}")
         except Exception as e:
-            print(f"Error loading dataset: {e}")
+            print(f"Error accessing dataset files: {e}")
             print("Using original paths...")
         
         if self.config.get('wandb.enabled', True):
@@ -250,13 +248,7 @@ class SupervisedPipeline:
                 self.model, self.optimizer, self.scheduler, self.epochs, final_path
             )
             
-            try:
-                drive = get_drive()
-                drive_model_path = os.path.join('models', 'supervised_model.pth')
-                drive.save(final_path, drive_model_path)
-                print(f"Saved final model to Drive: {drive_model_path}")
-            except Exception as e:
-                print(f"Error saving model to Drive: {e}")
+            print(f"Saved final model to: {final_path}")
             
             training_time = time.time() - start_time
             print(f"Training completed in {training_time:.2f}s")

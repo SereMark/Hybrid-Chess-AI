@@ -10,14 +10,7 @@ from collections import defaultdict
 from tqdm.auto import tqdm
 
 from src.utils.config import Config
-from src.utils.drive import get_drive
 from src.utils.chess import board_to_input, get_move_map
-
-def _create_position_stats():
-    return {"win": 0, "draw": 0, "loss": 0, "eco": "", "name": ""}
-
-def _create_inner_defaultdict():
-    return defaultdict(_create_position_stats)
 
 class DataPipeline:
     def __init__(self, config: Config):
@@ -32,7 +25,7 @@ class DataPipeline:
         
         self.augment_flip = True
         
-        self.positions = defaultdict(_create_inner_defaultdict)
+        self.positions = defaultdict(lambda: defaultdict(lambda: {"win": 0, "draw": 0, "loss": 0, "eco": "", "name": ""}))
         self.game_counter = 0
         self.batch_inputs = []
         self.batch_policies = []
@@ -67,14 +60,16 @@ class DataPipeline:
                 print(f"Error initializing wandb: {e}")
                 
         try:
-            drive = get_drive()
             local_raw_pgn = '/content/drive/MyDrive/chess_ai/data/lichess_db_standard_rated_2025-03.pgn'
             os.makedirs(os.path.dirname(local_raw_pgn), exist_ok=True)
             
-            self.raw_pgn = drive.load(self.raw_pgn, local_raw_pgn)
-            print(f"Loaded raw PGN file: {self.raw_pgn}")
+            if os.path.exists(local_raw_pgn):
+                self.raw_pgn = local_raw_pgn
+                print(f"Using PGN file: {self.raw_pgn}")
+            else:
+                print(f"Using original PGN path: {self.raw_pgn}")
         except Exception as e:
-            print(f"Error loading raw PGN file: {e}")
+            print(f"Error checking PGN file: {e}")
             
         os.makedirs(self.output_dir, exist_ok=True)
     
@@ -388,20 +383,6 @@ class DataPipeline:
                 
             wandb.finish()
         
-        try:
-            drive = get_drive()
-            
-            drive.save(os.path.join(self.output_dir, "dataset.h5"), 'data/dataset.h5')
-            
-            for split in ["train", "val", "test"]:
-                split_path = f"{split}_indices.npy"
-                drive.save(
-                    os.path.join(self.output_dir, split_path), 
-                    os.path.join('data', split_path)
-                )
-            
-            print("Saved dataset and indices to Google Drive")
-        except Exception as e:
-            print(f"Error saving to Google Drive: {e}")
+        print(f"Dataset and indices saved to: {self.output_dir}")
         
         return True

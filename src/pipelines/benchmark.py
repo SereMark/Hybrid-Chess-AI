@@ -9,7 +9,6 @@ import torch
 from tqdm.auto import tqdm
 
 from src.utils.config import Config
-from src.utils.drive import get_drive
 from src.utils.chess import board_to_input, get_move_map, get_move_count
 from src.utils.tpu import get_tpu
 from src.model import ChessModel
@@ -141,51 +140,32 @@ class BenchmarkPipeline:
         print("Setting up benchmark pipeline...")
         
         try:
-            drive = get_drive()
+            model1_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
+            model2_path = '/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'
             
-            try:
-                model1_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
-                local_model1_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
-                os.makedirs(os.path.dirname(local_model1_path), exist_ok=True)
-                self.model1_path = drive.load(model1_path, local_model1_path)
-                print(f"Loaded model 1 from Drive: {self.model1_path}")
-            except FileNotFoundError:
-                print("Supervised model not found in Drive")
-            
-            try:
-                model2_path = '/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'
-                local_model2_path = '/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'
-                os.makedirs(os.path.dirname(local_model2_path), exist_ok=True)
-                self.model2_path = drive.load(model2_path, local_model2_path)
-                print(f"Loaded model 2 from Drive: {self.model2_path}")
-            except FileNotFoundError:
-                print("Reinforcement model not found in Drive")
+            if os.path.exists(model1_path):
+                self.model1_path = model1_path
+                print(f"Using supervised model: {self.model1_path}")
+            else:
+                print("Supervised model not found")
                 
-            if not self.model1_path and os.path.exists('/content/drive/MyDrive/chess_ai/models/supervised_model.pth'):
-                self.model1_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
-                print(f"Using local supervised model: {self.model1_path}")
+            if os.path.exists(model2_path):
+                self.model2_path = model2_path
+                print(f"Using reinforcement model: {self.model2_path}")
+            else:
+                print("Reinforcement model not found")
             
-            if not self.model2_path and os.path.exists('/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'):
-                self.model2_path = '/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'
-                print(f"Using local reinforcement model: {self.model2_path}")
-            
-            try:
-                book_path = 'data/opening_book.json'
-                local_book_path = '/content/drive/MyDrive/chess_ai/data/opening_book.json'
-                os.makedirs(os.path.dirname(local_book_path), exist_ok=True)
-                
-                drive.load(book_path, local_book_path)
-                
-                with open(local_book_path, 'r') as f:
+            book_path = '/content/drive/MyDrive/chess_ai/data/opening_book.json'
+            if os.path.exists(book_path):
+                with open(book_path, 'r') as f:
                     self.book = json.load(f)
-                
                 print(f"Loaded opening book with {len(self.book)} positions")
-            except Exception as e:
-                print(f"Error loading opening book: {e}")
+            else:
+                print("Opening book not found")
                 self.book = {}
                 
         except Exception as e:
-            print(f"Error setting up from Drive: {e}")
+            print(f"Error setting up: {e}")
         
         if not self.model1_path or not self.model2_path:
             print("Error: Need two distinct models for benchmarking")
@@ -381,24 +361,8 @@ class BenchmarkPipeline:
                 f.write(f"Average duration: {avg_duration:.2f} seconds\n")
                 f.write(f"Average moves: {avg_moves:.1f}\n")
             
-            try:
-                drive = get_drive()
-                
-                drive.save(
-                    summary_path, 'benchmark_results/benchmark_summary.txt'
-                )
-                
-                drive_dir = 'benchmark_results/games'
-                for filename in os.listdir(self.games_dir):
-                    if filename.endswith('.pgn'):
-                        drive.save(
-                            os.path.join(self.games_dir, filename),
-                            os.path.join(drive_dir, filename)
-                        )
-                
-                print(f"Saved benchmark results to Google Drive")
-            except Exception as e:
-                print(f"Error saving to Google Drive: {e}")
+            print(f"Saved benchmark results to {summary_path}")
+            print(f"Saved game PGNs to {self.games_dir}")
             
             return {
                 'bot1_wins': bot1_wins,

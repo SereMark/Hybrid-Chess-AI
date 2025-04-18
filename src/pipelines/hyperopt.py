@@ -8,7 +8,6 @@ from optuna.pruners import MedianPruner
 from torch.utils.data import DataLoader
 
 from src.utils.config import Config
-from src.utils.drive import get_drive
 from src.utils.train import (
     set_seed, get_optimizer, get_scheduler,
     get_device, train_epoch, validate
@@ -48,26 +47,24 @@ class HyperoptPipeline:
         print("Setting up hyperparameter optimization...")
         
         try:
-            drive = get_drive()
             local_dataset = '/content/drive/MyDrive/chess_ai/data/dataset.h5'
             local_train_idx = '/content/drive/MyDrive/chess_ai/data/train_indices.npy'
             local_val_idx = '/content/drive/MyDrive/chess_ai/data/val_indices.npy'
             
             os.makedirs('/content/drive/MyDrive/chess_ai/data', exist_ok=True)
             
-            try:
-                self.dataset = drive.get_dataset(self.dataset, local_dataset)
-                self.train_idx = drive.load(self.train_idx, local_train_idx)
-                self.val_idx = drive.load(self.val_idx, local_val_idx)
+            if os.path.exists(local_dataset):
+                self.dataset = local_dataset
+            if os.path.exists(local_train_idx):
+                self.train_idx = local_train_idx
+            if os.path.exists(local_val_idx):
+                self.val_idx = local_val_idx
                 
-                print(f"Loaded dataset: {self.dataset}")
-                print(f"Loaded train indices: {self.train_idx}")
-                print(f"Loaded validation indices: {self.val_idx}")
-            except FileNotFoundError:
-                print("Using original paths...")
-                
+            print(f"Using dataset: {self.dataset}")
+            print(f"Using train indices: {self.train_idx}")
+            print(f"Using validation indices: {self.val_idx}")
         except Exception as e:
-            print(f"Error loading dataset files: {e}")
+            print(f"Error accessing dataset files: {e}")
             print("Using original paths...")
         
         if self.config.get('wandb.enabled', True):
@@ -362,19 +359,9 @@ class HyperoptPipeline:
                 
                 wandb.finish()
             
-            try:
-                drive = get_drive()
-                drive.save(
-                    os.path.join(self.results_dir, "best_trial.txt"),
-                    os.path.join("hyperopt_results", "best_trial.txt")
-                )
-                drive.save(
-                    self.db_name,
-                    os.path.join("hyperopt_results", "optimization.db")
-                )
-                print("Saved hyperopt results to Google Drive")
-            except Exception as e:
-                print(f"Error saving results to Google Drive: {e}")
+            best_trial_path = os.path.join(self.results_dir, "best_trial.txt")
+            db_path = self.db_name
+            print(f"Saved hyperopt results to {best_trial_path} and {db_path}")
             
             return True
             

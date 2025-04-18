@@ -11,7 +11,6 @@ from torch.nn.functional import mse_loss, smooth_l1_loss, cross_entropy
 from torch.utils.data import DataLoader
 
 from src.utils.config import Config
-from src.utils.drive import get_drive
 from src.utils.tpu import get_tpu
 from src.utils.chess import H5Dataset, get_move_count
 from src.utils.train import set_seed, get_device
@@ -50,24 +49,14 @@ class EvalPipeline:
             ('/content/drive/MyDrive/chess_ai/models/supervised_model.pth', 'Supervised')
         ]
         
-        drive = get_drive()
-        
         for path, model_type in model_paths:
             try:
-                local_path = f'/content/{path}'
-                os.makedirs(os.path.dirname(local_path), exist_ok=True)
-                
-                try:
-                    self.model_path = drive.load(path, local_path)
-                    print(f"Loaded {model_type} model from Drive: {self.model_path}")
+                if os.path.exists(path):
+                    self.model_path = path
+                    print(f"Using {model_type} model: {self.model_path}")
                     break
-                except FileNotFoundError:
-                    if os.path.exists(local_path):
-                        self.model_path = local_path
-                        print(f"Using local {model_type} model: {self.model_path}")
-                        break
             except Exception as e:
-                print(f"Error loading {model_type} model: {e}")
+                print(f"Error checking {model_type} model: {e}")
         
         if not self.model_path:
             print("No model found for evaluation")
@@ -79,16 +68,15 @@ class EvalPipeline:
             
             os.makedirs('/content/drive/MyDrive/chess_ai/data', exist_ok=True)
             
-            try:
-                self.dataset = drive.load(self.dataset, local_dataset)
-                self.test_idx = drive.load(self.test_idx, local_test_idx)
-            except FileNotFoundError:
-                print("Using original data paths")
+            if os.path.exists(local_dataset):
+                self.dataset = local_dataset
+            if os.path.exists(local_test_idx):
+                self.test_idx = local_test_idx
                 
             print(f"Using dataset: {self.dataset}")
             print(f"Using test indices: {self.test_idx}")
         except Exception as e:
-            print(f"Error loading dataset: {e}")
+            print(f"Error accessing dataset: {e}")
             
         if self.config.get('wandb.enabled', True):
             try:
