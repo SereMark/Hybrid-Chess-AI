@@ -357,12 +357,12 @@ def setup_colab_environment() -> str:
 def detect_completed_pipelines() -> Dict[str, bool]:
     completed = {}
     
-    completed['data'] = os.path.exists('/content/drive/MyDrive/chess_ai/data/dataset.h5')
+    completed['data'] = os.path.exists('/content/drive/MyDrive/chess_ai/data/train_indices.npy')
     completed['supervised'] = os.path.exists('/content/drive/MyDrive/chess_ai/models/supervised_model.pth')
     completed['reinforcement'] = os.path.exists('/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth')
-    completed['hyperopt'] = os.path.exists('/content/drive/MyDrive/chess_ai/models/hyperparams.json')
-    completed['eval'] = os.path.exists('/content/drive/MyDrive/chess_ai/evaluation/evaluation_results.json')
-    completed['benchmark'] = os.path.exists('/content/drive/MyDrive/chess_ai/benchmark/stockfish_benchmark_summary.txt')
+    completed['hyperopt'] = os.path.exists('/content/drive/MyDrive/chess_ai/todo.json') # TODO
+    completed['eval'] = os.path.exists('/content/drive/MyDrive/chess_ai/evaluation/todo.json') # TODO
+    completed['benchmark'] = os.path.exists('/content/drive/MyDrive/chess_ai/benchmark/todo.txt') # TODO
     
     return completed
 
