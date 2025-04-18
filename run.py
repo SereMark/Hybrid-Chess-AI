@@ -41,12 +41,12 @@ class PipelineConfig:
     requirements: List[str]
 
 PIPELINE_REQUIREMENTS = {
-    'data': ['chess', 'numpy', 'pandas', 'h5py'],
-    'hyperopt': ['optuna', 'numpy', 'pandas'],
-    'supervised': ['chess', 'torch', 'numpy', 'pandas'],
-    'reinforcement': ['chess', 'torch', 'numpy'],
-    'eval': ['chess', 'numpy', 'pandas', 'scikit-learn', 'matplotlib'],
-    'benchmark': ['chess', 'numpy', 'pandas']
+    'data': ['chess', 'numpy', 'pandas', 'h5py', 'wandb'],
+    'hyperopt': ['optuna', 'numpy', 'pandas', 'wandb'],
+    'supervised': ['chess', 'torch', 'numpy', 'pandas', 'wandb'],
+    'reinforcement': ['chess', 'torch', 'numpy', 'wandb'],
+    'eval': ['chess', 'numpy', 'pandas', 'scikit-learn', 'matplotlib', 'wandb'],
+    'benchmark': ['chess', 'numpy', 'pandas', 'wandb']
 }
 
 PIPELINES = {
