@@ -334,22 +334,45 @@ def spinner_context(message: str):
 
 def setup_colab_environment() -> str:
     with spinner_context("Setting up Colab environment"):
-        project_dir = '/content/drive/MyDrive/chess_ai'
-        
-        if not os.path.exists(project_dir):
-            os.makedirs(project_dir)
-            os.makedirs(os.path.join(project_dir, 'data'), exist_ok=True)
-            os.makedirs(os.path.join(project_dir, 'models'), exist_ok=True)
-            os.makedirs(os.path.join(project_dir, 'logs'), exist_ok=True)
+        try:
+            project_dir = '/content/drive/MyDrive/chess_ai'
             
-        os.chdir(project_dir)
-        
-        if project_dir not in sys.path:
-            sys.path.insert(0, project_dir)
-        
-        if 'src.utils.config' in sys.modules:
-            from src.utils.config import Config
-            Config._instance = None
+            if not os.path.exists(project_dir):
+                os.makedirs(project_dir)
+                os.makedirs(os.path.join(project_dir, 'data'), exist_ok=True)
+                os.makedirs(os.path.join(project_dir, 'models'), exist_ok=True)
+                os.makedirs(os.path.join(project_dir, 'logs'), exist_ok=True)
+                
+            os.chdir(project_dir)
+            
+            if project_dir not in sys.path:
+                sys.path.insert(0, project_dir)
+            
+            if 'src.utils.config' in sys.modules:
+                from src.utils.config import Config
+                Config._instance = None
+                
+            try:
+                import torch
+                original_load = torch.load
+                
+                def safe_torch_load(f, map_location=None, pickle_module=None, **kwargs):
+                    if map_location is None:
+                        map_location = 'cpu'
+                    try:
+                        return original_load(f, map_location=map_location, pickle_module=pickle_module, **kwargs)
+                    except RuntimeError as e:
+                        if "torch.storage.UntypedStorage (tagged with xla:0)" in str(e):
+                            print("Detected TPU storage issue, trying with CPU mapping...")
+                            return original_load(f, map_location='cpu', pickle_module=pickle_module, **kwargs)
+                        raise
+                        
+                torch.load = safe_torch_load
+                
+            except Exception as e:
+                print(f"Failed to install TPU patch: {e}")
+        except Exception as e:
+            print(f"Error in setup: {e}")
 
     Console.success(f"Environment ready at: {project_dir}")
     return project_dir
