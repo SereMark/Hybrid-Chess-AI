@@ -45,7 +45,7 @@ PIPELINE_REQUIREMENTS = {
     'hyperopt': ['optuna', 'numpy', 'pandas'],
     'supervised': ['chess', 'torch', 'numpy', 'pandas'],
     'reinforcement': ['chess', 'torch', 'numpy'],
-    'eval': ['chess', 'numpy', 'pandas'],
+    'eval': ['chess', 'numpy', 'pandas', 'scikit-learn', 'matplotlib'],
     'benchmark': ['chess', 'numpy', 'pandas']
 }
 
@@ -134,6 +134,9 @@ class Style:
     SYMBOL_INFO = "ℹ"
     SYMBOL_ARROW = "→"
     SYMBOL_BULLET = "•"
+    SYMBOL_PLAY = "▶"
+    SYMBOL_STAR = "★"
+    SYMBOL_GEAR = "⚙"
 
 class Console:
     @staticmethod
@@ -173,6 +176,14 @@ class Console:
         print(f"{Style.WARNING}{Style.SYMBOL_WARNING} {message}{Style.RESET}")
     
     @staticmethod
+    def step(message: str) -> None:
+        print(f"{Style.CYAN}{Style.SYMBOL_ARROW} {Style.BOLD}{message}{Style.RESET}")
+    
+    @staticmethod
+    def feature(message: str) -> None:
+        print(f"  {Style.CYAN}{Style.SYMBOL_STAR} {message}{Style.RESET}")
+    
+    @staticmethod
     def input(prompt: str, default: str = None) -> str:
         if default:
             prompt_text = f"{prompt} [{default}]: "
@@ -196,7 +207,7 @@ class Console:
             print(f"  {Style.CYAN}{i}{Style.RESET}. {Style.BOLD}{key}{Style.RESET} - {description}{default_mark}")
         
         while True:
-            choice = Console.input("Enter your choice (number or name)", default)
+            choice = Console.input("Enter the choice (number or name)", default)
             
             try:
                 if choice.isdigit() and 1 <= int(choice) <= len(options):
@@ -209,6 +220,46 @@ class Console:
                 Console.error(f"Invalid choice. Please select a number between 1-{len(options)} or enter a valid name.")
             except Exception:
                 Console.error("Invalid choice. Please try again.")
+    
+    @staticmethod
+    def multi_select(title: str, options: List[Tuple[str, str]], default: List[str] = None) -> List[str]:
+        Console.section(title)
+        
+        if default is None:
+            default = []
+        
+        print(f"{Style.MUTED}(Enter numbers separated by comma, 'all' for all options, or 'none' for none){Style.RESET}")
+        for i, (key, description) in enumerate(options, 1):
+            default_mark = f" {Style.YELLOW}*{Style.RESET}" if key in default else ""
+            print(f"  {Style.CYAN}{i}{Style.RESET}. {Style.BOLD}{key}{Style.RESET} - {description}{default_mark}")
+        
+        while True:
+            choice = Console.input("Enter the choices", "all" if default == ["all"] else ",".join(default) if default else None)
+            
+            if choice.lower() == "all":
+                return [key for key, _ in options]
+            
+            if choice.lower() == "none":
+                return []
+            
+            try:
+                selected = []
+                for part in choice.split(","):
+                    part = part.strip()
+                    if part.isdigit() and 1 <= int(part) <= len(options):
+                        selected.append(options[int(part) - 1][0])
+                    else:
+                        for key, _ in options:
+                            if part.lower() == key.lower():
+                                selected.append(key)
+                                break
+                        else:
+                            Console.error(f"Invalid choice: {part}")
+                            break
+                else:
+                    return selected
+            except Exception:
+                Console.error("Invalid format. Please try again.")
 
 class Spinner:
     def __init__(self, message: str = "Processing"):
@@ -255,7 +306,16 @@ class ProgressBar:
         elapsed_time = time.time() - self.start_time
         percent = 100 * self.count / self.total
         
-        sys.stdout.write(f"\r{self.prefix} |{bar}| {percent:.1f}% Complete ({elapsed_time:.1f}s)")
+        if self.total == 0:
+            eta = 0
+        elif self.count == 0:
+            eta = 0  
+        else:
+            eta = elapsed_time * (self.total - self.count) / self.count
+        
+        eta_str = f"{eta:.1f}s remaining" if eta > 0 else "completed"
+        
+        sys.stdout.write(f"\r{self.prefix} |{bar}| {percent:.1f}% ({self.count}/{self.total}) [{elapsed_time:.1f}s, {eta_str}]")
         sys.stdout.flush()
         
         if self.count >= self.total:
@@ -278,6 +338,12 @@ def setup_colab_environment() -> str:
         
         project_dir = '/content/drive/MyDrive/chess_ai'
         
+        if not os.path.exists(project_dir):
+            os.makedirs(project_dir)
+            os.makedirs(os.path.join(project_dir, 'data'), exist_ok=True)
+            os.makedirs(os.path.join(project_dir, 'models'), exist_ok=True)
+            os.makedirs(os.path.join(project_dir, 'logs'), exist_ok=True)
+            
         os.chdir(project_dir)
         
         if project_dir not in sys.path:
@@ -298,21 +364,24 @@ def check_and_install_dependencies(pipelines: List[str]) -> None:
         all_requirements.update(PIPELINES[pipeline].requirements)
     
     missing_packages = []
-    for package in all_requirements:
-        try:
-            importlib.import_module(package.replace('-', '_'))
-            Console.info(f"Package '{package}' is already installed")
-        except ImportError:
-            missing_packages.append(package)
+    with spinner_context("Scanning installed packages"):
+        for package in all_requirements:
+            try:
+                importlib.import_module(package.replace('-', '_'))
+                Console.info(f"Package '{package}' is already installed")
+            except ImportError:
+                missing_packages.append(package)
     
     if missing_packages:
         Console.warning(f"Found {len(missing_packages)} missing dependencies: {', '.join(missing_packages)}")
         choice = Console.input("Install missing dependencies now?", "y")
         
         if choice.lower() == 'y':
-            with spinner_context(f"Installing {len(missing_packages)} packages"):
-                for package in missing_packages:
-                    try:
+            progress = ProgressBar(len(missing_packages), prefix=f"{Style.BOLD}Installing packages:{Style.RESET}", size=30)
+            
+            for i, package in enumerate(missing_packages):
+                try:
+                    with spinner_context(f"Installing {package}"):
                         result = subprocess.run(
                             [sys.executable, "-m", "pip", "install", package],
                             check=True,
@@ -320,9 +389,11 @@ def check_and_install_dependencies(pipelines: List[str]) -> None:
                             stderr=subprocess.PIPE,
                             text=True
                         )
-                        Console.success(f"Installed {package}")
-                    except subprocess.CalledProcessError as e:
-                        Console.error(f"Failed to install {package}: {e.stderr}")
+                    Console.success(f"Installed {package}")
+                except subprocess.CalledProcessError as e:
+                    Console.error(f"Failed to install {package}: {e.stderr}")
+                
+                progress.update(1)
     else:
         Console.success("All required dependencies are already installed")
 
@@ -334,7 +405,9 @@ class Configuration:
         
     def _load(self) -> Dict:
         if not os.path.exists(self.path):
-            raise FileNotFoundError(f"Config file not found: {self.path}")
+            Console.warning(f"Config file not found: {self.path}")
+            return {}
+        
         with open(self.path, 'r') as f:
             return yaml.safe_load(f)
     
@@ -410,7 +483,7 @@ def load_pipeline(name: str) -> Any:
 
 def run_pipeline(pipeline_name: str, config: Configuration) -> PipelineResult:
     Console.section(f"Running {pipeline_name.upper()} Pipeline")
-    print(f"{Style.CYAN}{Style.SYMBOL_INFO}{Style.RESET} {PIPELINES[pipeline_name].description}")
+    print(f"{Style.CYAN}{Style.SYMBOL_GEAR}{Style.RESET} {PIPELINES[pipeline_name].description}")
     
     try:
         pipeline_class = load_pipeline(pipeline_name)
@@ -418,8 +491,8 @@ def run_pipeline(pipeline_name: str, config: Configuration) -> PipelineResult:
         start_time = time.time()
         pipeline = pipeline_class(config)
         
-        with spinner_context(f"Executing {pipeline_name} pipeline"):
-            success = pipeline.run()
+        print(f"\n{Style.BOLD}{Style.SYMBOL_PLAY} Starting pipeline execution...{Style.RESET}")
+        success = pipeline.run()
         
         end_time = time.time()
         duration = end_time - start_time
@@ -498,35 +571,80 @@ def show_execution_plan(pipelines: List[str]) -> None:
         deps_str = f"{Style.MUTED}(depends on: {', '.join(dependencies)}){Style.RESET}" if dependencies else ""
         print(f"  {Style.CYAN}{i}.{Style.RESET} {Style.BOLD}{pipeline}{Style.RESET} - "
               f"{PIPELINES[pipeline].description} {deps_str}")
+    
+    estimated_time = {
+        'data': "5-30 min", 
+        'hyperopt': "30-120 min", 
+        'supervised': "20-90 min", 
+        'reinforcement': "60-240 min", 
+        'eval': "5-15 min", 
+        'benchmark': "10-30 min"
+    }
+    
+    total_min = sum(int(t.split('-')[0]) for p, t in estimated_time.items() if p in pipelines)
+    total_max = sum(int(t.split('-')[1]) for p, t in estimated_time.items() if p in pipelines)
+    
+    print(f"\n{Style.BOLD}Estimated time:{Style.RESET} {Style.YELLOW}{total_min}-{total_max} minutes{Style.RESET}")
+    print(f"  {Style.MUTED}(Note: Times may vary based on dataset size and hardware){Style.RESET}")
 
 def select_pipelines() -> List[str]:
-    all_pipelines = [(name, config.description) for name, config in PIPELINES.items()]
-    options = [("all", "All pipelines")] + all_pipelines
+    pipeline_options = [(name, config.description) for name, config in PIPELINES.items()]
     
-    choice = Console.menu("Select pipelines to run", options, "all")
+    options_with_descriptions = [
+        ("all", "Run all pipelines (full training workflow)"),
+        ("training", "Run data, supervised, and reinforcement pipelines"),
+        ("evaluation", "Run data, eval, and benchmark pipelines"),
+        ("custom", "Select specific pipelines to run")
+    ]
+    
+    choice = Console.menu("Select pipeline workflow", options_with_descriptions, "all")
     
     if choice == "all":
         return list(PIPELINES.keys())
     
-    return [choice]
+    if choice == "training":
+        return ["data", "supervised", "reinforcement"]
+    
+    if choice == "evaluation":
+        return ["data", "eval", "benchmark"]
+    
+    if choice == "custom":
+        return Console.multi_select("Select pipelines to run", pipeline_options, ["data"])
+    
+    return []
 
 def select_mode() -> str:
     mode_options = [
-        ("test", "Test mode - faster with smaller datasets"),
-        ("prod", "Production mode - full training with large datasets")
+        ("test", "Test mode - faster with smaller datasets, good for testing workflows"),
+        ("prod", "Production mode - full training with large datasets, longer runtime")
     ]
-    return Console.menu("Select running mode", mode_options, "test")
+    
+    mode = Console.menu("Select running mode", mode_options, "test")
+    
+    if mode == "prod":
+        Console.warning("Production mode selected. This will use full datasets and longer training times.")
+        Console.info("Make sure there is enough available resources and time for completion.")
+    
+    return mode
 
 def main() -> int:
     try:
-        setup_colab_environment()
+        project_dir = setup_colab_environment()
         
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        Console.clear()
         Console.header("CHESS AI PIPELINE MANAGER", f"Date: {now} | Environment: Google Colab")
         
+        Console.feature("Data preparation and processing")
+        Console.feature("Hyperparameter optimization")
+        Console.feature("Supervised learning from human games")
+        Console.feature("Reinforcement learning via self-play")
+        Console.feature("Model evaluation and benchmarking")
+        
+        print()
         mode = select_mode()
         
-        config_path = 'config.yml'
+        config_path = os.path.join(project_dir, 'config.yml')
         config = load_configuration(config_path, mode)
         
         selected_pipelines = select_pipelines() 
@@ -549,20 +667,36 @@ def main() -> int:
         results = []
         progress = ProgressBar(len(ordered_pipelines), prefix=f"{Style.BOLD}Overall Progress:{Style.RESET}", size=30)
         
+        execution_start = time.time()
+        
         for i, pipeline in enumerate(ordered_pipelines, 1):
+            pipeline_start = time.time()
+            print(f"\n{Style.CYAN}{'═' * 60}{Style.RESET}")
+            print(f"{Style.BOLD}Pipeline {i}/{len(ordered_pipelines)}: {Style.CYAN}{pipeline.upper()}{Style.RESET}")
+            print(f"{Style.CYAN}{'═' * 60}{Style.RESET}")
+            
             result = run_pipeline(pipeline, config)
             results.append(result)
             
             status_symbol = Style.SYMBOL_SUCCESS if result.succeeded else Style.SYMBOL_ERROR
             status_style = Style.SUCCESS if result.succeeded else Style.ERROR
-            print(f"{status_style}{status_symbol}{Style.RESET} {pipeline} completed in {result.duration:.2f}s")
             
-            if i < len(ordered_pipelines):
-                print(f"{Style.CYAN}{'─' * 50}{Style.RESET}")
+            pipeline_time = time.time() - pipeline_start
+            elapsed_total = time.time() - execution_start
+            
+            print(f"\n{status_style}{status_symbol} {pipeline} completed in {pipeline_time:.2f}s{Style.RESET}")
+            print(f"{Style.MUTED}Total elapsed time: {elapsed_total:.2f}s{Style.RESET}")
             
             progress.update(1)
         
         print_pipeline_summary(results)
+        
+        if all(result.succeeded for result in results):
+            Console.success("\nAll pipelines executed successfully!")
+            Console.info("The Chess AI model is now ready for use.")
+            
+            if "benchmark" in [r.name for r in results if r.succeeded]:
+                Console.info("Check the benchmark results in the Google Drive folder.")
         
         return 0 if all(result.succeeded for result in results) else 1
         
@@ -571,6 +705,8 @@ def main() -> int:
         return 130
     except Exception as e:
         Console.error(f"An unexpected error occurred: {e}")
+        import traceback
+        traceback.print_exc()
         return 1
 
 if __name__ == "__main__":
