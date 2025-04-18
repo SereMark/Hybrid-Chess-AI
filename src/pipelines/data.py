@@ -12,6 +12,12 @@ from tqdm.auto import tqdm
 from src.utils.config import Config
 from src.utils.chess import board_to_input, get_move_map
 
+def create_position_dict():
+    return {"win": 0, "draw": 0, "loss": 0, "eco": "", "name": ""}
+
+def create_positions_dict():
+    return defaultdict(create_position_dict)
+
 class DataPipeline:
     def __init__(self, config: Config):
         self.config = config
@@ -25,7 +31,7 @@ class DataPipeline:
         
         self.augment_flip = True
         
-        self.positions = defaultdict(lambda: defaultdict(lambda: {"win": 0, "draw": 0, "loss": 0, "eco": "", "name": ""}))
+        self.positions = defaultdict(create_positions_dict)
         self.game_counter = 0
         self.batch_inputs = []
         self.batch_policies = []
@@ -152,7 +158,7 @@ class DataPipeline:
             "time_controls": defaultdict(int)
         }
         
-        with concurrent.futures.ProcessPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
             results = list(executor.map(self.process_game, games))
             
         for inputs, policies, values, game_stats, processed in results:
