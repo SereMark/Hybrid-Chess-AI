@@ -1,7 +1,4 @@
-import os
-import shutil
-from google.colab import drive
-import glob
+import os, shutil
 
 class Drive:
     _instance = None
@@ -16,27 +13,6 @@ class Drive:
         self.mount_path = '/content/drive'
         self.mounted = False
         self.project_dir = None
-    
-    def mount(self):
-        if not self.mounted:
-            drive.mount(self.mount_path)
-            self.mounted = True
-        return self.mount_path
-    
-    def setup(self, project_name):
-        self.mount()
-        self.project_dir = os.path.join(self.mount_path, 'MyDrive', project_name)
-        os.makedirs(self.project_dir, exist_ok=True)
-        
-        for dir_name in ['data', 'models', 'logs', 'checkpoints']:
-            os.makedirs(os.path.join(self.project_dir, dir_name), exist_ok=True)
-            
-        return self.project_dir
-    
-    def path(self, relative_path):
-        if not self.project_dir:
-            raise ValueError("Project directory not set")
-        return os.path.join(self.project_dir, relative_path)
     
     def save(self, source_path, relative_destination):
         if not os.path.exists(source_path):
@@ -60,18 +36,6 @@ class Drive:
             return local_destination
         
         return source_path
-    
-    def list(self, relative_path, pattern=None):
-        dir_path = self.path(relative_path)
-        
-        if not os.path.exists(dir_path):
-            return []
-        
-        if pattern:
-            files = glob.glob(os.path.join(dir_path, pattern))
-            return [os.path.basename(f) for f in files]
-        
-        return os.listdir(dir_path)
     
     def get_dataset(self, relative_dataset_path, local_dir='/content/data'):
         drive_path = self.path(relative_dataset_path)
