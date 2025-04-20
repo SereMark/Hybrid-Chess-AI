@@ -517,7 +517,7 @@ class EvalPipeline:
                 
                 if self.use_mcts and self.mcts:
                     self.mcts.set_root(board.copy())
-                    action_probs = self.mcts.get_move_probs(temperature=1e-3)
+                    action_probs = self.mcts.get_move_probs(temp=1e-3)
                     
                     if board.fullmove_number == 1 and board.turn == chess.WHITE and len(action_probs) > 1:
                         moves_list = list(action_probs.keys())
