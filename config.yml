@@ -106,7 +106,7 @@ benchmark:
   mcts: true
   opening_book: true
   switch_colors: true
-  stockfish_path: engines/stockfish-ubuntu-x86-64-avx2
+  stockfish_path: stockfish
   stockfish_elo: 1200
   stockfish_time: 0.05
   stockfish_depth: null

@@ -802,6 +802,30 @@ def check_dependencies(pipelines):
     else:
         UI.success("All required dependencies are already installed")
 
+    if "eval" in pipelines:
+        UI.header("Stockfish Check")
+        if not shutil.which("stockfish"):
+            UI.info("Stockfish not found on PATH, installing via apt...")
+            try:
+                with spinner_context("Updating apt cache", Style.CYAN):
+                    subprocess.run(
+                        ["apt-get", "update"],
+                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                    )
+                with spinner_context("Installing Stockfish", Style.CYAN):
+                    subprocess.run(
+                        ["apt-get", "install", "-y", "stockfish"],
+                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                    )
+                if shutil.which("stockfish"):
+                    UI.success("Stockfish installed and available on PATH")
+                else:
+                    UI.error("Stockfish installation completed but binary not found on PATH")
+            except subprocess.CalledProcessError as e:
+                UI.error(f"Failed to install Stockfish: {e}")
+        else:
+            UI.success("Stockfish binary already present")
+
 class Configuration:
     def __init__(self, config_path, mode="test"):
         self.path = config_path
