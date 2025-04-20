@@ -738,7 +738,8 @@ def display_hardware_info(hardware):
     content.append(f"{Style.apply('⚡', Style.PURPLE)} High RAM Toggle: {Style.apply(ram_text, ram_color, Style.BOLD)}")
     
     if hardware.get("ram_gb"):
-        content.append(f"{Style.apply('🧠', Style.PURPLE)} Total RAM: {Style.apply(f'{hardware.get('ram_gb', 0):.1f}GB', Style.PURPLE, Style.BOLD)}")
+        ram_gb = hardware.get('ram_gb', 0)
+        content.append(f"{Style.apply('🧠', Style.PURPLE)} Total RAM: {Style.apply(f'{ram_gb:.1f}GB', Style.PURPLE, Style.BOLD)}")
     
     cpu_cores = hardware.get("cpu_cores", 0)
     if cpu_cores:
