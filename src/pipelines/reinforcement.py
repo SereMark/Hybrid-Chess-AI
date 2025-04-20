@@ -19,12 +19,17 @@ from src.utils.train import set_seed, get_optimizer, get_scheduler, get_device, 
 
 class SelfPlay:
     @staticmethod
-    def run_games(model_state, device_type, sims, c_puct, temp, games, seed):
+    def run_games(model_state, device_type, sims, c_puct, temp, games, seed, channels=32, blocks=4, use_attn=True):
         set_seed(seed)
         
         device = torch.device(device_type)
         
-        model = ChessModel(get_move_count())
+        model = ChessModel(
+            get_move_count(),
+            ch=channels,
+            blocks=blocks,
+            use_attn=use_attn
+        )
         
         try:
             updated_state = {}
@@ -340,7 +345,10 @@ class ReinforcementPipeline:
                         self.c_puct,
                         self.temp,
                         num_games,
-                        seeds[i]
+                        seeds[i],
+                        self.config.get('model.channels', 64), 
+                        self.config.get('model.blocks', 4),
+                        self.config.get('model.attention', True)
                     ))
                 
                 all_inputs, all_policies, all_values = [], [], []
