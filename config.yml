@@ -63,11 +63,13 @@ supervised:
   momentum: 0.9
   early_stop: true
   patience: 3
+  min_accuracy_threshold: 0.1
   prod:
     epochs: 50
     lr: 0.0005
     accum_steps: 4
     patience: 7
+    min_accuracy_threshold: 0.15
 
 reinforcement:
   iters: 2
@@ -86,8 +88,24 @@ reinforcement:
 
 eval:
   max_samples: 1000
+  visualize_moves: true
+  sl_vs_rl: true
   prod:
     max_samples: 10000
+
+benchmark:
+  games: 10
+  mcts: true
+  opening_book: true
+  switch_colors: true
+  stockfish_path: engines/stockfish-ubuntu-x86-64-avx2
+  stockfish_elo: 1500
+  stockfish_time: 0.1
+  stockfish_depth: null
+  prod:
+    games: 200
+    stockfish_elo: 2000
+    stockfish_time: 0.5
 
 hyperopt:
   trials: 2
@@ -109,19 +127,6 @@ hyperopt:
     epochs_range: [15, 40]
     optimizers: ["adam", "adamw", "sgd", "rmsprop"]
     schedulers: ["linear", "step", "cosine", "onecycle"]
-
-benchmark:
-  games: 10
-  mcts: true
-  opening_book: true
-  stockfish_path: engines/stockfish-ubuntu-x86-64-avx2
-  stockfish_elo: 1500
-  stockfish_time: 0.1
-  stockfish_depth: null
-  prod:
-    games: 200
-    stockfish_elo: 2000
-    stockfish_time: 0.5
 
 paths:
   drive_root: chess_ai

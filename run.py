@@ -44,82 +44,106 @@ PIPELINE_REQUIREMENTS = {
     'hyperopt': ['optuna', 'numpy', 'pandas', 'wandb'],
     'supervised': ['chess', 'torch', 'numpy', 'pandas', 'wandb'],
     'reinforcement': ['chess', 'torch', 'numpy', 'wandb'],
-    'eval': ['chess', 'numpy', 'pandas', 'scikit-learn', 'matplotlib', 'wandb'],
-    'benchmark': ['chess', 'numpy', 'pandas', 'wandb']
+    'eval': ['chess', 'numpy', 'pandas', 'scikit-learn', 'matplotlib', 'wandb', 'torch']
 }
 
 PIPELINES = {
     'data': PipelineConfig(
         name='data', 
-        description="Processes raw PGN files into efficient training dataset",
+        description="Process PGN files into efficient training format",
         dependencies=[],
         class_name='DataPipeline',
         requirements=PIPELINE_REQUIREMENTS['data']
     ),
     'hyperopt': PipelineConfig(
         name='hyperopt', 
-        description="Finds optimal hyperparameters for the model",
+        description="Find optimal hyperparameters for the model",
         dependencies=['data'],
         class_name='HyperoptPipeline',
         requirements=PIPELINE_REQUIREMENTS['hyperopt']
     ),
     'supervised': PipelineConfig(
         name='supervised', 
-        description="Trains the model on human games using supervised learning",
+        description="Train model on human games with supervised learning",
         dependencies=['data'],
         class_name='SupervisedPipeline',
         requirements=PIPELINE_REQUIREMENTS['supervised']
     ),
     'reinforcement': PipelineConfig(
         name='reinforcement', 
-        description="Improves model through self-play reinforcement learning",
+        description="Improve model through self-play reinforcement learning",
         dependencies=['supervised'],
         class_name='ReinforcementPipeline',
         requirements=PIPELINE_REQUIREMENTS['reinforcement']
     ),
     'eval': PipelineConfig(
         name='eval', 
-        description="Evaluates model performance against benchmarks",
+        description="Evaluate models and benchmark against Stockfish",
         dependencies=['data'],
         class_name='EvalPipeline',
         requirements=PIPELINE_REQUIREMENTS['eval']
-    ),
-    'benchmark': PipelineConfig(
-        name='benchmark', 
-        description="Compares model performance against other engines",
-        dependencies=['supervised'],
-        class_name='BenchmarkPipeline',
-        requirements=PIPELINE_REQUIREMENTS['benchmark']
     )
 }
 
-PIPELINE_ORDER = ['data', 'hyperopt', 'supervised', 'reinforcement', 'eval', 'benchmark']
+PIPELINE_ORDER = ['data', 'hyperopt', 'supervised', 'reinforcement', 'eval']
+
+WORKFLOWS = {
+    "full": {
+        "name": "Full Training Pipeline",
+        "description": "Complete workflow from data to evaluation",
+        "pipelines": ['data', 'supervised', 'reinforcement', 'eval'],
+        "icon": "🔄"
+    },
+    "train": {
+        "name": "Training Only",
+        "description": "Train models without evaluation",
+        "pipelines": ['data', 'supervised', 'reinforcement'],
+        "icon": "🧠"
+    },
+    "quick": {
+        "name": "Quick SL Training",
+        "description": "Train supervised model only",
+        "pipelines": ['data', 'supervised'],
+        "icon": "⚡"
+    },
+    "evaluate": {
+        "name": "Model Evaluation",
+        "description": "Evaluate existing models",
+        "pipelines": ['data', 'eval'],
+        "icon": "📊"
+    },
+    "optimize": {
+        "name": "Hyperparameter Optimization",
+        "description": "Find optimal model parameters",
+        "pipelines": ['data', 'hyperopt'],
+        "icon": "🔍"
+    }
+}
 
 class Style:
     RESET = "\033[0m"
-    
     BOLD = "\033[1m"
     ITALIC = "\033[3m"
     UNDERLINE = "\033[4m"
-    
     BLACK = "\033[30m"
-    RED = "\033[38;5;167m"
+    RED = "\033[38;5;203m"
     GREEN = "\033[38;5;107m"
     YELLOW = "\033[38;5;221m"
-    BLUE = "\033[38;5;110m"
+    BLUE = "\033[38;5;75m"
     MAGENTA = "\033[38;5;176m"
     CYAN = "\033[38;5;116m"
     WHITE = "\033[38;5;255m"
     GRAY = "\033[38;5;246m"
     
     BG_BLACK = "\033[40m"
-    BG_RED = "\033[48;5;167m"
+    BG_RED = "\033[48;5;203m"
     BG_GREEN = "\033[48;5;107m"
     BG_YELLOW = "\033[48;5;221m"
-    BG_BLUE = "\033[48;5;25m"
+    BG_BLUE = "\033[48;5;75m"
     BG_MAGENTA = "\033[48;5;176m"
     BG_CYAN = "\033[48;5;116m"
     BG_WHITE = "\033[48;5;255m"
+    BG_GRAY = "\033[48;5;240m"
     
     SUCCESS = GREEN
     ERROR = RED
@@ -139,60 +163,71 @@ class Style:
     SYMBOL_CIRCLE = "○"
     SYMBOL_CHECKED = "✓"
     SYMBOL_SKIP = "↷"
+    
+    @staticmethod
+    def apply(text, *styles):
+        result = ""
+        for style in styles:
+            result += style
+        result += text + Style.RESET
+        return result
 
 class Console:
     @staticmethod
-    def clear() -> None:
+    def clear():
         os.system('cls' if os.name == 'nt' else 'clear')
     
     @staticmethod
-    def header(title: str, subtitle: str = None) -> None:
+    def banner(title, subtitle=None):
         width = 80
-        padding = " " * 2
+        Console.clear()
         
-        print(f"{Style.BG_BLUE}{Style.WHITE}{Style.BOLD}{' ' * width}{Style.RESET}")
-        print(f"{Style.BG_BLUE}{Style.WHITE}{Style.BOLD}{title.center(width)}{Style.RESET}")
+        print(f"\n{Style.apply('━' * width, Style.BLUE, Style.BOLD)}")
+        print(f"{Style.apply('┃', Style.BLUE, Style.BOLD)} {Style.apply(title.center(width-4), Style.BLUE, Style.BOLD)} {Style.apply('┃', Style.BLUE, Style.BOLD)}")
         if subtitle:
-            print(f"{Style.BG_BLUE}{Style.WHITE}{padding}{subtitle}{' ' * (width - len(subtitle) - len(padding))}{Style.RESET}")
-        print(f"{Style.BG_BLUE}{Style.WHITE}{Style.BOLD}{' ' * width}{Style.RESET}")
+            print(f"{Style.apply('┃', Style.BLUE, Style.BOLD)} {Style.apply(subtitle.center(width-4), Style.BLUE)} {Style.apply('┃', Style.BLUE, Style.BOLD)}")
+        print(f"{Style.apply('━' * width, Style.BLUE, Style.BOLD)}\n")
     
     @staticmethod
-    def section(title: str) -> None:
-        print(f"\n{Style.BOLD}{Style.BLUE}{title}{Style.RESET}")
-        print(f"{Style.CYAN}{'─' * 60}{Style.RESET}")
+    def header(title):
+        print(f"\n{Style.apply('┏━━ ', Style.BLUE, Style.BOLD)}{Style.apply(title, Style.BLUE, Style.BOLD)}{Style.apply(' ━━', Style.BLUE, Style.BOLD)}")
+        
+    @staticmethod
+    def footer():
+        print(f"{Style.apply('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', Style.BLUE)}\n")
     
     @staticmethod
-    def info(message: str) -> None:
-        print(f"{Style.INFO}{Style.SYMBOL_INFO} {message}{Style.RESET}")
+    def info(message):
+        print(f"{Style.apply('ℹ', Style.INFO)} {message}")
     
     @staticmethod
-    def success(message: str) -> None:
-        print(f"{Style.SUCCESS}{Style.SYMBOL_SUCCESS} {message}{Style.RESET}")
+    def success(message):
+        print(f"{Style.apply('✓', Style.SUCCESS, Style.BOLD)} {message}")
     
     @staticmethod
-    def error(message: str) -> None:
-        print(f"{Style.ERROR}{Style.SYMBOL_ERROR} {message}{Style.RESET}")
+    def error(message):
+        print(f"{Style.apply('✗', Style.ERROR, Style.BOLD)} {message}")
     
     @staticmethod
-    def warning(message: str) -> None:
-        print(f"{Style.WARNING}{Style.SYMBOL_WARNING} {message}{Style.RESET}")
+    def warning(message):
+        print(f"{Style.apply('⚠', Style.WARNING, Style.BOLD)} {message}")
     
     @staticmethod
-    def step(message: str) -> None:
-        print(f"{Style.CYAN}{Style.SYMBOL_ARROW} {Style.BOLD}{message}{Style.RESET}")
+    def step(step_num, message):
+        print(f"\n{Style.apply(f'Step {step_num}:', Style.BLUE, Style.BOLD)} {message}")
     
     @staticmethod
-    def feature(message: str) -> None:
-        print(f"  {Style.CYAN}{Style.SYMBOL_STAR} {message}{Style.RESET}")
+    def feature(message):
+        print(f"  {Style.apply('★', Style.CYAN)} {message}")
     
     @staticmethod
-    def input(prompt: str, default: str = None) -> str:
+    def input(prompt, default=None):
         if default:
             prompt_text = f"{prompt} [{default}]: "
         else:
             prompt_text = f"{prompt}: "
         
-        sys.stdout.write(f"{Style.GREEN}⮞ {Style.BOLD}{prompt_text}{Style.RESET}")
+        sys.stdout.write(f"{Style.apply('➤', Style.GREEN)} {Style.apply(prompt_text, Style.BOLD)}")
         sys.stdout.flush()
         response = input().strip()
         
@@ -201,92 +236,61 @@ class Console:
         return response
     
     @staticmethod
-    def menu(title: str, options: List[Tuple[str, str]], default: str = None) -> str:
-        Console.section(title)
+    def select(options, title="Select an option", default=None):
+        Console.header(title)
         
-        for i, (key, description) in enumerate(options, 1):
-            default_mark = f" {Style.YELLOW}(default){Style.RESET}" if key == default else ""
-            print(f"  {Style.CYAN}{i}{Style.RESET}. {Style.BOLD}{key}{Style.RESET} - {description}{default_mark}")
+        for i, (key, option) in enumerate(options.items(), 1):
+            default_mark = f" {Style.apply('(default)', Style.YELLOW)}" if key == default else ""
+            icon = option.get("icon", "•")
+            name = option.get("name", key)
+            desc = option.get("description", "")
+            
+            print(f"  {Style.apply(str(i), Style.CYAN)} {Style.apply(icon, Style.CYAN)} "
+                  f"{Style.apply(name, Style.BOLD)} - {desc}{default_mark}")
         
         while True:
-            choice = Console.input("Enter the choice (number or name)", default)
+            choice = Console.input("Enter your choice", default)
             
             try:
                 if choice.isdigit() and 1 <= int(choice) <= len(options):
-                    return options[int(choice) - 1][0]
+                    return list(options.keys())[int(choice) - 1]
                 
-                for key, _ in options:
-                    if choice.lower() == key.lower():
-                        return key
+                if choice in options:
+                    return choice
                 
-                Console.error(f"Invalid choice. Please select a number between 1-{len(options)} or enter a valid name.")
+                Console.error(f"Invalid selection. Please enter a number between 1-{len(options)} or a valid option name.")
             except Exception:
-                Console.error("Invalid choice. Please try again.")
+                Console.error("Invalid selection. Please try again.")
     
     @staticmethod
-    def multi_select(title: str, options: List[Tuple[str, str]], default: List[str] = None) -> List[str]:
-        Console.section(title)
-        
-        if default is None:
-            default = []
-        
-        print(f"{Style.MUTED}(Enter numbers separated by comma, 'all' for all options, or 'none' for none){Style.RESET}")
-        for i, (key, description) in enumerate(options, 1):
-            default_mark = f" {Style.YELLOW}*{Style.RESET}" if key in default else ""
-            print(f"  {Style.CYAN}{i}{Style.RESET}. {Style.BOLD}{key}{Style.RESET} - {description}{default_mark}")
-        
-        while True:
-            choice = Console.input("Enter the choices", "all" if default == ["all"] else ",".join(default) if default else None)
-            
-            if choice.lower() == "all":
-                return [key for key, _ in options]
-            
-            if choice.lower() == "none":
-                return []
-            
-            try:
-                selected = []
-                for part in choice.split(","):
-                    part = part.strip()
-                    if part.isdigit() and 1 <= int(part) <= len(options):
-                        selected.append(options[int(part) - 1][0])
-                    else:
-                        for key, _ in options:
-                            if part.lower() == key.lower():
-                                selected.append(key)
-                                break
-                        else:
-                            Console.error(f"Invalid choice: {part}")
-                            break
-                else:
-                    return selected
-            except Exception:
-                Console.error("Invalid format. Please try again.")
+    def confirm(message, default="y"):
+        response = Console.input(f"{message} (y/n)", default)
+        return response.lower() in ("y", "yes")
 
 class Spinner:
-    def __init__(self, message: str = "Processing"):
+    def __init__(self, message="Processing"):
         self.message = message
         self.running = False
         self.spinner_thread = None
         self.frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.delay = 0.1
         
-    def spin(self) -> None:
+    def spin(self):
         i = 0
         while self.running:
             frame = self.frames[i % len(self.frames)]
-            sys.stdout.write(f"\r{Style.CYAN}{frame}{Style.RESET} {self.message}")
+            sys.stdout.write(f"\r{Style.apply(frame, Style.CYAN)} {self.message}")
             sys.stdout.flush()
             time.sleep(self.delay)
             i += 1
             
-    def start(self) -> None:
+    def start(self):
         self.running = True
         self.spinner_thread = threading.Thread(target=self.spin)
         self.spinner_thread.daemon = True
         self.spinner_thread.start()
         
-    def stop(self) -> None:
+    def stop(self):
         self.running = False
         if self.spinner_thread:
             self.spinner_thread.join()
@@ -294,17 +298,17 @@ class Spinner:
         sys.stdout.flush()
 
 class ProgressBar:
-    def __init__(self, total: int, prefix: str = "", size: int = 30):
+    def __init__(self, total, prefix="", size=30):
         self.total = total
         self.prefix = prefix
         self.size = size
         self.start_time = time.time()
         self.count = 0
 
-    def update(self, count: int = 1) -> None:
+    def update(self, count=1):
         self.count += count
         filled_length = int(self.size * self.count / self.total)
-        bar = f"{Style.GREEN}{'█' * filled_length}{Style.RESET}{Style.GRAY}{'░' * (self.size - filled_length)}{Style.RESET}"
+        bar = f"{Style.apply('█' * filled_length, Style.GREEN)}{Style.apply('░' * (self.size - filled_length), Style.GRAY)}"
         elapsed_time = time.time() - self.start_time
         percent = 100 * self.count / self.total
         
@@ -324,7 +328,7 @@ class ProgressBar:
             sys.stdout.write('\n')
 
 @contextmanager
-def spinner_context(message: str):
+def spinner_context(message):
     spinner = Spinner(message)
     spinner.start()
     try:
@@ -332,8 +336,8 @@ def spinner_context(message: str):
     finally:
         spinner.stop()
 
-def setup_colab_environment() -> str:
-    with spinner_context("Setting up Colab environment"):
+def setup_environment():
+    with spinner_context("Setting up environment"):
         try:
             project_dir = '/content/drive/MyDrive/chess_ai'
             
@@ -342,6 +346,7 @@ def setup_colab_environment() -> str:
                 os.makedirs(os.path.join(project_dir, 'data'), exist_ok=True)
                 os.makedirs(os.path.join(project_dir, 'models'), exist_ok=True)
                 os.makedirs(os.path.join(project_dir, 'logs'), exist_ok=True)
+                os.makedirs(os.path.join(project_dir, 'evaluation'), exist_ok=True)
                 
             os.chdir(project_dir)
             
@@ -377,20 +382,55 @@ def setup_colab_environment() -> str:
     Console.success(f"Environment ready at: {project_dir}")
     return project_dir
 
-def detect_completed_pipelines() -> Dict[str, bool]:
+def detect_completed_pipelines():
     completed = {}
     
     completed['data'] = os.path.exists('/content/drive/MyDrive/chess_ai/data/train_indices.npy')
     completed['supervised'] = os.path.exists('/content/drive/MyDrive/chess_ai/models/supervised_model.pth')
     completed['reinforcement'] = os.path.exists('/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth')
-    completed['hyperopt'] = os.path.exists('/content/drive/MyDrive/chess_ai/todo.json') # TODO
-    completed['eval'] = os.path.exists('/content/drive/MyDrive/chess_ai/evaluation/todo.json') # TODO
-    completed['benchmark'] = os.path.exists('/content/drive/MyDrive/chess_ai/benchmark/todo.txt') # TODO
+    completed['hyperopt'] = os.path.exists('/content/drive/MyDrive/chess_ai/hyperopt_results/best_trial.txt') 
+    completed['eval'] = os.path.exists('/content/drive/MyDrive/chess_ai/evaluation/evaluation_report.txt')
     
     return completed
 
-def check_and_install_dependencies(pipelines: List[str]) -> None:
-    Console.section("Checking Dependencies")
+def check_hardware():
+    hardware_info = {
+        "gpu": False,
+        "tpu": False,
+        "cpu_cores": os.cpu_count() or 1,
+        "ram_gb": None,
+        "drive_space_gb": None
+    }
+    
+    try:
+        try:
+            import torch
+            hardware_info["gpu"] = torch.cuda.is_available()
+            if hardware_info["gpu"]:
+                hardware_info["gpu_name"] = torch.cuda.get_device_name(0)
+                hardware_info["gpu_memory"] = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        except:
+            pass
+
+        try:
+            import torch_xla.core.xla_model as xm
+            hardware_info["tpu"] = True
+        except:
+            pass
+            
+        try:
+            import psutil
+            hardware_info["ram_gb"] = psutil.virtual_memory().total / (1024**3)
+            hardware_info["drive_space_gb"] = psutil.disk_usage('/content/drive').free / (1024**3) if os.path.exists('/content/drive') else None
+        except:
+            pass
+    except:
+        pass
+        
+    return hardware_info
+
+def check_dependencies(pipelines):
+    Console.header("Checking Dependencies")
     
     all_requirements = set()
     for pipeline in pipelines:
@@ -407,10 +447,8 @@ def check_and_install_dependencies(pipelines: List[str]) -> None:
     
     if missing_packages:
         Console.warning(f"Found {len(missing_packages)} missing dependencies: {', '.join(missing_packages)}")
-        choice = Console.input("Install missing dependencies now?", "y")
-        
-        if choice.lower() == 'y':
-            progress = ProgressBar(len(missing_packages), prefix=f"{Style.BOLD}Installing packages:{Style.RESET}", size=30)
+        if Console.confirm("Install missing dependencies now?"):
+            progress = ProgressBar(len(missing_packages), prefix=f"{Style.apply('Installing packages:', Style.BOLD)}", size=30)
             
             for i, package in enumerate(missing_packages):
                 try:
@@ -431,13 +469,12 @@ def check_and_install_dependencies(pipelines: List[str]) -> None:
         Console.success("All required dependencies are already installed")
 
 class Configuration:
-    def __init__(self, config_path: str, mode: str = "test"):
+    def __init__(self, config_path, mode="test"):
         self.path = config_path
         self.mode = mode
         self.data = self._load()
-        self.overrides = {}
     
-    def _load(self) -> Dict:
+    def _load(self):
         if not os.path.exists(self.path):
             Console.warning(f"Config file not found: {self.path}")
             return {}
@@ -445,10 +482,7 @@ class Configuration:
         with open(self.path, 'r') as f:
             return yaml.safe_load(f)
     
-    def get(self, key: str, default: Any = None) -> Any:
-        if key in self.overrides:
-            return self.overrides[key]
-            
+    def get(self, key, default=None):
         keys = key.split('.')
         
         if len(keys) > 1 and keys[0] in self.data:
@@ -464,7 +498,7 @@ class Configuration:
         
         return self._get_nested(self.data, keys, default)
     
-    def _get_nested(self, section: Dict, keys: List[str], default: Any) -> Any:
+    def _get_nested(self, section, keys, default):
         current = section
         for k in keys:
             if isinstance(current, dict) and k in current:
@@ -472,19 +506,15 @@ class Configuration:
             else:
                 return default
         return current
-        
-    def set_override(self, key: str, value: Any) -> None:
-        self.overrides[key] = value
 
-def load_configuration(config_path: str, mode: str) -> Configuration:
-    with spinner_context(f"Loading configuration ({mode} mode)"):
+def load_configuration(config_path, mode):
+    with spinner_context(f"Loading {mode} configuration"):
         config = Configuration(config_path, mode)
     
-    Console.success(f"Configuration loaded: {config_path}")
+    Console.success(f"Configuration loaded: {config_path} ({mode} mode)")
     return config
 
-def resolve_dependencies(selected_pipelines: List[str], completed: Dict[str, bool], 
-                                force_rerun_deps: bool = False) -> Tuple[List[str], List[str]]:
+def resolve_dependencies(selected_pipelines, completed):
     required = set(selected_pipelines)
     skipped_deps = []
     
@@ -493,7 +523,7 @@ def resolve_dependencies(selected_pipelines: List[str], completed: Dict[str, boo
         if pipeline in PIPELINES:
             for dependency in PIPELINES[pipeline].dependencies:
                 if dependency not in required:
-                    if not force_rerun_deps and completed.get(dependency, False):
+                    if completed.get(dependency, False):
                         skipped_deps.append(dependency)
                     else:
                         pending_deps.append(dependency)
@@ -503,7 +533,7 @@ def resolve_dependencies(selected_pipelines: List[str], completed: Dict[str, boo
         current_dep = pending_deps.pop(0)
         for sub_dep in PIPELINES[current_dep].dependencies:
             if sub_dep not in required:
-                if not force_rerun_deps and completed.get(sub_dep, False):
+                if completed.get(sub_dep, False):
                     skipped_deps.append(sub_dep)
                 else:
                     pending_deps.append(sub_dep)
@@ -512,134 +542,69 @@ def resolve_dependencies(selected_pipelines: List[str], completed: Dict[str, boo
     ordered = [p for p in PIPELINE_ORDER if p in required]
     return ordered, skipped_deps
 
-def select_pipelines() -> Tuple[List[str], bool]:
+def display_pipelines(pipelines):
+    console_width = 80
+    col_width = console_width // 2 - 4
+    
+    Console.header("Pipeline Status")
+    
     completed = detect_completed_pipelines()
     
-    Console.section("Pipeline Status")
-    for name in PIPELINE_ORDER:
-        status = f"{Style.SUCCESS}{Style.SYMBOL_CHECKED} Completed{Style.RESET}" if completed.get(name, False) else f"{Style.MUTED}{Style.SYMBOL_CIRCLE} Not run{Style.RESET}"
-        print(f"  {Style.BOLD}{name.ljust(14)}{Style.RESET} - {status}")
+    rows = []
+    for i in range(0, len(PIPELINE_ORDER), 2):
+        row = []
+        for j in range(2):
+            idx = i + j
+            if idx < len(PIPELINE_ORDER):
+                name = PIPELINE_ORDER[idx]
+                status_icon = Style.apply("✓", Style.SUCCESS, Style.BOLD) if completed.get(name, False) else Style.apply("○", Style.MUTED)
+                name_str = Style.apply(name, Style.BOLD)
+                desc = PIPELINES[name].description
+                row.append(f"{status_icon} {name_str}: {desc}")
+            else:
+                row.append("")
+        rows.append(row)
+    
+    for row in rows:
+        left = row[0].ljust(col_width)
+        right = row[1] if len(row) > 1 else ""
+        print(f"  {left}  {right}")
+    
     print()
-    
-    pipeline_options = []
-    for name, config in PIPELINES.items():
-        status_icon = f"{Style.SUCCESS}{Style.SYMBOL_CHECKED}{Style.RESET} " if completed.get(name, False) else ""
-        pipeline_options.append((name, f"{status_icon}{config.description}"))
-    
-    preset_options = [
-        ("all", "Run all pipelines (full training workflow)"),
-        ("training", "Run data, supervised, and reinforcement pipelines"),
-        ("evaluation", "Run data, eval, and benchmark pipelines"),
-        ("custom", "Select specific pipelines to run"),
-        ("continue", "Continue from where you left off (run incomplete pipelines)")
-    ]
-    
-    default_choice = "all"
-    if completed.get('data', False) and not completed.get('supervised', False):
-        default_choice = "training"
-    elif completed.get('supervised', False) and not completed.get('eval', False):
-        default_choice = "evaluation"
-    elif any(completed.values()) and not all(completed.values()):
-        default_choice = "continue"
-    
-    choice = Console.menu("Select pipeline workflow", preset_options, default_choice)
-    
-    selected = []
-    if choice == "all":
-        selected = list(PIPELINES.keys())
-    elif choice == "training":
-        selected = ["data", "supervised", "reinforcement"]
-    elif choice == "evaluation":
-        selected = ["data", "eval", "benchmark"]
-    elif choice == "continue":
-        selected = [name for name, is_completed in completed.items() if not is_completed]
-        if not selected:
-            Console.success("All pipelines have already been completed!")
-            selected = Console.multi_select("Select pipelines to re-run", pipeline_options)
-    elif choice == "custom":
-        selected = Console.multi_select("Select pipelines to run", pipeline_options)
-    
-    force_rerun_deps = False
-    has_dependencies = any(len(PIPELINES[p].dependencies) > 0 for p in selected if p in PIPELINES)
-    
-    if has_dependencies:
-        resolved, skipped = resolve_dependencies(selected, completed)
-        additional_deps = [dep for dep in resolved if dep not in selected]
-        
-        if additional_deps:
-            Console.section("Dependency Management")
-            print(f"{Style.INFO}Selected pipelines require these dependencies:{Style.RESET}")
-            for dep in additional_deps:
-                dep_status = f"{Style.SUCCESS}{Style.SYMBOL_CHECKED} Already completed{Style.RESET}" if completed.get(dep, False) else f"{Style.MUTED}{Style.SYMBOL_CIRCLE} Not yet run{Style.RESET}"
-                print(f"  {Style.CYAN}{Style.SYMBOL_BULLET}{Style.RESET} {dep} - {dep_status}")
-            
-            if any(completed.get(dep, False) for dep in additional_deps):
-                options = [
-                    ("skip", "Skip already completed dependencies (use existing outputs)"),
-                    ("rerun", "Re-run all dependencies (regenerate all data)")
-                ]
-                dep_choice = Console.menu("How would you like to handle dependencies?", options, "skip")
-                force_rerun_deps = dep_choice == "rerun"
-    
-    return selected, force_rerun_deps
 
-def show_advanced_pipeline_options(pipeline_name: str, config: Configuration) -> Dict:
-    Console.section(f"Configure {pipeline_name.upper()} Pipeline Options")
-    options = {}
+def show_execution_plan(pipelines, skipped):
+    Console.header("Execution Plan")
     
-    if pipeline_name == "data":
-        max_games = Console.input("Maximum games to process", str(config.get('data.max_games', 10000)))
-        min_elo = Console.input("Minimum player ELO rating", str(config.get('data.min_elo', 2000)))
-        try:
-            options['data.max_games'] = int(max_games)
-            options['data.min_elo'] = int(min_elo)
-        except ValueError:
-            Console.warning("Invalid numeric input, using default values")
-        
-    elif pipeline_name == "supervised":
-        epochs = Console.input("Training epochs", str(config.get('supervised.epochs', 10)))
-        batch = Console.input("Batch size", str(config.get('data.batch', 128)))
-        lr = Console.input("Learning rate", str(config.get('supervised.lr', 0.001)))
-        try:
-            options['supervised.epochs'] = int(epochs)
-            options['data.batch'] = int(batch)
-            options['supervised.lr'] = float(lr)
-        except ValueError:
-            Console.warning("Invalid numeric input, using default values")
-        
-    elif pipeline_name == "reinforcement":
-        iters = Console.input("Self-play iterations", str(config.get('reinforcement.iters', 10)))
-        games = Console.input("Games per iteration", str(config.get('reinforcement.games_per_iter', 100)))
-        sims = Console.input("MCTS simulations per move", str(config.get('reinforcement.sims_per_move', 100)))
-        try:
-            options['reinforcement.iters'] = int(iters)
-            options['reinforcement.games_per_iter'] = int(games)
-            options['reinforcement.sims_per_move'] = int(sims)
-        except ValueError:
-            Console.warning("Invalid numeric input, using default values")
-        
-    elif pipeline_name == "benchmark":
-        games = Console.input("Number of benchmark games", str(config.get('benchmark.games', 10)))
-        elo = Console.input("Stockfish ELO rating", str(config.get('benchmark.stockfish_elo', 1500)))
-        try:
-            options['benchmark.games'] = int(games)
-            options['benchmark.stockfish_elo'] = int(elo)
-        except ValueError:
-            Console.warning("Invalid numeric input, using default values")
+    flow = ""
+    for i, pipeline in enumerate(pipelines):
+        if i > 0:
+            flow += f" {Style.apply('→', Style.BLUE)} "
+        flow += Style.apply(pipeline, Style.CYAN, Style.BOLD)
     
-    return options
+    print(f"  {flow}")
+    
+    if skipped:
+        print(f"\n{Style.apply('Skipped dependencies:', Style.BOLD)}")
+        for dep in skipped:
+            print(f"  {Style.apply('↷', Style.MUTED)} {Style.apply(dep, Style.MUTED)} (using existing output)")
+    
+    print()
 
-def run_pipeline(pipeline_name: str, config: Configuration) -> PipelineResult:
-    Console.section(f"Running {pipeline_name.upper()} Pipeline")
-    print(f"{Style.CYAN}{Style.SYMBOL_GEAR}{Style.RESET} {PIPELINES[pipeline_name].description}")
+def run_pipeline(pipeline_name, config):
+    module_path = f"src.pipelines.{pipeline_name}"
     
     try:
-        pipeline_class = load_pipeline(pipeline_name)
+        with spinner_context(f"Loading pipeline module {pipeline_name}"):
+            module = importlib.import_module(module_path)
+            pipeline_class = getattr(module, PIPELINES[pipeline_name].class_name)
+        
+        Console.header(f"Running {pipeline_name.upper()} Pipeline")
+        print(f"{Style.apply('⚙', Style.CYAN)} {PIPELINES[pipeline_name].description}")
         
         start_time = time.time()
         pipeline = pipeline_class(config)
         
-        print(f"\n{Style.BOLD}{Style.SYMBOL_PLAY} Starting pipeline execution...{Style.RESET}")
+        print(f"\n{Style.apply('▶', Style.BOLD)} Starting pipeline execution...")
         success = pipeline.run()
         
         end_time = time.time()
@@ -664,197 +629,119 @@ def run_pipeline(pipeline_name: str, config: Configuration) -> PipelineResult:
             error=str(e)
         )
 
-def load_pipeline(name: str) -> Any:
-    module_path = f"src.pipelines.{name}"
-    
-    with spinner_context(f"Loading pipeline module: {name}"):
-        try:
-            module = importlib.import_module(module_path)
-            pipeline_class = getattr(module, PIPELINES[name].class_name)
-            return pipeline_class
-        except Exception as e:
-            Console.error(f"Failed to load pipeline {name}: {e}")
-            raise
-
-def show_execution_plan(pipelines: List[str], skipped: List[str], config_overrides: Dict[str, Dict] = None):
-    Console.section("Pipeline Execution Plan")
-    
-    print(f"{Style.BOLD}Execution order:{Style.RESET}")
-    
-    flow = ""
-    for i, pipeline in enumerate(pipelines):
-        if i > 0:
-            flow += f" {Style.BLUE}{Style.SYMBOL_ARROW}{Style.RESET} "
-        flow += f"{Style.CYAN}{pipeline}{Style.RESET}"
-    
-    print(f"  {flow}")
-    
-    if skipped:
-        print(f"\n{Style.BOLD}Skipped dependencies:{Style.RESET}")
-        for dep in skipped:
-            print(f"  {Style.MUTED}{Style.SYMBOL_SKIP} {dep} (using existing output){Style.RESET}")
-    
-    print(f"\n{Style.BOLD}Pipeline details:{Style.RESET}")
-    for i, pipeline in enumerate(pipelines, 1):
-        dependencies = PIPELINES[pipeline].dependencies
-        deps_str = f"{Style.MUTED}(depends on: {', '.join(dependencies)}){Style.RESET}" if dependencies else ""
-        
-        config_str = ""
-        if config_overrides and pipeline in config_overrides and config_overrides[pipeline]:
-            config_str = f" {Style.YELLOW}[custom config]{Style.RESET}"
-            
-        print(f"  {Style.CYAN}{i}.{Style.RESET} {Style.BOLD}{pipeline}{Style.RESET}{config_str} - "
-              f"{PIPELINES[pipeline].description} {deps_str}")
-        
-        if config_overrides and pipeline in config_overrides and config_overrides[pipeline]:
-            for key, value in config_overrides[pipeline].items():
-                print(f"     {Style.MUTED}- {key.split('.')[-1]}: {value}{Style.RESET}")
-
-def monitor_system_resources():
-    try:
-        import psutil
-        import GPUtil
-        
-        cpu_percent = psutil.cpu_percent(interval=1)
-        memory = psutil.virtual_memory()
-        memory_percent = memory.percent
-        
-        disk = psutil.disk_usage('/content/drive')
-        disk_percent = disk.percent
-        disk_free_gb = disk.free / (1024 ** 3)
-        
-        gpu_info = ""
-        try:
-            gpus = GPUtil.getGPUs()
-            if gpus:
-                gpu = gpus[0]
-                gpu_info = f" | GPU: {gpu.memoryUsed}MB/{gpu.memoryTotal}MB ({gpu.memoryUtil:.1%})"
-        except:
-            pass
-        
-        Console.section("System Resources")
-        print(f"CPU: {cpu_percent}% | Memory: {memory_percent}% | Disk: {disk_percent}% ({disk_free_gb:.1f}GB free){gpu_info}")
-        
-        if memory_percent > 90:
-            Console.warning("Memory usage is very high. Pipeline performance may be impacted.")
-        if disk_percent > 90:
-            Console.warning(f"Disk space is low. Only {disk_free_gb:.1f}GB free on Google Drive.")
-        if cpu_percent > 90:
-            Console.warning("CPU usage is very high. Pipeline processing may be slower.")
-    except:
-        pass
-
-def print_pipeline_summary(results: List[PipelineResult]) -> None:
-    Console.section("Pipeline Execution Summary")
+def print_summary(results):
+    Console.header("Execution Summary")
     
     total_time = sum(result.duration for result in results)
     success_count = sum(1 for result in results if result.succeeded)
     
     max_name_length = max(len(result.name) for result in results)
     
-    print(f"{Style.BOLD}{'Pipeline'.ljust(max_name_length + 2)}{'Status'.ljust(20)}{'Duration'.ljust(15)}{Style.RESET}")
-    print(f"{Style.CYAN}{'─' * (max_name_length + 35)}{Style.RESET}")
+    print(f"{Style.apply('Pipeline'.ljust(max_name_length + 2), Style.BOLD)}"
+          f"{Style.apply('Status'.ljust(20), Style.BOLD)}"
+          f"{Style.apply('Duration', Style.BOLD)}")
+    print(f"{Style.apply('━' * (max_name_length + 35), Style.CYAN)}")
     
     for result in results:
         name = result.name.ljust(max_name_length + 2)
         
         if result.status == PipelineStatus.SUCCESS:
-            status = f"{Style.SUCCESS}{Style.SYMBOL_SUCCESS} SUCCESS{Style.RESET}".ljust(20)
+            status = f"{Style.apply('✓ SUCCESS', Style.SUCCESS, Style.BOLD)}".ljust(20)
         else:
-            status = f"{Style.ERROR}{Style.SYMBOL_ERROR} FAILED{Style.RESET}".ljust(20)
+            status = f"{Style.apply('✗ FAILED', Style.ERROR, Style.BOLD)}".ljust(20)
             
-        duration = f"{result.duration:.2f}s".ljust(15)
-        print(f"{Style.BOLD}{name}{Style.RESET}{status}{duration}")
+        duration = f"{result.duration:.2f}s"
+        print(f"{Style.apply(name, Style.BOLD)}{status}{duration}")
     
-    print(f"{Style.CYAN}{'─' * (max_name_length + 35)}{Style.RESET}")
-    print(f"Total pipelines: {len(results)} | "
-          f"Successful: {Style.SUCCESS}{success_count}{Style.RESET} | "
-          f"Failed: {Style.ERROR}{len(results) - success_count}{Style.RESET}")
-    print(f"Total execution time: {Style.YELLOW}{total_time:.2f}s{Style.RESET}")
+    print(f"{Style.apply('━' * (max_name_length + 35), Style.CYAN)}")
+    print(f"Total: {len(results)} | "
+          f"Successful: {Style.apply(str(success_count), Style.SUCCESS, Style.BOLD)} | "
+          f"Failed: {Style.apply(str(len(results) - success_count), Style.ERROR, Style.BOLD)}")
+    print(f"Total execution time: {Style.apply(f'{total_time:.2f}s', Style.YELLOW, Style.BOLD)}")
     
     if success_count == len(results):
-        Console.success("All pipelines completed successfully!")
+        Console.success("\nAll pipelines completed successfully!")
     else:
         failed = [result.name for result in results if not result.succeeded]
-        Console.error(f"Some pipelines failed: {', '.join(failed)}")
+        Console.error(f"\nSome pipelines failed: {', '.join(failed)}")
         Console.info("Check logs for more details.")
 
-def select_mode() -> str:
-    mode_options = [
-        ("test", "Test mode - faster with smaller datasets, good for testing workflows"),
-        ("prod", "Production mode - full training with large datasets, longer runtime")
-    ]
-    
-    mode = Console.menu("Select running mode", mode_options, "test")
-    
-    if mode == "prod":
-        Console.warning("Production mode selected. This will use full datasets and longer training times.")
-        Console.info("Make sure there is enough available resources and time for completion.")
-    
-    return mode
-
-def main() -> int:
+def main():
     try:
-        project_dir = setup_colab_environment()
-        
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        Console.clear()
-        Console.header("CHESS AI PIPELINE MANAGER", f"Date: {now} | Environment: Google Colab")
+        Console.banner("CHESS AI PIPELINE MANAGER", f"Date: {now}")
         
-        Console.feature("Data preparation and processing")
-        Console.feature("Hyperparameter optimization")
-        Console.feature("Supervised learning from human games")
-        Console.feature("Reinforcement learning via self-play")
-        Console.feature("Model evaluation and benchmarking")
+        project_dir = setup_environment()
         
-        print()
-        monitor_system_resources()
+        hardware = check_hardware()
+        device_type = "TPU" if hardware["tpu"] else "GPU" if hardware["gpu"] else "CPU"
+        Console.info(f"Running on: {Style.apply(device_type, Style.BOLD, Style.YELLOW)}")
         
-        mode = select_mode()
+        if device_type == "GPU" and hardware.get("gpu_name"):
+            Console.info(f"GPU: {hardware['gpu_name']}")
+        
+        if hardware.get("drive_space_gb"):
+            if hardware["drive_space_gb"] < 5:
+                Console.warning(f"Low disk space: {hardware['drive_space_gb']:.1f}GB free")
+            else:
+                Console.info(f"Drive space: {hardware['drive_space_gb']:.1f}GB free")
+        
+        Console.step(1, "Select running mode")
+        mode_options = {
+            "test": {
+                "name": "Test Mode",
+                "description": "Faster with smaller datasets, good for testing",
+                "icon": "🔬"
+            },
+            "prod": {
+                "name": "Production Mode",
+                "description": "Full training with large datasets, longer runtime",
+                "icon": "🚀"
+            }
+        }
+        mode = Console.select(mode_options, "Select running mode", "test")
+        
+        if mode == "prod":
+            Console.warning("Production mode will use full datasets and longer training times.")
+            Console.info("Make sure you have enough resources and time for completion.")
         
         config_path = os.path.join(project_dir, 'config.yml')
         config = load_configuration(config_path, mode)
         
-        selected_pipelines, force_rerun = select_pipelines() 
+        Console.step(2, "Select workflow")
+        workflow_id = Console.select(WORKFLOWS, "Select workflow", "full")
+        selected_pipelines = WORKFLOWS[workflow_id]["pipelines"]
         
-        if not selected_pipelines:
-            Console.error("No pipelines selected. Exiting.")
-            return 0
+        Console.info(f"Selected: {Style.apply(WORKFLOWS[workflow_id]['name'], Style.BOLD)}")
+        
+        display_pipelines(selected_pipelines)
         
         completed = detect_completed_pipelines()
-        ordered_pipelines, skipped_deps = resolve_dependencies(
-            selected_pipelines, completed, force_rerun
-        )
+        ordered_pipelines, skipped_deps = resolve_dependencies(selected_pipelines, completed)
         
-        check_and_install_dependencies(ordered_pipelines)
+        check_dependencies(ordered_pipelines)
         
-        config_overrides = {}
-        customize = Console.input("Would you like to customize pipeline parameters?", "n")
-        if customize.lower() == 'y':
-            for pipeline in ordered_pipelines:
-                customized = show_advanced_pipeline_options(pipeline, config)
-                if customized:
-                    config_overrides[pipeline] = customized
-                    for key, value in customized.items():
-                        config.set_override(key, value)
+        show_execution_plan(ordered_pipelines, skipped_deps)
         
-        show_execution_plan(ordered_pipelines, skipped_deps, config_overrides)
+        Console.step(3, "Execute pipelines")
         
-        confirm = Console.input("Proceed with execution?", "y")
-        if confirm.lower() != 'y':
+        if not Console.confirm("Proceed with execution?"):
             Console.warning("Operation cancelled by user.")
             return 0
         
         results = []
-        progress = ProgressBar(len(ordered_pipelines), prefix=f"{Style.BOLD}Overall Progress:{Style.RESET}", size=30)
+        progress = ProgressBar(len(ordered_pipelines), 
+                            prefix=f"{Style.apply('Overall Progress:', Style.BOLD)}", 
+                            size=30)
         
         execution_start = time.time()
         
         for i, pipeline in enumerate(ordered_pipelines, 1):
             pipeline_start = time.time()
-            print(f"\n{Style.CYAN}{'═' * 60}{Style.RESET}")
-            print(f"{Style.BOLD}Pipeline {i}/{len(ordered_pipelines)}: {Style.CYAN}{pipeline.upper()}{Style.RESET}")
-            print(f"{Style.CYAN}{'═' * 60}{Style.RESET}")
+            print(f"\n{Style.apply('═' * 60, Style.CYAN)}")
+            print(f"{Style.apply(f'Pipeline {i}/{len(ordered_pipelines)}:', Style.BOLD)} "
+                  f"{Style.apply(pipeline.upper(), Style.CYAN, Style.BOLD)}")
+            print(f"{Style.apply('═' * 60, Style.CYAN)}")
             
             result = run_pipeline(pipeline, config)
             results.append(result)
@@ -865,32 +752,26 @@ def main() -> int:
             pipeline_time = time.time() - pipeline_start
             elapsed_total = time.time() - execution_start
             
-            print(f"\n{status_style}{status_symbol} {pipeline} completed in {pipeline_time:.2f}s{Style.RESET}")
-            print(f"{Style.MUTED}Total elapsed time: {elapsed_total:.2f}s{Style.RESET}")
+            print(f"\n{Style.apply(status_symbol, status_style, Style.BOLD)} "
+                  f"{pipeline} completed in {pipeline_time:.2f}s")
+            print(f"{Style.apply(f'Total elapsed time: {elapsed_total:.2f}s', Style.MUTED)}")
             
             if not result.succeeded:
                 dependents = [p for p in ordered_pipelines[i:] 
                              if pipeline in PIPELINES[p].dependencies]
                 if dependents:
                     Console.warning(f"This failure may affect later pipelines: {', '.join(dependents)}")
-                    choice = Console.input("Continue with execution?", "y")
-                    if choice.lower() != 'y':
+                    if not Console.confirm("Continue with execution?"):
                         Console.error("Execution aborted by user after pipeline failure.")
                         break
             
             progress.update(1)
         
-        print_pipeline_summary(results)
+        print_summary(results)
         
         if all(result.succeeded for result in results):
-            Console.success("\nAll pipelines executed successfully!")
-            Console.info("The Chess AI model is now ready for use.")
-            
-            if "benchmark" in [r.name for r in results if r.succeeded]:
-                Console.info("Check the benchmark results in the Google Drive folder.")
-        else:
-            failed = [r.name for r in results if not r.succeeded]
-            Console.info("You can re-run failed pipelines later with: 'custom' selection option.")
+            if "eval" in [r.name for r in results if r.succeeded]:
+                Console.info("\nCheck the evaluation results in the Google Drive folder: /content/drive/MyDrive/chess_ai/evaluation")
         
         return 0 if all(result.succeeded for result in results) else 1
         

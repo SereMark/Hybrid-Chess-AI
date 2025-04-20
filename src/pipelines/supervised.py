@@ -48,6 +48,7 @@ class SupervisedPipeline:
         self.grad_clip = config.get('supervised.grad_clip', 1.0)
         self.early_stop = config.get('supervised.early_stop', False)
         self.patience = config.get('supervised.patience', 5)
+        self.min_accuracy_threshold = config.get('supervised.min_accuracy_threshold', 0.1)
         
         self.optimizer = get_optimizer(
             self.model, self.optimizer_type, self.lr, self.weight_decay, self.momentum
@@ -111,6 +112,7 @@ class SupervisedPipeline:
                         "accum_steps": self.accum_steps,
                         "device": self.device_type,
                         "amp": self.use_amp,
+                        "min_accuracy_threshold": self.min_accuracy_threshold,
                     }
                 )
                 wandb.watch(self.model, log="all", log_freq=100)
@@ -164,6 +166,7 @@ class SupervisedPipeline:
         
         start_time = time.time()
         best_metric = float('inf')
+        final_accuracy = 0.0
         
         try:
             for epoch in range(self.start_epoch, self.epochs + 1):
@@ -191,6 +194,7 @@ class SupervisedPipeline:
                 )
                 
                 epoch_time = time.time() - epoch_start
+                final_accuracy = val_metrics["accuracy"]
                 
                 combined_loss = (
                     self.policy_weight * val_metrics["policy_loss"] + 
@@ -254,12 +258,27 @@ class SupervisedPipeline:
             print(f"Training completed in {training_time:.2f}s")
             print(f"Best validation loss: {best_metric:.4f}")
             
+            passed_sanity_check = final_accuracy >= self.min_accuracy_threshold
+            sanity_check_status = "PASSED" if passed_sanity_check else "FAILED"
+            print(f"\n{'='*50}")
+            print(f"SANITY CHECK {sanity_check_status}")
+            print(f"Final validation accuracy: {final_accuracy:.4f}")
+            print(f"Minimum required accuracy: {self.min_accuracy_threshold:.4f}")
+            print(f"{'='*50}")
+            
             if wandb.run is not None:
                 wandb.run.summary.update({
                     "best_loss": best_metric,
+                    "final_accuracy": final_accuracy,
+                    "sanity_check_passed": passed_sanity_check,
                     "total_time": training_time
                 })
                 wandb.finish()
+            
+            if not passed_sanity_check:
+                print("Supervised model failed sanity check! Accuracy is below threshold.")
+                print("Recommend reviewing hyperparameters before proceeding to reinforcement learning.")
+                return False
             
             return True
             
