@@ -1,7 +1,6 @@
 import os
 import time
 import torch
-from src.utils.tpu import get_tpu
 
 class Checkpoint:
     def __init__(self, dir_path, progress_type, interval):
@@ -54,6 +53,7 @@ class Checkpoint:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             torch.save(data, path)
             print(f"Checkpoint saved to {path}")
+            return path
         else:
             timestamp = time.strftime('%Y%m%d_%H%M%S')
             tag_str = f"_{tag}" if tag else ""
@@ -63,11 +63,9 @@ class Checkpoint:
             print(f"Checkpoint saved to {out_file}")
             return out_file
 
-    def load(self, path, device, model, optimizer, scheduler):
-        tpu = get_tpu()
-        
+    def load(self, path, device, model, optimizer=None, scheduler=None):
         try:
-            checkpoint = tpu.load(path, map_location='cpu')
+            checkpoint = torch.load(path, map_location=device)
             
             if 'model' in checkpoint:
                 model.load_state_dict(checkpoint['model'], strict=False)

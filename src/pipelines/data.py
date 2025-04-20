@@ -8,10 +8,9 @@ import numpy as np
 import concurrent.futures
 from tqdm.auto import tqdm
 from collections import defaultdict
-from src.utils.chess import BoardHistory
 
 from src.utils.config import Config
-from src.utils.chess import board_to_input, get_move_map
+from src.utils.chess import BoardHistory, board_to_input, get_move_map
 
 def create_position_dict():
     return {"win": 0, "draw": 0, "loss": 0, "eco": "", "name": ""}
@@ -33,10 +32,6 @@ class DataPipeline:
         self.augment_flip = True
         
         self.positions = defaultdict(create_positions_dict)
-        self.game_counter = 0
-        self.batch_inputs = []
-        self.batch_policies = []
-        self.batch_values = []
         self.move_map = get_move_map()
         self.output_dir = '/content/drive/MyDrive/chess_ai/data'
         os.makedirs(self.output_dir, exist_ok=True)
@@ -79,6 +74,7 @@ class DataPipeline:
             print(f"Error checking PGN file: {e}")
             
         os.makedirs(self.output_dir, exist_ok=True)
+        return True
     
     def process_game(self, game):
         if "Variant" in game.headers or game.headers.get("WhiteTitle") == "BOT" or game.headers.get("BlackTitle") == "BOT":

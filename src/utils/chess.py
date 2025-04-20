@@ -26,7 +26,7 @@ class H5Dataset(Dataset):
         )
     
     def __del__(self):
-        if self.file:
+        if self.file is not None:
             self.file.close()
 
 class MoveMap:
@@ -71,7 +71,7 @@ def calculate_phase(board):
     piece_count = len(board.piece_map())
     if piece_count >= 28:
         return 0
-    elif 28 > piece_count >= 14:
+    elif piece_count >= 14:
         return 1
     else:
         return 2

@@ -13,7 +13,6 @@ from sklearn import metrics
 from torch.utils.data import DataLoader
 
 from src.utils.config import Config
-from src.utils.tpu import get_tpu
 from src.utils.train import set_seed, get_device
 from src.utils.chess import H5Dataset, get_move_count, BoardHistory, board_to_input, get_move_map
 from src.model import ChessModel
@@ -29,7 +28,6 @@ class EvalPipeline:
         self.device = self.device_info["device"]
         self.device_type = self.device_info["type"]
         
-        self.use_tpu = self.device_type == "tpu"
         print(f"Using device: {self.device_type}")
         
         self.sl_model_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
@@ -123,21 +121,20 @@ class EvalPipeline:
         try:
             print(f"Loading {model_type} model from {model_path}...")
             ch = self.config.get('model.channels', 64)
+            blocks = self.config.get('model.blocks', 4)
+            use_attention = self.config.get('model.attention', True)
             
             model = ChessModel(
                 moves=get_move_count(),
                 ch=ch,
-                use_tpu=self.use_tpu
+                blocks=blocks,
+                use_attn=use_attention
             ).to(self.device)
             
             try:
-                if self.use_tpu:
-                    tpu = get_tpu()
-                    checkpoint = tpu.load(model_path)
-                else:
-                    checkpoint = torch.load(model_path, map_location=self.device)
-            except Exception as e:
-                print(f"TPU/GPU loading failed: {e}, falling back to CPU loading")
+                checkpoint = torch.load(model_path, map_location=self.device)
+            except Exception:
+                print("GPU loading failed, falling back to CPU loading")
                 checkpoint = torch.load(model_path, map_location='cpu')
             
             if isinstance(checkpoint, dict) and 'model' in checkpoint:
@@ -171,7 +168,7 @@ class EvalPipeline:
             
             batch = self.config.get('data.batch', 128)
             workers = self.config.get('hardware.workers', 2)
-            pin_memory = self.config.get('hardware.pin_memory', True) and not self.use_tpu
+            pin_memory = self.config.get('hardware.pin_memory', True)
             prefetch = self.config.get('hardware.prefetch', 2)
             
             dataloader = DataLoader(
@@ -197,15 +194,10 @@ class EvalPipeline:
         total_batches = len(dataloader)
         print(f"Running inference on {total_batches} batches for {model_type} model...")
         
-        if self.use_tpu:
-            tpu = get_tpu()
-            dataloader = tpu.wrap_loader(dataloader)
-        
         with torch.no_grad():
             for batch_idx, (inputs, targets, values) in enumerate(tqdm(dataloader)):
-                if not self.use_tpu:
-                    inputs = inputs.to(self.device, non_blocking=True)
-                    targets = targets.to(self.device, non_blocking=True)
+                inputs = inputs.to(self.device, non_blocking=True)
+                targets = targets.to(self.device, non_blocking=True)
                 
                 outputs = model(inputs)
                 policy_output = outputs[0]
@@ -229,7 +221,8 @@ class EvalPipeline:
         predictions_array = np.array(predictions)
         actuals_array = np.array(actuals)
         
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         
         return predictions_array, actuals_array, accuracies, logits_array
     
@@ -462,10 +455,9 @@ class EvalPipeline:
             traceback.print_exc()
     
     class ChessBot:
-        def __init__(self, model, device, use_tpu=False, use_mcts=True, use_book=True, name="ChessAI"):
+        def __init__(self, model, device, use_mcts=True, use_book=True, name="ChessAI"):
             self.model = model
             self.device = device
-            self.use_tpu = use_tpu
             self.name = name
             self.use_mcts = use_mcts
             self.use_book = use_book
@@ -495,7 +487,7 @@ class EvalPipeline:
             self.board_history.add_board(board.copy())
         
         def get_move(self, board, book):
-            if len(self.board_history) == 0:
+            if not self.board_history:
                 self.reset_history(board)
             
             try:
@@ -676,7 +668,6 @@ class EvalPipeline:
         sl_bot = self.ChessBot(
             self.sl_model,
             self.device,
-            use_tpu=self.use_tpu,
             use_mcts=self.mcts,
             use_book=self.opening_book,
             name="SupervisedAI"
@@ -685,7 +676,6 @@ class EvalPipeline:
         rl_bot = self.ChessBot(
             self.rl_model,
             self.device,
-            use_tpu=self.use_tpu,
             use_mcts=self.mcts,
             use_book=self.opening_book,
             name="ReinforcementAI"
@@ -830,7 +820,6 @@ class EvalPipeline:
         model_bot = self.ChessBot(
             model,
             self.device,
-            use_tpu=self.use_tpu,
             use_mcts=self.mcts,
             use_book=self.opening_book,
             name=f"{model_type}AI"

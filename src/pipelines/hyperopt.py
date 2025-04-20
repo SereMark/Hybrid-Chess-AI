@@ -112,6 +112,8 @@ class HyperoptPipeline:
             momentum = 0.0
         
         channels = trial.suggest_categorical("channels", [32, 48, 64, 96])
+        blocks = trial.suggest_int("blocks", 1, 8)
+        use_attention = trial.suggest_categorical("use_attention", [True, False])
         
         trial_start = time.time()
         
@@ -122,7 +124,6 @@ class HyperoptPipeline:
             device_info = get_device()
             device = device_info["device"]
             device_type = device_info["type"]
-            use_tpu = device_type == "tpu"
             
             train_indices = np.load(self.train_idx)
             val_indices = np.load(self.val_idx)
@@ -160,7 +161,8 @@ class HyperoptPipeline:
             model = ChessModel(
                 moves=get_move_count(),
                 ch=channels,
-                use_tpu=use_tpu
+                blocks=blocks,
+                use_attn=use_attention
             ).to(device)
             
             optimizer = get_optimizer(
@@ -287,6 +289,8 @@ class HyperoptPipeline:
             config_data['supervised']['prod']['policy_weight'] = best_params.get('policy_weight', config_data['supervised']['prod'].get('policy_weight', 1.0))
             config_data['supervised']['prod']['value_weight'] = best_params.get('value_weight', config_data['supervised']['prod'].get('value_weight', 1.0))
             config_data['model']['prod']['channels'] = best_params.get('channels', config_data['model']['prod'].get('channels', 64))
+            config_data['model']['prod']['blocks'] = best_params.get('blocks', config_data['model']['prod'].get('blocks', 4))
+            config_data['model']['prod']['attention'] = best_params.get('use_attention', config_data['model']['prod'].get('attention', True))
             
             if 'momentum' in best_params:
                 config_data['supervised']['prod']['momentum'] = best_params['momentum']
@@ -316,7 +320,7 @@ class HyperoptPipeline:
                 trials_table = wandb.Table(columns=[
                     "trial", "value", "lr", "weight_decay", "batch_size",
                     "optimizer", "scheduler", "epochs", "policy_weight", "value_weight",
-                    "grad_clip", "channels", "time"
+                    "grad_clip", "channels", "blocks", "attention", "time"
                 ])
             
             try:
@@ -396,6 +400,8 @@ class HyperoptPipeline:
                             trial.params.get("value_weight", None),
                             trial.params.get("grad_clip", None),
                             trial.params.get("channels", None),
+                            trial.params.get("blocks", None),
+                            trial.params.get("use_attention", None),
                             trial.user_attrs.get("time", None)
                         ]
                         trials_table.add_data(*row)

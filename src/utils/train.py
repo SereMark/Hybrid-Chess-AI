@@ -32,7 +32,8 @@ def get_scheduler(optimizer, type_name, total_steps):
     schedulers = {
         'cosine': lambda: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
             optimizer, T_0=10, T_mult=2),
-        'step': lambda: torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1),
+        'step': lambda: torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=30, gamma=0.1),
         'linear': lambda: torch.optim.lr_scheduler.LinearLR(
             optimizer, start_factor=0.1, total_iters=max(total_steps // 10, 1)),
         'onecycle': lambda: torch.optim.lr_scheduler.OneCycleLR(
@@ -45,14 +46,8 @@ def get_scheduler(optimizer, type_name, total_steps):
     return schedulers[type_name.lower()]()
 
 def get_device():
-    try:
-        import torch_xla.core.xla_model as xm
-        import torch_xla.distributed.parallel_loader as pl
-        device = xm.xla_device()
-        return {"type": "tpu", "device": device, "xm": xm, "pl": pl}
-    except ImportError:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        return {"type": "gpu" if torch.cuda.is_available() else "cpu", "device": device}
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return {"type": "gpu" if torch.cuda.is_available() else "cpu", "device": device}
 
 def calc_loss(output, targets, value_targets, policy_weight, value_weight):
     p_pred, v_pred = output
@@ -94,8 +89,6 @@ def train_step(model, inputs, targets, value_targets, optimizer, device_info,
         if use_amp:
             scaler.step(optimizer)
             scaler.update()
-        elif device_type == "tpu":
-            device_info["xm"].optimizer_step(optimizer)
         else:
             optimizer.step()
             
@@ -124,14 +117,10 @@ def train_epoch(model, dataloader, device_info, optimizer, policy_weight, value_
     
     scaler = GradScaler(enabled=(device_type == "gpu"))
     
-    if device_type == "tpu":
-        dataloader = device_info["pl"].MpDeviceLoader(dataloader, device)
-    
     for idx, (inputs, targets, value_targets) in enumerate(dataloader):
-        if device_type != "tpu":
-            inputs = inputs.to(device, non_blocking=True)
-            targets = targets.to(device, non_blocking=True)
-            value_targets = value_targets.to(device, non_blocking=True).float()
+        inputs = inputs.to(device, non_blocking=True)
+        targets = targets.to(device, non_blocking=True)
+        value_targets = value_targets.to(device, non_blocking=True).float()
         
         step_result = train_step(
             model, inputs, targets, value_targets, optimizer, device_info,
@@ -176,15 +165,11 @@ def validate(model, dataloader, device_info):
     correct = 0
     total = 0
     
-    if device_type == "tpu":
-        dataloader = device_info["pl"].MpDeviceLoader(dataloader, device)
-    
     with torch.no_grad():
         for inputs, targets, value_targets in dataloader:
-            if device_type != "tpu":
-                inputs = inputs.to(device, non_blocking=True)
-                targets = targets.to(device, non_blocking=True)
-                value_targets = value_targets.to(device, non_blocking=True).float()
+            inputs = inputs.to(device, non_blocking=True)
+            targets = targets.to(device, non_blocking=True)
+            value_targets = value_targets.to(device, non_blocking=True).float()
             
             with autocast(device_type='cuda' if device_type == "gpu" else 'cpu', 
                          dtype=torch.float16, enabled=(device_type == "gpu")):

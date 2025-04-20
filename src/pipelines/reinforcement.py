@@ -11,7 +11,6 @@ from concurrent.futures import ProcessPoolExecutor
 
 from src.model import ChessModel
 from src.utils.mcts import MCTS
-from src.utils.tpu import get_tpu
 from src.utils.config import Config
 from src.utils.chess import BoardHistory
 from src.utils.checkpoint import Checkpoint
@@ -23,14 +22,7 @@ class SelfPlay:
     def run_games(model_state, device_type, sims, c_puct, temp, games, seed):
         set_seed(seed)
         
-        if device_type == "tpu":
-            try:
-                import torch_xla.core.xla_model as xm
-                device = xm.xla_device()
-            except ImportError:
-                device = torch.device("cpu")
-        else:
-            device = torch.device(device_type)
+        device = torch.device(device_type)
         
         model = ChessModel(get_move_count())
         
@@ -168,14 +160,17 @@ class ReinforcementPipeline:
         self.device = self.device_info["device"]
         self.device_type = self.device_info["type"]
         
-        self.use_tpu = self.device_type == "tpu"
         print(f"Using device: {self.device_type}")
         
-        ch = config.get('model.channels', 64)
+        channels = config.get('model.channels', 64)
+        blocks = config.get('model.blocks', 4)
+        use_attention = config.get('model.attention', True)
+        
         self.model = ChessModel(
             moves=get_move_count(), 
-            ch=ch,
-            use_tpu=self.use_tpu
+            ch=channels,
+            blocks=blocks,
+            use_attn=use_attention
         ).to(self.device)
         
         self.iters = config.get('reinforcement.iters', 10)
@@ -225,8 +220,6 @@ class ReinforcementPipeline:
     def setup(self):
         print("Setting up reinforcement learning pipeline...")
         
-        supervised_model_path = os.path.join('/content/drive/MyDrive/chess_ai/models', 'supervised_model.pth')
-        
         try:
             local_model_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
             os.makedirs(os.path.dirname(local_model_path), exist_ok=True)
@@ -241,8 +234,7 @@ class ReinforcementPipeline:
             
         if self.model_path and os.path.exists(self.model_path):
             try:
-                tpu = get_tpu()
-                checkpoint = tpu.load(self.model_path)
+                checkpoint = torch.load(self.model_path, map_location=self.device)
                 
                 if isinstance(checkpoint, dict):
                     if 'model' in checkpoint:
@@ -294,6 +286,9 @@ class ReinforcementPipeline:
                         "batch": self.batch,
                         "optimizer": self.optimizer_type,
                         "lr": self.lr,
+                        "model_channels": self.config.get('model.channels'),
+                        "model_blocks": self.config.get('model.blocks'),
+                        "model_attention": self.config.get('model.attention'),
                         "device": self.device_type,
                         "amp": self.use_amp,
                     }
@@ -301,9 +296,13 @@ class ReinforcementPipeline:
                 wandb.watch(self.model, log="all", log_freq=100)
             except Exception as e:
                 print(f"Error initializing wandb: {e}")
+        
+        return True
     
     def run(self):
-        self.setup()
+        if not self.setup():
+            return False
+        
         start_time = time.time()
         
         games_dir = os.path.join('/content/drive/MyDrive/chess_ai/data/games/self-play')
@@ -336,7 +335,7 @@ class ReinforcementPipeline:
                         
                     tasks.append((
                         model_state,
-                        self.device_type,
+                        "cuda" if torch.cuda.is_available() else "cpu",
                         self.sims_per_move,
                         self.c_puct,
                         self.temp,
@@ -404,7 +403,7 @@ class ReinforcementPipeline:
                     dataset = TensorDataset(input_tensor, policy_tensor, value_tensor)
                     
                     workers = self.config.get('hardware.workers', 2)
-                    pin_memory = self.config.get('hardware.pin_memory', True) and not self.use_tpu
+                    pin_memory = self.config.get('hardware.pin_memory', True)
                     prefetch = self.config.get('hardware.prefetch', 2)
                     
                     dataloader = DataLoader(

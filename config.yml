@@ -7,13 +7,11 @@ wandb:
   enabled: true
 
 hardware:
-  tpu: false
   workers: 2
   pin_memory: true
   prefetch: 2
   mixed_precision: true
   prod:
-    tpu: true
     workers: 8
     pin_memory: true
     prefetch: 4
@@ -24,8 +22,8 @@ model:
   blocks: 2
   attention: false
   prod:
-    channels: 128
-    blocks: 12
+    channels: 64
+    blocks: 8
     attention: true
 
 data:
@@ -39,12 +37,7 @@ data:
   min_elo: 1500
   max_elo: 3500
   prod:
-    batch: 1024
-    dataset: data/dataset.h5
-    train_idx: data/train_indices.npy
-    val_idx: data/val_indices.npy
-    test_idx: data/test_indices.npy
-    raw_pgn: data/lichess_db_standard_rated_2025-03.pgn
+    batch: 2048
     max_games: 1000000
     min_elo: 2200
 
@@ -66,14 +59,14 @@ supervised:
   momentum: 0.9
   early_stop: true
   patience: 2
-  min_accuracy_threshold: 0.05
+  min_accuracy_threshold: 0.001
   prod:
-    epochs: 100
-    lr: 0.0001
+    epochs: 120
+    lr: 0.0002
     weight_decay: 0.00005
     optimizer: adamw
     scheduler: onecycle
-    accum_steps: 8
+    accum_steps: 4
     policy_weight: 1.0
     value_weight: 1.0
     grad_clip: 1.0
@@ -91,10 +84,10 @@ reinforcement:
   temp: 0.5
   threads: 2
   prod:
-    iters: 50
-    games_per_iter: 2000
-    sims_per_move: 1600
-    epochs_per_iter: 5
+    iters: 75
+    games_per_iter: 2500
+    sims_per_move: 1200
+    epochs_per_iter: 8
     c_puct: 1.0
     temp: 0.2
     threads: 32
@@ -119,10 +112,6 @@ benchmark:
   stockfish_depth: null
   prod:
     games: 500
-    mcts: true
-    opening_book: true
-    switch_colors: true
-    stockfish_path: engines/stockfish-ubuntu-x86-64-avx2
     stockfish_elo: 2500
     stockfish_time: 1.0
     stockfish_depth: 15
@@ -143,8 +132,8 @@ hyperopt:
     jobs: 8
     lr_range: [0.000001, 0.01]
     wd_range: [0.0000001, 0.001]
-    batch_sizes: [64, 128, 256, 512, 1024, 2048]
-    epochs_range: [20, 150]
+    batch_sizes: [128, 256, 512, 1024, 2048, 4096]
+    epochs_range: [30, 200]
     optimizers: ["adam", "adamw", "sgd", "rmsprop"]
     schedulers: ["linear", "step", "cosine", "onecycle"]
 

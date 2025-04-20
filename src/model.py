@@ -3,18 +3,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class DSConv(nn.Module):
-    def __init__(self, in_ch, out_ch, k=3):
+    def __init__(self, in_ch, out_ch, k=3, with_relu=True):
         super().__init__()
         self.depth = nn.Conv2d(in_ch, in_ch, kernel_size=k, padding=k//2, groups=in_ch, bias=False)
         self.point = nn.Conv2d(in_ch, out_ch, kernel_size=1, bias=False)
         self.bn = nn.BatchNorm2d(out_ch)
+        self.with_relu = with_relu
         self.relu = nn.ReLU(inplace=True)
         
     def forward(self, x):
         x = self.depth(x)
         x = self.point(x)
         x = self.bn(x)
-        return self.relu(x)
+        return self.relu(x) if self.with_relu else x
 
 class Attention(nn.Module):
     def __init__(self, ch):
@@ -40,22 +41,20 @@ class Attention(nn.Module):
 class ResBlock(nn.Module):
     def __init__(self, ch, use_attn=True):
         super().__init__()
-        self.conv1 = DSConv(ch, ch)
-        self.bn1 = nn.BatchNorm2d(ch)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = DSConv(ch, ch)
-        self.bn2 = nn.BatchNorm2d(ch)
+        self.conv1 = DSConv(ch, ch, with_relu=True)
+        self.conv2 = DSConv(ch, ch, with_relu=False)
         self.attn = Attention(ch) if use_attn else nn.Identity()
+        self.relu = nn.ReLU(inplace=True)
         
     def forward(self, x):
         identity = x
-        out = self.relu(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
+        out = self.conv1(x)
+        out = self.conv2(out)
         out = self.attn(out + identity)
         return self.relu(out)
 
 class ChessModel(nn.Module):
-    def __init__(self, moves, ch=64, use_tpu=False):
+    def __init__(self, moves, ch=64, blocks=4, use_attn=True):
         super().__init__()
         self.input = nn.Sequential(
             nn.Conv2d(23 * 8, ch, kernel_size=3, stride=1, padding=1, bias=False),
@@ -63,14 +62,9 @@ class ChessModel(nn.Module):
             nn.ReLU(inplace=True)
         )
         
-        self.blocks = nn.Sequential(
-            ResBlock(ch, not use_tpu),
-            ResBlock(ch, not use_tpu),
-            ResBlock(ch, not use_tpu),
-            ResBlock(ch, not use_tpu)
-        )
+        self.blocks = nn.Sequential(*[ResBlock(ch, use_attn) for _ in range(blocks)])
         
-        self.policy = nn.Sequential(
+        self.policy_head = nn.Sequential(
             nn.Conv2d(ch, 32, kernel_size=1, bias=False),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
@@ -78,7 +72,7 @@ class ChessModel(nn.Module):
             nn.Linear(32 * 8 * 8, moves)
         )
         
-        self.value = nn.Sequential(
+        self.value_head = nn.Sequential(
             nn.Conv2d(ch, 32, kernel_size=1, bias=False),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
@@ -106,6 +100,6 @@ class ChessModel(nn.Module):
     def forward(self, x):
         x = self.input(x)
         x = self.blocks(x)
-        policy = self.policy(x)
-        value = self.value(x)
+        policy = self.policy_head(x)
+        value = self.value_head(x)
         return policy, value

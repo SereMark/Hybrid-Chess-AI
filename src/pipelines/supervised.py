@@ -25,14 +25,17 @@ class SupervisedPipeline:
         self.device = self.device_info["device"]
         self.device_type = self.device_info["type"]
         
-        self.use_tpu = self.device_type == "tpu"
         print(f"Using device: {self.device_type}")
         
-        ch = config.get('model.channels', 64)
+        channels = config.get('model.channels', 64)
+        blocks = config.get('model.blocks', 4)
+        use_attention = config.get('model.attention', True)
+        
         self.model = ChessModel(
             moves=get_move_count(), 
-            ch=ch,
-            use_tpu=self.use_tpu
+            ch=channels,
+            blocks=blocks,
+            use_attn=use_attention
         ).to(self.device)
         
         self.epochs = config.get('supervised.epochs', 10)
@@ -109,6 +112,8 @@ class SupervisedPipeline:
                         "optimizer": self.optimizer_type,
                         "scheduler": self.scheduler_type,
                         "model_ch": self.config.get('model.channels'),
+                        "model_blocks": self.config.get('model.blocks'),
+                        "model_attention": self.config.get('model.attention'),
                         "accum_steps": self.accum_steps,
                         "device": self.device_type,
                         "amp": self.use_amp,
@@ -118,6 +123,8 @@ class SupervisedPipeline:
                 wandb.watch(self.model, log="all", log_freq=100)
             except Exception as e:
                 print(f"Error initializing wandb: {e}")
+                
+        return True
     
     def run(self):
         self.setup()
@@ -127,7 +134,7 @@ class SupervisedPipeline:
             val_idx = np.load(self.val_idx)
             
             workers = self.config.get('hardware.workers', 2)
-            pin_memory = self.config.get('hardware.pin_memory', True) and not self.use_tpu
+            pin_memory = self.config.get('hardware.pin_memory', True)
             prefetch = self.config.get('hardware.prefetch', 2)
             
             train_dataset = H5Dataset(self.dataset, train_idx)
@@ -249,7 +256,7 @@ class SupervisedPipeline:
             final_path = os.path.join('/content/drive/MyDrive/chess_ai/models', 'supervised_model.pth')
             os.makedirs(os.path.dirname(final_path), exist_ok=True)
             self.ckpt.save(
-                self.model, self.optimizer, self.scheduler, self.epochs, final_path
+                self.model, self.optimizer, self.scheduler, self.epochs, path=final_path
             )
             
             print(f"Saved final model to: {final_path}")

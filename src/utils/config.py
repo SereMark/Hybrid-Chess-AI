@@ -1,4 +1,5 @@
-import os, yaml
+import os
+import yaml
 
 class Config:
     _instance = None
@@ -6,15 +7,15 @@ class Config:
     def __new__(cls, config_path=None, mode="test"):
         if cls._instance is None and config_path is not None:
             cls._instance = super(Config, cls).__new__(cls)
-            cls._instance._init(config_path, mode)
+            cls._instance._initialize(config_path, mode)
         return cls._instance
     
-    def _init(self, config_path, mode):
+    def _initialize(self, config_path, mode):
         self.path = config_path
-        self.config = self._load()
         self.mode = mode
+        self.config = self._load_config()
     
-    def _load(self):
+    def _load_config(self):
         if not os.path.exists(self.path):
             raise FileNotFoundError(f"Config file not found: {self.path}")
         with open(self.path, 'r') as f:
