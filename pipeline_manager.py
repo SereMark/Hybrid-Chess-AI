@@ -7,10 +7,10 @@ import os
 import yaml
 import subprocess
 import shutil
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, timedelta
+from typing import List, Optional
+from datetime import datetime
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from contextlib import contextmanager
 
@@ -20,6 +20,35 @@ class PipelineStatus(Enum):
     SUCCESS = "success"
     FAILED = "failed"
     SKIPPED = "skipped"
+
+class HardwareType(Enum):
+    CPU = "cpu"
+    GPU = "gpu"
+    ANY = "any"
+
+@dataclass
+class HardwareRequirement:
+    type: HardwareType
+    high_ram: bool = False
+    min_cores: Optional[int] = None
+    gpu_type: Optional[str] = None
+    description: str = ""
+    
+    def __str__(self) -> str:
+        parts = []
+        if self.type == HardwareType.GPU:
+            parts.append(f"GPU")
+            if self.gpu_type:
+                parts.append(f"({self.gpu_type})")
+        else:
+            parts.append(f"CPU")
+            if self.min_cores:
+                parts.append(f"({self.min_cores}+ cores)")
+        
+        if self.high_ram:
+            parts.append(f"with High RAM toggle")
+            
+        return " ".join(parts)
 
 @dataclass
 class PipelineResult:
@@ -39,6 +68,7 @@ class PipelineConfig:
     dependencies: List[str]
     class_name: str
     requirements: List[str]
+    hardware: HardwareRequirement = field(default_factory=lambda: HardwareRequirement(HardwareType.ANY))
 
 PIPELINE_REQUIREMENTS = {
     'data': ['chess', 'numpy', 'pandas', 'h5py', 'wandb'],
@@ -54,35 +84,65 @@ PIPELINES = {
         description="Process PGN files into efficient training format",
         dependencies=[],
         class_name='DataPipeline',
-        requirements=PIPELINE_REQUIREMENTS['data']
+        requirements=PIPELINE_REQUIREMENTS['data'],
+        hardware=HardwareRequirement(
+            type=HardwareType.CPU,
+            high_ram=True,
+            min_cores=4,
+            description="CPU-based data processing (saves GPU credits) with high RAM for large datasets"
+        )
     ),
     'hyperopt': PipelineConfig(
         name='hyperopt', 
         description="Find optimal hyperparameters for the model",
         dependencies=['data'],
         class_name='HyperoptPipeline',
-        requirements=PIPELINE_REQUIREMENTS['hyperopt']
+        requirements=PIPELINE_REQUIREMENTS['hyperopt'],
+        hardware=HardwareRequirement(
+            type=HardwareType.GPU,
+            high_ram=True,
+            gpu_type="A100",
+            description="GPU-accelerated hyperparameter search with high memory usage"
+        )
     ),
     'supervised': PipelineConfig(
         name='supervised', 
         description="Train model on human games with supervised learning",
         dependencies=['data'],
         class_name='SupervisedPipeline',
-        requirements=PIPELINE_REQUIREMENTS['supervised']
+        requirements=PIPELINE_REQUIREMENTS['supervised'],
+        hardware=HardwareRequirement(
+            type=HardwareType.GPU,
+            high_ram=True,
+            gpu_type="A100",
+            description="Heavy GPU training with large batch sizes"
+        )
     ),
     'reinforcement': PipelineConfig(
         name='reinforcement', 
         description="Improve model through self-play reinforcement learning",
         dependencies=['supervised'],
         class_name='ReinforcementPipeline',
-        requirements=PIPELINE_REQUIREMENTS['reinforcement']
+        requirements=PIPELINE_REQUIREMENTS['reinforcement'],
+        hardware=HardwareRequirement(
+            type=HardwareType.GPU,
+            high_ram=True,
+            gpu_type="A100",
+            description="Intensive GPU training with parallel self-play"
+        )
     ),
     'eval': PipelineConfig(
         name='eval', 
         description="Evaluate models and benchmark against Stockfish",
         dependencies=['data'],
         class_name='EvalPipeline',
-        requirements=PIPELINE_REQUIREMENTS['eval']
+        requirements=PIPELINE_REQUIREMENTS['eval'],
+        hardware=HardwareRequirement(
+            type=HardwareType.GPU,
+            high_ram=True,
+            gpu_type="A100",
+            description="GPU-accelerated model evaluation and benchmarking"
+        )
     )
 }
 
@@ -163,13 +223,16 @@ class Style:
     SYMBOL_DISK = "💾"
     SYMBOL_FLAG = "🏁"
     SYMBOL_ZAP = "⚡"
+    SYMBOL_CPU = "🖥️"
+    SYMBOL_GPU = "🔋"
+    SYMBOL_RAM = "🧠"
     
     @staticmethod
     def apply(text, *styles):
         result = ""
         for style in styles:
             result += style
-        result += text + Style.RESET
+        result += str(text) + Style.RESET
         return result
     
     @staticmethod
@@ -185,6 +248,14 @@ class Style:
         elif status == PipelineStatus.SKIPPED:
             return Style.MUTED, Style.SYMBOL_SKIP
         return Style.MUTED, Style.SYMBOL_CIRCLE
+    
+    @staticmethod
+    def hardware_style(hw_type):
+        if hw_type == HardwareType.GPU:
+            return Style.PURPLE, Style.SYMBOL_GPU
+        elif hw_type == HardwareType.CPU:
+            return Style.BLUE, Style.SYMBOL_CPU
+        return Style.TEAL, Style.SYMBOL_GEAR
 
 class UI:
     @staticmethod
@@ -257,14 +328,20 @@ class UI:
             term_width, _ = UI.get_terminal_size()
             width = min(term_width - 4, 100)
         
+        content_lines = content.split('\n')
+        max_content_width = max([len(line.replace('\033[', '').split('m')[-1]) for line in content_lines]) if content_lines else 0
+        width = max(width, max_content_width + 6)
+        
         title_display = f" {title} " if title else ""
-        top_border = "┌" + "─" * 2 + title_display + "─" * (width - len(title_display) - 3) + "┐"
+        title_len = len(title_display.replace('\033[', '').split('m')[-1]) if '\033[' in title_display else len(title_display)
+        top_border = "┌" + "─" * 2 + title_display + "─" * (width - title_len - 3) + "┐"
         bottom_border = "└" + "─" * (width - 2) + "┘"
         
         print(f"{Style.apply(top_border, style)}")
         
-        for line in content.split('\n'):
-            padding = width - len(line) - 2
+        for line in content_lines:
+            visible_length = len(line.replace('\033[', '').split('m')[-1]) if '\033[' in line else len(line)
+            padding = max(0, width - visible_length - 2)
             print(f"{Style.apply('│', style)} {line}{' ' * padding}{Style.apply('│', style)}")
         
         print(f"{Style.apply(bottom_border, style)}")
@@ -379,7 +456,7 @@ class UI:
                 except ValueError:
                     UI.error(f"Invalid input: {selection}")
             
-            print("\033[F" * (len(options) + 1))
+            print("\033[" + str(len(options) + 5) + "A\033[J")
         
         return [options[i-1] for i in sorted(selected)]
     
@@ -407,6 +484,43 @@ class UI:
             hours = seconds // 3600
             minutes = (seconds % 3600) // 60
             return f"{int(hours)}h {int(minutes)}m"
+    
+    @staticmethod
+    def display_hardware_req(hardware_req, current_hardware=None):
+        hw_style, hw_symbol = Style.hardware_style(hardware_req.type)
+        
+        main_text = f"{Style.apply(hw_symbol, hw_style)} {Style.apply('Recommended:', Style.BOLD)} {Style.apply(str(hardware_req), hw_style)}"
+        
+        if hardware_req.description:
+            main_text += f" - {Style.apply(hardware_req.description, Style.MUTED)}"
+            
+        print(main_text)
+        
+        if current_hardware:
+            hardware_match = True
+            warning_message = None
+            
+            if hardware_req.type == HardwareType.GPU and not current_hardware.get("gpu", False):
+                hardware_match = False
+                warning_message = "Pipeline requires GPU acceleration, but only CPU detected"
+            elif hardware_req.type == HardwareType.CPU and current_hardware.get("cpu_cores", 0) < hardware_req.min_cores:
+                hardware_match = False
+                warning_message = f"Pipeline works best with {hardware_req.min_cores}+ CPU cores, but only {current_hardware.get('cpu_cores', 0)} detected"
+            elif hardware_req.high_ram and not current_hardware.get("high_ram_enabled", False):
+                hardware_match = False
+                warning_message = "Pipeline requires High RAM toggle in Colab, but it appears to be disabled"
+                
+            if not hardware_match and warning_message:
+                UI.warning(warning_message, indent=4)
+                UI.note("Performance will be significantly impacted", indent=4)
+                
+                if hardware_req.high_ram and not current_hardware.get("high_ram_enabled", False):
+                    UI.info("To enable High RAM in Google Colab: Runtime → Change runtime type → Hardware accelerator → High-RAM", indent=4)
+                
+                if hardware_req.type == HardwareType.CPU:
+                    UI.info("For data processing, select: Runtime → Change runtime type → Hardware accelerator → None", indent=4)
+                elif hardware_req.type == HardwareType.GPU:
+                    UI.info("For model training, select: Runtime → Change runtime type → Hardware accelerator → GPU → A100", indent=4)
 
 class Spinner:
     def __init__(self, message="Processing", style=Style.CYAN):
@@ -416,14 +530,24 @@ class Spinner:
         self.spinner_thread = None
         self.frames = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
         self.delay = 0.1
+        self.last_frame_length = 0
         
     def spin(self):
         i = 0
         while self.running:
             frame = self.frames[i % len(self.frames)]
             timestamp = Style.apply(f"[{datetime.now().strftime('%H:%M:%S')}]", Style.MUTED)
-            sys.stdout.write(f"\r{timestamp} {Style.apply(frame, self.style)} {self.message}")
+            
+            output = f"{timestamp} {Style.apply(frame, self.style)} {self.message}"
+            
+            if self.last_frame_length > 0:
+                sys.stdout.write("\r" + " " * self.last_frame_length + "\r")
+            
+            sys.stdout.write(f"\r{output}")
             sys.stdout.flush()
+            
+            self.last_frame_length = len(output.replace('\033[', '').split('m')[-1])
+            
             time.sleep(self.delay)
             i += 1
             
@@ -437,7 +561,7 @@ class Spinner:
         self.running = False
         if self.spinner_thread:
             self.spinner_thread.join()
-        sys.stdout.write("\r" + " " * (len(self.message) + 30) + "\r")
+        sys.stdout.write("\r" + " " * (self.last_frame_length) + "\r")
         sys.stdout.flush()
     
     def update_message(self, message):
@@ -453,6 +577,7 @@ class ProgressBar:
         self.count = 0
         self.last_update_time = 0
         self.min_update_interval = 0.1
+        self.last_line_length = 0
 
     def update(self, count=1, message=None):
         current_time = time.time()
@@ -486,6 +611,11 @@ class ProgressBar:
         progress_text = (f"\r{self.prefix} |{bar}| {percent:.1f}% ({self.count}/{self.total}) "
                         f"[{elapsed_str} elapsed, {eta_str} remaining]{message_str}")
         
+        visible_length = len(progress_text.replace('\033[', '').split('m')[-1])
+        if self.last_line_length > visible_length:
+            sys.stdout.write("\r" + " " * self.last_line_length + "\r")
+        
+        self.last_line_length = visible_length
         sys.stdout.write(progress_text)
         sys.stdout.flush()
 
@@ -556,8 +686,8 @@ def detect_completed_pipelines():
 def check_hardware():
     hardware_info = {
         "gpu": False,
+        "high_ram_enabled": False,
         "cpu_cores": os.cpu_count() or 1,
-        "ram_gb": None,
         "drive_space_gb": None
     }
     
@@ -573,7 +703,14 @@ def check_hardware():
             
         try:
             import psutil
-            hardware_info["ram_gb"] = psutil.virtual_memory().total / (1024**3)
+            total_ram = psutil.virtual_memory().total / (1024**3)
+            hardware_info["high_ram_enabled"] = total_ram > 20.0
+            hardware_info["ram_gb"] = total_ram
+        except:
+            pass
+            
+        try:
+            import psutil
             hardware_info["drive_space_gb"] = psutil.disk_usage('/content/drive').free / (1024**3) if os.path.exists('/content/drive') else None
         except:
             pass
@@ -595,13 +732,17 @@ def display_hardware_info(hardware):
             device_info += f" ({hardware['gpu_memory']:.1f}GB)"
     content.append(device_info)
     
+    ram_status = hardware.get("high_ram_enabled", False)
+    ram_color = Style.LIME if ram_status else Style.YELLOW
+    ram_text = "ENABLED" if ram_status else "DISABLED"
+    content.append(f"{Style.apply('⚡', Style.PURPLE)} High RAM Toggle: {Style.apply(ram_text, ram_color, Style.BOLD)}")
+    
+    if hardware.get("ram_gb"):
+        content.append(f"{Style.apply('🧠', Style.PURPLE)} Total RAM: {Style.apply(f'{hardware.get('ram_gb', 0):.1f}GB', Style.PURPLE, Style.BOLD)}")
+    
     cpu_cores = hardware.get("cpu_cores", 0)
     if cpu_cores:
-        content.append(f"{Style.apply('⚙', Style.BLUE)} CPU Cores: {Style.apply(str(cpu_cores), Style.BLUE, Style.BOLD)}")
-    
-    ram_gb = hardware.get("ram_gb")
-    if ram_gb:
-        content.append(f"{Style.apply('⚡', Style.PURPLE)} RAM: {Style.apply(f'{ram_gb:.1f}GB', Style.PURPLE, Style.BOLD)}")
+        content.append(f"{Style.apply('⚙', Style.BLUE)} CPU Cores: {Style.apply(str(cpu_cores), Style.BLUE, Style.BOLD)} (important for data processing)")
     
     drive_space = hardware.get("drive_space_gb")
     if drive_space:
@@ -610,6 +751,11 @@ def display_hardware_info(hardware):
         
         if drive_space < 5:
             content.append(f"{Style.apply('⚠', Style.WARNING, Style.BOLD)} {Style.apply('Low disk space warning!', Style.WARNING)}")
+    
+    content.append(f"\n{Style.apply('💡', Style.GOLD)} {Style.apply('Hardware Setup Guide:', Style.GOLD, Style.BOLD)}")
+    content.append(f"{Style.apply('1.', Style.CYAN)} Use {Style.apply('CPU-only', Style.CYAN, Style.BOLD)} for data processing (saves GPU credits)")
+    content.append(f"{Style.apply('2.', Style.PURPLE)} Use {Style.apply('GPU (A100)', Style.PURPLE, Style.BOLD)} for model training pipelines")
+    content.append(f"{Style.apply('3.', Style.LIME)} Enable {Style.apply('High-RAM', Style.LIME, Style.BOLD)} toggle for all pipelines in production mode")
     
     UI.panel("System Resources", "\n".join(content), style=Style.TEAL)
 
@@ -716,7 +862,7 @@ def resolve_dependencies(selected_pipelines, completed):
     ordered = [p for p in PIPELINE_ORDER if p in required]
     return ordered, skipped_deps
 
-def display_pipelines(completed_pipelines=None):
+def display_pipelines(completed_pipelines=None, hardware_info=None):
     UI.header("Pipeline Selection")
     
     if completed_pipelines is None:
@@ -728,18 +874,39 @@ def display_pipelines(completed_pipelines=None):
     print()
     
     for i, name in enumerate(PIPELINE_ORDER, 1):
+        pipeline_config = PIPELINES[name]
         is_completed = completed_pipelines.get(name, False)
+        
         status_icon = Style.apply(Style.SYMBOL_CHECKED, Style.SUCCESS, Style.BOLD) if is_completed else Style.apply(Style.SYMBOL_CIRCLE, Style.MUTED)
         name_str = Style.apply(name.ljust(max_name_len), Style.BOLD)
-        desc = PIPELINES[name].description
-        depends = ", ".join(PIPELINES[name].dependencies) if PIPELINES[name].dependencies else "None"
+        desc = pipeline_config.description
+        depends = ", ".join(pipeline_config.dependencies) if pipeline_config.dependencies else "None"
         deps_display = f" {Style.apply('(Deps:', Style.MUTED)} {Style.apply(depends, Style.CYAN)}{Style.apply(')', Style.MUTED)}"
         
-        print(f"  {Style.apply(str(i), Style.CYAN, Style.BOLD)} {status_icon} {name_str}: {desc}{deps_display}")
+        hw_style, hw_symbol = Style.hardware_style(pipeline_config.hardware.type)
+        hardware_icon = Style.apply(hw_symbol, hw_style)
+        
+        print(f"  {Style.apply(str(i), Style.CYAN, Style.BOLD)} {status_icon} {name_str}: {desc}{deps_display} {hardware_icon}")
+        
+        if hardware_info:
+            hw_match = True
+            if (pipeline_config.hardware.type == HardwareType.GPU and not hardware_info.get("gpu", False)) or \
+               (pipeline_config.hardware.type == HardwareType.CPU and hardware_info.get("cpu_cores", 0) < pipeline_config.hardware.min_cores) or \
+               (pipeline_config.hardware.high_ram and not hardware_info.get("high_ram_enabled", False)):
+                hw_match = False
+                
+            hw_rec = str(pipeline_config.hardware)
+            if hw_match:
+                print(f"     {Style.apply('Recommended:', Style.MUTED)} {Style.apply(hw_rec, Style.MUTED)}")
+            else:
+                print(f"     {Style.apply(Style.SYMBOL_WARNING, Style.WARNING)} {Style.apply('Required:', Style.MUTED)} {Style.apply(hw_rec, Style.WARNING)}")
+                
+                if name == "data" and hardware_info.get("gpu", False):
+                    print(f"     {Style.apply(Style.SYMBOL_INFO, Style.INFO)} {Style.apply('TIP: Switch to CPU-only runtime to save GPU credits for this pipeline', Style.CYAN)}")
     
     print()
 
-def show_execution_plan(pipelines, skipped):
+def show_execution_plan(pipelines, skipped, hardware_info=None):
     UI.header("Execution Plan")
     
     flow = ""
@@ -755,9 +922,39 @@ def show_execution_plan(pipelines, skipped):
         for dep in skipped:
             print(f"  {Style.apply(Style.SYMBOL_SKIP, Style.MUTED)} {Style.apply(dep, Style.MUTED)} (using existing output)")
     
+    if hardware_info:
+        UI.subheader("Hardware Compatibility Check")
+        
+        UI.info("Hardware recommendations for each pipeline:")
+        
+        data_hw_needed = False
+        gpu_hw_needed = False
+        high_ram_needed = False
+        
+        for pipeline in pipelines:
+            hw_req = PIPELINES[pipeline].hardware
+            print(f"  {Style.apply(pipeline, Style.CYAN, Style.BOLD)}:")
+            UI.display_hardware_req(hw_req, hardware_info)
+            
+            if hw_req.type == HardwareType.CPU:
+                data_hw_needed = True
+            if hw_req.type == HardwareType.GPU:
+                gpu_hw_needed = True
+            if hw_req.high_ram:
+                high_ram_needed = True
+        
+        print()
+        UI.panel("Hardware Switch Guide", 
+                f"{Style.apply('For optimal resource usage in Google Colab:', Style.BOLD)}\n\n"
+                f"{Style.apply('1.', Style.CYAN)} {Style.apply('Data pipeline:', Style.CYAN)} Use CPU runtime (save GPU credits)\n"
+                f"{Style.apply('2.', Style.PURPLE)} {Style.apply('Training pipelines:', Style.PURPLE)} Use GPU (A100) runtime\n"
+                f"{Style.apply('3.', Style.GOLD)} {Style.apply('All pipelines in prod mode:', Style.GOLD)} Enable High-RAM\n\n"
+                f"{Style.apply('To change runtime:', Style.BOLD)} Runtime → Change runtime type", 
+                style=Style.TEAL)
+    
     print()
 
-def run_pipeline(pipeline_name, config, progress=None):
+def run_pipeline(pipeline_name, config, hardware_info, progress=None):
     module_path = f"src.pipelines.{pipeline_name}"
     
     try:
@@ -782,8 +979,29 @@ def run_pipeline(pipeline_name, config, progress=None):
         desc_lines.append(f"{Style.apply(Style.SYMBOL_GEAR, Style.GOLD)} Description: {desc}")
         desc_lines.append(f"{Style.apply(Style.SYMBOL_ARROW, Style.LIME)} Dependencies: {deps}")
         
+        hw_req = PIPELINES[pipeline_name].hardware
+        hw_style, hw_symbol = Style.hardware_style(hw_req.type)
+        hw_text = f"{Style.apply(hw_symbol, hw_style)} Hardware: {Style.apply(str(hw_req), hw_style)}"
+        desc_lines.append(hw_text)
+        
+        hardware_match = True
+        if hw_req.type == HardwareType.GPU and not hardware_info.get("gpu", False):
+            hardware_match = False
+            desc_lines.append(f"{Style.apply(Style.SYMBOL_WARNING, Style.WARNING)} Alert: GPU required but running on CPU")
+            desc_lines.append(f"{Style.apply(Style.SYMBOL_INFO, Style.INFO)} Change to: Runtime → Change runtime type → Hardware accelerator → GPU → A100")
+        elif hw_req.type == HardwareType.CPU and hardware_info.get("gpu", True):
+            if pipeline_name == "data":
+                desc_lines.append(f"{Style.apply(Style.SYMBOL_INFO, Style.INFO)} Note: Data processing runs efficiently on CPU (saves GPU credits)")
+                desc_lines.append(f"{Style.apply(Style.SYMBOL_INFO, Style.INFO)} Consider: Runtime → Change runtime type → Hardware accelerator → None")
+        
+        if hw_req.high_ram and not hardware_info.get("high_ram_enabled", False):
+            hardware_match = False
+            desc_lines.append(f"{Style.apply(Style.SYMBOL_WARNING, Style.WARNING)} Alert: High RAM toggle required but appears to be disabled")
+            desc_lines.append(f"{Style.apply(Style.SYMBOL_INFO, Style.INFO)} Enable: Runtime → Change runtime type → Hardware accelerator → High-RAM")
+            
         for line in desc_lines:
-            padding = width - len(line.replace(Style.RESET, "")) - 10
+            visible_length = len(line.replace('\033[', '').split('m')[-1]) if '\033[' in line else len(line)
+            padding = max(0, width - visible_length - 4)
             print(f"{Style.apply('║', Style.CYAN)} {line}{' ' * padding}{Style.apply('║', Style.CYAN)}")
             
         print(f"{Style.apply('╚' + '═' * (width - 2) + '╝', Style.CYAN)}")
@@ -793,6 +1011,11 @@ def run_pipeline(pipeline_name, config, progress=None):
         
         print(f"\n{Style.apply(Style.SYMBOL_PLAY, Style.CYAN, Style.BOLD)} {Style.apply('Starting pipeline execution...', Style.CYAN)}")
         
+        if not hardware_match:
+            print(f"{Style.apply(Style.SYMBOL_WARNING, Style.WARNING)} {Style.apply('Performance will be significantly impacted by hardware limitations', Style.WARNING)}")
+        elif pipeline_name == "data" and hardware_info.get("gpu", False):
+            print(f"{Style.apply(Style.SYMBOL_INFO, Style.INFO)} {Style.apply('Note: Data pipeline is running on GPU but would be more efficient on CPU to save GPU credits', Style.CYAN)}")
+            
         if progress:
             progress.update(message=f"Running {Style.apply(pipeline_name, Style.BOLD)}")
             
@@ -822,7 +1045,7 @@ def run_pipeline(pipeline_name, config, progress=None):
             error=str(e)
         )
 
-def print_summary(results):
+def print_summary(results, hardware_info=None):
     UI.header("Execution Summary")
     
     term_width, _ = UI.get_terminal_size()
@@ -882,14 +1105,32 @@ def print_summary(results):
         f"{Style.apply(Style.SYMBOL_CLOCK, Style.GOLD)} Total execution time: {Style.apply(UI.time_format(total_time), Style.GOLD, Style.BOLD)}"
     )
     
+    if hardware_info:
+        device_type = "GPU" if hardware_info.get("gpu", False) else "CPU"
+        device_info = f"{Style.apply(Style.SYMBOL_CPU if device_type == 'CPU' else Style.SYMBOL_GPU, Style.ORANGE)} " \
+                     f"Hardware: {Style.apply(device_type, Style.ORANGE, Style.BOLD)}"
+        if device_type == "GPU" and hardware_info.get("gpu_name"):
+            device_info += f" ({Style.apply(hardware_info.get('gpu_name'), Style.CYAN)})"
+        stats_content += f"\n{device_info}"
+    
     UI.panel("Stats", stats_content, style=Style.TEAL)
     
-    if success_count == len(results):
+    if all(result.succeeded for result in results):
         UI.success("\nAll pipelines completed successfully!")
     else:
         failed = [result.name for result in results if not result.succeeded]
         UI.error(f"\nSome pipelines failed: {', '.join(Style.apply(p, Style.BOLD) for p in failed)}")
         UI.info("Check logs for more details")
+    
+    hardware_tips = (
+        f"{Style.apply('Hardware Optimization Tips:', Style.GOLD, Style.BOLD)}\n\n"
+        f"{Style.apply('1.', Style.CYAN)} {Style.apply('For data processing:', Style.BOLD)} Use CPU runtime to save GPU credits\n"
+        f"{Style.apply('2.', Style.PURPLE)} {Style.apply('For model training:', Style.BOLD)} Use GPU (A100) runtime for maximum performance\n"
+        f"{Style.apply('3.', Style.LIME)} {Style.apply('For production workloads:', Style.BOLD)} Always enable High-RAM toggle\n"
+        f"{Style.apply('4.', Style.ORANGE)} {Style.apply('To maximize Colab usage:', Style.BOLD)} Switch hardware between pipelines as needed"
+    )
+    
+    UI.panel("Hardware Tips", hardware_tips, style=Style.CYAN)
 
 def main():
     try:
@@ -933,9 +1174,9 @@ def main():
         config = load_configuration(config_path, mode)
         
         completed = detect_completed_pipelines()
-        display_pipelines(completed)
+        display_pipelines(completed, hardware)
         
-        UI.info(f"Previously completed: {', '.join(p for p, v in completed.items() if v)}")
+        UI.info(f"Previously completed: {', '.join(p for p, v in completed.items() if v) or 'None'}")
         pipeline_names = PIPELINE_ORDER.copy()
         
         pipeline_input = UI.input("Select pipelines to run (comma-separated numbers, or press Enter for all)")
@@ -968,7 +1209,7 @@ def main():
         UI.step(2, "Verify Dependencies", total_steps)
         check_dependencies(ordered_pipelines)
         
-        show_execution_plan(ordered_pipelines, skipped_deps)
+        show_execution_plan(ordered_pipelines, skipped_deps, hardware)
         
         UI.step(3, "Execute Pipelines", total_steps)
         
@@ -1000,7 +1241,7 @@ def main():
             ]
             print("\n" + "".join(execution_line))
             
-            result = run_pipeline(pipeline, config, overall_progress)
+            result = run_pipeline(pipeline, config, hardware, overall_progress)
             results.append(result)
             
             status_style, status_symbol = Style.status_style(result.status)
@@ -1033,8 +1274,23 @@ def main():
                         break
             
             overall_progress.update(1)
+            
+            if i < len(ordered_pipelines):
+                next_pipeline = ordered_pipelines[i]
+                next_hw_req = PIPELINES[next_pipeline].hardware
+                
+                if pipeline == "data" and next_hw_req.type == HardwareType.GPU and not hardware.get("gpu", False):
+                    UI.panel("Hardware Switch Recommended", 
+                        f"{Style.apply(Style.SYMBOL_WARNING, Style.WARNING)} Next pipeline '{Style.apply(next_pipeline, Style.BOLD)}' requires GPU but you're currently on CPU.\n\n"
+                        f"{Style.apply(Style.SYMBOL_INFO, Style.INFO)} Recommended action: Runtime → Change runtime type → Hardware accelerator → A100",
+                        style=Style.ORANGE)
+                elif next_hw_req.type == HardwareType.CPU and hardware.get("gpu", False):
+                    UI.panel("Hardware Optimization Tip", 
+                        f"{Style.apply(Style.SYMBOL_INFO, Style.INFO)} Next pipeline '{Style.apply(next_pipeline, Style.BOLD)}' runs efficiently on CPU.\n\n"
+                        f"{Style.apply(Style.SYMBOL_LIGHT, Style.CYAN)} To save GPU credits: Runtime → Change runtime type → Hardware accelerator → CPU",
+                        style=Style.CYAN)
         
-        print_summary(results)
+        print_summary(results, hardware)
         
         if all(result.succeeded for result in results):
             if "eval" in [r.name for r in results if r.succeeded]:

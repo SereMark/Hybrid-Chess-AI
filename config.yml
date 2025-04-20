@@ -7,38 +7,38 @@ wandb:
   enabled: true
 
 hardware:
-  workers: 2
+  workers: 6
   pin_memory: true
-  prefetch: 2
+  prefetch: 4
   mixed_precision: true
   prod:
-    workers: 8
+    workers: 16
     pin_memory: true
-    prefetch: 4
+    prefetch: 8
     mixed_precision: true
 
 model:
-  channels: 16
-  blocks: 2
-  attention: false
+  channels: 32
+  blocks: 4
+  attention: true
   prod:
-    channels: 64
-    blocks: 8
+    channels: 128
+    blocks: 12
     attention: true
 
 data:
-  batch: 64
+  batch: 128
   dataset: data/dataset.h5
   train_idx: data/train_indices.npy
   val_idx: data/val_indices.npy
   test_idx: data/test_indices.npy
   raw_pgn: data/lichess_db_standard_rated_2025-03.pgn
-  max_games: 5
+  max_games: 10
   min_elo: 1500
   max_elo: 3500
   prod:
-    batch: 2048
-    max_games: 1000000
+    batch: 4096
+    max_games: 2000000
     min_elo: 2200
 
 training:
@@ -47,7 +47,7 @@ training:
     checkpoint_interval: 5
 
 supervised:
-  epochs: 1
+  epochs: 2
   lr: 0.005
   weight_decay: 0.0001
   optimizer: adam
@@ -61,48 +61,48 @@ supervised:
   patience: 2
   min_accuracy_threshold: 0.001
   prod:
-    epochs: 120
-    lr: 0.0002
-    weight_decay: 0.00005
+    epochs: 200
+    lr: 0.0001
+    weight_decay: 0.00001
     optimizer: adamw
     scheduler: onecycle
-    accum_steps: 4
+    accum_steps: 2
     policy_weight: 1.0
     value_weight: 1.0
     grad_clip: 1.0
     momentum: 0.9
     early_stop: true
-    patience: 10
+    patience: 15
     min_accuracy_threshold: 0.2
 
 reinforcement:
-  iters: 1
-  games_per_iter: 2
-  sims_per_move: 10
-  epochs_per_iter: 1
+  iters: 2
+  games_per_iter: 4
+  sims_per_move: 20
+  epochs_per_iter: 2
   c_puct: 1.4
   temp: 0.5
-  threads: 2
+  threads: 6
   prod:
-    iters: 75
-    games_per_iter: 2500
-    sims_per_move: 1200
-    epochs_per_iter: 8
+    iters: 100
+    games_per_iter: 5000
+    sims_per_move: 2000
+    epochs_per_iter: 12
     c_puct: 1.0
     temp: 0.2
-    threads: 32
+    threads: 64
 
 eval:
-  max_samples: 100
+  max_samples: 200
   visualize_moves: true
   sl_vs_rl: true
   prod:
-    max_samples: 50000
+    max_samples: 100000
     visualize_moves: true
     sl_vs_rl: true
 
 benchmark:
-  games: 2
+  games: 4
   mcts: true
   opening_book: true
   switch_colors: true
@@ -111,29 +111,29 @@ benchmark:
   stockfish_time: 0.05
   stockfish_depth: null
   prod:
-    games: 500
-    stockfish_elo: 2500
-    stockfish_time: 1.0
-    stockfish_depth: 15
+    games: 1000
+    stockfish_elo: 2800
+    stockfish_time: 2.0
+    stockfish_depth: 20
 
 hyperopt:
-  trials: 2
-  timeout: 1800
-  jobs: 1
-  lr_range: [0.001, 0.01]
-  wd_range: [0.0001, 0.001]
-  batch_sizes: [32, 64]
-  epochs_range: [1, 2]
-  optimizers: ["adam"]
-  schedulers: ["linear"]
+  trials: 5
+  timeout: 3600
+  jobs: 2
+  lr_range: [0.0005, 0.01]
+  wd_range: [0.00005, 0.001]
+  batch_sizes: [64, 128, 256]
+  epochs_range: [1, 3]
+  optimizers: ["adam", "adamw"]
+  schedulers: ["linear", "onecycle"]
   prod:
-    trials: 200
-    timeout: 604800
-    jobs: 8
-    lr_range: [0.000001, 0.01]
-    wd_range: [0.0000001, 0.001]
-    batch_sizes: [128, 256, 512, 1024, 2048, 4096]
-    epochs_range: [30, 200]
+    trials: 300
+    timeout: 1209600
+    jobs: 16
+    lr_range: [0.0000001, 0.01]
+    wd_range: [0.00000001, 0.001]
+    batch_sizes: [256, 512, 1024, 2048, 4096, 8192]
+    epochs_range: [50, 300]
     optimizers: ["adam", "adamw", "sgd", "rmsprop"]
     schedulers: ["linear", "step", "cosine", "onecycle"]
 
