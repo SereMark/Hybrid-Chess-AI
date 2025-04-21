@@ -23,13 +23,13 @@ class DataPipeline:
         self.config = config
         
         self.max_games = config.get('data.max_games', 10000)
-        self.min_elo = config.get('data.min_elo', 2000)
-        self.max_elo = config.get('data.max_elo', 3000)
+        self.min_elo = config.get('data.min_elo', 1500)
+        self.max_elo = config.get('data.max_elo', 3500)
         self.batch = config.get('data.batch', 1024)
         
         self.raw_pgn = config.get('data.raw_pgn', 'data/lichess_db_standard_rated_2025-03.pgn')
         
-        self.augment_flip = True
+        self.augment_flip = config.get('data.augment_flip', True)
         
         self.positions = defaultdict(create_positions_dict)
         self.move_map = get_move_map()
