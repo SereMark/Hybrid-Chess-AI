@@ -7,12 +7,12 @@ wandb:
   enabled: true
 
 hardware:
-  workers: 6
+  workers: 2
   pin_memory: true
   prefetch: 4
   mixed_precision: true
   prod:
-    workers: 8
+    workers: 4
     pin_memory: true
     prefetch: 4
     mixed_precision: true
@@ -22,8 +22,8 @@ model:
   blocks: 4
   attention: true
   prod:
-    channels: 96
-    blocks: 8
+    channels: 64
+    blocks: 5
     attention: true
 
 data:
@@ -45,7 +45,7 @@ data:
 training:
   checkpoint_interval: 1
   prod:
-    checkpoint_interval: 2
+    checkpoint_interval: 3
 
 supervised:
   epochs: 2
@@ -62,19 +62,19 @@ supervised:
   patience: 2
   min_accuracy_threshold: 0.001
   prod:
-    epochs: 50
-    lr: 0.0001
-    weight_decay: 0.00001
+    epochs: 6
+    lr: 0.001
+    weight_decay: 0.00005
     optimizer: adamw
     scheduler: onecycle
-    accum_steps: 2
+    accum_steps: 4
     policy_weight: 1.0
     value_weight: 1.0
     grad_clip: 1.0
     momentum: 0.9
     early_stop: true
-    patience: 8
-    min_accuracy_threshold: 0.1
+    patience: 2
+    min_accuracy_threshold: 0.05
 
 reinforcement:
   iters: 2
@@ -85,20 +85,20 @@ reinforcement:
   temp: 0.5
   threads: 6
   prod:
-    iters: 25
-    games_per_iter: 1000
-    sims_per_move: 800
-    epochs_per_iter: 5
-    c_puct: 1.0
-    temp: 0.2
-    threads: 8
+    iters: 4
+    games_per_iter: 50
+    sims_per_move: 120
+    epochs_per_iter: 2
+    c_puct: 1.2
+    temp: 0.3
+    threads: 4
 
 eval:
   max_samples: 200
   visualize_moves: true
   sl_vs_rl: true
   prod:
-    max_samples: 10000
+    max_samples: 400
     visualize_moves: true
     sl_vs_rl: true
 
@@ -112,13 +112,17 @@ benchmark:
   stockfish_time: 0.05
   stockfish_depth: null
   prod:
-    games: 200
-    stockfish_elo: 2600
-    stockfish_time: 1.0
-    stockfish_depth: 15
+    games: 16
+    mcts: true
+    opening_book: true
+    switch_colors: true
+    stockfish_path: stockfish
+    stockfish_elo: 1800
+    stockfish_time: 0.15
+    stockfish_depth: 8
 
 hyperopt:
-  trials: 5
+  trials: 2
   timeout: 3600
   jobs: 2
   lr_range: [0.0005, 0.01]
@@ -128,15 +132,15 @@ hyperopt:
   optimizers: ["adam", "adamw"]
   schedulers: ["linear", "onecycle"]
   prod:
-    trials: 50
-    timeout: 43200
-    jobs: 4
-    lr_range: [0.000001, 0.001]
-    wd_range: [0.0000001, 0.0001]
-    batch_sizes: [512, 1024, 2048]
-    epochs_range: [30, 100]
-    optimizers: ["adam", "adamw"]
-    schedulers: ["cosine", "onecycle"]
+    trials: 5
+    timeout: 1500
+    jobs: 5
+    lr_range: [0.0001, 0.001]
+    wd_range: [0.00001, 0.0001]
+    batch_sizes: [256, 512]
+    epochs_range: [4, 8]
+    optimizers: ["adamw"]
+    schedulers: ["onecycle"]
 
 paths:
   drive_root: chess_ai

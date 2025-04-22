@@ -72,7 +72,7 @@ class PipelineConfig:
 
 PIPELINE_REQUIREMENTS = {
     'data': ['chess', 'numpy', 'pandas', 'h5py', 'wandb'],
-    'hyperopt': ['optuna', 'numpy', 'pandas', 'wandb'],
+    'hyperopt': ['chess','optuna', 'numpy', 'pandas', 'wandb'],
     'supervised': ['chess', 'torch', 'numpy', 'pandas', 'wandb'],
     'reinforcement': ['chess', 'torch', 'numpy', 'wandb'],
     'eval': ['chess', 'numpy', 'pandas', 'scikit-learn', 'matplotlib', 'wandb', 'torch']
