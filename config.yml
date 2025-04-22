@@ -39,7 +39,7 @@ data:
   max_elo: 3500
   prod:
     batch: 2048
-    max_games: 100000
+    max_games: 50000
     min_elo: 1800
 
 training:
