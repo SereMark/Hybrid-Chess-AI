@@ -130,6 +130,20 @@ class Configuration:
     
     def get(self, key, default=None):
         keys = key.split('.')
+        
+        if self.mode == "prod":
+            prod_keys = keys.copy()
+            prod_keys.insert(-1, "prod")
+            prod_key = '.'.join(prod_keys)
+            
+            prod_value = self._get_value(prod_key)
+            if prod_value is not None:
+                return prod_value
+        
+        return self._get_value(key, default)
+    
+    def _get_value(self, key, default=None):
+        keys = key.split('.')
         current = self.data
         
         for k in keys:
