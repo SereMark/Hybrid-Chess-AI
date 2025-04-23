@@ -66,14 +66,6 @@ class SupervisedPipeline:
         self.train_idx = config.get('data.train_idx', 'data/train_indices.npy')
         self.val_idx = config.get('data.val_idx', 'data/val_indices.npy')
         
-        ckpt_dir = os.path.join(
-            config.get('paths.models', 'models'), 
-            'checkpoints', 
-            'supervised'
-        )
-        ckpt_interval = config.get('training.checkpoint_interval', 5)
-        self.ckpt = Checkpoint(ckpt_dir, 'epoch', ckpt_interval)
-        
         self.start_epoch = 1
         self.best_loss = float('inf')
         self.early_stop_counter = 0
