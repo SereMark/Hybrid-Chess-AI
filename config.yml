@@ -12,22 +12,22 @@ hardware:
   prefetch: 4
   mixed_precision: true
   prod:
-    workers: 4
+    workers: 8
     pin_memory: true
-    prefetch: 4
+    prefetch: 8
     mixed_precision: true
 
 model:
   channels: 32
-  blocks: 4
-  attention: true
+  blocks: 2
+  attention: false
   prod:
-    channels: 64
-    blocks: 5
+    channels: 48
+    blocks: 3
     attention: true
 
 data:
-  batch: 128
+  batch: 256
   dataset: data/dataset.h5
   train_idx: data/train_indices.npy
   val_idx: data/val_indices.npy
@@ -38,8 +38,8 @@ data:
   min_elo: 1500
   max_elo: 3500
   prod:
-    batch: 2048
-    max_games: 50000
+    batch: 512
+    max_games: 25000
     min_elo: 1800
 
 training:
@@ -53,7 +53,7 @@ supervised:
   weight_decay: 0.0001
   optimizer: adam
   scheduler: linear
-  accum_steps: 1
+  accum_steps: 2
   policy_weight: 1.0
   value_weight: 1.0
   grad_clip: 5.0
@@ -62,36 +62,36 @@ supervised:
   patience: 2
   min_accuracy_threshold: 0.001
   prod:
-    epochs: 6
-    lr: 0.001
+    epochs: 4
+    lr: 0.002
     weight_decay: 0.00005
     optimizer: adamw
     scheduler: onecycle
-    accum_steps: 4
+    accum_steps: 8
     policy_weight: 1.0
     value_weight: 1.0
     grad_clip: 1.0
     momentum: 0.9
     early_stop: true
-    patience: 2
+    patience: 1
     min_accuracy_threshold: 0.05
 
 reinforcement:
-  iters: 2
+  iters: 1
   games_per_iter: 4
-  sims_per_move: 20
-  epochs_per_iter: 2
+  sims_per_move: 10
+  epochs_per_iter: 1
   c_puct: 1.4
   temp: 0.5
   threads: 6
   prod:
-    iters: 4
-    games_per_iter: 50
-    sims_per_move: 120
-    epochs_per_iter: 2
-    c_puct: 1.2
-    temp: 0.3
-    threads: 4
+    iters: 3
+    games_per_iter: 24
+    sims_per_move: 80
+    epochs_per_iter: 1
+    c_puct: 1.4
+    temp: 0.4
+    threads: 8
 
 eval:
   max_samples: 200
@@ -103,7 +103,7 @@ eval:
     sl_vs_rl: true
 
 benchmark:
-  games: 4
+  games: 2
   mcts: true
   opening_book: true
   switch_colors: true
@@ -112,14 +112,14 @@ benchmark:
   stockfish_time: 0.05
   stockfish_depth: null
   prod:
-    games: 16
+    games: 8
     mcts: true
     opening_book: true
     switch_colors: true
     stockfish_path: stockfish
-    stockfish_elo: 1800
-    stockfish_time: 0.15
-    stockfish_depth: 8
+    stockfish_elo: 1600
+    stockfish_time: 0.1
+    stockfish_depth: 6
 
 paths:
   drive_root: chess_ai
