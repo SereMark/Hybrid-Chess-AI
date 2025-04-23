@@ -182,6 +182,15 @@ class SupervisedPipeline:
                 print(f"\nEpoch {epoch}/{self.epochs}")
                 print("-" * 30)
                 
+                for param in self.model.parameters():
+                    if param.device != self.device:
+                        param.data = param.data.to(self.device)
+                
+                for param_group in self.optimizer.param_groups:
+                    for param in param_group['params']:
+                        if param.device != self.device:
+                            param.data = param.data.to(self.device)
+                
                 train_metrics = train_epoch(
                     self.model, 
                     train_loader,
