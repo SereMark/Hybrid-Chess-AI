@@ -10,7 +10,6 @@ from src.utils.train import (
     set_seed, get_optimizer, get_scheduler,
     get_device, train_epoch, validate
 )
-from src.utils.checkpoint import Checkpoint
 from src.utils.chess import H5Dataset, get_move_count
 from src.model import ChessModel
 
@@ -182,15 +181,6 @@ class SupervisedPipeline:
                 print(f"\nEpoch {epoch}/{self.epochs}")
                 print("-" * 30)
                 
-                for param in self.model.parameters():
-                    if param.device != self.device:
-                        param.data = param.data.to(self.device)
-                
-                for param_group in self.optimizer.param_groups:
-                    for param in param_group['params']:
-                        if param.device != self.device:
-                            param.data = param.data.to(self.device)
-                
                 train_metrics = train_epoch(
                     self.model, 
                     train_loader,
@@ -243,14 +233,6 @@ class SupervisedPipeline:
                 if combined_loss < best_metric:
                     best_metric = combined_loss
                     print(f"New best model with loss: {best_metric:.4f}")
-                    self.ckpt.save(
-                        self.model, self.optimizer, self.scheduler, epoch, tag="best"
-                    )
-                
-                if self.ckpt.interval > 0 and epoch % self.ckpt.interval == 0:
-                    self.ckpt.save(
-                        self.model, self.optimizer, self.scheduler, epoch
-                    )
                 
                 if self.early_stop:
                     if combined_loss < self.best_loss:
@@ -264,9 +246,14 @@ class SupervisedPipeline:
             
             final_path = os.path.join('/content/drive/MyDrive/chess_ai/models', 'supervised_model.pth')
             os.makedirs(os.path.dirname(final_path), exist_ok=True)
-            self.ckpt.save(
-                self.model, self.optimizer, self.scheduler, self.epochs, path=final_path
-            )
+            
+            torch.save({
+                'model': self.model.state_dict(),
+                'optimizer': self.optimizer.state_dict(),
+                'scheduler': self.scheduler.state_dict() if self.scheduler else None,
+                'epoch': self.epochs,
+                'best_loss': best_metric,
+            }, final_path)
             
             print(f"Saved final model to: {final_path}")
             

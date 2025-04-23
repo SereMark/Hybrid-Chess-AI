@@ -66,16 +66,8 @@ def train_step(model, inputs, targets, value_targets, optimizer, device_info,
               policy_weight, value_weight, accum_steps, current_step, grad_clip, 
               scheduler=None, scaler=None):
     
-    device = device_info["device"]
     device_type = device_info["type"]
     use_amp = device_type == "gpu" and scaler is not None
-    
-    if inputs.device != device:
-        inputs = inputs.to(device, non_blocking=True)
-    if targets.device != device:
-        targets = targets.to(device, non_blocking=True)
-    if value_targets.device != device:
-        value_targets = value_targets.to(device, non_blocking=True).float()
     
     with autocast(device_type='cuda', dtype=torch.float16, enabled=use_amp):
         output = model(inputs)

@@ -13,7 +13,6 @@ from src.model import ChessModel
 from src.utils.mcts import MCTS
 from src.utils.config import Config
 from src.utils.chess import BoardHistory
-from src.utils.checkpoint import Checkpoint
 from src.utils.chess import board_to_input, get_move_map, get_move_count
 from src.utils.train import set_seed, get_optimizer, get_scheduler, get_device, train_epoch
 
@@ -202,14 +201,6 @@ class ReinforcementPipeline:
             self.model, self.optimizer_type, self.lr, self.weight_decay, self.momentum
         )
         self.scheduler = None
-        
-        ckpt_dir = os.path.join(
-            config.get('paths.models', 'models'), 
-            'checkpoints', 
-            'reinforcement'
-        )
-        ckpt_interval = config.get('training.checkpoint_interval', 5)
-        self.ckpt = Checkpoint(ckpt_dir, 'iteration', ckpt_interval)
         
         self.use_amp = (
             self.device_type == "gpu" and 
@@ -471,18 +462,7 @@ class ReinforcementPipeline:
                     if best_combined_loss < self.best_metric:
                         self.best_metric = best_combined_loss
                         self.best_iter = iteration
-                        
-                        self.ckpt.save(
-                            self.model, self.optimizer, self.scheduler, 
-                            iteration, tag="best"
-                        )
-                        
                         print(f"New best model with loss: {best_combined_loss:.4f}")
-                
-                if self.ckpt.interval > 0 and iteration % self.ckpt.interval == 0:
-                    self.ckpt.save(
-                        self.model, self.optimizer, self.scheduler, iteration
-                    )
                 
                 iter_time = time.time() - iter_start
                 print(f"Iteration {iteration} completed in {iter_time:.2f}s")
@@ -496,10 +476,14 @@ class ReinforcementPipeline:
             final_path = os.path.join('/content/drive/MyDrive/chess_ai/models', 'reinforcement_model.pth')
             os.makedirs(os.path.dirname(final_path), exist_ok=True)
             
-            self.ckpt.save(
-                self.model, self.optimizer, self.scheduler, 
-                self.iters, path=final_path
-            )
+            torch.save({
+                'model': self.model.state_dict(),
+                'optimizer': self.optimizer.state_dict(),
+                'scheduler': self.scheduler.state_dict() if self.scheduler else None,
+                'iteration': self.iters,
+                'best_metric': self.best_metric,
+                'best_iter': self.best_iter
+            }, final_path)
             
             print(f"Saved final model to: {final_path}")
             

@@ -42,11 +42,6 @@ data:
     max_games: 25000
     min_elo: 1800
 
-training:
-  checkpoint_interval: 1
-  prod:
-    checkpoint_interval: 3
-
 supervised:
   epochs: 2
   lr: 0.005
