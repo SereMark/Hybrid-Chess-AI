@@ -1,5 +1,6 @@
 import math
 import torch
+import chess
 import numpy as np
 from src.utils.chess import board_to_input, get_move_map, BoardHistory
 
@@ -131,9 +132,9 @@ class MCTS:
                 node.expand(action_probs)
             else:
                 result_map = {'1-0': 1.0, '0-1': -1.0, '1/2-1/2': 0.0}
-                leaf_val = result_map.get(node.board.result(), 0.0)
+                leaf_val = result_map.get(node.board.result(), 0.0) * (1.0 if node.board.turn == chess.WHITE else -1.0)
                 
-            node.update(-leaf_val)
+            node.update(leaf_val)
             
         if not self.root.children:
             return {}

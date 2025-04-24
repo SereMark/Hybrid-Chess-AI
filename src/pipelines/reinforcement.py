@@ -1,4 +1,5 @@
 import os
+import math
 import time
 import torch
 import wandb
@@ -21,7 +22,13 @@ from src.utils.train import set_seed, get_optimizer, get_scheduler, get_device, 
 
 class SelfPlay:
     @staticmethod
-    def run_games(model_state, device_type, sims, c_puct, temp, games, seed, channels=32, blocks=4, use_attn=True):
+    def _compute_temperature(move_idx, total_moves, t_init, t_final):
+        progress = min(move_idx / max(total_moves, 1), 1.0)
+        temp = t_final + 0.5 * (t_init - t_final) * (1.0 + math.cos(math.pi * progress))
+        return float(max(t_final, min(t_init, temp)))
+    
+    @staticmethod
+    def run_games(model_state, device_type, sims, c_puct, games, seed, channels=32, blocks=4, use_attn=True):
         set_seed(seed)
         
         device = torch.device(device_type)
@@ -88,9 +95,10 @@ class SelfPlay:
             node = game
             
             while not board.is_game_over() and move_count < 200:
+                temp = SelfPlay._compute_temperature(move_count, 200, 1.25, 0.05)
                 action_probs = mcts.get_move_probs(temp)
                 
-                if move_count == 0 and action_probs:
+                if action_probs:
                     moves_list = list(action_probs.keys())
                     noise = np.random.dirichlet([0.3] * len(moves_list))
                     for i, move in enumerate(moves_list):
@@ -148,9 +156,9 @@ class SelfPlay:
             stats['results'].append(outcome)
             
             if outcome == 1.0:
-                stats['wins'] += 1
+                stats['wins'] = stats.get('wins', 0) + 1
             elif outcome == -1.0:
-                stats['losses'] += 1
+                stats['losses'] = stats.get('losses', 0) + 1
             else:
                 stats['draws'] += 1
         
@@ -185,7 +193,6 @@ class ReinforcementPipeline:
         self.sims_per_move = config.get('reinforcement.sims_per_move', 100)
         self.epochs_per_iter = config.get('reinforcement.epochs_per_iter', 5)
         self.c_puct = config.get('reinforcement.c_puct', 1.4)
-        self.temp = config.get('reinforcement.temp', 0.5)
         self.threads = config.get('reinforcement.threads', 4)
         
         self.batch = config.get('data.batch', 128)
@@ -280,7 +287,6 @@ class ReinforcementPipeline:
                         "sims_per_move": self.sims_per_move,
                         "epochs_per_iter": self.epochs_per_iter,
                         "c_puct": self.c_puct,
-                        "temp": self.temp,
                         "threads": self.threads,
                         "batch": self.batch,
                         "optimizer": self.optimizer_type,
@@ -337,7 +343,6 @@ class ReinforcementPipeline:
                         "cuda" if torch.cuda.is_available() else "cpu",
                         self.sims_per_move,
                         self.c_puct,
-                        self.temp,
                         num_games,
                         seeds[i],
                         self.config.get('model.channels', 64), 
