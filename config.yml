@@ -80,13 +80,13 @@ reinforcement:
   temp: 0.5
   threads: 6
   prod:
-    iters: 3
-    games_per_iter: 24
-    sims_per_move: 80
-    epochs_per_iter: 1
-    c_puct: 1.4
-    temp: 0.4
-    threads: 8
+    iters: 5
+    games_per_iter: 50
+    sims_per_move: 100
+    epochs_per_iter: 2
+    c_puct: 1.6
+    temp: 0.35
+    threads: 10
 
 eval:
   max_samples: 200
