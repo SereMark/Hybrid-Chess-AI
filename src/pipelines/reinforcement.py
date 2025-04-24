@@ -5,9 +5,12 @@ import wandb
 import chess
 import chess.pgn
 import numpy as np
+import multiprocessing
 from torch.amp import GradScaler
 from torch.utils.data import DataLoader, TensorDataset
 from concurrent.futures import ProcessPoolExecutor
+
+multiprocessing.set_start_method('spawn', force=True)
 
 from src.model import ChessModel
 from src.utils.mcts import MCTS
