@@ -34,7 +34,7 @@ class DataPipeline:
         
         self.generate_opening_book = config.get('data.generate_opening_book', True)
         self.opening_max_moves = config.get('data.opening_max_moves', 15)
-        self.opening_min_games = config.get('data.opening_min_games', 100000)
+        self.opening_min_games = config.get('data.opening_min_games', 10)
         self.opening_book = {}
         
         self.positions = defaultdict(create_positions_dict)

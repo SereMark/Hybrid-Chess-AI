@@ -47,7 +47,7 @@ data:
     min_elo: 1800
     generate_opening_book: true
     opening_max_moves: 20
-    opening_min_games: 100000
+    opening_min_games: 10
 
 supervised:
   epochs: 2
