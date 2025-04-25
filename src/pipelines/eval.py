@@ -43,7 +43,7 @@ class EvalPipeline:
         self.mcts = config.get('benchmark.mcts', True)
         self.opening_book = config.get('benchmark.opening_book', True)
         self.switch_colors = config.get('benchmark.switch_colors', True)
-        self.stockfish_path = config.get('benchmark.stockfish_path', 'engines/stockfish-ubuntu-x86-64-avx2')
+        self.stockfish_path = config.get('benchmark.stockfish_path', 'stockfish')
         self.stockfish_elo = config.get('benchmark.stockfish_elo', 1500)
         self.stockfish_time = config.get('benchmark.stockfish_time', 0.1)
         self.stockfish_depth = config.get('benchmark.stockfish_depth', None)
@@ -583,42 +583,9 @@ class EvalPipeline:
                 if env_stockfish_path and os.path.isfile(env_stockfish_path):
                     self.stockfish_path = env_stockfish_path
                     print(f"Using Stockfish from environment variable: {self.stockfish_path}")
-        
+
                 if not self.stockfish_path or not os.path.isfile(self.stockfish_path):
-                    common_paths = [
-                        "/usr/local/bin/stockfish",
-                        "/usr/bin/stockfish",
-                        "stockfish",
-                        "./stockfish",
-                        "engines/stockfish",
-                        "engines/stockfish-ubuntu-x86-64-avx2",
-                        "/content/drive/MyDrive/chess_ai/engines/stockfish"
-                    ]
-                    
-                    for path in common_paths:
-                        if os.path.isfile(path):
-                            self.stockfish_path = path
-                            break
-                    
-                    if not self.stockfish_path or not os.path.isfile(self.stockfish_path):
-                        print("Trying to download Stockfish...")
-                        import subprocess
-                        result = subprocess.run(
-                            ["pip", "install", "stockfish"],
-                            check=True,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            text=True
-                        )
-                        
-                        try:
-                            import stockfish
-                            self.stockfish_path = stockfish.STOCKFISH_EXECUTABLE
-                        except:
-                            pass
-                    
-                    if not self.stockfish_path or not os.path.isfile(self.stockfish_path):
-                        raise FileNotFoundError("Stockfish not found. Please provide a valid path in the config.")
+                    raise FileNotFoundError("Stockfish executable not found.")
                 
                 print(f"Using Stockfish at: {self.stockfish_path}")
                 self.engine = chess.engine.SimpleEngine.popen_uci(self.stockfish_path)

@@ -107,17 +107,12 @@ def install_dependencies(pipelines):
             print_info("Checking Stockfish installation...")
             
             try:
-                os.makedirs("engines", exist_ok=True)
-                
                 stockfish_path = None
                 common_paths = [
                     "/usr/local/bin/stockfish",
                     "/usr/bin/stockfish",
                     "stockfish",
-                    "./stockfish",
-                    "engines/stockfish",
-                    "engines/stockfish-ubuntu-x86-64-avx2",
-                    "/content/drive/MyDrive/chess_ai/engines/stockfish"
+                    "./stockfish"
                 ]
                 
                 for path in common_paths:
@@ -150,9 +145,9 @@ def install_dependencies(pipelines):
                     subprocess.run(["unzip", "stockfish.zip"], check=True)
                     
                     subprocess.run(["chmod", "+x", "stockfish-ubuntu-20.04-x86-64/stockfish-ubuntu-20.04-x86-64"], check=True)
-                    subprocess.run(["cp", "stockfish-ubuntu-20.04-x86-64/stockfish-ubuntu-20.04-x86-64", "engines/stockfish"], check=True)
+                    subprocess.run(["cp", "stockfish-ubuntu-20.04-x86-64/stockfish-ubuntu-20.04-x86-64", "stockfish"], check=True)
                     
-                    stockfish_path = "engines/stockfish"
+                    stockfish_path = "stockfish"
                     print_success(f"Installed Stockfish at: {stockfish_path}")
                 
                 if stockfish_path and os.path.isfile(stockfish_path):
