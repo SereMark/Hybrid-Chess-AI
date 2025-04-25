@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import h5py
 import wandb
 import chess
@@ -31,9 +32,15 @@ class DataPipeline:
         
         self.augment_flip = config.get('data.augment_flip', True)
         
+        self.generate_opening_book = config.get('data.generate_opening_book', True)
+        self.opening_max_moves = config.get('data.opening_max_moves', 15)
+        self.opening_min_games = config.get('data.opening_min_games', 100000)
+        self.opening_book = {}
+        
         self.positions = defaultdict(create_positions_dict)
         self.move_map = get_move_map()
-        self.output_dir = '/content/drive/MyDrive/chess_ai/data'
+        
+        self.output_dir = config.get('data.output_dir', '/content/drive/MyDrive/chess_ai/data')
         os.makedirs(self.output_dir, exist_ok=True)
         self.games_processed = 0
         self.dataset_size = 0
@@ -89,12 +96,14 @@ class DataPipeline:
             return [], [], [], {}, 0
             
         result_map = {"1-0": 1.0, "0-1": -1.0, "1/2-1/2": 0.0}
-        gr = result_map.get(game.headers.get("Result"))
+        result_str = game.headers.get("Result")
+        gr = result_map.get(result_str)
         if gr is None:
             return [], [], [], {}, 0
             
         inputs, policies, values = [], [], []
         
+        opening_positions = []
         board = game.board()
         node = game
         move_count = 0
@@ -109,6 +118,9 @@ class DataPipeline:
             
             if move not in board.legal_moves:
                 break
+            
+            if self.generate_opening_book and move_count <= self.opening_max_moves:
+                opening_positions.append((board.fen(), move, board.turn))
                 
             inp = board_to_input(board, board_history)
             
@@ -154,6 +166,37 @@ class DataPipeline:
             "tc": game.headers.get("TimeControl", ""),
             "elo": [we, be]
         }
+        
+        if self.generate_opening_book and opening_positions:
+            try:
+                result_for_white = "win" if result_str == "1-0" else "loss" if result_str == "0-1" else "draw"
+                for fen, move, turn in opening_positions:
+                    try:
+                        move_uci = move.uci()
+                    except Exception as e:
+                        continue
+                    
+                    if fen not in self.opening_book:
+                        self.opening_book[fen] = {}
+                        
+                    if move_uci not in self.opening_book[fen]:
+                        self.opening_book[fen][move_uci] = {"win": 0, "draw": 0, "loss": 0, "eco": "", "name": ""}
+                    
+                    if turn:
+                        result_key = result_for_white
+                    else:
+                        result_key = "win" if result_for_white == "loss" else "loss" if result_for_white == "win" else "draw"
+                    
+                    self.opening_book[fen][move_uci][result_key] += 1
+                    
+                    eco = game.headers.get("ECO", "")
+                    opening_name = game.headers.get("Opening", "")
+                    if eco and not self.opening_book[fen][move_uci]["eco"]:
+                        self.opening_book[fen][move_uci]["eco"] = eco
+                    if opening_name and not self.opening_book[fen][move_uci]["name"]:
+                        self.opening_book[fen][move_uci]["name"] = opening_name
+            except Exception as e:
+                print(f"Warning: Error while processing opening book entry: {e}")
         
         return inputs, policies, values, stats, 1
     
@@ -398,5 +441,68 @@ class DataPipeline:
             wandb.finish()
         
         print(f"Dataset and indices saved to: {self.output_dir}")
+        
+        if self.generate_opening_book and self.opening_book:
+            try:
+                print(f"\nGenerating opening book from {len(self.opening_book)} positions...")
+                
+                filtered_book = {}
+                total_moves = 0
+                
+                for fen, moves in self.opening_book.items():
+                    filtered_moves = {}
+                    
+                    for move_uci, stats in moves.items():
+                        total_games = stats["win"] + stats["draw"] + stats["loss"]
+                        if total_games >= self.opening_min_games:
+                            filtered_moves[move_uci] = stats
+                            total_moves += 1
+                    
+                    if filtered_moves:
+                        filtered_book[fen] = filtered_moves
+                
+                opening_book_path = os.path.join(self.output_dir, "opening_book.json")
+                with open(opening_book_path, 'w') as f:
+                    json.dump(filtered_book, f, indent=2)
+                
+                print(f"Opening book generated with {len(filtered_book)} positions and {total_moves} moves")
+                print(f"Opening book saved to: {opening_book_path}")
+                
+                if wandb.run is not None:
+                    try:
+                        wandb.log({
+                            "opening_book/positions": len(filtered_book),
+                            "opening_book/total_moves": total_moves
+                        })
+                        
+                        sample_size = min(20, len(filtered_book))
+                        popular_positions = []
+                        
+                        for fen, moves in filtered_book.items():
+                            total_games = 0
+                            for move_uci, stats in moves.items():
+                                if isinstance(stats, dict):
+                                    total_games += stats.get("win", 0) + stats.get("draw", 0) + stats.get("loss", 0)
+                            popular_positions.append((fen, total_games))
+                        
+                        popular_positions = sorted(popular_positions, key=lambda x: x[1], reverse=True)[:sample_size]
+                        
+                        popular_table = wandb.Table(columns=["Position", "FEN", "Total Games"])
+                        for i, (fen, count) in enumerate(popular_positions):
+                            popular_table.add_data(f"Position {i+1}", fen, count)
+                        
+                        wandb.log({"opening_book/popular_positions": popular_table})
+                        
+                        artifact = wandb.Artifact("opening_book", type="dataset")
+                        artifact.add_file(opening_book_path)
+                        wandb.log_artifact(artifact)
+                        
+                    except Exception as e:
+                        print(f"Error logging opening book statistics: {e}")
+                
+                return True
+            except Exception as e:
+                print(f"Error generating opening book: {e}")
+                return False
         
         return True

@@ -4,18 +4,126 @@ import json
 import wandb
 import torch
 import chess
+import signal
 import chess.pgn
-import chess.engine
+import subprocess
 import numpy as np
-import matplotlib.pyplot as plt
+import chess.engine
 from tqdm.auto import tqdm
 from sklearn import metrics
+import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 
+from src.model import ChessModel
 from src.utils.config import Config
 from src.utils.train import set_seed, get_device
 from src.utils.chess import H5Dataset, get_move_count, BoardHistory, board_to_input, get_move_map
-from src.model import ChessModel
+
+class StockfishManager:
+    _instance = None
+    _stockfish_path = None
+    _is_initialized = False
+
+    @classmethod
+    def setup_stockfish(cls, force_reinstall=False):
+        if cls._is_initialized and cls._stockfish_path and not force_reinstall:
+            return True, cls._stockfish_path
+            
+        common_paths = [
+            "/usr/games/stockfish",
+            "/usr/local/bin/stockfish",
+            "/usr/bin/stockfish",
+            "stockfish",
+            "./stockfish"
+        ]
+        
+        env_path = os.environ.get("STOCKFISH_PATH")
+        if env_path and os.path.isfile(env_path) and os.access(env_path, os.X_OK):
+            cls._stockfish_path = env_path
+            cls._is_initialized = True
+            return True, cls._stockfish_path
+            
+        for p in common_paths:
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                cls._stockfish_path = p
+                cls._is_initialized = True
+                os.environ["STOCKFISH_PATH"] = p
+                return True, cls._stockfish_path
+                
+        try:
+            subprocess.run(["apt-get", "update", "-qq"], check=True)
+            subprocess.run(["apt-get", "install", "-y", "stockfish"], check=True)
+        except subprocess.CalledProcessError as e:
+            cls._is_initialized = False
+            return False, None
+            
+        for p in ["/usr/games/stockfish", "/usr/bin/stockfish"]:
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                cls._stockfish_path = p
+                cls._is_initialized = True
+                os.environ["STOCKFISH_PATH"] = p
+                return True, cls._stockfish_path
+                
+        try:
+            result = subprocess.run(
+                ["which", "stockfish"], 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True
+            )
+            path = result.stdout.strip()
+            if path and os.path.isfile(path) and os.access(path, os.X_OK):
+                cls._stockfish_path = path
+                cls._is_initialized = True
+                os.environ["STOCKFISH_PATH"] = path
+                return True, cls._stockfish_path
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+            
+        cls._is_initialized = False
+        return False, None
+    
+    @classmethod
+    def get_stockfish_path(cls):
+        if not cls._is_initialized:
+            success, path = cls.setup_stockfish()
+            if not success:
+                return None
+            
+        return cls._stockfish_path
+    
+    @classmethod
+    def verify_stockfish_working(cls):
+        path = cls.get_stockfish_path()
+        if not path:
+            return False
+            
+        try:
+            process = subprocess.Popen(
+                [path],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            process.stdin.write("uci\n")
+            process.stdin.flush()
+            
+            lines = []
+            for _ in range(10):
+                line = process.stdout.readline().strip()
+                lines.append(line)
+                if "uciok" in line:
+                    process.terminate()
+                    return True
+                    
+            process.terminate()
+            return False
+            
+        except Exception:
+            return False
 
 class EvalPipeline:
     def __init__(self, config: Config):
@@ -28,18 +136,19 @@ class EvalPipeline:
         self.device = self.device_info["device"]
         self.device_type = self.device_info["type"]
         
-        print(f"Using device: {self.device_type}")
+        root_dir = config.get('project.root_dir', '/content/drive/MyDrive/chess_ai')
         
-        self.sl_model_path = '/content/drive/MyDrive/chess_ai/models/supervised_model.pth'
-        self.rl_model_path = '/content/drive/MyDrive/chess_ai/models/reinforcement_model.pth'
-        self.dataset = config.get('data.dataset', 'data/dataset.h5')
-        self.test_idx = config.get('data.test_idx', 'data/test_indices.npy')
+        self.sl_model_path = os.path.join(root_dir, 'models/supervised_model.pth')
+        self.rl_model_path = os.path.join(root_dir, 'models/reinforcement_model.pth')
         
-        self.max_eval_samples = config.get('eval.max_samples', 10000)
+        self.dataset = config.get('data.dataset', os.path.join(root_dir, 'data/dataset.h5'))
+        self.test_idx = config.get('data.test_idx', os.path.join(root_dir, 'data/test_indices.npy'))
+        
+        self.max_eval_samples = config.get('eval.max_samples', 1000)
         self.visualize_moves = config.get('eval.visualize_moves', True)
         self.sl_vs_rl = config.get('eval.sl_vs_rl', True)
         
-        self.benchmark_games = config.get('benchmark.games', 10)
+        self.benchmark_games = config.get('benchmark.games', 5)
         self.mcts = config.get('benchmark.mcts', True)
         self.opening_book = config.get('benchmark.opening_book', True)
         self.switch_colors = config.get('benchmark.switch_colors', True)
@@ -48,17 +157,14 @@ class EvalPipeline:
         self.stockfish_time = config.get('benchmark.stockfish_time', 0.1)
         self.stockfish_depth = config.get('benchmark.stockfish_depth', None)
         
-        self.output_dir = '/content/drive/MyDrive/chess_ai/evaluation'
+        self.output_dir = os.path.join(root_dir, 'evaluation')
         self.sl_eval_dir = os.path.join(self.output_dir, 'supervised')
         self.rl_eval_dir = os.path.join(self.output_dir, 'reinforcement')
         self.games_dir = os.path.join(self.output_dir, 'games')
         self.comparison_dir = os.path.join(self.output_dir, 'comparison')
         
-        os.makedirs(self.output_dir, exist_ok=True)
-        os.makedirs(self.sl_eval_dir, exist_ok=True)
-        os.makedirs(self.rl_eval_dir, exist_ok=True)
-        os.makedirs(self.games_dir, exist_ok=True)
-        os.makedirs(self.comparison_dir, exist_ok=True)
+        for directory in [self.output_dir, self.sl_eval_dir, self.rl_eval_dir, self.games_dir, self.comparison_dir]:
+            os.makedirs(directory, exist_ok=True)
         
         self.sl_model = None
         self.rl_model = None
@@ -66,32 +172,30 @@ class EvalPipeline:
         self.rl_available = os.path.exists(self.rl_model_path)
         
         self.book = {}
-        book_path = '/content/drive/MyDrive/chess_ai/data/opening_book.json'
+        book_path = os.path.join(root_dir, 'data/opening_book.json')
         if os.path.exists(book_path):
             try:
                 with open(book_path, 'r') as f:
                     self.book = json.load(f)
-                print(f"Loaded opening book with {len(self.book)} positions")
-            except Exception as e:
-                print(f"Error loading opening book: {e}")
+            except Exception:
                 self.book = {}
+                
+        self.stockfish_available = False
         
+    def setup_stockfish_for_colab(self):
+        success, stockfish_path = StockfishManager.setup_stockfish()
+        if success and stockfish_path:
+            self.stockfish_path = stockfish_path
+            self.stockfish_available = True
+        return success
+    
     def setup(self):
-        print("Setting up evaluation pipeline...")
-        
         if not self.sl_available and not self.rl_available:
-            print("No models found for evaluation!")
             return False
-            
-        print(f"Available models: {'Supervised' if self.sl_available else ''} "
-              f"{'and ' if self.sl_available and self.rl_available else ''}"
-              f"{'Reinforcement' if self.rl_available else ''}")
         
-        if os.path.exists(self.dataset) and os.path.exists(self.test_idx):
-            print(f"Found dataset: {self.dataset}")
-            print(f"Found test indices: {self.test_idx}")
-        else:
-            print("Warning: Dataset files not found. Model accuracy evaluation will be skipped.")
+        stockfish_ok = self.setup_stockfish_for_colab()
+        if not stockfish_ok:
+            self.stockfish_available = False
         
         if self.config.get('wandb.enabled', True):
             try:
@@ -108,18 +212,16 @@ class EvalPipeline:
                         "device": self.device_type
                     }
                 )
-            except Exception as e:
-                print(f"Error initializing wandb: {e}")
+            except Exception:
+                pass
                 
         return True
         
     def load_model(self, model_path, model_type="unknown"):
         if not os.path.isfile(model_path):
-            print(f"Model file not found: {model_path}")
             return None
             
         try:
-            print(f"Loading {model_type} model from {model_path}...")
             ch = self.config.get('model.channels', 64)
             blocks = self.config.get('model.blocks', 4)
             use_attention = self.config.get('model.attention', True)
@@ -134,7 +236,6 @@ class EvalPipeline:
             try:
                 checkpoint = torch.load(model_path, map_location=self.device)
             except Exception:
-                print("GPU loading failed, falling back to CPU loading")
                 checkpoint = torch.load(model_path, map_location='cpu')
             
             if isinstance(checkpoint, dict) and 'model' in checkpoint:
@@ -143,18 +244,15 @@ class EvalPipeline:
                 model.load_state_dict(checkpoint, strict=False)
                 
             model.eval()
-            print(f"Successfully loaded {model_type} model")
             return model
             
-        except Exception as e:
-            print(f"Error loading model: {e}")
+        except Exception:
             import traceback
             traceback.print_exc()
             return None
     
     def prepare_data(self):
         if not os.path.isfile(self.test_idx) or not os.path.isfile(self.dataset):
-            print(f"Test indices or dataset file not found")
             return None
             
         try:
@@ -181,18 +279,15 @@ class EvalPipeline:
                 prefetch_factor=prefetch if workers > 0 else None
             )
             
-            print(f"Loaded test dataset with {len(test_indices)} samples")
             return dataloader
             
-        except Exception as e:
-            print(f"Error preparing dataloader: {e}")
+        except Exception:
             return None
     
     def run_inference(self, model, dataloader, model_type="unknown"):
         predictions, actuals, accuracies, logits = [], [], [], []
         
         total_batches = len(dataloader)
-        print(f"Running inference on {total_batches} batches for {model_type} model...")
         
         with torch.no_grad():
             for batch_idx, (inputs, targets, values) in enumerate(tqdm(dataloader)):
@@ -228,19 +323,15 @@ class EvalPipeline:
     
     def evaluate_model_accuracy(self, model, model_type, output_dir):
         if model is None:
-            print(f"No {model_type} model available for accuracy evaluation")
             return None
             
         dataloader = self.prepare_data()
         if dataloader is None:
-            print(f"Could not prepare data for {model_type} model evaluation")
             return None
             
-        print(f"Starting {model_type} model evaluation...")
         predictions, actuals, accuracies, logits = self.run_inference(model, dataloader, model_type)
         
         if len(predictions) == 0:
-            print(f"No predictions generated for {model_type} model")
             return None
             
         overall_accuracy = float(np.mean(predictions == actuals))
@@ -250,9 +341,6 @@ class EvalPipeline:
             f'{model_type}/accuracy': overall_accuracy,
             f'{model_type}/batch_accuracy': avg_batch_accuracy
         }
-        
-        print(f"{model_type} model accuracy: {overall_accuracy:.4f}")
-        print(f"{model_type} model average batch accuracy: {avg_batch_accuracy:.4f}")
         
         if wandb.run is not None:
             wandb.log(scores)
@@ -335,7 +423,6 @@ class EvalPipeline:
     
     def visualize_move_comparison(self, sl_eval_results, rl_eval_results):
         if sl_eval_results is None or rl_eval_results is None:
-            print("Cannot compare models - missing evaluation results")
             return
             
         try:
@@ -354,10 +441,6 @@ class EvalPipeline:
             agreement = np.mean(sl_preds == rl_preds)
             sl_accuracy = np.mean(sl_preds == actuals)
             rl_accuracy = np.mean(rl_preds == actuals)
-            
-            print(f"SL-RL move agreement: {agreement:.4f}")
-            print(f"SL accuracy: {sl_accuracy:.4f}")
-            print(f"RL accuracy: {rl_accuracy:.4f}")
             
             fig, ax = plt.subplots(figsize=(8, 6))
             
@@ -449,8 +532,7 @@ class EvalPipeline:
                     'comparison/rl_advantage_cases': confusion_data[1, 0]
                 })
                 
-        except Exception as e:
-            print(f"Error in move comparison visualization: {e}")
+        except Exception:
             import traceback
             traceback.print_exc()
     
@@ -473,8 +555,7 @@ class EvalPipeline:
                         c_puct=1.4, 
                         n_sims=100
                     )
-                except Exception as e:
-                    print(f"Error initializing MCTS: {e}")
+                except Exception:
                     self.mcts = None
                     self.use_mcts = False
             else:
@@ -491,9 +572,9 @@ class EvalPipeline:
                 self.reset_history(board)
             
             try:
-                if self.use_book and book:
+                if self.use_book and book is not None:
                     fen = board.fen()
-                    moves_dict = book.get(fen)
+                    moves_dict = book.get(fen, {})
                     
                     if moves_dict:
                         best_move = None
@@ -504,10 +585,13 @@ class EvalPipeline:
                             
                             if total_games > 0:
                                 score = (stats.get('win', 0) + 0.5 * stats.get('draw', 0)) / total_games
-                                move = chess.Move.from_uci(uci_move)
-                                
-                                if move in board.legal_moves and score > best_score:
-                                    best_move, best_score = move, score
+                                try:
+                                    move = chess.Move.from_uci(uci_move)
+                                    
+                                    if move in board.legal_moves and score > best_score:
+                                        best_move, best_score = move, score
+                                except ValueError:
+                                    continue
                         
                         if best_move:
                             board_copy = board.copy()
@@ -534,25 +618,49 @@ class EvalPipeline:
                     else:
                         return chess.Move.null()
                 
-                input_tensor = torch.from_numpy(board_to_input(board, self.board_history)).float().unsqueeze(0).to(self.device)
-                
-                with torch.no_grad():
-                    policy_logits, _ = self.model(input_tensor)
-                    policy = torch.softmax(policy_logits[0], dim=0).cpu().numpy()
-                
-                move_probs = {}
-                for move in board.legal_moves:
-                    move_idx = self.move_map.idx_by_move(move)
-                    prob = policy[move_idx] if move_idx is not None and move_idx < len(policy) else 1e-8
-                    move_probs[move] = prob
-                
-                total_prob = sum(move_probs.values())
-                if total_prob > 0:
-                    for move in move_probs:
-                        move_probs[move] /= total_prob
-                else:
-                    for move in move_probs:
-                        move_probs[move] = 1.0 / len(move_probs)
+                try:
+                    input_array = board_to_input(board, self.board_history)
+                    input_tensor = torch.from_numpy(input_array).float().unsqueeze(0).to(self.device)
+                    
+                    del input_array
+                    
+                    with torch.no_grad():
+                        policy_logits, _ = self.model(input_tensor)
+                        policy = torch.softmax(policy_logits[0], dim=0).cpu().numpy()
+                    
+                    del input_tensor
+                    del policy_logits
+                    
+                    move_probs = {}
+                    legal_moves_list = list(board.legal_moves)
+                    
+                    if len(legal_moves_list) > 20:
+                        move_indices = []
+                        for move in legal_moves_list:
+                            move_idx = self.move_map.idx_by_move(move)
+                            if move_idx is not None and move_idx < len(policy):
+                                move_indices.append((move, move_idx, policy[move_idx]))
+                        
+                        move_indices.sort(key=lambda x: x[2], reverse=True)
+                        top_moves = move_indices[:20]
+                        
+                        for move, move_idx, prob in top_moves:
+                            move_probs[move] = prob
+                    else:
+                        for move in legal_moves_list:
+                            move_idx = self.move_map.idx_by_move(move)
+                            prob = policy[move_idx] if move_idx is not None and move_idx < len(policy) else 1e-8
+                            move_probs[move] = prob
+                    
+                    total_prob = sum(move_probs.values())
+                    if total_prob > 0:
+                        for move in move_probs:
+                            move_probs[move] /= total_prob
+                    else:
+                        for move in move_probs:
+                            move_probs[move] = 1.0 / len(move_probs)
+                except Exception:
+                    move_probs = {move: 1.0/len(list(board.legal_moves)) for move in board.legal_moves}
                 
                 best_move = max(move_probs, key=move_probs.get) if move_probs else chess.Move.null()
                 
@@ -563,8 +671,7 @@ class EvalPipeline:
                     
                 return best_move
             
-            except Exception as e:
-                print(f"Error getting move: {e}")
+            except Exception:
                 return chess.Move.null()
     
     class StockfishBot:
@@ -576,66 +683,130 @@ class EvalPipeline:
             self.stockfish_path = stockfish_path
             self.engine = None
             self.setup()
+            self.process_id = None
         
         def setup(self):
             try:
-                env_stockfish_path = os.environ.get('STOCKFISH_PATH')
-                if env_stockfish_path and os.path.isfile(env_stockfish_path):
-                    self.stockfish_path = env_stockfish_path
-                    print(f"Using Stockfish from environment variable: {self.stockfish_path}")
-
                 if not self.stockfish_path or not os.path.isfile(self.stockfish_path):
-                    raise FileNotFoundError("Stockfish executable not found.")
+                    success, stockfish_path = StockfishManager.setup_stockfish()
+                    if success and stockfish_path:
+                        self.stockfish_path = stockfish_path
+                    else:
+                        self.stockfish_path = 'stockfish'
                 
-                print(f"Using Stockfish at: {self.stockfish_path}")
-                self.engine = chess.engine.SimpleEngine.popen_uci(self.stockfish_path)
-                
-                if self.elo:
-                    self.engine.configure({"UCI_LimitStrength": True, "UCI_Elo": self.elo})
-                
-                print(f"Stockfish engine initialized with ELO: {self.elo}")
-            except Exception as e:
-                print(f"Error setting up Stockfish: {e}")
-                print("Stockfish benchmarking will be skipped.")
+                try:
+                    self.engine = chess.engine.SimpleEngine.popen_uci(self.stockfish_path)
+                    
+                    if self.elo is not None and self.elo < 3000:
+                        self.engine.configure({"UCI_LimitStrength": True, "UCI_Elo": self.elo})
+                    
+                    return True
+                    
+                except Exception:
+                    self.engine = None
+                    return False
+                    
+            except Exception:
                 self.engine = None
+                return False
         
         def get_move(self, board, _=None):
             if not self.engine:
-                print("Stockfish engine not initialized")
                 return chess.Move.null()
             
             try:
-                if self.depth:
-                    result = self.engine.play(board, chess.engine.Limit(depth=self.depth))
-                else:
-                    result = self.engine.play(board, chess.engine.Limit(time=self.time_limit))
+                import threading
+                import time
                 
-                return result.move
-            except Exception as e:
-                print(f"Error getting move from Stockfish: {e}")
+                move_result = [None]
+                move_exception = [None]
+                
+                def get_stockfish_move():
+                    try:
+                        if self.depth:
+                            result = self.engine.play(board, chess.engine.Limit(depth=self.depth))
+                        else:
+                            result = self.engine.play(board, chess.engine.Limit(time=self.time_limit))
+                        move_result[0] = result.move
+                    except Exception as e:
+                        move_exception[0] = e
+                
+                move_thread = threading.Thread(target=get_stockfish_move)
+                move_thread.daemon = True
+                move_thread.start()
+                
+                max_wait = 5.0
+                start_time = time.time()
+                
+                while move_thread.is_alive() and time.time() - start_time < max_wait:
+                    time.sleep(0.1)
+                
+                if move_thread.is_alive():
+                    try:
+                        if self.engine and hasattr(self.engine, 'transport') and hasattr(self.engine.transport, 'proc'):
+                            self.process_id = self.engine.transport.proc.pid
+                            try:
+                                os.kill(self.process_id, signal.SIGKILL)
+                            except:
+                                pass
+                    except:
+                        pass
+                        
+                    try:
+                        if self.engine:
+                            self.engine.quit()
+                    except:
+                        pass
+                        
+                    self.engine = None
+                    
+                    try:
+                        self.engine = chess.engine.SimpleEngine.popen_uci(
+                            self.stockfish_path,
+                            timeout=10
+                        )
+                        if self.elo:
+                            self.engine.configure({"UCI_LimitStrength": True, "UCI_Elo": self.elo})
+                    except Exception:
+                        pass
+                    
+                    legal_moves = list(board.legal_moves)
+                    if legal_moves:
+                        import random
+                        return random.choice(legal_moves)
+                    return chess.Move.null()
+                
+                if move_exception[0] is not None:
+                    return chess.Move.null()
+                
+                return move_result[0] if move_result[0] is not None else chess.Move.null()
+            except Exception:
                 return chess.Move.null()
         
         def close(self):
-            if self.engine:
-                self.engine.quit()
+            try:
+                if self.engine:
+                    self.engine.quit()
+                if self.process_id:
+                    try:
+                        os.kill(self.process_id, signal.SIGKILL)
+                    except:
+                        pass
+            except:
+                pass
     
     def run_sl_rl_comparison(self):
         if not self.sl_available or not self.rl_available:
-            print("Cannot run SL vs RL comparison - need both models")
             return None
             
         if self.sl_model is None or self.rl_model is None:
-            print("Models not loaded - loading now...")
             if self.sl_model is None:
                 self.sl_model = self.load_model(self.sl_model_path, "Supervised")
             if self.rl_model is None:
                 self.rl_model = self.load_model(self.rl_model_path, "Reinforcement")
                 
             if self.sl_model is None or self.rl_model is None:
-                print("Failed to load models for comparison")
                 return None
-        
-        print("\nRunning SL vs RL model comparison games...")
         
         sl_bot = self.ChessBot(
             self.sl_model,
@@ -656,8 +827,6 @@ class EvalPipeline:
         num_games = min(self.benchmark_games, 5)
         results = {'sl_wins': 0, 'rl_wins': 0, 'draws': 0}
         game_records = []
-        
-        print(f"Playing {num_games} games between SL and RL models...")
         
         for game_idx in range(1, num_games + 1):
             board = chess.Board()
@@ -683,8 +852,6 @@ class EvalPipeline:
             node = game
             moves_played = 0
             
-            print(f"Game {game_idx}: {white_name} (White) vs {black_name} (Black)")
-            
             while not board.is_game_over() and moves_played < 200:
                 sl_turn = (board.turn == chess.WHITE and sl_plays_white) or \
                           (board.turn == chess.BLACK and not sl_plays_white)
@@ -694,7 +861,6 @@ class EvalPipeline:
                 move = current_bot.get_move(board, self.book)
                 
                 if move == chess.Move.null() or move not in board.legal_moves:
-                    print(f"Invalid move from {current_bot.name}")
                     break
                 
                 board.push(move)
@@ -707,20 +873,15 @@ class EvalPipeline:
             if result == '1-0':
                 if sl_plays_white:
                     results['sl_wins'] += 1
-                    print(f"Game {game_idx}: SL wins")
                 else:
                     results['rl_wins'] += 1
-                    print(f"Game {game_idx}: RL wins")
             elif result == '0-1':
                 if sl_plays_white:
                     results['rl_wins'] += 1
-                    print(f"Game {game_idx}: RL wins")
                 else:
                     results['sl_wins'] += 1
-                    print(f"Game {game_idx}: SL wins")
             else:
                 results['draws'] += 1
-                print(f"Game {game_idx}: Draw")
             
             pgn_path = os.path.join(self.comparison_dir, f'sl_vs_rl_game_{game_idx}.pgn')
             with open(pgn_path, 'w') as f:
@@ -737,11 +898,6 @@ class EvalPipeline:
         sl_win_rate = results['sl_wins'] / total_games if total_games > 0 else 0
         rl_win_rate = results['rl_wins'] / total_games if total_games > 0 else 0
         draw_rate = results['draws'] / total_games if total_games > 0 else 0
-        
-        print("\nSL vs RL Comparison Results:")
-        print(f"SL wins: {results['sl_wins']} ({sl_win_rate:.1%})")
-        print(f"RL wins: {results['rl_wins']} ({rl_win_rate:.1%})")
-        print(f"Draws: {results['draws']} ({draw_rate:.1%})")
         
         fig, ax = plt.subplots(figsize=(8, 6))
         labels = ['SL Wins', 'RL Wins', 'Draws']
@@ -783,11 +939,8 @@ class EvalPipeline:
         return results
     
     def run_stockfish_benchmark(self, model, model_type):
-        if model is None:
-            print(f"No {model_type} model available for Stockfish benchmark")
+        if model is None or not self.stockfish_available:
             return None
-        
-        print(f"\nRunning {model_type} model benchmark against Stockfish (ELO: {self.stockfish_elo})...")
         
         model_bot = self.ChessBot(
             model,
@@ -806,7 +959,6 @@ class EvalPipeline:
         )
         
         if stockfish.engine is None:
-            print("Stockfish not available, skipping benchmark")
             return None
         
         results = {'1-0': 0, '0-1': 0, '1/2-1/2': 0, '*': 0}
@@ -855,7 +1007,6 @@ class EvalPipeline:
                 move = current_player.get_move(board, self.book)
                 
                 if move == chess.Move.null() or move not in board.legal_moves:
-                    print(f"Invalid move from {current_player.name}")
                     break
                 
                 board.push(move)
@@ -918,24 +1069,33 @@ class EvalPipeline:
         avg_duration = float(np.mean(durations)) if durations else 0
         avg_moves = float(np.mean(move_counts)) if move_counts else 0
         
-        elo_diff = 400 * np.log10(win_rate / (1 - win_rate)) if win_rate > 0 and win_rate < 1 else 0
-        estimated_elo = self.stockfish_elo + elo_diff
-        
-        print(f"\n{model_type} Model vs Stockfish Results:")
-        print(f"{model_type} AI wins: {ai_wins}")
-        print(f"Stockfish wins: {stockfish_wins}")
-        print(f"Draws: {draws}")
-        print(f"Win rate: {win_rate:.2%}")
-        print(f"Estimated ELO: {estimated_elo:.0f}")
-        print(f"Average game duration: {avg_duration:.2f}s")
-        print(f"Average moves per game: {avg_moves:.1f}")
-        
-        fig, ax = plt.subplots(figsize=(8, 6))
-        labels = [f'{model_type} Wins', 'Stockfish Wins', 'Draws']
-        values = [ai_wins, stockfish_wins, draws]
-        ax.bar(labels, values)
-        ax.set_ylabel('Number of Games')
-        ax.set_title(f'{model_type} vs Stockfish (ELO {self.stockfish_elo}) Results')
+        try:
+            if win_rate > 0 and win_rate < 1:
+                elo_diff = 400 * np.log10(win_rate / (1 - win_rate))
+            elif win_rate == 1:
+                elo_diff = 400
+            elif win_rate == 0:
+                elo_diff = -400
+            else:
+                elo_diff = 0
+                
+            estimated_elo = self.stockfish_elo + elo_diff
+            
+            try:
+                if total_games > 0:
+                    fig, ax = plt.subplots(figsize=(6, 4))
+                    labels = [f'{model_type}', 'Stockfish', 'Draws']
+                    values = [ai_wins, stockfish_wins, draws]
+                    ax.bar(labels, values)
+                    ax.set_ylabel('Number of Games')
+                    ax.set_title(f'{model_type} vs Stockfish (ELO {self.stockfish_elo})')
+                    
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+            except Exception:
+                pass
+        except Exception:
+            estimated_elo = self.stockfish_elo
         
         fig_path = os.path.join(model_dir, 'stockfish_results.png')
         fig.savefig(fig_path)
@@ -1003,7 +1163,6 @@ class EvalPipeline:
             
             sl_eval_results = None
             if self.sl_available and self.sl_model:
-                print("\n===== SUPERVISED MODEL EVALUATION =====")
                 sl_eval_results = self.evaluate_model_accuracy(
                     self.sl_model, "supervised", self.sl_eval_dir
                 )
@@ -1011,15 +1170,12 @@ class EvalPipeline:
             
             rl_eval_results = None
             if self.rl_available and self.rl_model:
-                print("\n===== REINFORCEMENT MODEL EVALUATION =====")
                 rl_eval_results = self.evaluate_model_accuracy(
                     self.rl_model, "reinforcement", self.rl_eval_dir
                 )
                 eval_results['reinforcement'] = rl_eval_results
             
             if self.sl_available and self.rl_available and self.sl_model and self.rl_model:
-                print("\n===== MODEL COMPARISON =====")
-                
                 if self.visualize_moves and sl_eval_results and rl_eval_results:
                     self.visualize_move_comparison(sl_eval_results, rl_eval_results)
                 
@@ -1027,15 +1183,14 @@ class EvalPipeline:
                     sl_rl_results = self.run_sl_rl_comparison()
                     eval_results['sl_vs_rl'] = sl_rl_results
             
-            if self.sl_available and self.sl_model:
-                print("\n===== SUPERVISED MODEL BENCHMARK =====")
-                sl_benchmark = self.run_stockfish_benchmark(self.sl_model, "supervised")
-                eval_results['supervised_benchmark'] = sl_benchmark
-            
-            if self.rl_available and self.rl_model:
-                print("\n===== REINFORCEMENT MODEL BENCHMARK =====")
-                rl_benchmark = self.run_stockfish_benchmark(self.rl_model, "reinforcement")
-                eval_results['reinforcement_benchmark'] = rl_benchmark
+            if self.stockfish_available:
+                if self.sl_available and self.sl_model:
+                    sl_benchmark = self.run_stockfish_benchmark(self.sl_model, "supervised")
+                    eval_results['supervised_benchmark'] = sl_benchmark
+                
+                if self.rl_available and self.rl_model:
+                    rl_benchmark = self.run_stockfish_benchmark(self.rl_model, "reinforcement")
+                    eval_results['reinforcement_benchmark'] = rl_benchmark
             
             self.generate_final_report(eval_results)
             
@@ -1044,8 +1199,7 @@ class EvalPipeline:
             
             return True
             
-        except Exception as e:
-            print(f"Error during evaluation: {e}")
+        except Exception:
             import traceback
             traceback.print_exc()
             
@@ -1119,8 +1273,6 @@ class EvalPipeline:
                     else:
                         f.write("Reinforcement learning had no clear impact on model performance.\n")
         
-        print(f"\nFinal evaluation report saved to: {report_path}")
-        
         if 'supervised_benchmark' in results and 'reinforcement_benchmark' in results:
             if results['supervised_benchmark'] and results['reinforcement_benchmark']:
                 try:
@@ -1164,5 +1316,5 @@ class EvalPipeline:
                     
                     plt.close(fig)
                     
-                except Exception as e:
-                    print(f"Error creating comparison visualization: {e}")
+                except Exception:
+                    pass

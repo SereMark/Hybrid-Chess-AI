@@ -34,6 +34,10 @@ data:
   test_idx: data/test_indices.npy
   raw_pgn: data/lichess_db_standard_rated_2025-03.pgn
   augment_flip: true
+  generate_opening_book: true
+  opening_max_moves: 15
+  opening_min_games: 5
+  output_dir: /content/drive/MyDrive/chess_ai/data
   max_games: 10
   min_elo: 1500
   max_elo: 3500
@@ -41,6 +45,9 @@ data:
     batch: 512
     max_games: 25000
     min_elo: 1800
+    generate_opening_book: true
+    opening_max_moves: 20
+    opening_min_games: 100000
 
 supervised:
   epochs: 2
