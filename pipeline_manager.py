@@ -104,14 +104,65 @@ def install_dependencies(pipelines):
     
     for pipeline in pipelines:
         if pipeline['name'] == 'eval':
+            print_info("Checking Stockfish installation...")
+            
             try:
-                result = subprocess.run(["which", "stockfish"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if result.returncode != 0:
-                    print_info("Installing Stockfish...")
-                    subprocess.run(["apt-get", "update"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    subprocess.run(["apt-get", "install", "-y", "stockfish"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            except subprocess.CalledProcessError:
-                print_error("Failed to install Stockfish")
+                os.makedirs("engines", exist_ok=True)
+                
+                stockfish_path = None
+                common_paths = [
+                    "/usr/local/bin/stockfish",
+                    "/usr/bin/stockfish",
+                    "stockfish",
+                    "./stockfish",
+                    "engines/stockfish",
+                    "engines/stockfish-ubuntu-x86-64-avx2",
+                    "/content/drive/MyDrive/chess_ai/engines/stockfish"
+                ]
+                
+                for path in common_paths:
+                    if os.path.isfile(path):
+                        stockfish_path = path
+                        print_success(f"Found existing Stockfish at: {path}")
+                        break
+                
+                if not stockfish_path:
+                    print_info("Installing Stockfish Python package...")
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "stockfish"],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    
+                    try:
+                        import stockfish
+                        stockfish_path = stockfish.STOCKFISH_EXECUTABLE
+                        print_success(f"Using Stockfish from Python package at: {stockfish_path}")
+                    except (ImportError, AttributeError):
+                        print_info("Could not locate Stockfish from Python package.")
+                
+                if not stockfish_path or not os.path.isfile(stockfish_path):
+                    print_info("Downloading Stockfish binary...")
+                    stockfish_url = "https://stockfishchess.org/files/stockfish_15.1_linux_x64.zip"
+                    subprocess.run(["wget", stockfish_url, "-O", "stockfish.zip"], check=True)
+                    subprocess.run(["unzip", "stockfish.zip"], check=True)
+                    
+                    subprocess.run(["chmod", "+x", "stockfish-ubuntu-20.04-x86-64/stockfish-ubuntu-20.04-x86-64"], check=True)
+                    subprocess.run(["cp", "stockfish-ubuntu-20.04-x86-64/stockfish-ubuntu-20.04-x86-64", "engines/stockfish"], check=True)
+                    
+                    stockfish_path = "engines/stockfish"
+                    print_success(f"Installed Stockfish at: {stockfish_path}")
+                
+                if stockfish_path and os.path.isfile(stockfish_path):
+                    os.environ['STOCKFISH_PATH'] = stockfish_path
+                    print_success(f"Set STOCKFISH_PATH environment variable to: {stockfish_path}")
+                else:
+                    print_error("Failed to locate or install Stockfish")
+                    
+            except Exception as e:
+                print_error(f"Failed to install Stockfish: {str(e)}")
             break
 
 class Configuration:

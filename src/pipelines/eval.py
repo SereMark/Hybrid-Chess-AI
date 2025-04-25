@@ -579,6 +579,11 @@ class EvalPipeline:
         
         def setup(self):
             try:
+                env_stockfish_path = os.environ.get('STOCKFISH_PATH')
+                if env_stockfish_path and os.path.isfile(env_stockfish_path):
+                    self.stockfish_path = env_stockfish_path
+                    print(f"Using Stockfish from environment variable: {self.stockfish_path}")
+        
                 if not self.stockfish_path or not os.path.isfile(self.stockfish_path):
                     common_paths = [
                         "/usr/local/bin/stockfish",
