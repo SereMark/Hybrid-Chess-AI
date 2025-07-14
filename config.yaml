@@ -1,0 +1,177 @@
+debug:
+  training:
+    iterations: 5
+    games_per_iteration: 2
+    learning_rate: 0.01
+    save_every: 2
+    max_moves_per_game: 20
+  model:
+    hidden_dim: 128
+    num_layers: 2
+    num_heads: 4
+    dropout: 0.1
+    ffn_multiplier: 4
+  mcts:
+    simulations: 10
+  game:
+    exploration_temperature_moves: 5
+    high_temperature: 1.2
+    low_temperature: 0.1
+  system:
+    batch_size_hint: 32
+    memory_usage: "minimal"
+    expected_time: "30 seconds"
+    target_strength: "validation"
+
+fast:
+  training:
+    iterations: 100
+    games_per_iteration: 5
+    learning_rate: 0.003
+    save_every: 10
+    max_moves_per_game: 40
+  model:
+    hidden_dim: 256
+    num_layers: 4
+    num_heads: 8
+    dropout: 0.1
+    ffn_multiplier: 4
+  mcts:
+    simulations: 25
+  game:
+    exploration_temperature_moves: 10
+    high_temperature: 1.0
+    low_temperature: 0.1
+  system:
+    batch_size_hint: 64
+    memory_usage: "moderate"
+    expected_time: "2-3 hours"
+    target_strength: "1200 ELO"
+
+optimal:
+  training:
+    iterations: 500
+    games_per_iteration: 8
+    learning_rate: 0.001
+    save_every: 25
+    max_moves_per_game: 50
+    learning_rate_schedule:
+      type: "cosine"
+      warmup_steps: 50
+      min_lr: 0.0001
+  model:
+    hidden_dim: 512
+    num_layers: 6
+    num_heads: 8
+    dropout: 0.1
+    ffn_multiplier: 4
+  mcts:
+    simulations: 50
+  game:
+    exploration_temperature_moves: 10
+    high_temperature: 1.0
+    low_temperature: 0.1
+  system:
+    batch_size_hint: 128
+    memory_usage: "high"
+    expected_time: "8-12 hours"
+    target_strength: "1700 ELO"
+
+champion:
+  training:
+    iterations: 2000
+    games_per_iteration: 12
+    learning_rate: 0.0005
+    save_every: 50
+    max_moves_per_game: 75
+    learning_rate_schedule:
+      type: "cosine"
+      warmup_steps: 100
+      min_lr: 0.00005
+    experience_replay:
+      enabled: true
+      buffer_size: 100000
+      epochs_per_iteration: 4
+  model:
+    hidden_dim: 768
+    num_layers: 8
+    num_heads: 12
+    dropout: 0.15
+    ffn_multiplier: 4
+  mcts:
+    simulations: 100
+    schedule:
+      start_simulations: 50
+      end_simulations: 200
+      ramp_iterations: 500
+  game:
+    exploration_temperature_moves: 15
+    high_temperature: 1.0
+    low_temperature: 0.05
+  system:
+    batch_size_hint: 256
+    memory_usage: "maximum"
+    expected_time: "24-48 hours"
+    target_strength: "2000 ELO"
+
+defaults:
+  training:
+    iterations: 100
+    games_per_iteration: 3
+    learning_rate: 0.001
+    save_every: 10
+    max_moves_per_game: 50
+    gradient_clip_max_norm: 1.0
+    weight_init_std: 0.02
+    recent_losses_window: 10
+  model:
+    hidden_dim: 256
+    num_layers: 4
+    num_heads: 8
+    dropout: 0.1
+    ffn_multiplier: 4
+    board_size: 8
+    piece_types: 6
+    colors: 2
+    move_space_size: 4096
+  mcts:
+    simulations: 10
+    c_puct: 1.0
+    move_prior: 0.001
+  game:
+    exploration_temperature_moves: 10
+    high_temperature: 1.0
+    low_temperature: 0.1
+    win_value: 1.0
+    loss_value: -1.0
+    draw_value: 0.0
+    timeout_game_values: [-0.1, 0.0, 0.1]
+    chess_white_win: "1-0"
+    chess_black_win: "0-1"
+    chess_draw: "1/2-1/2"
+    total_squares: 64
+    piece_to_index:
+      pawn: 0
+      knight: 1
+      bishop: 2
+      rook: 3
+      queen: 4
+      king: 5
+    promotion_pieces: [4, 3, 2, 1]
+    pawn_promotion_ranks:
+      white: [48, 56, 0, 8]
+      black: [8, 16, 56, 64]
+  system:
+    device: "auto"
+    checkpoint_dir: "./checkpoints"
+    model_filename: "model_final.pt"
+    model_iteration_filename: "model_iteration_{}.pt"
+    max_gpu_memory_gb: 8
+    max_system_memory_gb: 16
+    cpu_cores: 6
+    numerical_stability_epsilon: 1e-8
+
+metadata:
+  version: "1.0"
+  target_hardware: "RTX 2070 + Ryzen 5 3600"
+  author: "Mark Sere"
