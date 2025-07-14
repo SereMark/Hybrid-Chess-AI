@@ -22,6 +22,14 @@ debug:
     memory_usage: "minimal"
     expected_time: "30 seconds"
     target_strength: "validation"
+  batch:
+    parallel_games: 4
+    mcts_batch_size: 8
+    use_parallel: true
+  experience_replay:
+    enabled: false
+    buffer_size: 10000
+    epochs_per_iteration: 2
 
 fast:
   training:
@@ -47,6 +55,14 @@ fast:
     memory_usage: "moderate"
     expected_time: "2-3 hours"
     target_strength: "1200 ELO"
+  batch:
+    parallel_games: 8
+    mcts_batch_size: 16
+    use_parallel: true
+  experience_replay:
+    enabled: true
+    buffer_size: 25000
+    epochs_per_iteration: 3
 
 optimal:
   training:
@@ -76,6 +92,14 @@ optimal:
     memory_usage: "high"
     expected_time: "8-12 hours"
     target_strength: "1700 ELO"
+  batch:
+    parallel_games: 8
+    mcts_batch_size: 16
+    use_parallel: true
+  experience_replay:
+    enabled: true
+    buffer_size: 50000
+    epochs_per_iteration: 4
 
 champion:
   training:
@@ -113,6 +137,10 @@ champion:
     memory_usage: "maximum"
     expected_time: "24-48 hours"
     target_strength: "2000 ELO"
+  batch:
+    parallel_games: 12
+    mcts_batch_size: 24
+    use_parallel: true
 
 defaults:
   training:
@@ -170,6 +198,11 @@ defaults:
     max_system_memory_gb: 16
     cpu_cores: 6
     numerical_stability_epsilon: 1e-8
+  batch:
+    parallel_games: 8
+    mcts_batch_size: 16
+    use_parallel: true
+    virtual_loss_value: 1.0
 
 metadata:
   version: "1.0"

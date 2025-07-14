@@ -100,6 +100,56 @@ class ChessModel(nn.Module):
             encode_time = time.time() - encode_start
             logger.debug(f"Board encoded: {piece_count} pieces in {encode_time * 1000:.2f}ms")
         return tensor.flatten()
+    
+    def encode_board_vectorized(self, board: chess.Board) -> torch.Tensor:
+        if logger.isEnabledFor(logging.DEBUG):
+            encode_start = time.time()
+            
+        board_size = get_config('model', 'board_size')
+        piece_types = get_config('model', 'piece_types')
+        colors = get_config('model', 'colors')
+        
+        tensor = torch.zeros(board_size * board_size * piece_types * colors, dtype=torch.float32)
+        
+        piece_map = board.piece_map()
+        
+        if piece_map:
+            piece_offsets = {
+                (chess.PAWN, chess.WHITE): 0,
+                (chess.KNIGHT, chess.WHITE): 1,
+                (chess.BISHOP, chess.WHITE): 2,
+                (chess.ROOK, chess.WHITE): 3,
+                (chess.QUEEN, chess.WHITE): 4,
+                (chess.KING, chess.WHITE): 5,
+                (chess.PAWN, chess.BLACK): 6,
+                (chess.KNIGHT, chess.BLACK): 7,
+                (chess.BISHOP, chess.BLACK): 8,
+                (chess.ROOK, chess.BLACK): 9,
+                (chess.QUEEN, chess.BLACK): 10,
+                (chess.KING, chess.BLACK): 11
+            }
+            
+            squares = []
+            channels = []
+            
+            for square, piece in piece_map.items():
+                row = square // board_size
+                col = square % board_size
+                channel = piece_offsets[(piece.piece_type, piece.color)]
+                
+                flat_idx = (row * board_size * piece_types * colors + 
+                           col * piece_types * colors + 
+                           channel)
+                squares.append(flat_idx)
+                
+            if squares:
+                tensor[squares] = 1.0
+                
+        if logger.isEnabledFor(logging.DEBUG):
+            encode_time = time.time() - encode_start
+            logger.debug(f"Board encoded (vectorized): {len(piece_map)} pieces in {encode_time * 1000:.2f}ms")
+            
+        return tensor
 
     def forward(self, board_tensor: torch.Tensor) -> Dict[str, torch.Tensor]:
         batch_size = board_tensor.size(0) if board_tensor.dim() > 1 else 1

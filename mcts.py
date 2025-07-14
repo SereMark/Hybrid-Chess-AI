@@ -73,7 +73,7 @@ class Node:
             if logger.isEnabledFor(logging.DEBUG):
                 expand_start = time.time()
                 logger.debug(f"Expanding node at position: {self.board.fen()[:20]}...")
-            board_tensor = model.encode_board(self.board).unsqueeze(0).to(device)
+            board_tensor = model.encode_board_vectorized(self.board).unsqueeze(0).to(device)
             with torch.no_grad():
                 output = model(board_tensor)
             policy = output['policy'][0]

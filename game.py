@@ -116,7 +116,7 @@ def play_self_play_game(model: Any,
         try:
             if logger.isEnabledFor(logging.DEBUG):
                 encode_start = time.time()
-            board_tensor = model.encode_board(game.board)
+            board_tensor = model.encode_board_vectorized(game.board)
             if logger.isEnabledFor(logging.DEBUG):
                 encode_time = time.time() - encode_start
                 total_encoding_time += encode_time
