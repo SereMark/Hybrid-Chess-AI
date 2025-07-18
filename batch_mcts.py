@@ -1,284 +1,269 @@
-from typing import Dict, List, Optional, Tuple, Any, Set
-import logging
 import math
-import time
+from typing import Any
+
 import chess
-import numpy as np
 import torch
-from collections import deque
-from mcts import Node
-from main import get_config
-
-logger = logging.getLogger(__name__)
+from config import get_config
 
 
-class BatchNode(Node):
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.virtual_loss = 0
-        self.pending_value = None
-        
-    def apply_virtual_loss(self, virtual_loss_value: float = 1.0) -> None:
-        self.virtual_loss += virtual_loss_value
+class Node:
+    def __init__(
+        self,
+        board: chess.Board,
+        parent: "Node | None" = None,
+        move: chess.Move | None = None,
+        prior: float | None = None,
+    ) -> None:
+        self.board: chess.Board = board.copy()
+        self.parent: Node | None = parent
+        self.move: chess.Move | None = move
+        self.prior: float = prior or get_config("mcts", "move_prior")
+        self.visits: int = 0
+        self.value_sum: float = 0.0
+        self.children: dict[chess.Move, Node] = {}
+        self.is_expanded: bool = False
+
+    def is_terminal(self) -> bool:
+        return self.board.is_game_over()
+
+    def get_value(self) -> float:
+        if self.visits == 0:
+            return 0.0
+        return self.value_sum / self.visits
+
+    def get_ucb_score(self, c_puct: float | None = None) -> float:
+        c_puct = c_puct or get_config("mcts", "c_puct")
+        if c_puct is None:
+            raise ValueError("c_puct must be provided or configured")
+        if self.visits == 0:
+            return float("inf")
+        if self.parent is None:
+            raise ValueError("Root node should not be scored with UCB")
+        exploration = (
+            c_puct * self.prior * math.sqrt(self.parent.visits) / (1 + self.visits)
+        )
+        ucb_score = self.get_value() + exploration
+        return ucb_score
+
+    def select_child(self, c_puct: float | None = None) -> "Node | None":
+        c_puct = c_puct or get_config("mcts", "c_puct")
+        if not self.children:
+            return None
+        best_move = None
+        best_score = float("-inf")
+        for move, child in self.children.items():
+            try:
+                score = child.get_ucb_score(c_puct)
+                if score > best_score:
+                    best_score = score
+                    best_move = move
+            except ValueError:
+                continue
+        return self.children[best_move] if best_move is not None else None
+
+    def expand(self, model: Any, move_encoder: Any, device: str) -> float | None:
+        if self.is_expanded or self.is_terminal():
+            return None
+        try:
+            board_tensor = (
+                model.encode_board_vectorized(self.board).unsqueeze(0).to(device)
+            )
+            with torch.no_grad():
+                output = model(board_tensor)
+            policy = output["policy"][0]
+            value = output["value"][0].item()
+            legal_moves = list(self.board.legal_moves)
+            priors = []
+            for move in legal_moves:
+                move_idx = move_encoder.encode_move(move)
+                prior = (
+                    policy[move_idx].item()
+                    if move_idx < len(policy)
+                    else get_config("mcts", "move_prior")
+                )
+                priors.append(prior)
+                child_board = self.board.copy()
+                child_board.push(move)
+                child = Node(child_board, parent=self, move=move, prior=prior)
+                self.children[move] = child
+            self.is_expanded = True
+            return value
+        except Exception:
+            return None
+
+    def backup(self, value: float) -> None:
         self.visits += 1
-        self.value_sum -= virtual_loss_value
-        
-    def revert_virtual_loss(self, virtual_loss_value: float = 1.0) -> None:
-        self.virtual_loss -= virtual_loss_value
-        self.visits -= 1
-        self.value_sum += virtual_loss_value
-        
-    def backup_with_virtual_loss(self, value: float) -> None:
-        if self.virtual_loss > 0:
-            self.revert_virtual_loss()
-        self.backup(value)
+        self.value_sum += value
+        if self.parent:
+            self.parent.backup(-value)
+
+    def get_visit_counts(self) -> dict[chess.Move, int]:
+        return {move: child.visits for move, child in self.children.items()}
 
 
 class BatchMCTS:
-    
-    def __init__(self, 
-                 model: Any, 
-                 move_encoder: Any, 
-                 device: str,
-                 batch_size: int = 16,
-                 num_simulations: int = None,
-                 c_puct: float = None,
-                 virtual_loss_value: float = 1.0) -> None:
-        num_simulations = num_simulations or get_config('mcts', 'simulations')
-        c_puct = c_puct or get_config('mcts', 'c_puct')
-        
-        if batch_size <= 0:
-            raise ValueError(f"batch_size must be positive, got {batch_size}")
-        if batch_size > 256:
-            logger.warning(f"Large batch_size={batch_size} may cause memory issues")
-        if num_simulations <= 0:
-            raise ValueError(f"num_simulations must be positive, got {num_simulations}")
-        if c_puct <= 0:
-            raise ValueError(f"c_puct must be positive, got {c_puct}")
-        if virtual_loss_value <= 0:
-            raise ValueError(f"virtual_loss_value must be positive, got {virtual_loss_value}")
-        
+    def __init__(
+        self,
+        model,
+        move_encoder,
+        device: str,
+        batch_size: int = 16,
+        num_simulations=None,
+        c_puct=None,
+    ):
         self.model = model
         self.move_encoder = move_encoder
         self.device = device
         self.batch_size = batch_size
-        self.num_simulations = num_simulations
-        self.c_puct = c_puct
-        self.virtual_loss_value = virtual_loss_value
-        
-        self._init_tensor_pools()
-        
-        logger.info(f"BatchMCTS initialized: batch_size={batch_size}, simulations={num_simulations}")
-        
-    def _init_tensor_pools(self) -> None:
-        board_size = get_config('model', 'board_size')
-        piece_types = get_config('model', 'piece_types')
-        colors = get_config('model', 'colors')
-        self.board_encoding_size = board_size * board_size * piece_types * colors
-        
-        self.batch_tensor_pool = {}
-        for size in [4, 8, 16, 32]:
-            self.batch_tensor_pool[size] = torch.zeros(
-                size, self.board_encoding_size, 
-                dtype=torch.float32, device=self.device
-            )
-            
-    def search_batch(self, boards: List[chess.Board]) -> List[Dict[chess.Move, float]]:
+        self.num_simulations = (
+            num_simulations or get_config("mcts", "simulations") or 25
+        )
+        self.c_puct = c_puct or get_config("mcts", "c_puct") or 1.0
+
+    def search_batch(self, boards):
         if not boards:
             return []
-            
-        logger.debug(f"Batch search starting for {len(boards)} boards")
-        
-        roots = [BatchNode(board) for board in boards]
-        
-        active_roots = list(range(len(roots)))
-        
-        eval_queue = deque()
-        
-        for sim in range(self.num_simulations):
-            if logger.isEnabledFor(logging.DEBUG) and (sim + 1) % max(1, self.num_simulations // 4) == 0:
-                logger.debug(f"Batch MCTS progress: {sim + 1}/{self.num_simulations}")
-                
-            for root_idx in active_roots:
-                root = roots[root_idx]
+
+        roots = [Node(board) for board in boards]
+
+        for _ in range(self.num_simulations):
+            nodes_to_evaluate = []
+
+            for root in roots:
                 if not root.is_terminal():
-                    leaf_node = self._select_leaf(root)
-                    if leaf_node and not leaf_node.is_terminal():
-                        eval_queue.append((root_idx, leaf_node))
-                        leaf_node.apply_virtual_loss(self.virtual_loss_value)
-            
-            if len(eval_queue) >= self.batch_size or (sim == self.num_simulations - 1 and eval_queue):
-                self._batch_evaluate(eval_queue)
-                eval_queue.clear()
-        
+                    leaf = self._select_leaf(root)
+                    if leaf and not leaf.is_terminal():
+                        nodes_to_evaluate.append(leaf)
+
+            if nodes_to_evaluate:
+                self._evaluate_nodes(nodes_to_evaluate)
+
         results = []
         for root in roots:
             visit_counts = root.get_visit_counts()
-            if visit_counts:
-                total_visits = sum(visit_counts.values())
-                move_probs = {move: count / total_visits 
-                             for move, count in visit_counts.items()}
+            total_visits = sum(visit_counts.values())
+
+            if total_visits > 0:
+                move_probs = {
+                    move: count / total_visits for move, count in visit_counts.items()
+                }
             else:
-                move_probs = {}
+                legal_moves = list(root.board.legal_moves)
+                if legal_moves:
+                    move_probs = {move: 1.0 / len(legal_moves) for move in legal_moves}
+                else:
+                    move_probs = {}
+
             results.append(move_probs)
-            
+
         return results
-    
-    def search(self, board: chess.Board) -> Dict[chess.Move, float]:
+
+    def search(self, board):
         results = self.search_batch([board])
         return results[0] if results else {}
-    
-    def _select_leaf(self, node: BatchNode) -> Optional[BatchNode]:
-        path = []
+
+    def _select_leaf(self, node):
         current = node
-        
+
         while current.is_expanded and not current.is_terminal():
             child = self._select_best_child(current)
             if child is None:
                 break
             current = child
-            path.append(current)
-            
+
         return current
-    
-    def _select_best_child(self, node: BatchNode) -> Optional[BatchNode]:
+
+    def _select_best_child(self, node):
         if not node.children:
             return None
-            
+
         best_child = None
-        best_score = float('-inf')
-        
-        for move, child in node.children.items():
-            if child.visits + child.virtual_loss == 0:
-                score = float('inf')
+        best_score = float("-inf")
+
+        for child in node.children.values():
+            if child.visits == 0:
+                score = float("inf")
             else:
-                q_value = (child.value_sum - child.virtual_loss * self.virtual_loss_value) / (child.visits + child.virtual_loss)
-                exploration = (self.c_puct * child.prior * 
-                             math.sqrt(node.visits) / (1 + child.visits + child.virtual_loss))
+                q_value = child.get_value()
+                exploration = (
+                    self.c_puct
+                    * child.prior
+                    * math.sqrt(node.visits)
+                    / (1 + child.visits)
+                )
                 score = q_value + exploration
-                
+
             if score > best_score:
                 best_score = score
                 best_child = child
-                
+
         return best_child
-    
-    def _batch_evaluate(self, eval_queue: deque) -> None:
-        if not eval_queue:
+
+    def _evaluate_nodes(self, nodes):
+        for i in range(0, len(nodes), self.batch_size):
+            batch_nodes = nodes[i : i + self.batch_size]
+            self._evaluate_batch(batch_nodes)
+
+    def _evaluate_batch(self, nodes):
+        if not nodes:
             return
-            
-        batch_size = len(eval_queue)
-        logger.debug(f"Batch evaluating {batch_size} positions")
-        
-        if batch_size in self.batch_tensor_pool:
-            batch_tensor = self.batch_tensor_pool[batch_size][:batch_size]
-        else:
-            batch_tensor = torch.zeros(
-                batch_size, self.board_encoding_size,
-                dtype=torch.float32, device=self.device
-            )
-        
-        nodes_to_expand = []
-        for i, (root_idx, node) in enumerate(eval_queue):
+
+        for node in nodes:
             if node.is_terminal():
-                value = self._evaluate_terminal_node(node)
-                node.pending_value = value
-            else:
-                board_tensor = self.model.encode_board_vectorized(node.board)
-                batch_tensor[i] = board_tensor
-                nodes_to_expand.append((root_idx, node, i))
-        
-        if nodes_to_expand:
+                value = self._get_terminal_value(node)
+                node.backup(value)
+                continue
+
+            board_tensor = self.model.encode_board_vectorized(node.board)
+
             with torch.no_grad():
-                if logger.isEnabledFor(logging.DEBUG):
-                    eval_start = time.time()
-                    
-                outputs = self.model(batch_tensor[:len(nodes_to_expand)])
-                policies = outputs['policy']
-                values = outputs['value']
-                
-                if logger.isEnabledFor(logging.DEBUG):
-                    eval_time = time.time() - eval_start
-                    logger.debug(f"Batch NN evaluation: {eval_time * 1000:.2f}ms for {len(nodes_to_expand)} positions")
-            
-            for (root_idx, node, batch_idx) in nodes_to_expand:
-                policy = policies[batch_idx]
-                value = values[batch_idx].item()
-                
-                self._expand_node(node, policy, value)
-                
-        for root_idx, node in eval_queue:
-            if hasattr(node, 'pending_value') and node.pending_value is not None:
-                value = node.pending_value
-                node.pending_value = None
-            else:
-                value = node.value_sum / node.visits if node.visits > 0 else 0.0
-                
-            if node.virtual_loss > 0:
-                node.revert_virtual_loss(self.virtual_loss_value)
+                batch_tensor = board_tensor.unsqueeze(0).to(self.device)
+                outputs = self.model(batch_tensor)
+                policy = outputs["policy"][0]
+                value = outputs["value"][0].item()
+
+            self._expand_node(node, policy)
             node.backup(value)
-    
-    def _expand_node(self, node: BatchNode, policy: torch.Tensor, value: float) -> None:
+
+    def _expand_node(self, node, policy):
         if node.is_expanded or node.is_terminal():
             return
-            
+
         legal_moves = list(node.board.legal_moves)
         if not legal_moves:
             return
-            
+
         priors = []
         for move in legal_moves:
             move_idx = self.move_encoder.encode_move(move)
-            prior = (policy[move_idx].item() 
-                    if move_idx < len(policy) 
-                    else get_config('mcts', 'move_prior'))
+            if move_idx < len(policy):
+                prior = policy[move_idx].item()
+            else:
+                prior = 0.001
             priors.append(prior)
-            
-        prior_sum = sum(priors)
-        if prior_sum > 0:
-            priors = [p / prior_sum for p in priors]
-        else:
-            priors = [1.0 / len(legal_moves)] * len(legal_moves)
-            
-        for move, prior in zip(legal_moves, priors):
+
+        prior_sum = sum(priors) or 1.0
+        priors = [p / prior_sum for p in priors]
+
+        for move, prior in zip(legal_moves, priors, strict=False):
             child_board = node.board.copy()
             child_board.push(move)
-            child = BatchNode(child_board, parent=node, move=move, prior=prior)
+            child = Node(child_board, parent=node, move=move, prior=prior)
             node.children[move] = child
-            
+
         node.is_expanded = True
-        node.pending_value = value
-        
-    def _evaluate_terminal_node(self, node: BatchNode) -> float:
+
+    def _get_terminal_value(self, node):
         result = node.board.result()
-        if result == get_config('game', 'chess_white_win'):
-            value = get_config('game', 'win_value')
-        elif result == get_config('game', 'chess_black_win'):
-            value = get_config('game', 'loss_value')
+
+        if result == "1-0":
+            value = 1.0
+        elif result == "0-1":
+            value = -1.0
         else:
-            value = get_config('game', 'draw_value')
-            
+            value = 0.0
+
         if not node.board.turn:
             value = -value
-            
+
         return value
-    
-    def get_best_move(self, 
-                     board: chess.Board, 
-                     temperature: float = 1.0) -> Optional[chess.Move]:
-        move_probs = self.search(board)
-        if not move_probs:
-            return None
-            
-        if temperature == 0:
-            return max(move_probs, key=move_probs.get)
-        else:
-            moves = list(move_probs.keys())
-            probs = np.array(list(move_probs.values()), dtype=np.float64)
-            
-            if temperature != 1.0:
-                probs = np.power(probs, 1.0 / temperature)
-                probs = probs / np.sum(probs)
-                
-            return np.random.choice(moves, p=probs)
