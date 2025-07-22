@@ -1,19 +1,48 @@
+from typing import TYPE_CHECKING, TypedDict
+
 import chess
 import numpy as np
 import torch
 from config import config
 
+if TYPE_CHECKING:
+    from model import ChessModel
+
+
+class State(TypedDict):
+    board_tensor: torch.Tensor
+    move_probs: dict[chess.Move, float]
+    move_played: chess.Move | None
+    player: chess.Color
+
+
+class Position(TypedDict):
+    board_tensor: torch.Tensor
+    move_probs: dict[chess.Move, float]
+    value: float
+    move_played: chess.Move | None
+
 
 def get_temp(move_count: int) -> float:
-    if move_count < config.EXPLORATION_TEMPERATURE_MOVES:
-        progress = move_count / config.EXPLORATION_TEMPERATURE_MOVES
+    if move_count < config.game.temp_moves:
+        progress = move_count / config.game.temp_moves
         return (
-            config.HIGH_TEMPERATURE * (1 - progress) + config.LOW_TEMPERATURE * progress
+            config.game.high_temperature * (1 - progress)
+            + config.game.low_temperature * progress
         )
-    return config.LOW_TEMPERATURE
+    return config.game.low_temperature
 
 
-def sample_move(move_probs: dict[chess.Move, float], temperature: float = 1.0):
+def uniform_probs(legal_moves: list[chess.Move]) -> dict[chess.Move, float]:
+    if not legal_moves:
+        return {}
+    prob = 1.0 / len(legal_moves)
+    return dict.fromkeys(legal_moves, prob)
+
+
+def sample_move(
+    move_probs: dict[chess.Move, float], temperature: float = 1.0
+) -> chess.Move:
     if not move_probs:
         raise ValueError("No moves available for selection")
 
@@ -29,16 +58,14 @@ def sample_move(move_probs: dict[chess.Move, float], temperature: float = 1.0):
     else:
         probs = np.ones(len(moves)) / len(moves)
 
-    return moves[np.random.default_rng().choice(len(moves), p=probs)]
+    rng = np.random.default_rng()
+    return moves[rng.choice(len(moves), p=probs)]
 
 
 class Game:
-    def __init__(self, fen: str | None = None):
-        self.board = chess.Board(fen) if fen else chess.Board()
-        self.history: list[dict] = []
-
-    def is_game_over(self) -> bool:
-        return self.board.is_game_over()
+    def __init__(self, fen: str | None = None) -> None:
+        self.board: chess.Board = chess.Board(fen) if fen else chess.Board()
+        self.history: list[State] = []
 
     def get_result(self) -> float:
         if not self.board.is_game_over():
@@ -56,7 +83,7 @@ class Game:
         board_tensor: torch.Tensor,
         move_probs: dict[chess.Move, float],
         move_played: chess.Move | None,
-    ):
+    ) -> None:
         self.history.append(
             {
                 "board_tensor": board_tensor.clone(),
@@ -72,12 +99,16 @@ class Game:
             return True
         return False
 
-    def get_training_data(self):
+    def training_data(self, model: "ChessModel | None" = None) -> list[Position]:
         if not self.board.is_game_over():
-            timeout_values = [-0.1, 0.0, 0.1]
-            final_result = float(
-                np.random.default_rng().choice(timeout_values)
-            )
+            rng = np.random.default_rng()
+            outcome_prob = rng.random()
+            if outcome_prob < 0.4:
+                final_result = 1.0
+            elif outcome_prob < 0.8:
+                final_result = -1.0
+            else:
+                final_result = 0.0
         else:
             final_result = self.get_result()
 
@@ -93,4 +124,3 @@ class Game:
                 }
             )
         return training_data
-
