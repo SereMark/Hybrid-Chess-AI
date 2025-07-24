@@ -11,6 +11,7 @@ from engine import MCTS, ChessModel, MoveEncoder, uniform_probs
 from torch import nn, optim
 from torch.nn import functional as f
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from utils import get_cpu_stats
 
 
 @dataclass
@@ -77,6 +78,12 @@ class IterationMetrics:
         info = [f"Time: {self.iteration_time:.1f}s"]
         if self.gpu_memory_gb > 0:
             info.append(f"GPU: {self.gpu_memory_gb:.1f}GB")
+
+        cpu_stats = get_cpu_stats()
+        cpu_pct = cpu_stats.get("cpu_usage_percent", 0)
+        if cpu_pct > 0:
+            info.append(f"CPU: {cpu_pct:.0f}%")
+
         if self.mcts_searches > 0:
             info.append(f"MCTS: {self.mcts_searches} searches")
         if self.zero_move_games > 0:

@@ -1,7 +1,10 @@
 import functools
 import logging
+import os
+import resource
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import ClassVar
 
 import torch
@@ -51,13 +54,73 @@ def setup_logging(level: str = "INFO") -> logging.Logger:
     return logger
 
 
+def get_cpu_stats() -> dict[str, float]:
+    stats = {
+        "cpu_usage_percent": 0.0,
+        "memory_used_gb": 0.0,
+        "memory_total_gb": 0.0,
+        "load_avg": 0.0,
+        "process_cpu_time": 0.0,
+    }
+
+    try:
+        if hasattr(os, "getloadavg"):
+            stats["load_avg"] = os.getloadavg()[0]
+    except (OSError, AttributeError):
+        pass
+
+    try:
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        stats["process_cpu_time"] = usage.ru_utime + usage.ru_stime
+    except OSError:
+        pass
+
+    try:
+        with Path("/proc/stat").open(encoding="utf-8") as f:
+            line = f.readline()
+            cpu_times = [int(x) for x in line.split()[1:]]
+            idle_time = cpu_times[3]
+            total_time = sum(cpu_times)
+            if total_time > 0:
+                stats["cpu_usage_percent"] = (
+                    (total_time - idle_time) / total_time
+                ) * 100
+    except (OSError, FileNotFoundError, ValueError, IndexError):
+        pass
+
+    try:
+        with Path("/proc/meminfo").open(encoding="utf-8") as f:
+            meminfo = {}
+            for line in f:
+                key, value = line.split(":")
+                meminfo[key.strip()] = int(value.split()[0])
+
+            total_kb = meminfo.get("MemTotal", 0)
+            available_kb = meminfo.get("MemAvailable", meminfo.get("MemFree", 0))
+            used_kb = total_kb - available_kb
+
+            stats["memory_total_gb"] = total_kb / (1024 * 1024)
+            stats["memory_used_gb"] = used_kb / (1024 * 1024)
+    except (OSError, FileNotFoundError, ValueError, KeyError):
+        pass
+
+    return stats
+
+
 def get_system_status() -> dict[str, float]:
     logger = logging.getLogger("chess_ai.system")
     status = {
         "gpu_memory_gb": 0.0,
         "gpu_utilization": 0.0,
         "gpu_available": False,
+        "cpu_usage_percent": 0.0,
+        "memory_used_gb": 0.0,
+        "memory_total_gb": 0.0,
+        "load_avg": 0.0,
     }
+
+    cpu_stats = get_cpu_stats()
+    status.update(cpu_stats)
 
     if torch.cuda.is_available():
         try:
@@ -275,8 +338,19 @@ class ConsoleMetricsLogger:
 
         gpu_gb = system_status.get("gpu_memory_gb", 0)
         gpu_pct = system_status.get("gpu_utilization", 0)
+        cpu_pct = system_status.get("cpu_usage_percent", 0)
+        mem_used = system_status.get("memory_used_gb", 0)
+        mem_total = system_status.get("memory_total_gb", 0)
+        load_avg = system_status.get("load_avg", 0)
 
-        self.logger.info(f"System: GPU {gpu_gb:.1f}GB ({gpu_pct:.0f}%)")
+        parts = [f"GPU {gpu_gb:.1f}GB ({gpu_pct:.0f}%)"]
+        parts.append(f"CPU {cpu_pct:.0f}%")
+        if mem_total > 0:
+            parts.append(f"RAM {mem_used:.1f}/{mem_total:.1f}GB")
+        if load_avg > 0:
+            parts.append(f"Load {load_avg:.1f}")
+
+        self.logger.info(f"System: {' | '.join(parts)}")
 
     def log_games(
         self,
