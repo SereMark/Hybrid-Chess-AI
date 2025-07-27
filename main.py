@@ -32,7 +32,7 @@ def main():
             sys_stats = get_system_stats()
             gpu_mem = torch.cuda.memory_allocated() / GB_BYTES if cuda_available else 0
             gpu_mem_cached = (
-                torch.cuda.memory_cached() / GB_BYTES if cuda_available else 0
+                torch.cuda.memory_reserved() / GB_BYTES if cuda_available else 0
             )
             gpu_mem_reserved = (
                 torch.cuda.memory_reserved() / GB_BYTES if cuda_available else 0
