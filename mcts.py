@@ -16,8 +16,12 @@ class Node:
         parent: Optional["Node"] = None,
         move: chess.Move | None = None,
         prior: float = 0.001,
+        copy_board: bool = True,
     ):
-        self.board: chess.Board = board.copy()
+        if copy_board:
+            self.board: chess.Board = board.copy()
+        else:
+            self.board: chess.Board = board
         self.parent: Node | None = parent
         self.move: chess.Move | None = move
         self.prior: float = prior
@@ -25,6 +29,8 @@ class Node:
         self.value_sum: float = 0.0
         self.children: dict[chess.Move, Node] = {}
         self.is_expanded: bool = False
+        self._legal_moves: list[chess.Move] | None = None
+        self._is_terminal: bool | None = None
 
     def ucb_score(self) -> float:
         if self.visits == 0:
@@ -47,6 +53,22 @@ class Node:
         self.value_sum += value
         if self.parent:
             self.parent.backup(-value)
+    
+    def get_legal_moves(self) -> list[chess.Move]:
+        if self._legal_moves is None:
+            self._legal_moves = list(self.board.legal_moves)
+        return self._legal_moves
+    
+    def is_terminal(self) -> bool:
+        if self._is_terminal is None:
+            self._is_terminal = self.board.is_game_over()
+        return self._is_terminal
+    
+    @staticmethod
+    def create_child_node(parent: "Node", move: chess.Move, prior: float) -> "Node":
+        child_board = parent.board.copy()
+        child_board.push(move)
+        return Node(child_board, parent, move, prior, copy_board=False)
 
 
 class MCTS:
@@ -72,7 +94,7 @@ class MCTS:
 
             for root in roots:
                 node = root
-                while node.is_expanded and not node.board.is_game_over():
+                while node.is_expanded and not node.is_terminal():
                     node = node.select_child()
                     if node is None:
                         break
@@ -86,7 +108,7 @@ class MCTS:
             terminal_nodes = []
 
             for node in leaves:
-                if node.board.is_game_over():
+                if node.is_terminal():
                     self.terminal_nodes_hit += 1
                     result_str = node.board.result()
                     result_value = {"1-0": 1.0, "0-1": -1.0}.get(result_str, 0.0)
@@ -103,7 +125,7 @@ class MCTS:
                 board_tensors = self.model.encode_board(
                     [n.board for n in boards_to_eval]
                 )
-                with torch.no_grad():
+                with torch.no_grad(), torch.amp.autocast("cuda", enabled=True):
                     self.model_forward_calls += 1
                     outputs = self.model(board_tensors)
                     policies = outputs.policy
@@ -113,7 +135,7 @@ class MCTS:
                 values_cpu = values.cpu()
                 for i, node in enumerate(boards_to_eval):
                     if not node.is_expanded:
-                        legal_moves = list(node.board.legal_moves)
+                        legal_moves = node.get_legal_moves()
                         if legal_moves:
                             move_indices = [
                                 self.move_encoder.encode_move(move)
@@ -142,11 +164,7 @@ class MCTS:
                                 ]
 
                             for move, prior in zip(legal_moves, priors, strict=False):
-                                node.board.push(move)
-                                node.children[move] = Node(
-                                    node.board, node, move, prior
-                                )
-                                node.board.pop()
+                                node.children[move] = Node.create_child_node(node, move, prior)
 
                             node.is_expanded = True
                             self.total_nodes_expanded += 1
@@ -167,7 +185,7 @@ class MCTS:
                     else {}
                 )
             else:
-                moves = list(root.board.legal_moves)
+                moves = root.get_legal_moves()
                 probs = {move: 1.0 / len(moves) for move in moves} if moves else {}
             results.append(probs)
 
