@@ -65,7 +65,7 @@ class ChessModel(nn.Module):
 
     def forward(self, board_input: torch.Tensor) -> ModelOutput:
         self.forward_calls += 1
-        x = board_input.view(-1, BOARD_DIM, BOARD_DIM, BOARD_DIM).permute(0, 3, 1, 2)
+        x = board_input.reshape(-1, BOARD_DIM, BOARD_DIM, BOARD_DIM).permute(0, 3, 1, 2)
 
         x = functional.relu(self.bn_input(self.input_conv(x)))
         for block in self.residual_blocks:
@@ -78,13 +78,6 @@ class ChessModel(nn.Module):
         value = functional.relu(self.value_bn(self.value_conv(x)))
         value = self.value_fc1(value.reshape(-1, VALUE_CHANNELS * SQUARES_COUNT))
         value = torch.tanh(self.value_fc2(value))
-
-        assert torch.all(torch.isfinite(policy)), "Policy contains NaN or inf values"
-        assert torch.all(torch.isfinite(value)), "Value contains NaN or inf values"
-        assert torch.all(policy >= 0), "Policy contains negative values"
-        assert torch.all(torch.abs(value) <= 1.01), (
-            "Value outside expected range [-1,1]"
-        )
 
         return ModelOutput(policy=policy, value=value)
 

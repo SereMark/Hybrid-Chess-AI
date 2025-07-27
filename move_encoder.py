@@ -1,4 +1,5 @@
 import chess
+from functools import lru_cache
 from config import (
     BLACK_PROMOTION_END,
     BLACK_PROMOTION_START,
@@ -56,5 +57,6 @@ class MoveEncoder:
             return True
         return file_diff <= 1 and rank_diff <= 1
 
+    @lru_cache(maxsize=512)
     def encode_move(self, move: chess.Move) -> int:
         return self.move_to_idx.get(move, -1)

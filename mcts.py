@@ -109,6 +109,8 @@ class MCTS:
                     policies = outputs.policy
                     values = outputs.value.squeeze(-1)
 
+                policy_cpu = policies.cpu()
+                values_cpu = values.cpu()
                 for i, node in enumerate(boards_to_eval):
                     if not node.is_expanded:
                         legal_moves = list(node.board.legal_moves)
@@ -119,7 +121,7 @@ class MCTS:
                             ]
                             priors = [
                                 max(
-                                    policies[i][idx].item()
+                                    policy_cpu[i][idx].item()
                                     if 0 <= idx < MOVE_COUNT
                                     else 0.001,
                                     0.001,
@@ -131,25 +133,23 @@ class MCTS:
                             priors = [p / prior_sum for p in priors]
 
                             if node.parent is None:
-                                noise = np.random.dirichlet(
-                                    [DIRICHLET_ALPHA] * len(priors)
-                                )
+                                noise = np.random.dirichlet([DIRICHLET_ALPHA] * len(priors))
                                 priors = [
                                     (1 - DIRICHLET_EPSILON) * p + DIRICHLET_EPSILON * n
                                     for p, n in zip(priors, noise, strict=False)
                                 ]
 
                             for move, prior in zip(legal_moves, priors, strict=False):
-                                child_board = node.board.copy()
-                                child_board.push(move)
+                                node.board.push(move)
                                 node.children[move] = Node(
-                                    child_board, node, move, prior
+                                    node.board, node, move, prior
                                 )
+                                node.board.pop()
 
                             node.is_expanded = True
                             self.total_nodes_expanded += 1
 
-                    node.backup(values[i].item())
+                    node.backup(values_cpu[i].item())
 
             for node, value in terminal_nodes:
                 node.backup(value)

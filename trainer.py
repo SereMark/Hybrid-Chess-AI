@@ -94,7 +94,7 @@ class ChessTrainer:
 
                 board_tensor = self.model.encode_board(board)
                 games_data[game_idx].append(
-                    (board_tensor.clone(), policy.copy(), board.turn)
+                    (board_tensor, policy, board.turn)
                 )
 
                 temp = 1.0 if move_counts[game_idx] < TEMP_MOVES else 0.1
@@ -155,7 +155,7 @@ class ChessTrainer:
 
         with torch.no_grad():
             tensor = self.model.encode_board(board).unsqueeze(0)
-            value = self.model(tensor).value.item()
+            value = self.model(tensor).value.squeeze().item()
             return (
                 (value < RESIGN_THRESHOLD)
                 if board.turn
@@ -169,20 +169,24 @@ class ChessTrainer:
         if not moves:
             raise ValueError("No moves available for sampling")
 
-        values = np.array(list(probs.values()), dtype=np.float32)
+        values = list(probs.values())
 
         if temperature != 1.0:
-            values = np.maximum(values, 1e-10)
-            np.power(values, 1.0 / temperature, out=values)
+            values = [max(v, 1e-10) ** (1.0 / temperature) for v in values]
 
-        values_sum = values.sum()
-        if values_sum == 0 or not np.isfinite(values_sum):
-            values.fill(1.0 / len(values))
+        values_sum = sum(values)
+        if values_sum == 0 or not values_sum == values_sum:  # NaN check
+            values = [1.0 / len(values)] * len(values)
         else:
-            values /= values_sum
+            values = [v / values_sum for v in values]
 
-        idx = np.random.choice(len(moves), p=values)
-        return moves[idx]
+        r = np.random.random()
+        cumsum = 0.0
+        for i, p in enumerate(values):
+            cumsum += p
+            if r <= cumsum:
+                return moves[i]
+        return moves[-1]
 
     def add_to_buffer(self, data: list[tuple]) -> None:
         for board_tensor, move_probs, value in data:
@@ -194,10 +198,16 @@ class ChessTrainer:
 
             policy_tensor = self.buffer_policies[self.buffer_pos]
             policy_tensor.zero_()
+            valid_indices = []
+            valid_probs = []
             for move, prob in move_probs.items():
                 idx = self.move_encoder.encode_move(move)
                 if 0 <= idx < MOVE_COUNT:
-                    policy_tensor[idx] = prob
+                    valid_indices.append(idx)
+                    valid_probs.append(prob)
+            
+            if valid_indices:
+                policy_tensor[valid_indices] = torch.tensor(valid_probs, device=self.device)
 
             self.buffer_pos = (self.buffer_pos + 1) % BUFFER_SIZE
             self.buffer_size = min(self.buffer_size + 1, BUFFER_SIZE)
@@ -207,12 +217,7 @@ class ChessTrainer:
             return {}
 
         actual_batch_size = min(BATCH_SIZE, self.buffer_size)
-        indices = torch.randint(
-            0,
-            self.buffer_size,
-            (actual_batch_size,),
-            device=self.device,
-        )
+        indices = torch.randint(0, self.buffer_size, (actual_batch_size,), device=self.device)
         boards = self.buffer_boards[indices]
         values = self.buffer_values[indices]
         policies = self.buffer_policies[indices]
