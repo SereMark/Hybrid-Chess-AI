@@ -56,18 +56,15 @@ class MCTS:
         self.reset_search_stats()
 
     def reset_search_stats(self) -> None:
-        self.total_nodes_explored = 0
         self.total_nodes_expanded = 0
         self.terminal_nodes_hit = 0
         self.total_simulations = 0
-        self.max_tree_depth = 0
         self.model_forward_calls = 0
         self.searches_performed = 0
 
     def search_batch(self, boards: list[chess.Board]) -> list[dict[chess.Move, float]]:
         roots = [Node(board) for board in boards]
         self.searches_performed += 1
-        simulation_nodes_explored = 0
 
         for _ in range(SIMULATIONS):
             self.total_simulations += 1
@@ -75,14 +72,10 @@ class MCTS:
 
             for root in roots:
                 node = root
-                depth = 0
                 while node.is_expanded and not node.board.is_game_over():
                     node = node.select_child()
-                    depth += 1
-                    self.total_nodes_explored += 1
                     if node is None:
                         break
-                self.max_tree_depth = max(self.max_tree_depth, depth)
                 if node and not node.board.is_game_over():
                     leaves.append(node)
 
@@ -181,14 +174,10 @@ class MCTS:
     def get_search_stats(self) -> dict[str, float]:
         return {
             "total_simulations": self.total_simulations,
-            "nodes_explored": self.total_nodes_explored,
             "nodes_expanded": self.total_nodes_expanded,
             "terminal_nodes_hit": self.terminal_nodes_hit,
-            "max_tree_depth": self.max_tree_depth,
             "model_forward_calls": self.model_forward_calls,
             "searches_performed": self.searches_performed,
-            "avg_nodes_per_search": self.total_nodes_explored / max(self.searches_performed, 1),
             "avg_expansions_per_search": self.total_nodes_expanded / max(self.searches_performed, 1),
             "terminal_hit_rate": self.terminal_nodes_hit / max(self.total_simulations, 1) * 100,
-            "expansion_efficiency": self.total_nodes_expanded / max(self.total_nodes_explored, 1) * 100,
         }

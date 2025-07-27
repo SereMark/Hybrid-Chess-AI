@@ -117,8 +117,8 @@ class ChessTrainer:
             and not boards[i].is_game_over()
             and not resigned_games[i]
         )
-        total_moves = sum(len(game_data) for game_data in games_data)
-        individual_game_lengths = [len(game_data) for game_data in games_data]
+        game_lengths = [len(game_data) for game_data in games_data]
+        total_moves = sum(game_lengths)
         temp_transitions = sum(
             1 for i in range(GAMES_PER_ITER) if move_counts[i] >= TEMP_MOVES
         )
@@ -143,9 +143,8 @@ class ChessTrainer:
             "resigned": resigned_count,
             "move_limit": move_limit_count,
             "temp_transitions": temp_transitions,
-            "individual_lengths": individual_game_lengths,
-            "min_moves": min(individual_game_lengths) if individual_game_lengths else 0,
-            "max_moves": max(individual_game_lengths) if individual_game_lengths else 0,
+            "min_moves": min(game_lengths) if game_lengths else 0,
+            "max_moves": max(game_lengths) if game_lengths else 0,
         }
 
         return all_data, game_stats
@@ -319,7 +318,7 @@ class ChessTrainer:
         if len(recent_times) >= 2:
             time_trend = (recent_times[-1] - recent_times[0]) / len(recent_times)
         
-        base_stats = {
+        result = {
             "buffer_usage_pct": (self.buffer_size / BUFFER_SIZE) * 100,
             "buffer_position": self.buffer_pos,
             "buffer_size": self.buffer_size,
@@ -335,8 +334,6 @@ class ChessTrainer:
             "avg_recent_iter_time": sum(recent_times) / max(len(recent_times), 1),
         }
         
-        result = {}
-        result.update(base_stats)
         result.update({f"mcts_{k}": v for k, v in mcts_stats.items()})
         result.update({f"model_{k}": v for k, v in model_stats.items()})
         return result

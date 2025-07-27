@@ -74,14 +74,13 @@ def main():
             print(f"  Speed: {games_per_sec:.2f} games/s | {trainer.games_played/elapsed*3600:.0f}/hour | ETA: {eta_hours:.1f}h")
 
             print("MCTS:")
-            print(f"  Search: {detailed_state.get('mcts_searches_performed', 0)} runs | {detailed_state.get('mcts_total_simulations', 0)} sims | Depth: {detailed_state.get('mcts_max_tree_depth', 0)}")
-            print(f"  Nodes: {detailed_state.get('mcts_nodes_explored', 0):,} explored | {detailed_state.get('mcts_nodes_expanded', 0):,} expanded | Terminal: {detailed_state.get('mcts_terminal_hit_rate', 0):.1f}%")
-            print(f"  Efficiency: {detailed_state.get('mcts_expansion_efficiency', 0):.1f}% | Model calls: {detailed_state.get('mcts_model_forward_calls', 0)}")
+            print(f"  Search: {detailed_state.get('mcts_searches_performed', 0)} runs | {detailed_state.get('mcts_total_simulations', 0)} sims")
+            print(f"  Nodes: {detailed_state.get('mcts_nodes_expanded', 0):,} expanded | Terminal: {detailed_state.get('mcts_terminal_hit_rate', 0):.1f}%")
+            print(f"  Model calls: {detailed_state.get('mcts_model_forward_calls', 0)}")
 
             print("MODEL:")
             print(f"  Forward: {detailed_state.get('model_forward_calls', 0)} passes | Cache: {detailed_state.get('model_cache_hit_rate', 0):.1f}% hit rate")
-            print(f"  Policy: Entropy {detailed_state.get('model_avg_policy_entropy', 0):.3f} | Confidence {detailed_state.get('model_avg_policy_confidence', 0):.3f}")
-            print(f"  Value: [{detailed_state.get('model_value_range_min', 0):.3f}, {detailed_state.get('model_value_range_max', 0):.3f}] | σ{detailed_state.get('model_value_std_dev', 0):.3f}")
+            print(f"  Cache: {detailed_state.get('model_cache_utilization', 0):.1f}% utilization")
 
             print("MEMORY:")
             print(f"  Buffer: {detailed_state['buffer_size']:,}/{BUFFER_SIZE:,} ({detailed_state['buffer_usage_pct']:.1f}%) | Pos: {detailed_state['buffer_position']:,}")
