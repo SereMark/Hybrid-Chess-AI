@@ -65,13 +65,7 @@ class ChessModel(nn.Module):
 
     def forward(self, board_input: torch.Tensor) -> ModelOutput:
         self.forward_calls += 1
-        assert board_input.size(-1) == BOARD_SIZE, (
-            f"Expected board size {BOARD_SIZE}, got {board_input.size(-1)}"
-        )
         x = board_input.view(-1, BOARD_DIM, BOARD_DIM, BOARD_DIM).permute(0, 3, 1, 2)
-        assert x.shape[1:] == (BOARD_DIM, BOARD_DIM, BOARD_DIM), (
-            f"Invalid tensor shape after reshape: {x.shape}"
-        )
 
         x = functional.relu(self.bn_input(self.input_conv(x)))
         for block in self.residual_blocks:
@@ -104,7 +98,7 @@ class ChessModel(nn.Module):
         )
 
         for i, b in enumerate(boards):
-            board_key = (b.board_fen(), b.turn, b.castling_rights, b.ep_square)
+            board_key = b.fen()
             if board_key in self.cache:
                 self.cache_hits += 1
                 self.cache.move_to_end(board_key)
@@ -153,7 +147,7 @@ class ChessModel(nn.Module):
     def get_inference_stats(self) -> dict[str, float]:
         total_cache_requests = self.cache_hits + self.cache_misses
         cache_hit_rate = self.cache_hits / max(total_cache_requests, 1) * 100
-        
+
         return {
             "forward_calls": self.forward_calls,
             "cache_hits": self.cache_hits,

@@ -56,11 +56,11 @@ class MCTS:
         self.reset_search_stats()
 
     def reset_search_stats(self) -> None:
-        self.total_nodes_expanded = 0
-        self.terminal_nodes_hit = 0
-        self.total_simulations = 0
-        self.model_forward_calls = 0
-        self.searches_performed = 0
+        self.total_nodes_expanded: int = 0
+        self.terminal_nodes_hit: int = 0
+        self.total_simulations: int = 0
+        self.model_forward_calls: int = 0
+        self.searches_performed: int = 0
 
     def search_batch(self, boards: list[chess.Board]) -> list[dict[chess.Move, float]]:
         roots = [Node(board) for board in boards]
@@ -178,6 +178,9 @@ class MCTS:
             "terminal_nodes_hit": self.terminal_nodes_hit,
             "model_forward_calls": self.model_forward_calls,
             "searches_performed": self.searches_performed,
-            "avg_expansions_per_search": self.total_nodes_expanded / max(self.searches_performed, 1),
-            "terminal_hit_rate": self.terminal_nodes_hit / max(self.total_simulations, 1) * 100,
+            "avg_expansions_per_search": self.total_nodes_expanded
+            / max(self.searches_performed, 1),
+            "terminal_hit_rate": self.terminal_nodes_hit
+            / max(self.total_simulations, 1)
+            * 100,
         }

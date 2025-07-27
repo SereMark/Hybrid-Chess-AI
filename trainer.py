@@ -59,7 +59,7 @@ class ChessTrainer:
         self.games_played = 0
         self.accumulation_step = 0
         self.training_start_time = time.time()
-        self.iteration_times = []
+        self.iteration_times: list[float] = []
 
     def self_play(self) -> tuple[list[tuple], dict[str, float]]:
         games_data = [[] for _ in range(GAMES_PER_ITER)]
@@ -273,6 +273,9 @@ class ChessTrainer:
     def iteration(self) -> dict[str, float]:
         start = time.time()
 
+        self.mcts.reset_search_stats()
+        self.model.reset_inference_stats()
+
         self_play_start = time.time()
         game_data, game_stats = self.self_play()
         self_play_time = time.time() - self_play_start
@@ -297,12 +300,12 @@ class ChessTrainer:
             "buffer_time": buffer_time,
             "train_time": train_time,
             "other_time": iteration_time - (self_play_time + buffer_time + train_time),
-            "self_play_pct": (self_play_time / iteration_time) * 100,
-            "train_pct": (train_time / iteration_time) * 100,
+            "self_play_pct": (self_play_time / max(iteration_time, 0.001)) * 100,
+            "train_pct": (train_time / max(iteration_time, 0.001)) * 100,
         }
 
-        result = {
-            "buffer": self.buffer_size,
+        result: dict[str, float] = {
+            "buffer": float(self.buffer_size),
         }
         result.update(timing_breakdown)
         result.update(losses)
@@ -312,12 +315,16 @@ class ChessTrainer:
     def get_detailed_state(self) -> dict[str, float]:
         mcts_stats = self.mcts.get_search_stats()
         model_stats = self.model.get_inference_stats()
-        
-        recent_times = self.iteration_times[-10:] if len(self.iteration_times) >= 10 else self.iteration_times
+
+        recent_times = (
+            self.iteration_times[-10:]
+            if len(self.iteration_times) >= 10
+            else self.iteration_times
+        )
         time_trend = 0.0
         if len(recent_times) >= 2:
             time_trend = (recent_times[-1] - recent_times[0]) / len(recent_times)
-        
+
         result = {
             "buffer_usage_pct": (self.buffer_size / BUFFER_SIZE) * 100,
             "buffer_position": self.buffer_pos,
@@ -333,7 +340,7 @@ class ChessTrainer:
             "time_trend_per_iter": time_trend,
             "avg_recent_iter_time": sum(recent_times) / max(len(recent_times), 1),
         }
-        
+
         result.update({f"mcts_{k}": v for k, v in mcts_stats.items()})
         result.update({f"model_{k}": v for k, v in model_stats.items()})
         return result
