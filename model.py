@@ -1,3 +1,4 @@
+import statistics
 from collections import OrderedDict
 from typing import Union
 
@@ -56,8 +57,21 @@ class ChessModel(nn.Module):
         self.value_fc2 = nn.Linear(VALUE_FC_HIDDEN, 1)
 
         self.cache = OrderedDict()
+        self.reset_inference_stats()
+
+    def reset_inference_stats(self) -> None:
+        self.forward_calls = 0
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.total_policy_entropy = 0.0
+        self.total_value_abs = 0.0
+        self.min_value = float('inf')
+        self.max_value = float('-inf')
+        self.policy_max_probs = []
+        self.value_predictions = []
 
     def forward(self, board_input: torch.Tensor) -> ModelOutput:
+        self.forward_calls += 1
         assert board_input.size(-1) == BOARD_SIZE, (
             f"Expected board size {BOARD_SIZE}, got {board_input.size(-1)}"
         )
@@ -85,6 +99,21 @@ class ChessModel(nn.Module):
             "Value outside expected range [-1,1]"
         )
 
+        with torch.no_grad():
+            policy_entropy = -(policy * torch.log(policy + 1e-8)).sum(dim=-1).mean()
+            self.total_policy_entropy += policy_entropy.item()
+            self.policy_max_probs.append(policy.max(dim=-1)[0].mean().item())
+            if len(self.policy_max_probs) > 1000:
+                self.policy_max_probs = self.policy_max_probs[-1000:]
+            
+            value_items = value.squeeze(-1)
+            self.total_value_abs += torch.abs(value_items).mean().item()
+            self.min_value = min(self.min_value, value_items.min().item())
+            self.max_value = max(self.max_value, value_items.max().item())
+            self.value_predictions.extend(value_items.cpu().tolist())
+            if len(self.value_predictions) > 1000:
+                self.value_predictions = self.value_predictions[-1000:]
+
         return ModelOutput(policy=policy, value=value)
 
     def encode_board(
@@ -99,9 +128,12 @@ class ChessModel(nn.Module):
         for i, b in enumerate(boards):
             board_key = (b.board_fen(), b.turn, b.castling_rights, b.ep_square)
             if board_key in self.cache:
+                self.cache_hits += 1
                 self.cache.move_to_end(board_key)
                 tensor[i] = self.cache[board_key]
                 continue
+            else:
+                self.cache_misses += 1
 
             board_tensor = torch.zeros(
                 BOARD_SIZE, dtype=torch.float32, device=self.device
@@ -139,3 +171,30 @@ class ChessModel(nn.Module):
                 self.cache.popitem(last=False)
 
         return tensor.squeeze(0) if isinstance(board, chess.Board) else tensor
+
+    def get_inference_stats(self) -> dict[str, float]:
+        total_cache_requests = self.cache_hits + self.cache_misses
+        cache_hit_rate = self.cache_hits / max(total_cache_requests, 1) * 100
+        avg_policy_entropy = self.total_policy_entropy / max(self.forward_calls, 1)
+        avg_value_abs = self.total_value_abs / max(self.forward_calls, 1)
+        avg_policy_confidence = sum(self.policy_max_probs) / max(len(self.policy_max_probs), 1)
+        
+        value_std = 0.0
+        if len(self.value_predictions) > 1:
+            value_std = statistics.stdev(self.value_predictions)
+        
+        return {
+            "forward_calls": self.forward_calls,
+            "cache_hits": self.cache_hits,
+            "cache_misses": self.cache_misses,
+            "cache_hit_rate": cache_hit_rate,
+            "cache_size": len(self.cache),
+            "cache_utilization": len(self.cache) / CACHE_SIZE * 100,
+            "avg_policy_entropy": avg_policy_entropy,
+            "avg_policy_confidence": avg_policy_confidence,
+            "avg_value_magnitude": avg_value_abs,
+            "value_range_min": self.min_value if self.min_value != float('inf') else 0.0,
+            "value_range_max": self.max_value if self.max_value != float('-inf') else 0.0,
+            "value_std_dev": value_std,
+            "recent_predictions_count": len(self.value_predictions),
+        }

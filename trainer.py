@@ -274,10 +274,17 @@ class ChessTrainer:
     def iteration(self) -> dict[str, float]:
         start = time.time()
 
+        self_play_start = time.time()
         game_data, game_stats = self.self_play()
-        self.add_to_buffer(game_data)
+        self_play_time = time.time() - self_play_start
 
+        buffer_start = time.time()
+        self.add_to_buffer(game_data)
+        buffer_time = time.time() - buffer_start
+
+        train_start = time.time()
         losses = self.train_step()
+        train_time = time.time() - train_start
 
         if self.accumulation_step == 0:
             self.scheduler.step()
@@ -285,16 +292,34 @@ class ChessTrainer:
         iteration_time = time.time() - start
         self.iteration_times.append(iteration_time)
 
-        result = {
+        timing_breakdown = {
             "time": iteration_time,
+            "self_play_time": self_play_time,
+            "buffer_time": buffer_time,
+            "train_time": train_time,
+            "other_time": iteration_time - (self_play_time + buffer_time + train_time),
+            "self_play_pct": (self_play_time / iteration_time) * 100,
+            "train_pct": (train_time / iteration_time) * 100,
+        }
+
+        result = {
             "buffer": self.buffer_size,
         }
+        result.update(timing_breakdown)
         result.update(losses)
         result.update(game_stats)
         return result
 
     def get_detailed_state(self) -> dict[str, float]:
-        return {
+        mcts_stats = self.mcts.get_search_stats()
+        model_stats = self.model.get_inference_stats()
+        
+        recent_times = self.iteration_times[-10:] if len(self.iteration_times) >= 10 else self.iteration_times
+        time_trend = 0.0
+        if len(recent_times) >= 2:
+            time_trend = (recent_times[-1] - recent_times[0]) / len(recent_times)
+        
+        base_stats = {
             "buffer_usage_pct": (self.buffer_size / BUFFER_SIZE) * 100,
             "buffer_position": self.buffer_pos,
             "buffer_size": self.buffer_size,
@@ -306,7 +331,15 @@ class ChessTrainer:
             * 100,
             "games_played": self.games_played,
             "total_iterations": len(self.iteration_times),
+            "time_trend_per_iter": time_trend,
+            "avg_recent_iter_time": sum(recent_times) / max(len(recent_times), 1),
         }
+        
+        result = {}
+        result.update(base_stats)
+        result.update({f"mcts_{k}": v for k, v in mcts_stats.items()})
+        result.update({f"model_{k}": v for k, v in model_stats.items()})
+        return result
 
     def save(self, path: Path) -> None:
         torch.save(

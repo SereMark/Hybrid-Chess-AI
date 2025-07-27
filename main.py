@@ -30,13 +30,8 @@ def main():
 
         if metrics:
             sys_stats = get_system_stats()
-            gpu_mem = torch.cuda.memory_allocated() / GB_BYTES if cuda_available else 0
-            gpu_mem_cached = (
-                torch.cuda.memory_reserved() / GB_BYTES if cuda_available else 0
-            )
-            gpu_mem_reserved = (
-                torch.cuda.memory_reserved() / GB_BYTES if cuda_available else 0
-            )
+            gpu_mem_alloc = torch.cuda.memory_allocated() / GB_BYTES if cuda_available else 0
+            gpu_mem_reserved = torch.cuda.memory_reserved() / GB_BYTES if cuda_available else 0
             detailed_state = trainer.get_detailed_state()
 
             elapsed = time.time() - trainer.training_start_time
@@ -55,98 +50,66 @@ def main():
             optimizer_stepped = metrics.get("optimizer_stepped", False)
 
             current_time = trainer.iteration_times[-1] if trainer.iteration_times else 0
-            if len(trainer.iteration_times) >= 2:
-                time_trend = trainer.iteration_times[-1] - trainer.iteration_times[-2]
-            else:
-                time_trend = 0
-
+            time_trend = (trainer.iteration_times[-1] - trainer.iteration_times[-2]) if len(trainer.iteration_times) >= 2 else 0
             loss_ratio = value_loss / policy_loss if policy_loss > 0 else 0
+            ram_usage_pct = sys_stats['ram_used_gb'] / sys_stats['ram_total_gb'] * 100
 
-            print(f"{'=' * 90}")
-            print(
-                f"[{i:3d}/{ITERATIONS}] ITERATION {i} - {elapsed / 3600:.1f}h elapsed - Progress: {i / ITERATIONS * 100:.1f}%"
-            )
-            print(f"{'=' * 90}")
+            print(f"{'=' * 100}")
+            print(f"[{i:3d}/{ITERATIONS}] ITERATION {i} - {elapsed/3600:.1f}h elapsed - Progress: {i/ITERATIONS*100:.1f}%")
+            print(f"{'=' * 100}")
 
-            print("TRAINING METRICS:")
-            print(
-                f"   Loss: {loss:.6f} (V:{value_loss:.4f} P:{policy_loss:.4f}) V/P Ratio: {loss_ratio:.2f}"
-            )
-            print(f"   Grad Norm: {grad_norm:.4f} | LR: {lr:.8f}")
-            print(
-                f"   Batch: {actual_batch_size}/{BATCH_SIZE} | Accumulation: {detailed_state['accumulation_progress_pct']:.0f}% ({metrics.get('accumulation_step', 0)}/{GRADIENT_ACCUMULATION})"
-            )
-            print(f"   Optimizer Step: {'OK' if optimizer_stepped else 'PENDING'}")
+            print("TRAINING:")
+            print(f"  Loss: {loss:.6f} (Value: {value_loss:.4f} | Policy: {policy_loss:.4f} | Ratio: {loss_ratio:.2f})")
+            print(f"  Optimization: Grad {grad_norm:.4f} | LR {lr:.2e} | Step {'✓' if optimizer_stepped else '○'}")
+            print(f"  Batch: {actual_batch_size}/{BATCH_SIZE} | Accumulation: {detailed_state['accumulation_progress_pct']:.0f}% ({metrics.get('accumulation_step', 0)}/{GRADIENT_ACCUMULATION})")
 
-            print("GAME ANALYSIS:")
-            print(
-                f"   Completed: {metrics['completed']}/{metrics['total']} ({completion_rate:.1f}%)"
-            )
-            print(
-                f"   Results: W:{metrics['wins']} L:{metrics['losses']} D:{metrics['draws']} | Resigned: {metrics.get('resigned', 0)} | Hit Limit: {metrics.get('move_limit', 0)}"
-            )
-            print(
-                f"   Moves: Avg:{metrics['avg_moves']:.1f} Min:{metrics.get('min_moves', 0)} Max:{metrics.get('max_moves', 0)}"
-            )
-            print(
-                f"   Temp Transitions: {metrics.get('temp_transitions', 0)}/{metrics['total']} | Total Games: {detailed_state['games_played']:,}"
-            )
-
-            print("BUFFER & CACHE:")
-            print(
-                f"   Buffer: {detailed_state['buffer_size']:,}/{BUFFER_SIZE:,} ({detailed_state['buffer_usage_pct']:.1f}%) | Pos: {detailed_state['buffer_position']:,}"
-            )
-            print(
-                f"   Cache: {detailed_state['cache_size']:,}/{CACHE_SIZE:,} ({detailed_state['cache_usage_pct']:.1f}%)"
-            )
+            print("GAMES:")
+            print(f"  Completion: {metrics['completed']}/{metrics['total']} ({completion_rate:.1f}%) | Total: {detailed_state['games_played']:,}")
+            print(f"  Outcomes: W{metrics['wins']} L{metrics['losses']} D{metrics['draws']} | Resigned: {metrics.get('resigned', 0)} | Limits: {metrics.get('move_limit', 0)}")
+            print(f"  Moves: {metrics['avg_moves']:.1f} avg | {metrics.get('min_moves', 0)}-{metrics.get('max_moves', 0)} range | Temp: {metrics.get('temp_transitions', 0)}")
 
             print("PERFORMANCE:")
-            print(
-                f"   Time: {current_time:.1f}s (Δ{time_trend:+.1f}s) | Avg: {avg_time:.1f}s"
-            )
-            print(
-                f"   Speed: {games_per_sec:.2f} games/s | {trainer.games_played / elapsed * 3600:.0f} games/hour"
-            )
-            print(
-                f"   ETA: {eta_hours:.1f}h ({eta_min:.0f}m) | Iterations: {detailed_state['total_iterations']}"
-            )
+            print(f"  Timing: {current_time:.1f}s (Δ{time_trend:+.1f}s) | Avg: {avg_time:.1f}s | Trend: {detailed_state['time_trend_per_iter']:+.2f}s/iter")
+            print(f"  Breakdown: Self-play {metrics.get('self_play_time', 0):.1f}s ({metrics.get('self_play_pct', 0):.0f}%) | Training {metrics.get('train_time', 0):.1f}s ({metrics.get('train_pct', 0):.0f}%)")
+            print(f"  Speed: {games_per_sec:.2f} games/s | {trainer.games_played/elapsed*3600:.0f}/hour | ETA: {eta_hours:.1f}h")
 
-            print("SYSTEM STATUS:")
-            print(
-                f"   CPU: {sys_stats['cpu_percent']:.1f}% | Load: {sys_stats['load_avg']:.2f}"
-            )
-            print(
-                f"   RAM: {sys_stats['ram_used_gb']:.1f}/{sys_stats['ram_total_gb']:.1f}GB ({sys_stats['ram_used_gb'] / sys_stats['ram_total_gb'] * 100:.1f}%)"
-            )
-            print(
-                f"   GPU Memory: {gpu_mem:.2f}GB alloc | {gpu_mem_cached:.2f}GB cached | {gpu_mem_reserved:.2f}GB reserved"
-            )
+            print("MCTS:")
+            print(f"  Search: {detailed_state.get('mcts_searches_performed', 0)} runs | {detailed_state.get('mcts_total_simulations', 0)} sims | Depth: {detailed_state.get('mcts_max_tree_depth', 0)}")
+            print(f"  Nodes: {detailed_state.get('mcts_nodes_explored', 0):,} explored | {detailed_state.get('mcts_nodes_expanded', 0):,} expanded | Terminal: {detailed_state.get('mcts_terminal_hit_rate', 0):.1f}%")
+            print(f"  Efficiency: {detailed_state.get('mcts_expansion_efficiency', 0):.1f}% | Model calls: {detailed_state.get('mcts_model_forward_calls', 0)}")
 
-            print("TRAINING HEALTH:")
-            if completion_rate > 0:
-                print(f"   Game Completion: OK {completion_rate:.1f}% natural endings")
-            else:
-                print(
-                    "   Game Completion: WARNING  No natural endings (all hit limits/resigned)"
-                )
+            print("MODEL:")
+            print(f"  Forward: {detailed_state.get('model_forward_calls', 0)} passes | Cache: {detailed_state.get('model_cache_hit_rate', 0):.1f}% hit rate")
+            print(f"  Policy: Entropy {detailed_state.get('model_avg_policy_entropy', 0):.3f} | Confidence {detailed_state.get('model_avg_policy_confidence', 0):.3f}")
+            print(f"  Value: [{detailed_state.get('model_value_range_min', 0):.3f}, {detailed_state.get('model_value_range_max', 0):.3f}] | σ{detailed_state.get('model_value_std_dev', 0):.3f}")
 
+            print("MEMORY:")
+            print(f"  Buffer: {detailed_state['buffer_size']:,}/{BUFFER_SIZE:,} ({detailed_state['buffer_usage_pct']:.1f}%) | Pos: {detailed_state['buffer_position']:,}")
+            print(f"  Cache: {detailed_state['cache_size']:,}/{CACHE_SIZE:,} ({detailed_state['cache_usage_pct']:.1f}%)")
+            print(f"  System: CPU {sys_stats['cpu_percent']:.1f}% | RAM {sys_stats['ram_used_gb']:.1f}/{sys_stats['ram_total_gb']:.1f}GB ({ram_usage_pct:.1f}%)")
+            print(f"  GPU: {gpu_mem_alloc:.2f}GB allocated | {gpu_mem_reserved:.2f}GB reserved")
+
+            print("HEALTH:")
+            completion_status = "✓ Natural" if completion_rate > 0 else "⚠ Forced"
             if loss < 2.0:
-                print(f"   Convergence: OK Excellent ({loss:.3f})")
+                convergence_status = "✓ Excellent"
             elif loss < 3.0:
-                print(f"   Convergence: OK Good ({loss:.3f})")
+                convergence_status = "✓ Good"
             elif loss < 4.0:
-                print(f"   Convergence: WARNING  Moderate ({loss:.3f})")
+                convergence_status = "⚠ Moderate"
             else:
-                print(f"   Convergence: HIGH Learning phase ({loss:.3f})")
+                convergence_status = "○ Learning"
 
             if grad_norm < 1.0:
-                print(f"   Gradients: OK Stable ({grad_norm:.3f})")
+                gradient_status = "✓ Stable"
             elif grad_norm < 5.0:
-                print(f"   Gradients: WARNING  Moderate ({grad_norm:.3f})")
+                gradient_status = "⚠ Moderate"
             else:
-                print(f"   Gradients: HIGH High ({grad_norm:.3f})")
+                gradient_status = "○ High"
 
-            print(f"{'=' * 90}\n")
+            print(f"  Completion: {completion_status} ({completion_rate:.1f}%) | Convergence: {convergence_status} ({loss:.3f}) | Gradients: {gradient_status} ({grad_norm:.3f})")
+
+            print(f"{'=' * 100}\n")
 
         if i % SAVE_EVERY == 0:
             trainer.save(save_dir / f"model_{i}.pt")
