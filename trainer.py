@@ -8,6 +8,7 @@ from config import (
     BATCH_SIZE,
     BOARD_SIZE,
     BUFFER_SIZE,
+    CACHE_SIZE,
     GAMES_PER_ITER,
     GRADIENT_ACCUMULATION,
     ITERATIONS,
@@ -64,16 +65,16 @@ class ChessTrainer:
         games_data = [[] for _ in range(GAMES_PER_ITER)]
         boards = [chess.Board() for _ in range(GAMES_PER_ITER)]
         move_counts = [0] * GAMES_PER_ITER
+        resigned_games = [False] * GAMES_PER_ITER
         active = list(range(GAMES_PER_ITER))
 
         while active:
             remaining = []
             for i in active:
-                if (
-                    boards[i].is_game_over()
-                    or move_counts[i] >= MAX_MOVES
-                    or self._should_resign(boards[i])
-                ):
+                if boards[i].is_game_over() or move_counts[i] >= MAX_MOVES:
+                    continue
+                elif self._should_resign(boards[i]):
+                    resigned_games[i] = True
                     continue
                 remaining.append(i)
             active = remaining
@@ -108,7 +109,19 @@ class ChessTrainer:
         all_data = []
         results = {"1-0": 0, "0-1": 0, "1/2-1/2": 0}
         completed_games = sum(1 for board in boards if board.is_game_over())
+        resigned_count = sum(resigned_games)
+        move_limit_count = sum(
+            1
+            for i in range(GAMES_PER_ITER)
+            if move_counts[i] >= MAX_MOVES
+            and not boards[i].is_game_over()
+            and not resigned_games[i]
+        )
         total_moves = sum(len(game_data) for game_data in games_data)
+        individual_game_lengths = [len(game_data) for game_data in games_data]
+        temp_transitions = sum(
+            1 for i in range(GAMES_PER_ITER) if move_counts[i] >= TEMP_MOVES
+        )
 
         for game_idx, board in enumerate(boards):
             result_str = board.result()
@@ -127,6 +140,12 @@ class ChessTrainer:
             "losses": results["0-1"],
             "draws": results["1/2-1/2"],
             "avg_moves": total_moves / GAMES_PER_ITER,
+            "resigned": resigned_count,
+            "move_limit": move_limit_count,
+            "temp_transitions": temp_transitions,
+            "individual_lengths": individual_game_lengths,
+            "min_moves": min(individual_game_lengths) if individual_game_lengths else 0,
+            "max_moves": max(individual_game_lengths) if individual_game_lengths else 0,
         }
 
         return all_data, game_stats
@@ -188,10 +207,11 @@ class ChessTrainer:
         if self.buffer_size == 0:
             return {}
 
+        actual_batch_size = min(BATCH_SIZE, self.buffer_size)
         indices = torch.randint(
             0,
             self.buffer_size,
-            (min(BATCH_SIZE, self.buffer_size),),
+            (actual_batch_size,),
             device=self.device,
         )
         boards = self.buffer_boards[indices]
@@ -221,23 +241,34 @@ class ChessTrainer:
             total_loss = (value_loss + policy_loss) / GRADIENT_ACCUMULATION
             total_loss.backward()
 
+        grad_norm = 0.0
+        optimizer_stepped = False
         self.accumulation_step += 1
         if self.accumulation_step >= GRADIENT_ACCUMULATION:
             if self.scaler:
                 self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), max_norm=5.0
+                ).item()
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), max_norm=5.0
+                ).item()
                 self.optimizer.step()
             self.accumulation_step = 0
+            optimizer_stepped = True
 
         return {
             "loss": (value_loss + policy_loss).item(),
             "value_loss": value_loss.item(),
             "policy_loss": policy_loss.item(),
             "learning_rate": self.optimizer.param_groups[0]["lr"],
+            "grad_norm": grad_norm,
+            "actual_batch_size": actual_batch_size,
+            "accumulation_step": self.accumulation_step,
+            "optimizer_stepped": optimizer_stepped,
         }
 
     def iteration(self) -> dict[str, float]:
@@ -261,6 +292,21 @@ class ChessTrainer:
         result.update(losses)
         result.update(game_stats)
         return result
+
+    def get_detailed_state(self) -> dict[str, float]:
+        return {
+            "buffer_usage_pct": (self.buffer_size / BUFFER_SIZE) * 100,
+            "buffer_position": self.buffer_pos,
+            "buffer_size": self.buffer_size,
+            "cache_size": len(self.model.cache),
+            "cache_usage_pct": (len(self.model.cache) / CACHE_SIZE) * 100,
+            "accumulation_progress_pct": (
+                self.accumulation_step / GRADIENT_ACCUMULATION
+            )
+            * 100,
+            "games_played": self.games_played,
+            "total_iterations": len(self.iteration_times),
+        }
 
     def save(self, path: Path) -> None:
         torch.save(
