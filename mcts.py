@@ -77,8 +77,14 @@ class MCTS:
 
             for node in leaves:
                 if node.board.is_game_over():
-                    result = {"1-0": 1.0, "0-1": -1.0}.get(node.board.result(), 0.0)
-                    terminal_nodes.append((node, result))
+                    result_str = node.board.result()
+                    result_value = {"1-0": 1.0, "0-1": -1.0}.get(result_str, 0.0)
+                    value = (
+                        result_value
+                        if node.board.turn == chess.WHITE
+                        else -result_value
+                    )
+                    terminal_nodes.append((node, value))
                 else:
                     boards_to_eval.append(node)
 

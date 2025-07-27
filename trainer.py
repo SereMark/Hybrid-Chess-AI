@@ -154,10 +154,11 @@ class ChessTrainer:
         values = np.array(list(probs.values()), dtype=np.float32)
 
         if temperature != 1.0:
+            values = np.maximum(values, 1e-10)
             np.power(values, 1.0 / temperature, out=values)
 
         values_sum = values.sum()
-        if values_sum == 0:
+        if values_sum == 0 or not np.isfinite(values_sum):
             values.fill(1.0 / len(values))
         else:
             values /= values_sum
@@ -203,7 +204,7 @@ class ChessTrainer:
         self.model.train()
 
         if self.scaler:
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast("cuda"):
                 outputs = self.model(boards)
                 value_loss = functional.mse_loss(outputs.value.squeeze(), values)
                 policy_loss = functional.kl_div(
@@ -247,8 +248,7 @@ class ChessTrainer:
 
         losses = self.train_step()
 
-        if self.accumulation_step == 0:
-            self.scheduler.step()
+        self.scheduler.step()
 
         iteration_time = time.time() - start
         self.iteration_times.append(iteration_time)
