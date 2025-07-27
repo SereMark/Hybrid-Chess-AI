@@ -248,7 +248,8 @@ class ChessTrainer:
 
         losses = self.train_step()
 
-        self.scheduler.step()
+        if self.accumulation_step == 0:
+            self.scheduler.step()
 
         iteration_time = time.time() - start
         self.iteration_times.append(iteration_time)
