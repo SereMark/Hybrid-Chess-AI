@@ -93,9 +93,7 @@ class ChessTrainer:
                     continue
 
                 board_tensor = self.model.encode_board(board)
-                games_data[game_idx].append(
-                    (board_tensor, policy, board.turn)
-                )
+                games_data[game_idx].append((board_tensor, policy, board.turn))
 
                 temp = 1.0 if move_counts[game_idx] < TEMP_MOVES else 0.1
                 move = self._sample_move(policy, temp)
@@ -127,8 +125,22 @@ class ChessTrainer:
             result_str = board.result()
             if board.is_game_over():
                 results[result_str] += 1
+                result_value = {"1-0": 1.0, "0-1": -1.0}.get(result_str, 0.0)
+            elif resigned_games[game_idx]:
+                last_turn = (
+                    chess.WHITE
+                    if len(games_data[game_idx]) == 0
+                    else games_data[game_idx][-1][2]
+                )
+                if last_turn == chess.WHITE:
+                    result_value = -1.0
+                    results["0-1"] += 1
+                else:
+                    result_value = 1.0
+                    results["1-0"] += 1
+            else:
+                result_value = 0.0
 
-            result_value = {"1-0": 1.0, "0-1": -1.0}.get(result_str, 0.0)
             for tensor, probs, turn in games_data[game_idx]:
                 value = result_value if turn == chess.WHITE else -result_value
                 all_data.append((tensor, probs, value))
@@ -175,7 +187,7 @@ class ChessTrainer:
             values = [max(v, 1e-10) ** (1.0 / temperature) for v in values]
 
         values_sum = sum(values)
-        if values_sum == 0 or not values_sum == values_sum:  # NaN check
+        if values_sum == 0 or np.isnan(values_sum):
             values = [1.0 / len(values)] * len(values)
         else:
             values = [v / values_sum for v in values]
@@ -205,9 +217,11 @@ class ChessTrainer:
                 if 0 <= idx < MOVE_COUNT:
                     valid_indices.append(idx)
                     valid_probs.append(prob)
-            
+
             if valid_indices:
-                policy_tensor[valid_indices] = torch.tensor(valid_probs, device=self.device)
+                policy_tensor[valid_indices] = torch.tensor(
+                    valid_probs, device=self.device
+                )
 
             self.buffer_pos = (self.buffer_pos + 1) % BUFFER_SIZE
             self.buffer_size = min(self.buffer_size + 1, BUFFER_SIZE)
@@ -217,7 +231,9 @@ class ChessTrainer:
             return {}
 
         actual_batch_size = min(BATCH_SIZE, self.buffer_size)
-        indices = torch.randint(0, self.buffer_size, (actual_batch_size,), device=self.device)
+        indices = torch.randint(
+            0, self.buffer_size, (actual_batch_size,), device=self.device
+        )
         boards = self.buffer_boards[indices]
         values = self.buffer_values[indices]
         policies = self.buffer_policies[indices]
@@ -227,22 +243,17 @@ class ChessTrainer:
 
         self.model.train()
 
-        if self.scaler:
-            with torch.amp.autocast("cuda"):
-                outputs = self.model(boards)
-                value_loss = functional.mse_loss(outputs.value.squeeze(), values)
-                policy_loss = functional.kl_div(
-                    torch.log(outputs.policy + 1e-8), policies, reduction="batchmean"
-                )
-                total_loss = (value_loss + policy_loss) / GRADIENT_ACCUMULATION
-            self.scaler.scale(total_loss).backward()
-        else:
+        with torch.amp.autocast("cuda", enabled=self.scaler is not None):
             outputs = self.model(boards)
             value_loss = functional.mse_loss(outputs.value.squeeze(), values)
             policy_loss = functional.kl_div(
                 torch.log(outputs.policy + 1e-8), policies, reduction="batchmean"
             )
             total_loss = (value_loss + policy_loss) / GRADIENT_ACCUMULATION
+
+        if self.scaler:
+            self.scaler.scale(total_loss).backward()
+        else:
             total_loss.backward()
 
         grad_norm = 0.0

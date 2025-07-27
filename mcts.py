@@ -17,7 +17,7 @@ class Node:
         move: chess.Move | None = None,
         prior: float = 0.001,
     ):
-        self.board: chess.Board = board.copy() if parent is None else board
+        self.board: chess.Board = board.copy()
         self.parent: Node | None = parent
         self.move: chess.Move | None = move
         self.prior: float = prior
@@ -76,7 +76,7 @@ class MCTS:
                     node = node.select_child()
                     if node is None:
                         break
-                if node and not node.board.is_game_over():
+                if node:
                     leaves.append(node)
 
             if not leaves:
@@ -133,7 +133,9 @@ class MCTS:
                             priors = [p / prior_sum for p in priors]
 
                             if node.parent is None:
-                                noise = np.random.dirichlet([DIRICHLET_ALPHA] * len(priors))
+                                noise = np.random.dirichlet(
+                                    [DIRICHLET_ALPHA] * len(priors)
+                                )
                                 priors = [
                                     (1 - DIRICHLET_EPSILON) * p + DIRICHLET_EPSILON * n
                                     for p, n in zip(priors, noise, strict=False)
