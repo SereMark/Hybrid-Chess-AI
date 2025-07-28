@@ -91,7 +91,15 @@ def play_single_game_worker(game_id: int) -> tuple[list[tuple], dict]:
         board_tensor = worker_model.encode_board(board)
         game_data.append((board_tensor, policy, board.turn))
 
-        temperature = TEMP_HIGH if move_count < TEMP_MOVES else TEMP_LOW
+        if move_count < TEMP_MOVES:
+            temperature = TEMP_HIGH
+        elif move_count < TEMP_MOVES + 20:
+            transition_progress = (move_count - TEMP_MOVES) / 20.0
+            temperature = (
+                TEMP_HIGH * (1.0 - transition_progress) + TEMP_LOW * transition_progress
+            )
+        else:
+            temperature = TEMP_LOW
         move = sample_move_from_probabilities(policy, temperature)
 
         if move is not None and move in board.legal_moves:

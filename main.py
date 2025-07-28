@@ -32,7 +32,7 @@ def main():
                 f"[{i:3d}/{ITERATIONS}] Iteration {i} ({i / ITERATIONS * 100:.1f}%) - {elapsed / 60:.1f}m elapsed"
             )
             print(
-                f"  Loss: {metrics.get('loss', 0):.3f} (Value: {metrics.get('value_loss', 0):.3f}, Policy: {metrics.get('policy_loss', 0):.3f}) | LR: {metrics.get('learning_rate', 0):.1e} | Grad: {metrics.get('grad_norm', 0):.3f}"
+                f"  Loss: {metrics.get('loss', 0):.3f} (Value: {metrics.get('value_loss', 0):.3f}, Policy: {metrics.get('policy_loss', 0):.3f}) | LR: {metrics.get('learning_rate', 0):.1e} | Grad: {metrics.get('grad_norm', 0):.3f} | Steps: {metrics.get('training_steps_performed', 0)}"
             )
             print(
                 f"  Games: {metrics['total']} total, {metrics['completed']} completed, {metrics.get('move_limit', 0)} hit limits | Speed: {games_per_sec:.3f}/s ({games_per_sec * 3600:.0f}/hour)"

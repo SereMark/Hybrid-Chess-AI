@@ -14,10 +14,12 @@ from config import (
     ITERATIONS,
     LEARNING_RATE,
     LEARNING_RATE_MIN_FACTOR,
+    LEARNING_RATE_WARMUP_ITERATIONS,
     MAX_MOVES,
     MOVE_COUNT,
     POLICY_EPSILON,
     TEMP_MOVES,
+    TRAINING_STEPS_PER_ITERATION,
     USE_MIXED_PRECISION,
 )
 from mcts import MCTS
@@ -62,12 +64,20 @@ class ChessTrainer:
         self.buffer_policies = torch.zeros(
             (BUFFER_SIZE, MOVE_COUNT), dtype=torch.float32, device=device
         )
+        self.buffer_completed_game = torch.zeros(
+            BUFFER_SIZE, dtype=torch.bool, device=device
+        )
+        self.buffer_timestamps = torch.zeros(
+            BUFFER_SIZE, dtype=torch.float32, device=device
+        )
 
         self.mcts = MCTS(self.model, self.move_encoder)
         self.games_played = 0
         self.accumulation_step = 0
         self.training_start_time = time.time()
         self.iteration_times: list[float] = []
+        self.current_iteration = 0
+        self.warmup_initial_lr = LEARNING_RATE * 0.1
 
     def process_worker_results(
         self, worker_results
@@ -142,7 +152,10 @@ class ChessTrainer:
                     if data_idx < len(worker_result["game_data"]):
                         tensor, probs, turn = worker_result["game_data"][data_idx]
                         value = result_value if turn == chess.WHITE else -result_value
-                        all_processed_data.append((tensor, probs, value))
+                        is_completed = (
+                            game_result["is_game_over"] or game_result["resigned"]
+                        )
+                        all_processed_data.append((tensor, probs, value, is_completed))
                         data_idx += 1
 
         if all_game_lengths:
@@ -225,12 +238,21 @@ class ChessTrainer:
         return self.self_play_parallel()
 
     def add_to_buffer(self, data: list[tuple]) -> None:
-        for board_tensor, move_probs, value in data:
+        current_time = time.time()
+        for item in data:
+            if len(item) == 4:
+                board_tensor, move_probs, value, is_completed = item
+            else:
+                board_tensor, move_probs, value = item
+                is_completed = False
+
             if not move_probs:
                 continue
 
             self.buffer_boards[self.buffer_pos] = board_tensor
             self.buffer_values[self.buffer_pos] = value
+            self.buffer_completed_game[self.buffer_pos] = is_completed
+            self.buffer_timestamps[self.buffer_pos] = current_time
 
             policy_tensor = self.buffer_policies[self.buffer_pos]
             policy_tensor.zero_()
@@ -255,9 +277,20 @@ class ChessTrainer:
             return {}
 
         actual_batch_size = min(BATCH_SIZE, self.buffer_size)
-        indices = torch.randint(
-            0, self.buffer_size, (actual_batch_size,), device=self.device
-        )
+
+        current_time = time.time()
+        weights = torch.ones(self.buffer_size, device=self.device)
+
+        weights[self.buffer_completed_game[: self.buffer_size]] *= 10.0
+
+        age_hours = (current_time - self.buffer_timestamps[: self.buffer_size]) / 3600.0
+        time_weights = 2.0 - 1.9 * torch.clamp(age_hours / 24.0, 0.0, 1.0)
+        weights[: self.buffer_size] *= time_weights
+
+        weights = weights / weights.sum()
+
+        indices = torch.multinomial(weights, actual_batch_size, replacement=True)
+
         boards = self.buffer_boards[indices]
         values = self.buffer_values[indices]
         policies = self.buffer_policies[indices]
@@ -301,6 +334,13 @@ class ChessTrainer:
             self.accumulation_step = 0
             optimizer_stepped = True
 
+        completed_samples_in_batch = self.buffer_completed_game[indices].sum().item()
+        completed_ratio_in_batch = (
+            completed_samples_in_batch / actual_batch_size
+            if actual_batch_size > 0
+            else 0
+        )
+
         return {
             "loss": (value_loss + policy_loss).item(),
             "value_loss": value_loss.item(),
@@ -310,10 +350,22 @@ class ChessTrainer:
             "actual_batch_size": actual_batch_size,
             "accumulation_step": self.accumulation_step,
             "optimizer_stepped": optimizer_stepped,
+            "completed_samples_in_batch": completed_samples_in_batch,
+            "completed_ratio_in_batch": completed_ratio_in_batch,
         }
 
     def iteration(self) -> dict[str, float]:
         start = time.time()
+        self.current_iteration += 1
+
+        if self.current_iteration <= LEARNING_RATE_WARMUP_ITERATIONS:
+            warmup_factor = self.current_iteration / LEARNING_RATE_WARMUP_ITERATIONS
+            current_lr = (
+                self.warmup_initial_lr
+                + (LEARNING_RATE - self.warmup_initial_lr) * warmup_factor
+            )
+            for param_group in self.optimizer.param_groups:
+                param_group["lr"] = current_lr
 
         self.mcts.reset_search_stats()
         self.model.reset_inference_stats()
@@ -327,10 +379,35 @@ class ChessTrainer:
         buffer_time = time.time() - buffer_start
 
         train_start = time.time()
-        losses = self.train_step()
+        cumulative_losses = {}
+        training_steps_performed = 0
+
+        for _ in range(TRAINING_STEPS_PER_ITERATION):
+            if self.buffer_size == 0:
+                break
+
+            step_losses = self.train_step()
+            if step_losses:
+                training_steps_performed += 1
+                for key, value in step_losses.items():
+                    if key in cumulative_losses:
+                        cumulative_losses[key] += value
+                    else:
+                        cumulative_losses[key] = value
+
+        losses = {}
+        if training_steps_performed > 0:
+            for key, total_value in cumulative_losses.items():
+                losses[key] = total_value / training_steps_performed
+
+        losses["learning_rate"] = self.optimizer.param_groups[0]["lr"]
+        losses["training_steps_performed"] = training_steps_performed
         train_time = time.time() - train_start
 
-        if self.accumulation_step == 0:
+        if (
+            self.accumulation_step == 0
+            and self.current_iteration > LEARNING_RATE_WARMUP_ITERATIONS
+        ):
             self.scheduler.step()
 
         iteration_time = time.time() - start
