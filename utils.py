@@ -11,14 +11,12 @@ def should_resign_position(board: chess.Board, model) -> bool:
     with torch.no_grad():
         tensor = model.encode_board(board).unsqueeze(0)
         value = model(tensor).value.squeeze().item()
-        return (
-            (value < RESIGN_THRESHOLD)
-            if board.turn
-            else (value > -RESIGN_THRESHOLD)
-        )
+        return (value < RESIGN_THRESHOLD) if board.turn else (value > -RESIGN_THRESHOLD)
 
 
-def sample_move_from_probabilities(probs: dict[chess.Move, float], temperature: float) -> chess.Move | None:
+def sample_move_from_probabilities(
+    probs: dict[chess.Move, float], temperature: float
+) -> chess.Move | None:
     moves = list(probs.keys())
     if not moves:
         return None

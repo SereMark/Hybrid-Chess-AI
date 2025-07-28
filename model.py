@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import Union
+from typing import NamedTuple, Union
 
 import chess
 import torch
@@ -15,9 +15,13 @@ from config import (
     VALUE_CHANNELS,
     VALUE_FC_HIDDEN,
 )
-from data_structures import ModelOutput
 from torch import nn
 from torch.nn import functional
+
+
+class ModelOutput(NamedTuple):
+    policy: torch.Tensor
+    value: torch.Tensor
 
 
 class ResidualBlock(nn.Module):

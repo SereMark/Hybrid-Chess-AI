@@ -164,7 +164,9 @@ class MCTS:
                                 ]
 
                             for move, prior in zip(legal_moves, priors, strict=False):
-                                node.children[move] = Node.create_child_node(node, move, prior)
+                                node.children[move] = Node.create_child_node(
+                                    node, move, prior
+                                )
 
                             node.is_expanded = True
                             self.total_nodes_expanded += 1
