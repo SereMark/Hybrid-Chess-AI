@@ -19,9 +19,9 @@ class Node:
         copy_board: bool = True,
     ):
         if copy_board:
-            self.board: chess.Board = board.copy()
+            self.board = board.copy()
         else:
-            self.board: chess.Board = board
+            self.board = board
         self.parent: Node | None = parent
         self.move: chess.Move | None = move
         self.prior: float = prior
@@ -53,17 +53,17 @@ class Node:
         self.value_sum += value
         if self.parent:
             self.parent.backup(-value)
-    
+
     def get_legal_moves(self) -> list[chess.Move]:
         if self._legal_moves is None:
             self._legal_moves = list(self.board.legal_moves)
         return self._legal_moves
-    
+
     def is_terminal(self) -> bool:
         if self._is_terminal is None:
             self._is_terminal = self.board.is_game_over()
         return self._is_terminal
-    
+
     @staticmethod
     def create_child_node(parent: "Node", move: chess.Move, prior: float) -> "Node":
         child_board = parent.board.copy()
