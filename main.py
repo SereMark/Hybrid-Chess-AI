@@ -19,7 +19,6 @@ def main():
 
     trainer = ChessTrainer(device)
     print(f"Training on {device}")
-    print(f"Model: {sum(p.numel() for p in trainer.model.parameters()):,} parameters")
 
     for i in range(1, ITERATIONS + 1):
         metrics = trainer.iteration()
