@@ -1,0 +1,3 @@
+/home/seremark/projects/Hibrid-Chess-AI/build/CMakeFiles/chessai.dir
+/home/seremark/projects/Hibrid-Chess-AI/build/CMakeFiles/edit_cache.dir
+/home/seremark/projects/Hibrid-Chess-AI/build/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -O3 -DNDEBUG -flto=auto -fno-fat-lto-objects -flto -Wl,--dependency-file=CMakeFiles/chessai.dir/link.d -shared  -o chessai.cpython-313-x86_64-linux-gnu.so CMakeFiles/chessai.dir/chess.cpp.o CMakeFiles/chessai.dir/mcts.cpp.o CMakeFiles/chessai.dir/bindings.cpp.o

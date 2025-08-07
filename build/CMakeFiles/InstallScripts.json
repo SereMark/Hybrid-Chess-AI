@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/seremark/projects/Hibrid-Chess-AI/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
