@@ -22,28 +22,32 @@ class AlphaZeroTrainer:
             weight_decay=Config.WEIGHT_DECAY,
             nesterov=True,
         )
-        milestones = [step[0] for step in Config.LEARNING_RATE_SCHEDULE]
-        self.scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            self.optimizer, milestones=milestones, gamma=0.1
-        )
+        schedule_map = {m: lr for m, lr in Config.LEARNING_RATE_SCHEDULE}
+        def lr_lambda(epoch):
+            target = Config.LEARNING_RATE_INIT
+            for m in sorted(schedule_map):
+                if epoch >= m:
+                    target = schedule_map[m]
+            return target / Config.LEARNING_RATE_INIT
+        self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
         self.scaler = None
         if self.device.type == "cuda":
-            scaler = None
-            try:
-                from torch.cuda.amp import GradScaler as CudaGradScaler
-
-                scaler = CudaGradScaler(enabled=True)
-            except Exception:
-                amp_mod = getattr(torch, "amp", None)
-                if amp_mod is not None and hasattr(amp_mod, "GradScaler"):
-                    grad_scaler_cls = getattr(amp_mod, "GradScaler")
-                    scaler = grad_scaler_cls("cuda")
-            self.scaler = scaler
+            amp_mod = getattr(torch, "amp", None)
+            if amp_mod is not None and hasattr(amp_mod, "GradScaler"):
+                grad_scaler_cls = getattr(amp_mod, "GradScaler")
+                self.scaler = grad_scaler_cls("cuda", enabled=True)
         self.selfplay_engine = SelfPlayEngine(self.model, self.device)
         self.encoder = PositionEncoder()
         self.iteration = 0
         self.total_games = 0
         self.start_time = time.time()
+        self.iter_times = []
+        self.device_name = None
+        self.device_total_gb = 0.0
+        if self.device.type == "cuda":
+            props = torch.cuda.get_device_properties(self.device)
+            self.device_name = props.name
+            self.device_total_gb = props.total_memory / 1024**3
 
     def format_time(self, seconds):
         if seconds < 60:
@@ -56,10 +60,18 @@ class AlphaZeroTrainer:
     def get_mem_info(self):
         if self.device.type == "cuda":
             return {
-                "gpu_memory_used": torch.cuda.memory_allocated(self.device) / 1024**3,
-                "gpu_memory_total": torch.cuda.memory_reserved(self.device) / 1024**3,
+                "allocated_gb": torch.cuda.memory_allocated(self.device) / 1024**3,
+                "reserved_gb": torch.cuda.memory_reserved(self.device) / 1024**3,
+                "total_gb": self.device_total_gb,
             }
-        return {"gpu_memory_used": 0, "gpu_memory_total": 0}
+        return {"allocated_gb": 0.0, "reserved_gb": 0.0, "total_gb": 0.0}
+
+    def current_lr_for_iteration(self, iteration_index):
+        lr = Config.LEARNING_RATE_INIT
+        for m, val in sorted(Config.LEARNING_RATE_SCHEDULE):
+            if iteration_index >= m:
+                lr = val
+        return lr
 
     def train_step(self, batch_data):
         states, policies, values = batch_data
@@ -90,17 +102,26 @@ class AlphaZeroTrainer:
     def training_iteration(self):
         stats = {}
         total_iter_start = time.time()
-        elapsed_total = time.time() - self.start_time
-        if self.iteration > 0:
-            eta_total = elapsed_total * (Config.ITERATIONS - self.iteration) / self.iteration
+        completed = max(self.iteration - 1, 0)
+        if completed > 0:
+            window = self.iter_times[-5:] if len(self.iter_times) >= 5 else self.iter_times
+            avg_iter = sum(window) / len(window)
+            remaining = Config.ITERATIONS - completed
+            eta_seconds = avg_iter * remaining
+            eta_text = self.format_time(eta_seconds)
         else:
-            eta_total = 0
-        mem_info = self.get_mem_info()
+            eta_text = "--"
+        if self.device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(self.device)
+        current_lr = self.optimizer.param_groups[0]["lr"]
+        mem = self.get_mem_info()
+        buffer_pct_pre = (self.selfplay_engine.get_buffer_size() / Config.BUFFER_SIZE) * 100
         print(
             f"\n[Iteration {self.iteration}/{Config.ITERATIONS}] | "
-            f"ETA: {self.format_time(eta_total)} | "
-            f"GPU: {mem_info['gpu_memory_used']:.1f}/"
-            f"{mem_info['gpu_memory_total']:.1f}GB"
+            f"ETA {eta_text} | "
+            f"LR {current_lr:.2e} | "
+            f"GPU {mem['allocated_gb']:.1f}/{mem['reserved_gb']:.1f}GB | "
+            f"Buffer {buffer_pct_pre:.0f}%"
         )
 
         selfplay_start = time.time()
@@ -145,17 +166,17 @@ class AlphaZeroTrainer:
                 print(f"  Training step {step}/{Config.TRAIN_STEPS_PER_ITER}", end="\r", flush=True)
 
         train_elapsed = time.time() - train_start
-        self.scheduler.step()
         if losses:
             pol_loss = np.mean([loss[0] for loss in losses])
             val_loss = np.mean([loss[1] for loss in losses])
-            current_lr = self.scheduler.get_last_lr()[0]
             buffer_size = self.selfplay_engine.get_buffer_size()
             buffer_pct = (buffer_size / Config.BUFFER_SIZE) * 100
             batches_per_sec = len(losses) / train_elapsed if train_elapsed > 0 else 0
+            samples_per_sec = (len(losses) * Config.BATCH_SIZE) / train_elapsed if train_elapsed > 0 else 0
             print(
                 f"Training:  {len(losses)} steps | "
                 f"{batches_per_sec:.1f} batches/sec | "
+                f"{samples_per_sec:.0f} samples/sec | "
                 f"Time: {self.format_time(train_elapsed)}"
             )
             print(
@@ -174,6 +195,22 @@ class AlphaZeroTrainer:
                     "batches_per_sec": batches_per_sec,
                     "total_iteration_time": time.time() - total_iter_start,
                 }
+            )
+        self.scheduler.step()
+        iter_total_time = time.time() - total_iter_start
+        self.iter_times.append(iter_total_time)
+        if self.device.type == "cuda":
+            peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
+            peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
+            print(
+                f"Totals:    Iter {self.format_time(iter_total_time)} | "
+                f"Cumulative games {self.total_games:,} | "
+                f"Peak GPU {peak_alloc:.1f}/{peak_res:.1f}GB"
+            )
+        else:
+            print(
+                f"Totals:    Iter {self.format_time(iter_total_time)} | "
+                f"Cumulative games {self.total_games:,}"
             )
         return stats
 
@@ -207,9 +244,15 @@ class AlphaZeroTrainer:
 
     def train(self):
         total_params = sum(p.numel() for p in self.model.parameters()) / 1e6
-        mem_info = self.get_mem_info()
         print("Starting training...")
-        print(f"Device: {self.device} | " f"Memory: {mem_info['gpu_memory_total']:.1f}GB")
+        if self.device.type == "cuda":
+            print(
+                f"Device: {self.device} ({self.device_name}) | "
+                f"GPU total {self.device_total_gb:.1f}GB | "
+                f"AMP {'on' if self.scaler else 'off'}"
+            )
+        else:
+            print(f"Device: {self.device} | AMP off")
         print(
             f"Model: {total_params:.1f}M parameters | "
             f"{Config.BLOCKS} blocks x {Config.CHANNELS} channels"
@@ -218,7 +261,9 @@ class AlphaZeroTrainer:
             f"Training: {Config.ITERATIONS:,} iterations | "
             f"{Config.GAMES_PER_ITERATION:,} games/iter"
         )
-        print(f"Expected: {Config.ITERATIONS * Config.GAMES_PER_ITERATION:,} " f"total games")
+        sched_pairs = ", ".join([f"{m} -> {lr:.1e}" for m, lr in Config.LEARNING_RATE_SCHEDULE])
+        print(f"LR: init {Config.LEARNING_RATE_INIT:.2e} | schedule: {sched_pairs}")
+        print(f"Expected: {Config.ITERATIONS * Config.GAMES_PER_ITERATION:,} total games")
 
         for iteration in range(1, Config.ITERATIONS + 1):
             self.iteration = iteration
