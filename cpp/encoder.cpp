@@ -106,4 +106,4 @@ void encode_position_with_history(const std::vector<chess::Position> &history,
   fill_repetition_planes(history, out);
 }
 
-}
+} // namespace encoder

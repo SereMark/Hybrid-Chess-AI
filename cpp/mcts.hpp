@@ -3,9 +3,9 @@
 #include "chess.hpp"
 
 #include <array>
-#include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <vector>
 
 namespace mcts {
@@ -58,23 +58,21 @@ public:
     if (nodes.empty()) {
       nodes.resize(DEFAULT_CAPACITY);
     }
-    if (used > 0) {
-      std::memset(nodes.data(), 0, used * sizeof(Node));
-    }
     used = 1;
+    nodes[0] = Node{};
   }
 
   Node *get_root() { return &nodes[0]; }
 
   Node *allocate(size_t count) {
     if (used + count > nodes.size()) {
-      size_t old_size = nodes.size();
       nodes.resize(nodes.size() * 2);
-      std::memset(&nodes[old_size], 0,
-                  (nodes.size() - old_size) * sizeof(Node));
     }
     Node *ptr = &nodes[used];
     used += count;
+    for (size_t i = 0; i < count; i++) {
+      ptr[i] = Node{};
+    }
     return ptr;
   }
 
@@ -94,8 +92,12 @@ public:
     node_pool_.reset();
   }
 
-  std::vector<int> search(const chess::Position &position,
-                          const std::vector<float> &policy, float value);
+  using EvalBatchFn = std::function<void(const std::vector<chess::Position> &,
+                                         std::vector<std::vector<float>> &,
+                                         std::vector<float> &)>;
+
+  std::vector<int> search_batched(const chess::Position &position,
+                                  EvalBatchFn eval_fn, int max_batch = 64);
 
   void set_simulations(int simulations) { simulations_ = simulations; }
 
@@ -109,13 +111,15 @@ public:
 private:
   int simulations_;
   float c_puct_;
+  float c_puct_base_ = 19652.0f;
+  float c_puct_init_ = 1.25f;
   float dirichlet_alpha_;
   float dirichlet_weight_;
   NodePool node_pool_;
   mutable chess::Position working_pos_;
   mutable std::array<chess::Position::MoveInfo, 512> undo_stack_;
-  std::array<float, 512> prior_buffer_;
   std::array<uint32_t, 1024> path_buffer_;
+  static constexpr float VIRTUAL_LOSS = 1.0f;
 
   [[gnu::hot]] Node *select_child(Node *parent);
   [[gnu::hot]] void expand_node(Node *node, const chess::MoveList &moves,
@@ -132,4 +136,4 @@ private:
   }
 };
 
-}
+} // namespace mcts

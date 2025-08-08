@@ -6,20 +6,129 @@ import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from typing import Any, cast
 
-import chessai
+import chesscore as chessai
 import numpy as np
 import torch
 import torch.nn.functional as F
-from typing import cast
 from torch.amp import GradScaler
 
 from .config import CONFIG
-from .evaluator import BatchedEvaluator
-from .nn import ChessNet
+from .model import (
+    BatchedEvaluator,
+    ChessNet,
+    get_module_state_dict,
+    load_module_state_dict,
+)
 
 log = logging.getLogger(__name__)
+
+
+class Augment:
+    @staticmethod
+    def mirror_policy(pi: np.ndarray) -> np.ndarray:
+        arr = pi.reshape((73, 8, 8))
+        arr = arr[:, :, ::-1].copy()
+        out = np.empty_like(arr)
+        dir_map = [2, 1, 0, 4, 3, 7, 6, 5]
+        for d in range(8):
+            for r in range(7):
+                old_idx = d * 7 + r
+                new_idx = dir_map[d] * 7 + r
+                out[new_idx] = arr[old_idx]
+        kmap = [1, 0, 3, 2, 5, 4, 7, 6]
+        for i in range(8):
+            out[56 + kmap[i]] = arr[56 + i]
+        pmap = [0, 2, 1]
+        for p in range(3):
+            base = 64 + p * 3
+            out[base + pmap[0]] = arr[base + 0]
+            out[base + pmap[1]] = arr[base + 1]
+            out[base + pmap[2]] = arr[base + 2]
+        return out.reshape(-1)
+
+    @staticmethod
+    def rotate180_policy(pi: np.ndarray) -> np.ndarray:
+        arr = pi.reshape((73, 8, 8))
+        arr = arr[:, ::-1, ::-1].copy()
+        out = np.empty_like(arr)
+        dir_map = [7, 6, 5, 4, 3, 2, 1, 0]
+        for d in range(8):
+            for r in range(7):
+                old_idx = d * 7 + r
+                new_idx = dir_map[d] * 7 + r
+                out[new_idx] = arr[old_idx]
+        kmap = [7, 6, 5, 4, 3, 2, 1, 0]
+        for i in range(8):
+            out[56 + kmap[i]] = arr[56 + i]
+        for p in range(3):
+            base = 64 + p * 3
+            out[base + 0] = arr[base + 0]
+            out[base + 1] = arr[base + 1]
+            out[base + 2] = arr[base + 2]
+        return out.reshape(-1)
+
+    @staticmethod
+    def vflip_colorswap_policy(pi: np.ndarray) -> np.ndarray:
+        arr = pi.reshape((73, 8, 8))
+        arr = arr[:, ::-1, :].copy()
+        out = np.empty_like(arr)
+        dir_map = [5, 6, 7, 4, 3, 2, 1, 0]
+        for d in range(8):
+            for r in range(7):
+                old_idx = d * 7 + r
+                new_idx = dir_map[d] * 7 + r
+                out[new_idx] = arr[old_idx]
+        kmap = [6, 7, 4, 5, 2, 3, 0, 1]
+        for i in range(8):
+            out[56 + kmap[i]] = arr[56 + i]
+        for p in range(3):
+            base = 64 + p * 3
+            out[base + 0] = arr[base + 0]
+            out[base + 1] = arr[base + 1]
+            out[base + 2] = arr[base + 2]
+        return out.reshape(-1)
+
+    @staticmethod
+    def apply(
+        states: list[np.ndarray], policies: list[np.ndarray], which: str
+    ) -> tuple[list[np.ndarray], list[np.ndarray], bool]:
+        if which == "mirror":
+            states = [s[..., ::-1].copy() for s in states]
+            policies = [Augment.mirror_policy(p) for p in policies]
+            return states, policies, False
+        elif which == "rot180":
+            states = [s[..., ::-1, ::-1].copy() for s in states]
+            policies = [Augment.rotate180_policy(p) for p in policies]
+            return states, policies, False
+        elif which == "vflip_cs":
+            out_states: list[np.ndarray] = []
+            for s in states:
+                x = s[..., ::-1, :].copy()
+                planes_per_pos = CONFIG.planes_per_position
+                hist_len = CONFIG.history_length
+                for t in range(hist_len):
+                    base = t * planes_per_pos
+                    for piece in range(6):
+                        a = base + piece * 2 + 0
+                        b = base + piece * 2 + 1
+                        xa = x[a].copy()
+                        x[a] = x[b]
+                        x[b] = xa
+                turn_plane = hist_len * planes_per_pos
+                x[turn_plane] = 1.0 - x[turn_plane]
+                cs_base = turn_plane + 2
+                xa = x[cs_base + 0].copy()
+                x[cs_base + 0] = x[cs_base + 2]
+                x[cs_base + 2] = xa
+                xb = x[cs_base + 1].copy()
+                x[cs_base + 1] = x[cs_base + 3]
+                x[cs_base + 3] = xb
+                out_states.append(x)
+            policies = [Augment.vflip_colorswap_policy(p) for p in policies]
+            return out_states, policies, True
+        return states, policies, False
 
 
 class SelfPlayEngine:
@@ -29,10 +138,6 @@ class SelfPlayEngine:
             maxlen=CONFIG.buffer_size
         )
         self.buffer_lock = threading.Lock()
-
-    def evaluate_position(self, position: Any) -> tuple[np.ndarray, float]:
-        policy, value = self.evaluator.evaluate(position)
-        return policy, value
 
     def _temp_select(
         self, moves: list[Any], visits: list[int], move_number: int
@@ -62,6 +167,7 @@ class SelfPlayEngine:
 
     def play_single_game(self) -> tuple[int, int]:
         position = chessai.Position()
+        setattr(self, "_resign_count", 0)
         mcts = chessai.MCTS(
             CONFIG.simulations_train,
             CONFIG.c_puct,
@@ -73,12 +179,13 @@ class SelfPlayEngine:
         move_count = 0
         while position.result() == chessai.ONGOING and move_count < 512:
             pos_copy = chessai.Position(position)
-            policy, value = self.evaluate_position(position)
             sims = max(
                 CONFIG.mcts_min_sims, CONFIG.simulations_train // (1 + move_count // 40)
             )
             mcts.set_simulations(sims)
-            visits = mcts.search(position, policy, value)
+            visits = mcts.search_batched(
+                position, self.evaluator.infer_positions, CONFIG.eval_max_batch
+            )
             if not visits:
                 break
 
@@ -86,7 +193,9 @@ class SelfPlayEngine:
             target = np.zeros(CONFIG.policy_output, dtype=np.float32)
             for move, visit_count in zip(moves, visits):
                 move_index = chessai.encode_move_index(move)
-                if move_index is not None and move_index < CONFIG.policy_output:
+                if (move_index is not None) and (
+                    0 <= int(move_index) < CONFIG.policy_output
+                ):
                     target[move_index] = visit_count
             policy_sum = target.sum()
             if policy_sum > 0:
@@ -97,7 +206,20 @@ class SelfPlayEngine:
                 encoded = chessai.encode_batch([histories])[0]
             else:
                 encoded = chessai.encode_position(pos_copy)
+            encoded = encoded.astype(np.float16, copy=False)
+            target = target.astype(np.float16, copy=False)
             data.append((encoded, target))
+            if CONFIG.resign_consecutive > 0:
+                _, val_arr = self.evaluator.infer_positions([pos_copy])
+                value_est = float(val_arr[0])
+                if value_est <= CONFIG.resign_threshold:
+                    consecutive = getattr(self, "_resign_count", 0) + 1
+                    setattr(self, "_resign_count", consecutive)
+                    if consecutive >= CONFIG.resign_consecutive:
+                        break
+                else:
+                    setattr(self, "_resign_count", 0)
+
             move = self._temp_select(moves, visits, move_count)
             position.make_move(move)
             history.append(pos_copy)
@@ -108,17 +230,19 @@ class SelfPlayEngine:
         self._process_result(data, position.result())
         return move_count, position.result()
 
-    def generate_batch(self, batch_size: int | None = None):
-        if batch_size is None:
-            batch_size = CONFIG.batch_size
+    def snapshot(self) -> list[tuple[Any, np.ndarray, float]]:
         with self.buffer_lock:
-            snapshot = list(self.buffer)
+            return list(self.buffer)
+
+    def sample_from_snapshot(
+        self, snapshot: list[tuple[Any, np.ndarray, float]], batch_size: int
+    ):
         if len(snapshot) < batch_size:
             return None
-        indices = np.random.choice(len(snapshot), batch_size)
-        batch = [snapshot[int(i)] for i in indices]
-        states, policies, values = zip(*batch)
-        return list(states), list(policies), list(values)
+        idx = np.random.randint(0, len(snapshot), size=batch_size)
+        batch = [snapshot[int(i)] for i in idx]
+        s, p, v = zip(*batch)
+        return list(s), list(p), list(v)
 
     def play_games(self, num_games: int) -> dict[str, int | float]:
         results: dict[str, int | float] = {
@@ -145,8 +269,10 @@ class SelfPlayEngine:
 
 
 class AlphaZeroTrainer:
-    def __init__(self, device: str = "cuda") -> None:
-        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+    def __init__(self, device: str | torch.device | None = None) -> None:
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = torch.device(device)
         self.model = ChessNet().to(self.device)
         if CONFIG.use_channels_last:
             self.model = self.model.to(memory_format=torch.channels_last)  # type: ignore[reportCallIssue]
@@ -171,14 +297,16 @@ class AlphaZeroTrainer:
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
         self.scaler: GradScaler | None = None
         if self.device.type == "cuda":
-            self.scaler = GradScaler("cuda", enabled=True)
+            self.scaler = GradScaler(enabled=True)
         self.evaluator = BatchedEvaluator(self.device)
         self.evaluator.refresh_from(self.model)
+        self.best_model = self._clone_model()
         self.selfplay_engine = SelfPlayEngine(self.evaluator)
         self.iteration = 0
         self.total_games = 0
         self.start_time = time.time()
         self.iter_times: list[float] = []
+        self.iter_ema_time: float | None = None
         self.device_name: str | None = None
         self.device_total_gb = 0.0
         if self.device.type == "cuda":
@@ -227,7 +355,7 @@ class AlphaZeroTrainer:
         v_target = v_cpu.to(self.device, non_blocking=True)
 
         self.model.train()
-        with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
+        with torch.amp.autocast(device_type="cuda", enabled=self.device.type == "cuda"):
             pi_pred, v_pred = self.model(x)
             policy_loss = F.kl_div(
                 F.log_softmax(pi_pred, dim=1), pi_target, reduction="batchmean"
@@ -290,8 +418,8 @@ class AlphaZeroTrainer:
         )
         ww = int(game_stats["white_wins"])  # type: ignore[index]
         bb = int(game_stats["black_wins"])  # type: ignore[index]
-        dd = int(game_stats["draws"])       # type: ignore[index]
-        gc = int(game_stats["games"])       # type: ignore[index]
+        dd = int(game_stats["draws"])  # type: ignore[index]
+        gc = int(game_stats["games"])  # type: ignore[index]
         if gc > 0:
             wpct = 100.0 * ww / gc
             dpct = 100.0 * dd / gc
@@ -299,7 +427,7 @@ class AlphaZeroTrainer:
         else:
             wpct = dpct = bpct = 0.0
         log.info(
-            "Self-play: games %d | gpm %.1f | mps %.1fK | avg_len %.1f | W/D/B %d/%d/%d (%.0f%%/%.0f%%/%.0f%%)",
+            "Self-play: games %d | gpm %.1f | mps %.1fK | avg_len %.1f | W/D/B %d/%d/%d (%.0f%%/%.0f%%/%.0f%%) | time %s",
             gc,
             gpm,
             mps / 1000,
@@ -310,6 +438,7 @@ class AlphaZeroTrainer:
             wpct,
             dpct,
             bpct,
+            self._format_time(elapsed),
         )
 
         stats.update(game_stats)
@@ -319,9 +448,36 @@ class AlphaZeroTrainer:
 
         train_start = time.time()
         losses: list[tuple[float, float]] = []
+        buffer_snapshot = self.selfplay_engine.snapshot()
         for step in range(CONFIG.train_steps_per_iter):
-            batch = self.selfplay_engine.generate_batch(CONFIG.batch_size)
+            batch = self.selfplay_engine.sample_from_snapshot(
+                buffer_snapshot, CONFIG.batch_size
+            )
             if batch:
+                s, p, v = batch
+                did_aug = False
+                if (
+                    CONFIG.augment_mirror
+                    and np.random.rand() < CONFIG.augment_mirror_prob
+                ):
+                    s, p, _ = Augment.apply(s, p, "mirror")
+                    did_aug = True
+                if (
+                    CONFIG.augment_rotate180
+                    and np.random.rand() < CONFIG.augment_rot180_prob
+                ):
+                    s, p, _ = Augment.apply(s, p, "rot180")
+                    did_aug = True
+                if (
+                    CONFIG.augment_vflip_cs
+                    and np.random.rand() < CONFIG.augment_vflip_cs_prob
+                ):
+                    s, p, cs = Augment.apply(s, p, "vflip_cs")
+                    if cs:
+                        v = [-val for val in v]
+                    did_aug = True
+                if did_aug:
+                    batch = (s, p, v)
                 loss_vals = self.train_step(batch)
                 losses.append(loss_vals)
             if step % 256 == 0:
@@ -365,35 +521,6 @@ class AlphaZeroTrainer:
         if losses:
             self.scheduler.step()
 
-        iter_total_time = time.time() - total_iter_start
-        self.iter_times.append(iter_total_time)
-        avg_iter = (
-            sum(self.iter_times) / len(self.iter_times) if self.iter_times else iter_total_time
-        )
-        remaining = max(0, CONFIG.iterations - self.iteration)
-        eta_sec = avg_iter * remaining
-        if self.device.type == "cuda":
-            peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
-            peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
-            log.info(
-                "Totals: iter %s | avg %s | elapsed %s | ETA %s | games %s | peak_gpu %.1f/%.1f GB",
-                self._format_time(iter_total_time),
-                self._format_time(avg_iter),
-                self._format_time(time.time() - self.start_time),
-                self._format_time(eta_sec),
-                f"{self.total_games:,}",
-                peak_alloc,
-                peak_res,
-            )
-        else:
-            log.info(
-                "Totals: iter %s | avg %s | elapsed %s | ETA %s | games %s",
-                self._format_time(iter_total_time),
-                self._format_time(avg_iter),
-                self._format_time(time.time() - self.start_time),
-                self._format_time(eta_sec),
-                f"{self.total_games:,}",
-            )
         return stats
 
     def save_checkpoint(self, filepath: str | None = None) -> None:
@@ -402,7 +529,7 @@ class AlphaZeroTrainer:
         checkpoint = {
             "iteration": self.iteration,
             "total_games": self.total_games,
-            "model_state_dict": self.model.state_dict(),
+            "model_state_dict": get_module_state_dict(self.model),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
             "training_time": time.time() - self.start_time,
@@ -417,11 +544,96 @@ class AlphaZeroTrainer:
             self._format_time(time.time() - self.start_time),
         )
 
+    def _clone_model(self) -> torch.nn.Module:
+        clone = ChessNet().to(self.device)
+        load_module_state_dict(clone, get_module_state_dict(self.model), strict=True)
+        clone.eval()
+        return clone
+
+    def _arena_match(
+        self, challenger: torch.nn.Module, incumbent: torch.nn.Module
+    ) -> float:
+        wins = 0
+        import chesscore as _chessai
+
+        challenger_eval = BatchedEvaluator(self.device)
+        load_module_state_dict(
+            challenger_eval.eval_model, get_module_state_dict(challenger), strict=True
+        )
+        challenger_eval.eval_model.eval()
+        incumbent_eval = BatchedEvaluator(self.device)
+        load_module_state_dict(
+            incumbent_eval.eval_model, get_module_state_dict(incumbent), strict=True
+        )
+        incumbent_eval.eval_model.eval()
+
+        def play(e1: BatchedEvaluator, e2: BatchedEvaluator) -> int:
+            pos = _chessai.Position()
+            mcts1 = _chessai.MCTS(
+                CONFIG.simulations_eval,
+                CONFIG.c_puct,
+                CONFIG.dirichlet_alpha,
+                CONFIG.arena_dirichlet_weight,
+            )
+            mcts2 = _chessai.MCTS(
+                CONFIG.simulations_eval,
+                CONFIG.c_puct,
+                CONFIG.dirichlet_alpha,
+                CONFIG.arena_dirichlet_weight,
+            )
+            turn = 0
+            while pos.result() == _chessai.ONGOING and turn < 512:
+                if turn % 2 == 0:
+                    visits = mcts1.search_batched(
+                        pos, e1.infer_positions, CONFIG.eval_max_batch
+                    )
+                else:
+                    visits = mcts2.search_batched(
+                        pos, e2.infer_positions, CONFIG.eval_max_batch
+                    )
+                if not visits:
+                    break
+                moves = pos.legal_moves()
+                if CONFIG.arena_temperature > 0.0 and turn < CONFIG.arena_temp_moves:
+                    v = np.asarray(visits, dtype=np.float64)
+                    v = np.maximum(v, 0)
+                    if v.sum() <= 0:
+                        idx = int(np.argmax(visits))
+                    else:
+                        probs = v ** (1.0 / float(CONFIG.arena_temperature))
+                        s = probs.sum()
+                        if s <= 0:
+                            idx = int(np.argmax(visits))
+                        else:
+                            probs /= s
+                            idx = int(np.random.choice(len(moves), p=probs))
+                else:
+                    idx = int(np.argmax(visits))
+                pos.make_move(moves[idx])
+                turn += 1
+            res = pos.result()
+            if res == _chessai.WHITE_WIN:
+                return 1
+            if res == _chessai.BLACK_WIN:
+                return -1
+            return 0
+
+        for g in range(CONFIG.arena_games):
+            if g % 2 == 0:
+                r = play(challenger_eval, incumbent_eval)
+            else:
+                r = -play(incumbent_eval, challenger_eval)
+            if r > 0:
+                wins += 1
+        challenger_eval.shutdown()
+        incumbent_eval.shutdown()
+        return wins / max(1, CONFIG.arena_games)
+
     def load_checkpoint(self, filepath: str) -> None:
         checkpoint = torch.load(filepath, map_location=self.device)
         self.iteration = int(checkpoint["iteration"])  # type: ignore[index]
         self.total_games = int(checkpoint["total_games"])  # type: ignore[index]
-        self.model.load_state_dict(checkpoint["model_state_dict"])  # type: ignore[index]
+        load_module_state_dict(self.model, checkpoint["model_state_dict"])  # type: ignore[index]
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])  # type: ignore[index]
         self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])  # type: ignore[index]
         log.info("Loaded checkpoint from %s (iteration %d)", filepath, self.iteration)
@@ -460,29 +672,76 @@ class AlphaZeroTrainer:
 
         for iteration in range(1, CONFIG.iterations + 1):
             self.iteration = iteration
-            _ = self.training_iteration()
+            iter_start = time.time()
+            iter_stats = self.training_iteration()
             if iteration % CONFIG.checkpoint_freq == 0:
                 self.save_checkpoint()
-
-
-def setup_logging() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(message)s",
-    )
-
-
-def main() -> None:
-    setup_logging()
-    torch.backends.cudnn.benchmark = True
-    torch.set_num_threads(1)
-    try:
-        torch.set_float32_matmul_precision("high")
-    except Exception:
-        pass
-    trainer = AlphaZeroTrainer()
-    trainer.train()
+            challenger = self._clone_model()
+            arena_start = time.time()
+            win_rate = self._arena_match(challenger, self.best_model)
+            arena_elapsed = time.time() - arena_start
+            log.info(
+                "Arena: win_rate %.1f%% over %d games | time %s",
+                100.0 * win_rate,
+                CONFIG.arena_games,
+                self._format_time(arena_elapsed),
+            )
+            if win_rate >= CONFIG.arena_win_rate:
+                load_module_state_dict(
+                    self.best_model,
+                    get_module_state_dict(challenger),
+                    strict=True,
+                )
+                self.best_model.eval()
+                self.evaluator.refresh_from(self.best_model)
+            full_iter_time = time.time() - iter_start
+            self.iter_times.append(full_iter_time)
+            if self.iter_ema_time is None:
+                self.iter_ema_time = full_iter_time
+            else:
+                alpha = 0.3
+                self.iter_ema_time = (
+                    alpha * full_iter_time + (1 - alpha) * self.iter_ema_time
+                )
+            avg_iter = (
+                self.iter_ema_time if self.iter_ema_time is not None else full_iter_time
+            )
+            remaining = max(0, CONFIG.iterations - self.iteration)
+            eta_sec = avg_iter * remaining
+            sp_time = float(iter_stats.get("selfplay_time", 0.0))
+            tr_time = float(iter_stats.get("training_time", 0.0))
+            brk = f"(sp {self._format_time(sp_time)} + tr {self._format_time(tr_time)} + ar {self._format_time(arena_elapsed)})"
+            if self.device.type == "cuda":
+                peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
+                peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
+                log.info(
+                    "Totals: iter %s %s | avg %s | elapsed %s | ETA %s | games %s | peak_gpu %.1f/%.1f GB",
+                    self._format_time(full_iter_time),
+                    brk,
+                    self._format_time(avg_iter),
+                    self._format_time(time.time() - self.start_time),
+                    self._format_time(eta_sec),
+                    f"{self.total_games:,}",
+                    peak_alloc,
+                    peak_res,
+                )
+            else:
+                log.info(
+                    "Totals: iter %s %s | avg %s | elapsed %s | ETA %s | games %s",
+                    self._format_time(full_iter_time),
+                    brk,
+                    self._format_time(avg_iter),
+                    self._format_time(time.time() - self.start_time),
+                    self._format_time(eta_sec),
+                    f"{self.total_games:,}",
+                )
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    torch.backends.cudnn.benchmark = True
+    torch.set_num_threads(1)
+    if hasattr(torch, "set_float32_matmul_precision"):
+        torch.set_float32_matmul_precision("high")
+    trainer = AlphaZeroTrainer()
+    trainer.train()

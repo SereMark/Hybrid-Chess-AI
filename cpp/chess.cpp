@@ -842,4 +842,4 @@ bool Position::is_insufficient_material() const {
   return false;
 }
 
-}
+} // namespace chess
