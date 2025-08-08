@@ -141,9 +141,6 @@ class SelfPlayEngine:
                     results["black_wins"] += 1
                 else:
                     results["draws"] += 1
-                if (idx) % max(1, num_games // 20) == 0 and num_games > 100:
-                    progress = (idx) / num_games * 100
-                    log.info("Progress: %d/%d (%.0f%%)", idx, num_games, progress)
         return results
 
 
