@@ -302,3 +302,5 @@ extern Bitboard king_attack_table[64];
 
 void init_tables();
 }
+
+
