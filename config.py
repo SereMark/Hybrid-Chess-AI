@@ -11,13 +11,9 @@ class Config:
     DIRICHLET_ALPHA = 0.3
     DIRICHLET_WEIGHT = 0.25
 
-    BATCH_SIZE = 128
+    BATCH_SIZE = 256
     LEARNING_RATE_INIT = 0.02
-    LEARNING_RATE_SCHEDULE = [
-        (400, 0.01),
-        (800, 0.001),
-        (1200, 0.0001)
-    ]
+    LEARNING_RATE_SCHEDULE = [(400, 0.01), (800, 0.001), (1200, 0.0001)]
     WEIGHT_DECAY = 1e-4
     MOMENTUM = 0.9
     GRADIENT_CLIP = 1.0

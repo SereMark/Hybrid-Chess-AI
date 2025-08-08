@@ -1,0 +1,8 @@
+Checks: >
+  -*,
+  bugprone-*,performance-*,
+  -bugprone-narrowing-conversions,
+  -bugprone-easily-swappable-parameters
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*'
+FormatStyle: none

@@ -8,13 +8,9 @@ from config import Config
 class ResBlock(nn.Module):
     def __init__(self, channels):
         super().__init__()
-        self.conv1 = nn.Conv2d(
-            channels, channels, 3, padding=1, bias=False
-        )
+        self.conv1 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(channels)
-        self.conv2 = nn.Conv2d(
-            channels, channels, 3, padding=1, bias=False
-        )
+        self.conv2 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(channels)
 
     def forward(self, x):
@@ -29,18 +25,15 @@ class ChessNet(nn.Module):
         super().__init__()
         blocks = blocks or Config.BLOCKS
         channels = channels or Config.CHANNELS
+        policy_planes = Config.POLICY_OUTPUT // 64
 
-        self.conv_in = nn.Conv2d(
-            Config.INPUT_PLANES, channels, 3, padding=1, bias=False
-        )
+        self.conv_in = nn.Conv2d(Config.INPUT_PLANES, channels, 3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(channels)
-        self.blocks = nn.Sequential(
-            *[ResBlock(channels) for _ in range(blocks)]
-        )
+        self.blocks = nn.Sequential(*[ResBlock(channels) for _ in range(blocks)])
 
-        self.policy_conv = nn.Conv2d(channels, 73, 1, bias=False)
-        self.policy_bn = nn.BatchNorm2d(73)
-        self.policy_fc = nn.Linear(73 * 64, Config.POLICY_OUTPUT)
+        self.policy_conv = nn.Conv2d(channels, policy_planes, 1, bias=False)
+        self.policy_bn = nn.BatchNorm2d(policy_planes)
+        self.policy_fc = nn.Linear(policy_planes * 64, Config.POLICY_OUTPUT)
 
         self.value_conv = nn.Conv2d(channels, 4, 1, bias=False)
         self.value_bn = nn.BatchNorm2d(4)
@@ -64,11 +57,11 @@ class ChessNet(nn.Module):
         x = self.blocks(x)
 
         policy = F.relu(self.policy_bn(self.policy_conv(x)))
-        policy = policy.view(batch_size, -1)
+        policy = policy.flatten(1)
         policy = self.policy_fc(policy)
 
         value = F.relu(self.value_bn(self.value_conv(x)))
-        value = value.view(batch_size, -1)
+        value = value.flatten(1)
         value = F.relu(self.value_fc1(value))
         value = torch.tanh(self.value_fc2(value)).squeeze(-1)
 

@@ -8,12 +8,16 @@ class PositionEncoder:
         self.planes = Config.INPUT_PLANES
         self.history_length = Config.HISTORY_LENGTH
         self.planes_per_position = Config.PLANES_PER_POSITION
+        self.turn_plane = self.history_length * self.planes_per_position
+        self.fullmove_plane = self.turn_plane + 1
+        self.castling_start_plane = self.fullmove_plane + 1
+        self.halfmove_plane = self.castling_start_plane + 4
 
     def encode_single(self, position, history=None):
         tensor = np.zeros((Config.INPUT_PLANES, 8, 8), dtype=np.float32)
 
         if history is not None:
-            positions = [position] + history[:7]
+            positions = [position] + history[: self.history_length - 1]
         else:
             positions = [position]
 
@@ -35,46 +39,35 @@ class PositionEncoder:
                         tensor[plane_idx, row, col] = 1.0
 
             if t < len(positions):
-                repetitions = self._count_reps(pos, positions[:t+1])
+                repetitions = self._count_reps(pos, positions[: t + 1])
                 if repetitions >= 1:
                     tensor[base_plane + 12] = 1.0
                 if repetitions >= 2:
                     tensor[base_plane + 13] = 1.0
 
         if position.turn == chessai.WHITE:
-            tensor[112] = 1.0
+            tensor[self.turn_plane] = 1.0
 
-        tensor[113] = min(position.fullmove / 100.0, 1.0)
+        tensor[self.fullmove_plane] = min(position.fullmove / 100.0, 1.0)
 
-        castling_rights = [
-            position.castling & 1,
-            position.castling & 2,
-            position.castling & 4,
-            position.castling & 8
-        ]
+        castling_rights = [position.castling & (1 << i) for i in range(4)]
         for i, has_right in enumerate(castling_rights):
             if has_right:
-                tensor[114 + i] = 1.0
+                tensor[self.castling_start_plane + i] = 1.0
 
-        tensor[118] = min(position.halfmove / 100.0, 1.0)
+        tensor[self.halfmove_plane] = min(position.halfmove / 100.0, 1.0)
         return tensor
 
     def _count_reps(self, target_pos, history):
-        hash = target_pos.hash
-        count = 0
-        for pos in history:
-            if pos.hash == hash:
-                count += 1
-        return count - 1
+        thash = target_pos.hash
+        return sum(1 for pos in history if pos.hash == thash) - 1
 
     def encode_batch(self, positions, histories=None):
         if not positions:
             return np.zeros((0, self.planes, 8, 8), dtype=np.float32)
 
         batch_size = len(positions)
-        tensor = np.zeros(
-            (batch_size, self.planes, 8, 8), dtype=np.float32
-        )
+        tensor = np.zeros((batch_size, self.planes, 8, 8), dtype=np.float32)
 
         for i, position in enumerate(positions):
             history = histories[i] if histories else None
