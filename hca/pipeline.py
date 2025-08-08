@@ -264,14 +264,19 @@ class AlphaZeroTrainer:
         buffer_pct_pre = (
             self.selfplay_engine.buffer.__len__() / CONFIG.buffer_size
         ) * 100
+        buffer_len_pre = self.selfplay_engine.buffer.__len__()
+        total_elapsed = time.time() - self.start_time
         log.info(
-            "\n[Iter %d/%d] LR %.2e | GPU %.1f/%.1fGB | Buffer %d%%",
+            "\n[Iter %d/%d] lr %.2e | gpu %.1f/%.1f/%.1f GB | buf %d%% (%s) | elapsed %s",
             self.iteration,
             CONFIG.iterations,
             current_lr,
             mem["allocated_gb"],
             mem["reserved_gb"],
+            mem["total_gb"],
             int(buffer_pct_pre),
+            f"{buffer_len_pre:,}",
+            self._format_time(total_elapsed),
         )
 
         selfplay_start = time.time()
@@ -283,12 +288,28 @@ class AlphaZeroTrainer:
         avg_len = (
             (game_stats["moves"] / max(1, game_stats["games"])) if elapsed > 0 else 0
         )
+        ww = int(game_stats["white_wins"])  # type: ignore[index]
+        bb = int(game_stats["black_wins"])  # type: ignore[index]
+        dd = int(game_stats["draws"])       # type: ignore[index]
+        gc = int(game_stats["games"])       # type: ignore[index]
+        if gc > 0:
+            wpct = 100.0 * ww / gc
+            dpct = 100.0 * dd / gc
+            bpct = 100.0 * bb / gc
+        else:
+            wpct = dpct = bpct = 0.0
         log.info(
-            "Self-play: %d games | %.1f games/min | %.1fK moves/sec | avg %.1f moves",
-            game_stats["games"],
+            "Self-play: games %d | gpm %.1f | mps %.1fK | avg_len %.1f | W/D/B %d/%d/%d (%.0f%%/%.0f%%/%.0f%%)",
+            gc,
             gpm,
             mps / 1000,
             avg_len,
+            ww,
+            dd,
+            bb,
+            wpct,
+            dpct,
+            bpct,
         )
 
         stats.update(game_stats)
@@ -318,7 +339,7 @@ class AlphaZeroTrainer:
                 else 0
             )
             log.info(
-                "Training: %d steps | %.1f batches/sec | %d samples/sec | Loss P %.4f V %.4f | LR %.2e | Buffer %d%%",
+                "Train: steps %d | %.1f batch/s | %d samp/s | P %.4f | V %.4f | lr %.2e | buf %d%% (%s) | time %s",
                 len(losses),
                 batches_per_sec,
                 int(samples_per_sec),
@@ -326,6 +347,8 @@ class AlphaZeroTrainer:
                 val_loss,
                 current_lr,
                 int(buffer_pct),
+                f"{buffer_size:,}",
+                self._format_time(train_elapsed),
             )
             stats.update(
                 {
@@ -344,20 +367,31 @@ class AlphaZeroTrainer:
 
         iter_total_time = time.time() - total_iter_start
         self.iter_times.append(iter_total_time)
+        avg_iter = (
+            sum(self.iter_times) / len(self.iter_times) if self.iter_times else iter_total_time
+        )
+        remaining = max(0, CONFIG.iterations - self.iteration)
+        eta_sec = avg_iter * remaining
         if self.device.type == "cuda":
             peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
             log.info(
-                "Totals: Iter %s | Cumulative games %s | Peak GPU %.1f/%.1fGB",
+                "Totals: iter %s | avg %s | elapsed %s | ETA %s | games %s | peak_gpu %.1f/%.1f GB",
                 self._format_time(iter_total_time),
+                self._format_time(avg_iter),
+                self._format_time(time.time() - self.start_time),
+                self._format_time(eta_sec),
                 f"{self.total_games:,}",
                 peak_alloc,
                 peak_res,
             )
         else:
             log.info(
-                "Totals: Iter %s | Cumulative games %s",
+                "Totals: iter %s | avg %s | elapsed %s | ETA %s | games %s",
                 self._format_time(iter_total_time),
+                self._format_time(avg_iter),
+                self._format_time(time.time() - self.start_time),
+                self._format_time(eta_sec),
                 f"{self.total_games:,}",
             )
         return stats
