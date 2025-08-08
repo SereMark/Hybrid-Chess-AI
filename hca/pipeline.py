@@ -265,7 +265,7 @@ class AlphaZeroTrainer:
             self.selfplay_engine.buffer.__len__() / CONFIG.buffer_size
         ) * 100
         log.info(
-            "[Iter %d/%d] LR %.2e | GPU %.1f/%.1fGB | Buffer %d%%",
+            "\n[Iter %d/%d] LR %.2e | GPU %.1f/%.1fGB | Buffer %d%%",
             self.iteration,
             CONFIG.iterations,
             current_lr,
@@ -394,10 +394,10 @@ class AlphaZeroTrainer:
 
     def train(self) -> None:
         total_params = sum(p.numel() for p in self.model.parameters()) / 1e6
-        log.info("Starting training...")
+        log.info("\nStarting training...")
         if self.device.type == "cuda":
             log.info(
-                "Device: %s (%s) | GPU total %.1fGB | AMP %s",
+                "\nDevice: %s (%s) | GPU total %.1fGB | AMP %s",
                 self.device,
                 self.device_name,
                 self.device_total_gb,
