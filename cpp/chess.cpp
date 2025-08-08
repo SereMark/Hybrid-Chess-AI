@@ -98,15 +98,17 @@ void init_tables() {
   });
 }
 
-Bitboard get_pawn_attacks(Square square, Color color) { return pawn_attack_table[color][square]; }
+Bitboard get_pawn_attacks(Square square, Color color) {
+  return pawn_attack_table[color][square];
+}
 
 Bitboard knight_attacks(Square square) { return knight_attack_table[square]; }
 
 Bitboard king_attacks(Square square) { return king_attack_table[square]; }
 
 [[gnu::hot]]
-static Bitboard sliding_attacks(Square square, Bitboard occupancy, const int directions[][2],
-                                int num_directions) {
+static Bitboard sliding_attacks(Square square, Bitboard occupancy,
+                                const int directions[][2], int num_directions) {
   Bitboard attacks = 0;
   const int row = square >> 3;
   const int file = square & 7;
@@ -117,8 +119,8 @@ static Bitboard sliding_attacks(Square square, Bitboard occupancy, const int dir
     int new_row = row + delta_row;
     int new_file = file + delta_file;
 
-    while (__builtin_expect((new_row >= 0 && new_row < BOARD_SIZE && new_file >= 0 &&
-                             new_file < BOARD_SIZE),
+    while (__builtin_expect((new_row >= 0 && new_row < BOARD_SIZE &&
+                             new_file >= 0 && new_file < BOARD_SIZE),
                             1)) {
       const Square target_square = (new_row << 3) | new_file;
       const Bitboard square_bit = 1ULL << target_square;
@@ -136,9 +138,13 @@ static Bitboard sliding_attacks(Square square, Bitboard occupancy, const int dir
   return attacks;
 }
 
-Bitboard bishop_attacks(Square square, Bitboard occupancy) { return sliding_attacks(square, occupancy, BISHOP_DIRS, 4); }
+Bitboard bishop_attacks(Square square, Bitboard occupancy) {
+  return sliding_attacks(square, occupancy, BISHOP_DIRS, 4);
+}
 
-Bitboard rook_attacks(Square square, Bitboard occupancy) { return sliding_attacks(square, occupancy, ROOK_DIRS, 4); }
+Bitboard rook_attacks(Square square, Bitboard occupancy) {
+  return sliding_attacks(square, occupancy, ROOK_DIRS, 4);
+}
 
 Bitboard queen_attacks(Square square, Bitboard occupancy) {
   return bishop_attacks(square, occupancy) | rook_attacks(square, occupancy);
@@ -152,7 +158,9 @@ Position::Position() {
   reset();
 }
 
-void Position::reset() { from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"); }
+void Position::reset() {
+  from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+}
 
 void Position::clear_position() {
   for (int i = 0; i < NUM_PIECE_TYPES; i++) {
@@ -210,8 +218,10 @@ void Position::parse_board_from_fen(const std::string &board_part) {
   }
 }
 
-void Position::parse_game_state_from_fen(const std::string &side, const std::string &castle,
-                                         const std::string &ep, uint16_t halfmove_count,
+void Position::parse_game_state_from_fen(const std::string &side,
+                                         const std::string &castle,
+                                         const std::string &ep,
+                                         uint16_t halfmove_count,
                                          uint16_t fullmove_count) {
 
   turn = (side == "w") ? WHITE : BLACK;
@@ -228,7 +238,8 @@ void Position::parse_game_state_from_fen(const std::string &side, const std::str
   if (castle.find('q') != std::string::npos) {
     castling |= BLACK_QUEENSIDE;
   }
-  ep_square = (ep == "-") ? INVALID_SQUARE : ((ep[0] - 'a') + (ep[1] - '1') * BOARD_SIZE);
+  ep_square = (ep == "-") ? INVALID_SQUARE
+                          : ((ep[0] - 'a') + (ep[1] - '1') * BOARD_SIZE);
   halfmove = halfmove_count;
   fullmove = fullmove_count;
 }
@@ -324,7 +335,9 @@ std::string Position::serialize_game_state_to_fen() const {
   return state_fen;
 }
 
-std::string Position::to_fen() const { return serialize_board_to_fen() + serialize_game_state_to_fen(); }
+std::string Position::to_fen() const {
+  return serialize_board_to_fen() + serialize_game_state_to_fen();
+}
 
 void Position::update_hash() {
   hash = 0;
@@ -359,11 +372,16 @@ void Position::update_occupancy() {
 
 Bitboard Position::occupied() const { return occupancy_all; }
 
-Bitboard Position::occupied(Color color) const { return occupancy_color[color]; }
+Bitboard Position::occupied(Color color) const {
+  return occupancy_color[color];
+}
 
-int Position::piece_at(Square square) const { return (square & ~63) ? -1 : mailbox[square]; }
+int Position::piece_at(Square square) const {
+  return (square & ~63) ? -1 : mailbox[square];
+}
 
-void Position::add_promotion_moves(Square from, Square to, MoveList &moves) const {
+void Position::add_promotion_moves(Square from, Square to,
+                                   MoveList &moves) const {
   for (Piece piece = QUEEN; piece >= KNIGHT; piece = Piece(piece - 1)) {
     moves.add(from, to, piece);
   }
@@ -401,17 +419,21 @@ void Position::add_pawn_moves(Square from, MoveList &moves) const {
     }
   });
 
-  if (ep_square != INVALID_SQUARE && (get_pawn_attacks(from, turn) & bit(ep_square))) {
+  if (ep_square != INVALID_SQUARE &&
+      (get_pawn_attacks(from, turn) & bit(ep_square))) {
     moves.add(from, ep_square);
   }
 }
 
 bool Position::is_square_attacked(Square square, Color by_color) const {
   const Bitboard occupancy = occupied();
-  return (get_pawn_attacks(square, Color(1 - by_color)) & pieces[PAWN][by_color]) ||
+  return (get_pawn_attacks(square, Color(1 - by_color)) &
+          pieces[PAWN][by_color]) ||
          (knight_attacks(square) & pieces[KNIGHT][by_color]) ||
-         (bishop_attacks(square, occupancy) & (pieces[BISHOP][by_color] | pieces[QUEEN][by_color])) ||
-         (rook_attacks(square, occupancy) & (pieces[ROOK][by_color] | pieces[QUEEN][by_color])) ||
+         (bishop_attacks(square, occupancy) &
+          (pieces[BISHOP][by_color] | pieces[QUEEN][by_color])) ||
+         (rook_attacks(square, occupancy) &
+          (pieces[ROOK][by_color] | pieces[QUEEN][by_color])) ||
          (king_attacks(square) & pieces[KING][by_color]);
 }
 
@@ -448,7 +470,8 @@ void Position::generate_piece_moves(Piece piece, MoveList &moves) const {
 void Position::legal_moves(MoveList &moves) {
   moves.clear();
 
-  for_each_piece(pieces[PAWN][turn], [&](Square from) { add_pawn_moves(from, moves); });
+  for_each_piece(pieces[PAWN][turn],
+                 [&](Square from) { add_pawn_moves(from, moves); });
   generate_piece_moves(KNIGHT, moves);
   generate_piece_moves(BISHOP, moves);
   generate_piece_moves(ROOK, moves);
@@ -461,24 +484,34 @@ void Position::legal_moves(MoveList &moves) {
 
     if (turn == WHITE) {
       if ((castling & WHITE_KINGSIDE) && !(occupied() & WHITE_KINGSIDE_CLEAR) &&
-          king_position == WHITE_KING_START && !is_square_attacked(WHITE_KING_START, enemy) &&
-          !is_square_attacked(F1, enemy) && !is_square_attacked(WHITE_KING_KINGSIDE, enemy)) {
+          king_position == WHITE_KING_START &&
+          !is_square_attacked(WHITE_KING_START, enemy) &&
+          !is_square_attacked(F1, enemy) &&
+          !is_square_attacked(WHITE_KING_KINGSIDE, enemy)) {
         moves.add(WHITE_KING_START, WHITE_KING_KINGSIDE);
       }
-      if ((castling & WHITE_QUEENSIDE) && !(occupied() & WHITE_QUEENSIDE_CLEAR) &&
-          king_position == WHITE_KING_START && !is_square_attacked(WHITE_KING_START, enemy) &&
-          !is_square_attacked(D1, enemy) && !is_square_attacked(WHITE_KING_QUEENSIDE, enemy)) {
+      if ((castling & WHITE_QUEENSIDE) &&
+          !(occupied() & WHITE_QUEENSIDE_CLEAR) &&
+          king_position == WHITE_KING_START &&
+          !is_square_attacked(WHITE_KING_START, enemy) &&
+          !is_square_attacked(D1, enemy) &&
+          !is_square_attacked(WHITE_KING_QUEENSIDE, enemy)) {
         moves.add(WHITE_KING_START, WHITE_KING_QUEENSIDE);
       }
     } else {
       if ((castling & BLACK_KINGSIDE) && !(occupied() & BLACK_KINGSIDE_CLEAR) &&
-          king_position == BLACK_KING_START && !is_square_attacked(BLACK_KING_START, enemy) &&
-          !is_square_attacked(F8, enemy) && !is_square_attacked(BLACK_KING_KINGSIDE, enemy)) {
+          king_position == BLACK_KING_START &&
+          !is_square_attacked(BLACK_KING_START, enemy) &&
+          !is_square_attacked(F8, enemy) &&
+          !is_square_attacked(BLACK_KING_KINGSIDE, enemy)) {
         moves.add(BLACK_KING_START, BLACK_KING_KINGSIDE);
       }
-      if ((castling & BLACK_QUEENSIDE) && !(occupied() & BLACK_QUEENSIDE_CLEAR) &&
-          king_position == BLACK_KING_START && !is_square_attacked(BLACK_KING_START, enemy) &&
-          !is_square_attacked(D8, enemy) && !is_square_attacked(BLACK_KING_QUEENSIDE, enemy)) {
+      if ((castling & BLACK_QUEENSIDE) &&
+          !(occupied() & BLACK_QUEENSIDE_CLEAR) &&
+          king_position == BLACK_KING_START &&
+          !is_square_attacked(BLACK_KING_START, enemy) &&
+          !is_square_attacked(D8, enemy) &&
+          !is_square_attacked(BLACK_KING_QUEENSIDE, enemy)) {
         moves.add(BLACK_KING_START, BLACK_KING_QUEENSIDE);
       }
     }
@@ -602,7 +635,8 @@ void Position::execute_move_core(const Move &move, MoveInfo *undo_info) {
   update_castling_rights(from, to);
 
   if (piece_type == PAWN && to == ep_square && ep_square != INVALID_SQUARE) {
-    const Square capture_square = ep_square + (turn == WHITE ? -BOARD_SIZE : BOARD_SIZE);
+    const Square capture_square =
+        ep_square + (turn == WHITE ? -BOARD_SIZE : BOARD_SIZE);
     if (undo_info) {
       undo_info->captured_square = capture_square;
       undo_info->captured_piece = PAWN * 2 + (1 - turn);
@@ -664,14 +698,17 @@ Result Position::make_move(const Move &move) {
   return result();
 }
 
-void Position::make_move_fast(const Move &move, MoveInfo &info) { execute_move_core(move, &info); }
+void Position::make_move_fast(const Move &move, MoveInfo &info) {
+  execute_move_core(move, &info);
+}
 
 void Position::unmake_move_fast(const Move &move, const MoveInfo &info) {
   Square from = move.from();
   Square to = move.to();
   turn = Color(1 - turn);
   int piece = piece_at(to);
-  Piece piece_type = (move.promotion() <= KING) ? move.promotion() : Piece(piece / 2);
+  Piece piece_type =
+      (move.promotion() <= KING) ? move.promotion() : Piece(piece / 2);
   Color color = Color(piece % 2);
 
   pieces[piece_type][color] &= ~bit(to);
@@ -684,7 +721,8 @@ void Position::unmake_move_fast(const Move &move, const MoveInfo &info) {
   }
 
   if (info.captured_piece >= 0) {
-    pieces[info.captured_piece / 2][info.captured_piece % 2] |= bit(info.captured_square);
+    pieces[info.captured_piece / 2][info.captured_piece % 2] |=
+        bit(info.captured_square);
     mailbox[info.captured_square] = info.captured_piece;
   }
 
@@ -770,25 +808,32 @@ bool Position::is_insufficient_material() const {
   int black_rooks = popcount(pieces[ROOK][BLACK]);
   int black_queens = popcount(pieces[QUEEN][BLACK]);
 
-  if (white_pawns || black_pawns || white_rooks || black_rooks || white_queens || black_queens) {
+  if (white_pawns || black_pawns || white_rooks || black_rooks ||
+      white_queens || black_queens) {
     return false;
   }
 
-  if (white_knights == 0 && white_bishops == 0 && black_knights == 0 && black_bishops == 0) {
+  if (white_knights == 0 && white_bishops == 0 && black_knights == 0 &&
+      black_bishops == 0) {
     return true;
   }
 
-  if ((white_knights == 1 && white_bishops == 0 && black_knights == 0 && black_bishops == 0) ||
-      (black_knights == 1 && black_bishops == 0 && white_knights == 0 && white_bishops == 0)) {
+  if ((white_knights == 1 && white_bishops == 0 && black_knights == 0 &&
+       black_bishops == 0) ||
+      (black_knights == 1 && black_bishops == 0 && white_knights == 0 &&
+       white_bishops == 0)) {
     return true;
   }
 
-  if ((white_bishops == 1 && white_knights == 0 && black_knights == 0 && black_bishops == 0) ||
-      (black_bishops == 1 && black_knights == 0 && white_knights == 0 && white_bishops == 0)) {
+  if ((white_bishops == 1 && white_knights == 0 && black_knights == 0 &&
+       black_bishops == 0) ||
+      (black_bishops == 1 && black_knights == 0 && white_knights == 0 &&
+       white_bishops == 0)) {
     return true;
   }
 
-  if (white_knights == 0 && black_knights == 0 && white_bishops > 0 && black_bishops > 0) {
+  if (white_knights == 0 && black_knights == 0 && white_bishops > 0 &&
+      black_bishops > 0) {
     if (white_bishops <= 1 && black_bishops <= 1) {
       return true;
     }
@@ -798,5 +843,3 @@ bool Position::is_insufficient_material() const {
 }
 
 }
-
-

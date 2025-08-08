@@ -70,7 +70,8 @@ public:
     if (used + count > nodes.size()) {
       size_t old_size = nodes.size();
       nodes.resize(nodes.size() * 2);
-      std::memset(&nodes[old_size], 0, (nodes.size() - old_size) * sizeof(Node));
+      std::memset(&nodes[old_size], 0,
+                  (nodes.size() - old_size) * sizeof(Node));
     }
     Node *ptr = &nodes[used];
     used += count;
@@ -79,20 +80,22 @@ public:
 
   Node *get_node(uint32_t index) { return &nodes[index]; }
 
-  uint32_t get_index(Node *node) { return static_cast<uint32_t>(node - nodes.data()); }
+  uint32_t get_index(Node *node) {
+    return static_cast<uint32_t>(node - nodes.data());
+  }
 };
 
 class MCTS {
 public:
   MCTS(int simulations = 800, float c_puct = 1.0f, float dirichlet_alpha = 0.3f,
        float dirichlet_weight = 0.25f)
-      : simulations_(simulations), c_puct_(c_puct), dirichlet_alpha_(dirichlet_alpha),
-        dirichlet_weight_(dirichlet_weight) {
+      : simulations_(simulations), c_puct_(c_puct),
+        dirichlet_alpha_(dirichlet_alpha), dirichlet_weight_(dirichlet_weight) {
     node_pool_.reset();
   }
 
-  std::vector<int> search(const chess::Position &position, const std::vector<float> &policy,
-                          float value);
+  std::vector<int> search(const chess::Position &position,
+                          const std::vector<float> &policy, float value);
 
   void set_simulations(int simulations) { simulations_ = simulations; }
 
@@ -120,13 +123,13 @@ private:
   [[gnu::hot]] void add_dirichlet_noise(Node *node);
 
   [[gnu::always_inline]]
-  static float get_policy_value(const chess::Move &move, const std::vector<float> &policy) {
+  static float get_policy_value(const chess::Move &move,
+                                const std::vector<float> &policy) {
     const int index = encode_move_index(move);
-    return (index >= 0 && index < static_cast<int>(policy.size())) ? policy[static_cast<size_t>(index)]
-                                                                   : POLICY_EPSILON;
+    return (index >= 0 && index < static_cast<int>(policy.size()))
+               ? policy[static_cast<size_t>(index)]
+               : POLICY_EPSILON;
   }
 };
 
 }
-
-

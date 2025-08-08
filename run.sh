@@ -20,4 +20,5 @@ export PYTHONPATH="$(pwd):build"
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-1}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-1}
+export TORCHINDUCTOR_MAX_AUTOTUNE_GEMM=0
 exec "$VENV_DIR"/bin/python -m hca.pipeline

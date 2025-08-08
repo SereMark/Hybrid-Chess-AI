@@ -11,6 +11,7 @@ find_package(pybind11 REQUIRED)
 pybind11_add_module(chessai
   chess.cpp
   mcts.cpp
+  encoder.cpp
   bindings.cpp
 )
 
@@ -22,5 +23,3 @@ target_compile_options(chessai PRIVATE
   $<$<CONFIG:Release>:-O3 -fomit-frame-pointer>
   $<$<CONFIG:Debug>:-O0 -g -Wall -Wextra -Wpedantic>
 )
-
-

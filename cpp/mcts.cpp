@@ -61,7 +61,9 @@ static int encode_move_73x64(const chess::Move &move) {
   return -1;
 }
 
-int encode_move_index(const chess::Move &move) { return encode_move_73x64(move); }
+int encode_move_index(const chess::Move &move) {
+  return encode_move_73x64(move);
+}
 
 class FastRandom {
 private:
@@ -99,8 +101,8 @@ public:
 thread_local FastRandom fast_rng;
 
 [[gnu::hot]]
-std::vector<int> MCTS::search(const chess::Position &position, const std::vector<float> &policy,
-                              float value) {
+std::vector<int> MCTS::search(const chess::Position &position,
+                              const std::vector<float> &policy, float value) {
   node_pool_.reset();
   Node *root = node_pool_.get_root();
   root->child_idx = 0;
@@ -147,7 +149,8 @@ std::vector<int> MCTS::search(const chess::Position &position, const std::vector
       chess::MoveList child_moves;
       working_pos_.legal_moves(child_moves);
       if (!child_moves.empty()) {
-        std::vector<float> uniform_policy(POLICY_SIZE, 1.0f / child_moves.size());
+        std::vector<float> uniform_policy(POLICY_SIZE,
+                                          1.0f / child_moves.size());
         expand_node(node, child_moves, uniform_policy);
       }
     }
@@ -159,7 +162,8 @@ std::vector<int> MCTS::search(const chess::Position &position, const std::vector
     root->update(evaluation_value);
 
     for (int i = path_length - 1; i >= 0; i--) {
-      working_pos_.unmake_move_fast(node_pool_.get_node(path_buffer_[i])->move, undo_stack_[i]);
+      working_pos_.unmake_move_fast(node_pool_.get_node(path_buffer_[i])->move,
+                                    undo_stack_[i]);
     }
   }
 
@@ -190,7 +194,8 @@ Node *MCTS::select_child(Node *parent) {
 }
 
 [[gnu::hot]]
-void MCTS::expand_node(Node *node, const chess::MoveList &moves, const std::vector<float> &policy) {
+void MCTS::expand_node(Node *node, const chess::MoveList &moves,
+                       const std::vector<float> &policy) {
   const size_t nchildren = moves.size();
   if (nchildren == 0) {
     return;
@@ -238,7 +243,8 @@ void MCTS::add_dirichlet_noise(Node *node) {
 
   const size_t maxn = std::min(nchildren, sizeof(noise) / sizeof(noise[0]));
   for (size_t i = 0; i < maxn; i++) {
-    float g = dirichlet_alpha_ + sqrtf(2.0f * dirichlet_alpha_) * fast_rng.normal();
+    float g =
+        dirichlet_alpha_ + sqrtf(2.0f * dirichlet_alpha_) * fast_rng.normal();
     g = std::max(0.0f, g);
     noise[i] = g;
     sum += g;
@@ -250,11 +256,10 @@ void MCTS::add_dirichlet_noise(Node *node) {
     const float one_minus_weight = 1.0f - weight;
     for (size_t i = 0; i < nchildren; i++) {
       const float n = (i < maxn) ? noise[i] : (sum / maxn);
-      children[i].prior = one_minus_weight * children[i].prior + weight * n * inverse_sum;
+      children[i].prior =
+          one_minus_weight * children[i].prior + weight * n * inverse_sum;
     }
   }
 }
 
 }
-
-

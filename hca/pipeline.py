@@ -8,16 +8,16 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
+import chessai
 import numpy as np
 import torch
 import torch.nn.functional as F
-
-import chessai
+from typing import cast
+from torch.amp import GradScaler
 
 from .config import CONFIG
-from .inference import BatchedEvaluator, PositionEncoder
+from .evaluator import BatchedEvaluator
 from .nn import ChessNet
-
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +69,7 @@ class SelfPlayEngine:
             CONFIG.dirichlet_weight,
         )
         data: list[tuple[Any, np.ndarray]] = []
+        history: list[Any] = []
         move_count = 0
         while position.result() == chessai.ONGOING and move_count < 512:
             pos_copy = chessai.Position(position)
@@ -91,9 +92,17 @@ class SelfPlayEngine:
             if policy_sum > 0:
                 target /= policy_sum
 
-            data.append((pos_copy, target))
+            if history:
+                histories = history[-CONFIG.history_length :] + [pos_copy]
+                encoded = chessai.encode_batch([histories])[0]
+            else:
+                encoded = chessai.encode_position(pos_copy)
+            data.append((encoded, target))
             move = self._temp_select(moves, visits, move_count)
             position.make_move(move)
+            history.append(pos_copy)
+            if len(history) > CONFIG.history_length:
+                history.pop(0)
             move_count += 1
 
         self._process_result(data, position.result())
@@ -144,6 +153,8 @@ class AlphaZeroTrainer:
         self.model = ChessNet().to(self.device)
         if CONFIG.use_channels_last:
             self.model = self.model.to(memory_format=torch.channels_last)  # type: ignore[reportCallIssue]
+        if CONFIG.use_torch_compile:
+            self.model = cast(torch.nn.Module, torch.compile(self.model))
         self.optimizer = torch.optim.SGD(
             self.model.parameters(),
             lr=CONFIG.learning_rate_init,
@@ -161,13 +172,12 @@ class AlphaZeroTrainer:
             return target / CONFIG.learning_rate_init
 
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
-        self.scaler: torch.cuda.amp.GradScaler | None = None
+        self.scaler: GradScaler | None = None
         if self.device.type == "cuda":
-            self.scaler = torch.cuda.amp.GradScaler(enabled=True)
+            self.scaler = GradScaler("cuda", enabled=True)
         self.evaluator = BatchedEvaluator(self.device)
         self.evaluator.refresh_from(self.model)
         self.selfplay_engine = SelfPlayEngine(self.evaluator)
-        self.encoder = PositionEncoder()
         self.iteration = 0
         self.total_games = 0
         self.start_time = time.time()
@@ -201,16 +211,26 @@ class AlphaZeroTrainer:
         self, batch_data: tuple[list[Any], list[np.ndarray], list[float]]
     ) -> tuple[float, float]:
         states, policies, values = batch_data
-        x = torch.from_numpy(self.encoder.encode_batch(states)).to(self.device)
+        x_np = np.stack(states).astype(np.float32, copy=False)
+        x_cpu = torch.from_numpy(x_np)
+        if self.device.type == "cuda":
+            x_cpu = x_cpu.pin_memory()
+        x = x_cpu.to(self.device, non_blocking=True)
         if CONFIG.use_channels_last:
             x = x.to(memory_format=torch.channels_last)  # type: ignore[reportCallIssue]
-        pi_target = torch.from_numpy(np.stack(policies).astype(np.float32)).to(
-            self.device
-        )
-        v_target = torch.tensor(values, dtype=torch.float32).to(self.device)
+
+        pi_cpu = torch.from_numpy(np.stack(policies).astype(np.float32))
+        if self.device.type == "cuda":
+            pi_cpu = pi_cpu.pin_memory()
+        pi_target = pi_cpu.to(self.device, non_blocking=True)
+
+        v_cpu = torch.tensor(values, dtype=torch.float32)
+        if self.device.type == "cuda":
+            v_cpu = v_cpu.pin_memory()
+        v_target = v_cpu.to(self.device, non_blocking=True)
 
         self.model.train()
-        with torch.cuda.amp.autocast(enabled=self.device.type == "cuda"):
+        with torch.amp.autocast("cuda", enabled=self.device.type == "cuda"):
             pi_pred, v_pred = self.model(x)
             policy_loss = F.kl_div(
                 F.log_softmax(pi_pred, dim=1), pi_target, reduction="batchmean"
@@ -220,7 +240,7 @@ class AlphaZeroTrainer:
                 CONFIG.policy_weight * policy_loss + CONFIG.value_weight * value_loss
             )
 
-        self.optimizer.zero_grad()
+        self.optimizer.zero_grad(set_to_none=True)
         if self.scaler:
             self.scaler.scale(total_loss).backward()
             self.scaler.unscale_(self.optimizer)
@@ -322,7 +342,8 @@ class AlphaZeroTrainer:
                     "total_iteration_time": time.time() - total_iter_start,
                 }
             )
-        self.scheduler.step()
+        if losses:
+            self.scheduler.step()
 
         iter_total_time = time.time() - total_iter_start
         self.iter_times.append(iter_total_time)
@@ -424,6 +445,10 @@ def main() -> None:
     setup_logging()
     torch.backends.cudnn.benchmark = True
     torch.set_num_threads(1)
+    try:
+        torch.set_float32_matmul_precision("high")
+    except Exception:
+        pass
     trainer = AlphaZeroTrainer()
     trainer.train()
 
