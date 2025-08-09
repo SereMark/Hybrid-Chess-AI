@@ -518,8 +518,9 @@ class AlphaZeroTrainer:
                     "total_iteration_time": time.time() - total_iter_start,
                 }
             )
-        if losses:
-            self.scheduler.step()
+
+        self.evaluator.refresh_from(self.model)
+        self.scheduler.step()
 
         return stats
 

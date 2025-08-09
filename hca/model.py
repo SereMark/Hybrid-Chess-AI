@@ -151,7 +151,7 @@ class BatchedEvaluator:
     def refresh_from(self, src_model: torch.nn.Module) -> None:
         with self.model_lock:
             load_module_state_dict(
-                self.eval_model, get_module_state_dict(src_model), strict=False
+                self.eval_model, get_module_state_dict(src_model), strict=True
             )
             self.eval_model.eval()
         with self.cache_lock:
