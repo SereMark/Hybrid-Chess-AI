@@ -1,10 +1,10 @@
-#include "chess.hpp"
-#include "encoder.hpp"
-#include "mcts.hpp"
-
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+
+#include "chess.hpp"
+#include "encoder.hpp"
+#include "mcts.hpp"
 
 namespace py = pybind11;
 
@@ -19,9 +19,7 @@ PYBIND11_MODULE(chesscore, m) {
       .value("QUEEN", chess::QUEEN)
       .value("KING", chess::KING);
 
-  py::enum_<chess::Color>(m, "Color")
-      .value("WHITE", chess::WHITE)
-      .value("BLACK", chess::BLACK);
+  py::enum_<chess::Color>(m, "Color").value("WHITE", chess::WHITE).value("BLACK", chess::BLACK);
 
   py::enum_<chess::Result>(m, "Result")
       .value("ONGOING", chess::ONGOING)
@@ -32,11 +30,11 @@ PYBIND11_MODULE(chesscore, m) {
   py::class_<chess::Move>(m, "Move")
       .def(py::init<>())
       .def(py::init<int, int>(), py::arg("from_sq"), py::arg("to_sq"))
-      .def(py::init<int, int, chess::Piece>(), py::arg("from_sq"),
-           py::arg("to_sq"), py::arg("promotion"))
-      .def("from_square", &chess::Move::from)
-      .def("to_square", &chess::Move::to)
-      .def("promotion", &chess::Move::promotion);
+      .def(py::init<int, int, chess::Piece>(), py::arg("from_sq"), py::arg("to_sq"),
+           py::arg("promotion"))
+      .def_property_readonly("from_square", &chess::Move::from)
+      .def_property_readonly("to_square", &chess::Move::to)
+      .def_property_readonly("promotion", &chess::Move::promotion);
 
   py::class_<chess::Position>(m, "Position")
       .def(py::init<>())
@@ -62,10 +60,8 @@ PYBIND11_MODULE(chesscore, m) {
             py::list outer;
             for (int p = 0; p < 6; p++) {
               py::list inner;
-              inner.append(
-                  pos.get_pieces(static_cast<chess::Piece>(p), chess::WHITE));
-              inner.append(
-                  pos.get_pieces(static_cast<chess::Piece>(p), chess::BLACK));
+              inner.append(pos.get_pieces(static_cast<chess::Piece>(p), chess::WHITE));
+              inner.append(pos.get_pieces(static_cast<chess::Piece>(p), chess::BLACK));
               outer.append(std::move(inner));
             }
             return outer;
@@ -83,12 +79,10 @@ PYBIND11_MODULE(chesscore, m) {
            py::arg("dirichlet_weight") = 0.25f)
       .def(
           "search_batched",
-          [](mcts::MCTS &engine, const chess::Position &pos,
-             py::object evaluator, int max_batch) {
-            auto eval_fn = [&evaluator](
-                               const std::vector<chess::Position> &positions,
-                               std::vector<std::vector<float>> &policies,
-                               std::vector<float> &values) {
+          [](mcts::MCTS &engine, const chess::Position &pos, py::object evaluator, int max_batch) {
+            auto eval_fn = [&evaluator](const std::vector<chess::Position> &positions,
+                                        std::vector<std::vector<float>> &policies,
+                                        std::vector<float> &values) {
               py::gil_scoped_acquire acquire;
               py::object out = evaluator(positions);
               auto tuple_out = out.cast<py::tuple>();
@@ -103,8 +97,7 @@ PYBIND11_MODULE(chesscore, m) {
               policies.resize(static_cast<size_t>(B));
               values.resize(static_cast<size_t>(B));
               for (ssize_t i = 0; i < B; i++) {
-                policies[static_cast<size_t>(i)].assign(pbase + i * P,
-                                                        pbase + (i + 1) * P);
+                policies[static_cast<size_t>(i)].assign(pbase + i * P, pbase + (i + 1) * P);
                 values[static_cast<size_t>(i)] = vbase[i];
               }
             };
@@ -112,14 +105,19 @@ PYBIND11_MODULE(chesscore, m) {
             return engine.search_batched(pos, eval_fn, max_batch);
           },
           py::arg("position"), py::arg("evaluator"), py::arg("max_batch") = 64)
-      .def("set_simulations", &mcts::MCTS::set_simulations, py::arg("sims"));
+      .def("set_simulations", &mcts::MCTS::set_simulations, py::arg("sims"))
+      .def("set_c_puct", &mcts::MCTS::set_c_puct, py::arg("c_puct"))
+      .def("set_dirichlet_params", &mcts::MCTS::set_dirichlet_params, py::arg("alpha"),
+           py::arg("weight"))
+      .def("set_c_puct_params", &mcts::MCTS::set_c_puct_params, py::arg("c_puct_base"),
+           py::arg("c_puct_init"));
 
   m.def("encode_move_index", &mcts::encode_move_index);
 
   m.def("encode_position", [](const chess::Position &pos) {
-    constexpr int planes = 119;
-    constexpr int H = 8;
-    constexpr int W = 8;
+    constexpr int planes = encoder::INPUT_PLANES;
+    constexpr int H = chess::BOARD_SIZE;
+    constexpr int W = chess::BOARD_SIZE;
     py::array_t<float> result({planes, H, W});
     py::buffer_info info = result.request();
     auto *ptr = static_cast<float *>(info.ptr);
@@ -131,13 +129,12 @@ PYBIND11_MODULE(chesscore, m) {
   });
 
   m.def("encode_batch", [](const std::vector<chess::Position> &positions) {
-    constexpr int planes = 119;
-    constexpr int H = 8;
-    constexpr int W = 8;
+    constexpr int planes = encoder::INPUT_PLANES;
+    constexpr int H = chess::BOARD_SIZE;
+    constexpr int W = chess::BOARD_SIZE;
     const ssize_t B = static_cast<ssize_t>(positions.size());
-    py::array_t<float> result({B, static_cast<ssize_t>(planes),
-                               static_cast<ssize_t>(H),
-                               static_cast<ssize_t>(W)});
+    py::array_t<float> result(
+        {B, static_cast<ssize_t>(planes), static_cast<ssize_t>(H), static_cast<ssize_t>(W)});
     py::buffer_info info = result.request();
     auto *ptr = static_cast<float *>(info.ptr);
     const size_t stride = static_cast<size_t>(planes * H * W);
@@ -151,28 +148,25 @@ PYBIND11_MODULE(chesscore, m) {
     return result;
   });
 
-  m.def("encode_batch",
-        [](const std::vector<std::vector<chess::Position>> &histories) {
-          constexpr int planes = 119;
-          constexpr int H = 8;
-          constexpr int W = 8;
-          const ssize_t B = static_cast<ssize_t>(histories.size());
-          py::array_t<float> result({B, static_cast<ssize_t>(planes),
-                                     static_cast<ssize_t>(H),
-                                     static_cast<ssize_t>(W)});
-          py::buffer_info info = result.request();
-          auto *ptr = static_cast<float *>(info.ptr);
-          const size_t stride = static_cast<size_t>(planes * H * W);
-          {
-            py::gil_scoped_release release;
-            for (ssize_t i = 0; i < B; i++) {
-              encoder::encode_position_with_history(
-                  histories[static_cast<size_t>(i)],
-                  ptr + stride * static_cast<size_t>(i));
-            }
-          }
-          return result;
-        });
+  m.def("encode_batch", [](const std::vector<std::vector<chess::Position>> &histories) {
+    constexpr int planes = encoder::INPUT_PLANES;
+    constexpr int H = chess::BOARD_SIZE;
+    constexpr int W = chess::BOARD_SIZE;
+    const ssize_t B = static_cast<ssize_t>(histories.size());
+    py::array_t<float> result(
+        {B, static_cast<ssize_t>(planes), static_cast<ssize_t>(H), static_cast<ssize_t>(W)});
+    py::buffer_info info = result.request();
+    auto *ptr = static_cast<float *>(info.ptr);
+    const size_t stride = static_cast<size_t>(planes * H * W);
+    {
+      py::gil_scoped_release release;
+      for (ssize_t i = 0; i < B; i++) {
+        encoder::encode_position_with_history(histories[static_cast<size_t>(i)],
+                                              ptr + stride * static_cast<size_t>(i));
+      }
+    }
+    return result;
+  });
 
   m.attr("INPUT_PLANES") = encoder::INPUT_PLANES;
   m.attr("HISTORY_LENGTH") = encoder::HISTORY_LENGTH;

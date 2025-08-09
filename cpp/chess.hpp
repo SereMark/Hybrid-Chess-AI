@@ -66,16 +66,23 @@ struct Move {
 
   Move() : data(0) {}
 
-  Move(Square from, Square to, Piece promo = PIECE_NONE)
-      : data(from | (to << 6) | (promo << 12)) {}
+  Move(Square from, Square to, Piece promo = PIECE_NONE) : data(from | (to << 6) | (promo << 12)) {}
 
-  Square from() const { return data & 63; }
+  Square from() const {
+    return data & 63;
+  }
 
-  Square to() const { return (data >> 6) & 63; }
+  Square to() const {
+    return (data >> 6) & 63;
+  }
 
-  Piece promotion() const { return Piece(data >> 12); }
+  Piece promotion() const {
+    return Piece(data >> 12);
+  }
 
-  bool operator==(const Move &other) const { return data == other.data; }
+  bool operator==(const Move &other) const {
+    return data == other.data;
+  }
 };
 
 struct MoveList {
@@ -229,8 +236,7 @@ private:
   void handle_castling_rook_move(Square from, Square to, Color color);
   void clear_position();
   void parse_board_from_fen(const std::string &board_part);
-  void parse_game_state_from_fen(const std::string &side,
-                                 const std::string &castle,
+  void parse_game_state_from_fen(const std::string &side, const std::string &castle,
                                  const std::string &ep, uint16_t halfmove_count,
                                  uint16_t fullmove_count);
   void finalize_position_setup();
@@ -252,12 +258,12 @@ inline int popcount(Bitboard bitboard) {
 
 [[gnu::always_inline, gnu::const]]
 inline Bitboard bit(Square square) {
-  return (square >= 0 && square < 64) ? (1ULL << square) : 0ULL;
+  return (square >= 0 && square < NSQUARES) ? (1ULL << square) : 0ULL;
 }
 
 [[gnu::always_inline, gnu::const]]
 inline bool test_bit(Bitboard bitboard, Square square) {
-  return (square >= 0 && square < 64) ? ((bitboard >> square) & 1) : false;
+  return (square >= 0 && square < NSQUARES) ? ((bitboard >> square) & 1) : false;
 }
 
 [[gnu::always_inline]]

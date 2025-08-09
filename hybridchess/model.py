@@ -16,7 +16,7 @@ from .config import CONFIG
 def unwrap_compiled_module(module: nn.Module) -> nn.Module:
     m = module
     while hasattr(m, "_orig_mod"):
-        m = getattr(m, "_orig_mod")  # type: ignore[attr-defined]
+        m = m._orig_mod  # type: ignore[attr-defined]
     return m
 
 
@@ -66,9 +66,7 @@ class ChessNet(nn.Module):
         channels = channels or CONFIG.channels
         policy_planes = CONFIG.policy_output // 64
 
-        self.conv_in = nn.Conv2d(
-            CONFIG.input_planes, channels, 3, padding=1, bias=False
-        )
+        self.conv_in = nn.Conv2d(CONFIG.input_planes, channels, 3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(channels)
         self.blocks = nn.Sequential(*[ResBlock(channels) for _ in range(blocks)])
 
@@ -76,10 +74,10 @@ class ChessNet(nn.Module):
         self.policy_bn = nn.BatchNorm2d(policy_planes)
         self.policy_fc = nn.Linear(policy_planes * 64, CONFIG.policy_output)
 
-        self.value_conv = nn.Conv2d(channels, 4, 1, bias=False)
-        self.value_bn = nn.BatchNorm2d(4)
-        self.value_fc1 = nn.Linear(4 * 64, 256)
-        self.value_fc2 = nn.Linear(256, 1)
+        self.value_conv = nn.Conv2d(channels, CONFIG.value_conv_channels, 1, bias=False)
+        self.value_bn = nn.BatchNorm2d(CONFIG.value_conv_channels)
+        self.value_fc1 = nn.Linear(CONFIG.value_conv_channels * 64, CONFIG.value_hidden_dim)
+        self.value_fc2 = nn.Linear(CONFIG.value_hidden_dim, 1)
 
         for module in self.modules():
             if isinstance(module, nn.Conv2d):
@@ -107,9 +105,6 @@ class ChessNet(nn.Module):
 
         return policy, value
 
-    def param_count(self) -> int:
-        return sum(p.numel() for p in self.parameters() if p.requires_grad)
-
 
 class _EvalRequest:
     def __init__(self, position: Any) -> None:
@@ -128,7 +123,7 @@ class BatchedEvaluator:
         self.device = device
         self.model_lock = threading.Lock()
         self.eval_model = ChessNet().to(self.device)
-        if CONFIG.use_torch_compile:
+        if CONFIG.use_torch_compile_eval:
             self.eval_model = cast(torch.nn.Module, torch.compile(self.eval_model))
         self.eval_model.eval()
         self.queue: "Queue[_EvalRequest]" = Queue()
@@ -150,23 +145,21 @@ class BatchedEvaluator:
 
     def refresh_from(self, src_model: torch.nn.Module) -> None:
         with self.model_lock:
-            load_module_state_dict(
-                self.eval_model, get_module_state_dict(src_model), strict=True
-            )
+            load_module_state_dict(self.eval_model, get_module_state_dict(src_model), strict=True)
             self.eval_model.eval()
         with self.cache_lock:
             self.cache.clear()
             self.cache_order.clear()
 
     def _encode_batch(self, positions: list[Any]) -> torch.Tensor:
-        import chesscore as chessai
+        import chesscore as ccore
 
         if not positions:
             x_np = np.zeros((0, CONFIG.input_planes, 8, 8), dtype=np.float32)
         else:
-            x_np = chessai.encode_batch(positions)
+            x_np = ccore.encode_batch(positions)
         x_cpu = torch.from_numpy(x_np)
-        if self.device.type == "cuda":
+        if self.device.type == "cuda" and CONFIG.eval_pin_memory:
             x_cpu = x_cpu.pin_memory()
         x = x_cpu.to(self.device, non_blocking=True)
         if CONFIG.use_channels_last:
@@ -176,7 +169,7 @@ class BatchedEvaluator:
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         with self.model_lock:
             with torch.inference_mode():
-                with torch.amp.autocast(device_type="cuda", enabled=self.device.type == "cuda"):
+                with torch.autocast(device_type="cuda", enabled=self.device.type == "cuda"):
                     policy_logits, value = self.eval_model(x)
             return policy_logits, value
 
@@ -212,18 +205,17 @@ class BatchedEvaluator:
                     h = int(getattr(positions[idx], "hash", 0))
                     if h:
                         if h not in self.cache:
-                            self.cache[h] = (pol_run[j].astype(np.float16), float(val_run[j]))
+                            self.cache[h] = (
+                                pol_run[j].astype(np.float16),
+                                float(val_run[j]),
+                            )
                             self.cache_order.append(h)
                 while len(self.cache_order) > self.cache_cap:
                     k = self.cache_order.popleft()
                     self.cache.pop(k, None)
         pol_np = np.stack(
             [
-                (
-                    p
-                    if p is not None
-                    else np.zeros((CONFIG.policy_output,), dtype=np.float32)
-                )
+                (p if p is not None else np.zeros((CONFIG.policy_output,), dtype=np.float32))
                 for p in cached_policies
             ]
         ).astype(np.float32)
@@ -264,7 +256,10 @@ class BatchedEvaluator:
                 for i, r in enumerate(batch):
                     h = int(getattr(r.position, "hash", 0))
                     if h and h not in self.cache:
-                        self.cache[h] = (policy[i].astype(np.float16), float(values_np[i]))
+                        self.cache[h] = (
+                            policy[i].astype(np.float16),
+                            float(values_np[i]),
+                        )
                         self.cache_order.append(h)
                 while len(self.cache_order) > self.cache_cap:
                     k = self.cache_order.popleft()
