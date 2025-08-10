@@ -15,9 +15,9 @@ class Config:
     batch_size: int = 512
     learning_rate_init: float = 0.02
     learning_rate_schedule: Tuple[Tuple[int, float], ...] = (
-        (400, 0.01),
-        (800, 0.001),
-        (1200, 0.0001),
+        (200, 0.01),
+        (450, 0.003),
+        (550, 0.001),
     )
     weight_decay: float = 1e-4
     momentum: float = 0.9
@@ -28,34 +28,34 @@ class Config:
     value_hidden_dim: int = 256
 
     games_per_iteration: int = 180
-    iterations: int = 1000
-    train_steps_per_iter: int = 512
+    iterations: int = 600
+    train_steps_per_iter: int = 1024
     eval_refresh_steps: int = 128
-    checkpoint_freq: int = 100
+    checkpoint_freq: int = 50
     iteration_ema_alpha: float = 0.3
 
-    simulations_train: int = 128
+    simulations_train: int = 96
     mcts_min_sims: int = 32
-    simulations_decay_interval: int = 40
+    simulations_decay_interval: int = 30
     temp_moves: int = 30
     temp_high: float = 1.0
     temp_low: float = 0.01
     temp_deterministic_threshold: float = 0.01
     history_length: int = 8
     max_game_moves: int = 512
-    buffer_size: int = 25000
-    selfplay_workers: int = 10
+    buffer_size: int = 60000
+    selfplay_workers: int = 6
     resign_threshold: float = -0.9
-    resign_consecutive: int = 3
+    resign_consecutive: int = 0
 
-    eval_max_batch: int = 512
+    eval_max_batch: int = 192
     eval_batch_timeout_ms: int = 3
     eval_cache_size: int = 20000
     eval_pin_memory: bool = True
 
-    simulations_eval: int = 800
-    arena_games: int = 60
-    arena_eval_every: int = 3
+    simulations_eval: int = 600
+    arena_games: int = 40
+    arena_eval_every: int = 6
     arena_openings_path: str = ""
     arena_openings_random: bool = True
     arena_accumulate: bool = True
@@ -85,11 +85,18 @@ class Config:
     dirichlet_weight: float = 0.25
 
     use_torch_compile: bool = True
-    use_torch_compile_eval: bool = False
+    use_torch_compile_eval: bool = True
     use_channels_last: bool = True
     torch_num_threads: int = 1
     use_cudnn_benchmark: bool = True
     matmul_precision: str = "high"
+
+    compile_backend: str = "inductor"
+    compile_mode_train: str = "default"
+    compile_mode_eval: str = "reduce-overhead"
+    compile_fullgraph_train: bool = False
+    compile_fullgraph_eval: bool = False
+    compile_dynamic: bool = False
 
     augment_mirror: bool = True
     augment_rotate180: bool = True
@@ -97,6 +104,7 @@ class Config:
     augment_mirror_prob: float = 0.5
     augment_rot180_prob: float = 0.25
     augment_vflip_cs_prob: float = 0.25
+    
 
 
 CONFIG = Config()

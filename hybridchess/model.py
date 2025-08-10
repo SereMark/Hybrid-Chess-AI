@@ -128,7 +128,16 @@ class BatchedEvaluator:
         self.model_lock = threading.Lock()
         self.eval_model: nn.Module = ChessNet().to(self.device)
         if CONFIG.use_torch_compile_eval:
-            self.eval_model = cast(torch.nn.Module, torch.compile(self.eval_model))
+            self.eval_model = cast(
+                torch.nn.Module,
+                torch.compile(
+                    self.eval_model,
+                    backend=getattr(CONFIG, "compile_backend", "inductor"),
+                    mode=getattr(CONFIG, "compile_mode_eval", "reduce-overhead"),
+                    fullgraph=getattr(CONFIG, "compile_fullgraph_eval", False),
+                    dynamic=getattr(CONFIG, "compile_dynamic", False),
+                ),
+            )
         self.eval_model.eval()
         self.queue: "Queue[_EvalRequest]" = Queue()
         self.max_batch = CONFIG.eval_max_batch

@@ -27,7 +27,16 @@ class Trainer:
         if CONFIG.use_channels_last:
             self.model = self.model.to(memory_format=torch.channels_last)  # type: ignore[reportCallIssue]
         if CONFIG.use_torch_compile:
-            self.model = cast(torch.nn.Module, torch.compile(self.model))
+            self.model = cast(
+                torch.nn.Module,
+                torch.compile(
+                    self.model,
+                    backend=getattr(CONFIG, "compile_backend", "inductor"),
+                    mode=getattr(CONFIG, "compile_mode_train", "default"),
+                    fullgraph=getattr(CONFIG, "compile_fullgraph_train", False),
+                    dynamic=getattr(CONFIG, "compile_dynamic", False),
+                ),
+            )
         self.optimizer = torch.optim.SGD(
             self.model.parameters(),
             lr=CONFIG.learning_rate_init,
