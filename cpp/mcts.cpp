@@ -38,9 +38,7 @@ void NodePool::reset() {
   nodes[0] = Node{};
 }
 
-Node *NodePool::get_root() {
-  return &nodes[0];
-}
+Node *NodePool::get_root() { return &nodes[0]; }
 
 Node *NodePool::allocate(size_t count) {
   if (used + count > nodes.size()) {
@@ -57,9 +55,7 @@ Node *NodePool::allocate(size_t count) {
   return ptr;
 }
 
-Node *NodePool::get_node(uint32_t index) {
-  return &nodes[index];
-}
+Node *NodePool::get_node(uint32_t index) { return &nodes[index]; }
 
 uint32_t NodePool::get_index(Node *node) {
   return static_cast<uint32_t>(node - nodes.data());
@@ -90,8 +86,8 @@ static int encode_move_73x64(const chess::Move &move) {
     return action_plane * 64 + from;
   }
 
-  static constexpr int knight_moves[8][2] = {{-2, -1}, {-2, 1}, {-1, -2}, {-1, 2},
-                                             {1, -2},  {1, 2},  {2, -1},  {2, 1}};
+  static constexpr int knight_moves[8][2] = {
+      {-2, -1}, {-2, 1}, {-1, -2}, {-1, 2}, {1, -2}, {1, 2}, {2, -1}, {2, 1}};
   for (int i = 0; i < 8; i++) {
     if (row_diff == knight_moves[i][0] && col_diff == knight_moves[i][1]) {
       const int action_plane = 56 + i;
@@ -137,9 +133,7 @@ public:
     return static_cast<uint32_t>(state >> 32);
   }
 
-  float uniform() {
-    return next() * (1.0f / 4294967296.0f);
-  }
+  float uniform() { return next() * (1.0f / 4294967296.0f); }
 
   float normal() {
     if (has_spare) {
@@ -164,7 +158,8 @@ Node *MCTS::select_child(Node *parent) {
   const float sqrt_parent = sqrtf(static_cast<float>(parent->visits));
   float c = c_puct_;
   if (parent->visits > 0) {
-    c = logf((parent->visits + c_puct_base_ + 1.0f) / c_puct_base_) + c_puct_init_;
+    c = logf((parent->visits + c_puct_base_ + 1.0f) / c_puct_base_) +
+        c_puct_init_;
   }
   Node *best = &children[0];
   float best_score = best->ucb(c, sqrt_parent);
@@ -180,7 +175,8 @@ Node *MCTS::select_child(Node *parent) {
 }
 
 [[gnu::hot]]
-void MCTS::expand_node(Node *node, const chess::MoveList &moves, const std::vector<float> &policy) {
+void MCTS::expand_node(Node *node, const chess::MoveList &moves,
+                       const std::vector<float> &policy) {
   const size_t nchildren = moves.size();
   if (nchildren == 0) {
     return;
@@ -247,8 +243,8 @@ void MCTS::add_dirichlet_noise(Node *node) {
   }
 }
 
-std::vector<int> MCTS::search_batched(const chess::Position &position, EvalBatchFn eval_fn,
-                                      int max_batch) {
+std::vector<int> MCTS::search_batched(const chess::Position &position,
+                                      EvalBatchFn eval_fn, int max_batch) {
   node_pool_.reset();
   Node *root = node_pool_.get_root();
   root->child_idx = 0;
@@ -375,7 +371,8 @@ std::vector<int> MCTS::search_batched(const chess::Position &position, EvalBatch
     }
 
     for (int i = path_length - 1; i >= 0; i--) {
-      working_pos_.unmake_move_fast(node_pool_.get_node(path_buffer_[i])->move, undo_stack_[i]);
+      working_pos_.unmake_move_fast(node_pool_.get_node(path_buffer_[i])->move,
+                                    undo_stack_[i]);
     }
   }
 
@@ -390,9 +387,10 @@ std::vector<int> MCTS::search_batched(const chess::Position &position, EvalBatch
   return visits;
 }
 
-MCTS::MCTS(int simulations, float c_puct, float dirichlet_alpha, float dirichlet_weight)
-    : simulations_(simulations), c_puct_(c_puct), dirichlet_alpha_(dirichlet_alpha),
-      dirichlet_weight_(dirichlet_weight) {
+MCTS::MCTS(int simulations, float c_puct, float dirichlet_alpha,
+           float dirichlet_weight)
+    : simulations_(simulations), c_puct_(c_puct),
+      dirichlet_alpha_(dirichlet_alpha), dirichlet_weight_(dirichlet_weight) {
   node_pool_.reset();
 }
 

@@ -58,18 +58,15 @@ public:
        float dirichlet_weight = 0.25f);
 
   using EvalBatchFn = std::function<void(const std::vector<chess::Position> &,
-                                         std::vector<std::vector<float>> &, std::vector<float> &)>;
+                                         std::vector<std::vector<float>> &,
+                                         std::vector<float> &)>;
 
-  std::vector<int> search_batched(const chess::Position &position, EvalBatchFn eval_fn,
-                                  int max_batch = 64);
+  std::vector<int> search_batched(const chess::Position &position,
+                                  EvalBatchFn eval_fn, int max_batch = 64);
 
-  void set_simulations(int simulations) {
-    simulations_ = simulations;
-  }
+  void set_simulations(int simulations) { simulations_ = simulations; }
 
-  void set_c_puct(float c_puct) {
-    c_puct_ = c_puct;
-  }
+  void set_c_puct(float c_puct) { c_puct_ = c_puct; }
 
   void set_dirichlet_params(float alpha, float weight) {
     dirichlet_alpha_ = alpha;
@@ -97,7 +94,8 @@ private:
   [[gnu::hot]] void add_dirichlet_noise(Node *node);
 
   [[gnu::always_inline]]
-  static float get_policy_value(const chess::Move &move, const std::vector<float> &policy) {
+  static float get_policy_value(const chess::Move &move,
+                                const std::vector<float> &policy) {
     const int index = encode_move_index(move);
     return (index >= 0 && index < static_cast<int>(policy.size()))
                ? policy[static_cast<size_t>(index)]

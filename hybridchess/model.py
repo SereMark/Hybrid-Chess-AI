@@ -16,7 +16,7 @@ from .config import CONFIG
 def unwrap_compiled_module(module: nn.Module) -> nn.Module:
     m = module
     while hasattr(m, "_orig_mod"):
-        m = m._orig_mod  # type: ignore[attr-defined]
+        m = cast(nn.Module, m._orig_mod)  # type: ignore[attr-defined]
     return m
 
 
@@ -66,7 +66,9 @@ class ChessNet(nn.Module):
         channels = channels or CONFIG.channels
         policy_planes = CONFIG.policy_output // 64
 
-        self.conv_in = nn.Conv2d(CONFIG.input_planes, channels, 3, padding=1, bias=False)
+        self.conv_in = nn.Conv2d(
+            CONFIG.input_planes, channels, 3, padding=1, bias=False
+        )
         self.bn_in = nn.BatchNorm2d(channels)
         self.blocks = nn.Sequential(*[ResBlock(channels) for _ in range(blocks)])
 
@@ -76,7 +78,9 @@ class ChessNet(nn.Module):
 
         self.value_conv = nn.Conv2d(channels, CONFIG.value_conv_channels, 1, bias=False)
         self.value_bn = nn.BatchNorm2d(CONFIG.value_conv_channels)
-        self.value_fc1 = nn.Linear(CONFIG.value_conv_channels * 64, CONFIG.value_hidden_dim)
+        self.value_fc1 = nn.Linear(
+            CONFIG.value_conv_channels * 64, CONFIG.value_hidden_dim
+        )
         self.value_fc2 = nn.Linear(CONFIG.value_hidden_dim, 1)
 
         for module in self.modules():
@@ -122,7 +126,7 @@ class BatchedEvaluator:
     def __init__(self, device: torch.device) -> None:
         self.device = device
         self.model_lock = threading.Lock()
-        self.eval_model = ChessNet().to(self.device)
+        self.eval_model: nn.Module = ChessNet().to(self.device)
         if CONFIG.use_torch_compile_eval:
             self.eval_model = cast(torch.nn.Module, torch.compile(self.eval_model))
         self.eval_model.eval()
@@ -145,7 +149,9 @@ class BatchedEvaluator:
 
     def refresh_from(self, src_model: torch.nn.Module) -> None:
         with self.model_lock:
-            load_module_state_dict(self.eval_model, get_module_state_dict(src_model), strict=True)
+            load_module_state_dict(
+                self.eval_model, get_module_state_dict(src_model), strict=True
+            )
             self.eval_model.eval()
         with self.cache_lock:
             self.cache.clear()
@@ -169,7 +175,9 @@ class BatchedEvaluator:
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         with self.model_lock:
             with torch.inference_mode():
-                with torch.autocast(device_type="cuda", enabled=self.device.type == "cuda"):
+                with torch.autocast(
+                    device_type="cuda", enabled=self.device.type == "cuda"
+                ):
                     policy_logits, value = self.eval_model(x)
             return policy_logits, value
 
@@ -215,7 +223,11 @@ class BatchedEvaluator:
                     self.cache.pop(k, None)
         pol_np = np.stack(
             [
-                (p if p is not None else np.zeros((CONFIG.policy_output,), dtype=np.float32))
+                (
+                    p
+                    if p is not None
+                    else np.zeros((CONFIG.policy_output,), dtype=np.float32)
+                )
                 for p in cached_policies
             ]
         ).astype(np.float32)

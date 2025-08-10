@@ -124,10 +124,14 @@ class Augment:
 class SelfPlayEngine:
     def __init__(self, evaluator: BatchedEvaluator) -> None:
         self.evaluator = evaluator
-        self.buffer: deque[tuple[Any, np.ndarray, float]] = deque(maxlen=CONFIG.buffer_size)
+        self.buffer: deque[tuple[Any, np.ndarray, float]] = deque(
+            maxlen=CONFIG.buffer_size
+        )
         self.buffer_lock = threading.Lock()
 
-    def _temp_select(self, moves: list[Any], visits: list[int], move_number: int) -> Any:
+    def _temp_select(
+        self, moves: list[Any], visits: list[int], move_number: int
+    ) -> Any:
         if move_number < CONFIG.temp_moves:
             temperature = CONFIG.temp_high
         else:
@@ -179,7 +183,8 @@ class SelfPlayEngine:
             pos_copy = ccore.Position(position)
             sims = max(
                 CONFIG.mcts_min_sims,
-                CONFIG.simulations_train // (1 + move_count // CONFIG.simulations_decay_interval),
+                CONFIG.simulations_train
+                // (1 + move_count // CONFIG.simulations_decay_interval),
             )
             mcts.set_simulations(sims)
             visits = mcts.search_batched(
@@ -192,7 +197,9 @@ class SelfPlayEngine:
             target = np.zeros(CONFIG.policy_output, dtype=np.float32)
             for move, visit_count in zip(moves, visits, strict=False):
                 move_index = ccore.encode_move_index(move)
-                if (move_index is not None) and (0 <= int(move_index) < CONFIG.policy_output):
+                if (move_index is not None) and (
+                    0 <= int(move_index) < CONFIG.policy_output
+                ):
                     target[move_index] = visit_count
             policy_sum = target.sum()
             if policy_sum > 0:
@@ -231,7 +238,9 @@ class SelfPlayEngine:
         with self.buffer_lock:
             return list(self.buffer)
 
-    def sample_from_snapshot(self, snapshot: list[tuple[Any, np.ndarray, float]], batch_size: int):
+    def sample_from_snapshot(
+        self, snapshot: list[tuple[Any, np.ndarray, float]], batch_size: int
+    ):
         if len(snapshot) < batch_size:
             return None
         idx = np.random.randint(0, len(snapshot), size=batch_size)

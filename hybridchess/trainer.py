@@ -11,12 +11,8 @@ import torch.nn.functional as F
 from torch.amp.grad_scaler import GradScaler
 
 from .config import CONFIG
-from .model import (
-    BatchedEvaluator,
-    ChessNet,
-    get_module_state_dict,
-    load_module_state_dict,
-)
+from .model import (BatchedEvaluator, ChessNet, get_module_state_dict,
+                    load_module_state_dict)
 from .selfplay import Augment, SelfPlayEngine
 
 log = logging.getLogger(__name__)
@@ -117,20 +113,28 @@ class Trainer:
         self.model.train()
         with torch.autocast(device_type="cuda", enabled=self.device.type == "cuda"):
             pi_pred, v_pred = self.model(x)
-            policy_loss = F.kl_div(F.log_softmax(pi_pred, dim=1), pi_target, reduction="batchmean")
+            policy_loss = F.kl_div(
+                F.log_softmax(pi_pred, dim=1), pi_target, reduction="batchmean"
+            )
             value_loss = F.mse_loss(v_pred, v_target)
-            total_loss = CONFIG.policy_weight * policy_loss + CONFIG.value_weight * value_loss
+            total_loss = (
+                CONFIG.policy_weight * policy_loss + CONFIG.value_weight * value_loss
+            )
 
         self.optimizer.zero_grad(set_to_none=True)
         if self.scaler:
             self.scaler.scale(total_loss).backward()
             self.scaler.unscale_(self.optimizer)
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), CONFIG.gradient_clip)
+            torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), CONFIG.gradient_clip
+            )
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), CONFIG.gradient_clip)
+            torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), CONFIG.gradient_clip
+            )
             self.optimizer.step()
         return float(policy_loss.item()), float(value_loss.item())
 
@@ -141,7 +145,9 @@ class Trainer:
             torch.cuda.reset_peak_memory_stats(self.device)
         current_lr = self.optimizer.param_groups[0]["lr"]
         mem = self._get_mem_info()
-        buffer_pct_pre = (self.selfplay_engine.buffer.__len__() / CONFIG.buffer_size) * 100
+        buffer_pct_pre = (
+            self.selfplay_engine.buffer.__len__() / CONFIG.buffer_size
+        ) * 100
         buffer_len_pre = self.selfplay_engine.buffer.__len__()
         total_elapsed = time.time() - self.start_time
         log.info(
@@ -163,7 +169,9 @@ class Trainer:
         elapsed = time.time() - selfplay_start
         gpm = (game_stats["games"] / (elapsed / 60)) if elapsed > 0 else 0
         mps = (game_stats["moves"] / elapsed) if elapsed > 0 else 0
-        avg_len = (game_stats["moves"] / max(1, game_stats["games"])) if elapsed > 0 else 0
+        avg_len = (
+            (game_stats["moves"] / max(1, game_stats["games"])) if elapsed > 0 else 0
+        )
         ww = int(game_stats["white_wins"])  # type: ignore[index]
         bb = int(game_stats["black_wins"])  # type: ignore[index]
         dd = int(game_stats["draws"])  # type: ignore[index]
@@ -198,17 +206,28 @@ class Trainer:
         losses: list[tuple[float, float]] = []
         buffer_snapshot = self.selfplay_engine.snapshot()
         for step in range(CONFIG.train_steps_per_iter):
-            batch = self.selfplay_engine.sample_from_snapshot(buffer_snapshot, CONFIG.batch_size)
+            batch = self.selfplay_engine.sample_from_snapshot(
+                buffer_snapshot, CONFIG.batch_size
+            )
             if batch:
                 s, p, v = batch
                 did_aug = False
-                if CONFIG.augment_mirror and np.random.rand() < CONFIG.augment_mirror_prob:
+                if (
+                    CONFIG.augment_mirror
+                    and np.random.rand() < CONFIG.augment_mirror_prob
+                ):
                     s, p, _ = Augment.apply(s, p, "mirror")
                     did_aug = True
-                if CONFIG.augment_rotate180 and np.random.rand() < CONFIG.augment_rot180_prob:
+                if (
+                    CONFIG.augment_rotate180
+                    and np.random.rand() < CONFIG.augment_rot180_prob
+                ):
                     s, p, _ = Augment.apply(s, p, "rot180")
                     did_aug = True
-                if CONFIG.augment_vflip_cs and np.random.rand() < CONFIG.augment_vflip_cs_prob:
+                if (
+                    CONFIG.augment_vflip_cs
+                    and np.random.rand() < CONFIG.augment_vflip_cs_prob
+                ):
                     s, p, cs = Augment.apply(s, p, "vflip_cs")
                     if cs:
                         v = [-val for val in v]
@@ -227,7 +246,9 @@ class Trainer:
             buffer_pct = (buffer_size / CONFIG.buffer_size) * 100
             batches_per_sec = len(losses) / train_elapsed if train_elapsed > 0 else 0
             samples_per_sec = (
-                (len(losses) * CONFIG.batch_size) / train_elapsed if train_elapsed > 0 else 0
+                (len(losses) * CONFIG.batch_size) / train_elapsed
+                if train_elapsed > 0
+                else 0
             )
             log.info(
                 "Train: steps %d | %.1f batch/s | %d samp/s | P %.4f | V %.4f | lr %.2e | buf %d%% (%s) | time %s",
@@ -300,7 +321,9 @@ class Trainer:
             pos = _ccore.Position()
             if start_fen:
                 pos.from_fen(start_fen)
-            noise_w = 0.0 if not CONFIG.arena_use_noise else CONFIG.arena_dirichlet_weight
+            noise_w = (
+                0.0 if not CONFIG.arena_use_noise else CONFIG.arena_dirichlet_weight
+            )
             mcts1 = _ccore.MCTS(
                 CONFIG.simulations_eval,
                 CONFIG.c_puct,
@@ -320,9 +343,13 @@ class Trainer:
             turn = 0
             while pos.result() == _ccore.ONGOING and turn < CONFIG.max_game_moves:
                 if turn % 2 == 0:
-                    visits = mcts1.search_batched(pos, e1.infer_positions, CONFIG.eval_max_batch)
+                    visits = mcts1.search_batched(
+                        pos, e1.infer_positions, CONFIG.eval_max_batch
+                    )
                 else:
-                    visits = mcts2.search_batched(pos, e2.infer_positions, CONFIG.eval_max_batch)
+                    visits = mcts2.search_batched(
+                        pos, e2.infer_positions, CONFIG.eval_max_batch
+                    )
                 if not visits:
                     break
                 moves = pos.legal_moves()
@@ -417,9 +444,13 @@ class Trainer:
             CONFIG.iterations,
             CONFIG.games_per_iteration,
         )
-        sched_pairs = ", ".join([f"{m} -> {lr:.1e}" for m, lr in CONFIG.learning_rate_schedule])
+        sched_pairs = ", ".join(
+            [f"{m} -> {lr:.1e}" for m, lr in CONFIG.learning_rate_schedule]
+        )
         log.info("LR: init %.2e | schedule: %s", CONFIG.learning_rate_init, sched_pairs)
-        log.info("Expected: %d total games", CONFIG.iterations * CONFIG.games_per_iteration)
+        log.info(
+            "Expected: %d total games", CONFIG.iterations * CONFIG.games_per_iteration
+        )
 
         for iteration in range(1, CONFIG.iterations + 1):
             self.iteration = iteration
@@ -466,7 +497,9 @@ class Trainer:
                     gating_mu = acc_mu
                     gating_n = gn
                 else:
-                    gating_mu = (aw + CONFIG.arena_draw_score * ad) / max(1, CONFIG.arena_games)
+                    gating_mu = (aw + CONFIG.arena_draw_score * ad) / max(
+                        1, CONFIG.arena_games
+                    )
                     gating_n = CONFIG.arena_games
 
                 promote = False
@@ -496,7 +529,9 @@ class Trainer:
                     if CONFIG.arena_accumulate:
                         acc_n = gating_n
                         acc_mu = gating_mu
-                        acc_e_x2 = (self._arena_acc_w + 0.25 * self._arena_acc_d) / max(1, acc_n)
+                        acc_e_x2 = (self._arena_acc_w + 0.25 * self._arena_acc_d) / max(
+                            1, acc_n
+                        )
                         acc_var = max(0.0, acc_e_x2 - acc_mu * acc_mu)
                         acc_se = (acc_var / max(1, acc_n)) ** 0.5
                         acc_lb = acc_mu - CONFIG.arena_confidence_z * acc_se
@@ -543,7 +578,9 @@ class Trainer:
                     self.best_model.eval()
                     self.evaluator.refresh_from(self.best_model)
                     try:
-                        torch.save(get_module_state_dict(self.best_model), "best_model.pt")
+                        torch.save(
+                            get_module_state_dict(self.best_model), "best_model.pt"
+                        )
                         log.info("Saved best model to best_model.pt")
                     except Exception as e:
                         log.info("Warning: failed to save best model: %s", e)
@@ -565,8 +602,12 @@ class Trainer:
                 self.iter_ema_time = full_iter_time
             else:
                 alpha = CONFIG.iteration_ema_alpha
-                self.iter_ema_time = alpha * full_iter_time + (1 - alpha) * self.iter_ema_time
-            avg_iter = self.iter_ema_time if self.iter_ema_time is not None else full_iter_time
+                self.iter_ema_time = (
+                    alpha * full_iter_time + (1 - alpha) * self.iter_ema_time
+                )
+            avg_iter = (
+                self.iter_ema_time if self.iter_ema_time is not None else full_iter_time
+            )
             remaining = max(0, CONFIG.iterations - self.iteration)
             eta_sec = avg_iter * remaining
             sp_time = float(iter_stats.get("selfplay_time", 0.0))
