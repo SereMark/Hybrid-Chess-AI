@@ -133,9 +133,19 @@ class SelfPlayEngine:
         else:
             temperature = CONFIG.temp_low
         if temperature > CONFIG.temp_deterministic_threshold:
-            probs = np.array(visits, dtype=np.float64) ** (1.0 / temperature)
-            probs /= probs.sum()
-            move_idx = np.random.choice(len(moves), p=probs)
+            probs = np.array(visits, dtype=np.float64)
+            probs = np.maximum(probs, 0)
+            s = probs.sum()
+            if not np.isfinite(s) or s <= 0:
+                move_idx = int(np.argmax(visits))
+            else:
+                probs = probs ** (1.0 / float(temperature))
+                s = probs.sum()
+                if not np.isfinite(s) or s <= 0:
+                    move_idx = int(np.argmax(visits))
+                else:
+                    probs /= s
+                    move_idx = int(np.random.choice(len(moves), p=probs))
         else:
             move_idx = int(np.argmax(visits))
         return moves[move_idx]
