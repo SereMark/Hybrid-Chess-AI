@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <random>
 #include <vector>
 
@@ -116,41 +115,6 @@ static int encode_move_73x64(const chess::Move &move) {
 int encode_move_index(const chess::Move &move) {
   return encode_move_73x64(move);
 }
-
-class FastRandom {
-private:
-  uint64_t state;
-  bool has_spare = false;
-  float spare = 0.0f;
-
-public:
-  FastRandom() : state(std::random_device{}()) {}
-
-  uint32_t next() {
-    state ^= state << 13;
-    state ^= state >> 7;
-    state ^= state << 17;
-    return static_cast<uint32_t>(state >> 32);
-  }
-
-  float uniform() { return next() * (1.0f / 4294967296.0f); }
-
-  float normal() {
-    if (has_spare) {
-      has_spare = false;
-      return spare;
-    }
-    has_spare = true;
-    const float u = uniform();
-    const float v = uniform();
-    const float mag = sqrtf(-2.0f * logf(u + DIRICHLET_EPSILON));
-    constexpr float TWO_PI = 6.28318530718f;
-    spare = mag * cosf(TWO_PI * v);
-    return mag * sinf(TWO_PI * v);
-  }
-};
-
-thread_local FastRandom fast_rng;
 
 [[gnu::hot]]
 Node *MCTS::select_child(Node *parent) {
@@ -269,9 +233,6 @@ std::vector<int> MCTS::search_batched(const chess::Position &position,
   pending_nodes.reserve(static_cast<size_t>(max_batch));
 
   std::vector<float> root_policy(POLICY_SIZE, 0.0f);
-  std::vector<float> tmp_policy;
-  std::vector<float> tmp_value;
-  tmp_policy.reserve(static_cast<size_t>(POLICY_SIZE));
 
   auto flush_and_expand = [&]() {
     if (to_eval.empty())

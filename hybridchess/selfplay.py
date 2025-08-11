@@ -3,13 +3,15 @@ from __future__ import annotations
 import threading
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import chesscore as ccore
 import numpy as np
 
 from .config import CONFIG
-from .model import BatchedEvaluator
+
+if TYPE_CHECKING:
+    from .model import BatchedEvaluator
 
 
 class Augment:
@@ -122,7 +124,7 @@ class Augment:
 
 
 class SelfPlayEngine:
-    def __init__(self, evaluator: BatchedEvaluator) -> None:
+    def __init__(self, evaluator: "BatchedEvaluator") -> None:
         self.evaluator = evaluator
         self.buffer: deque[tuple[Any, np.ndarray, float]] = deque(
             maxlen=CONFIG.buffer_size
@@ -143,7 +145,7 @@ class SelfPlayEngine:
             if not np.isfinite(s) or s <= 0:
                 move_idx = int(np.argmax(visits))
             else:
-                probs = probs ** (1.0 / float(temperature))
+                probs = probs ** (1.0 / temperature)
                 s = probs.sum()
                 if not np.isfinite(s) or s <= 0:
                     move_idx = int(np.argmax(visits))
@@ -174,8 +176,7 @@ class SelfPlayEngine:
             CONFIG.dirichlet_alpha,
             CONFIG.dirichlet_weight,
         )
-        if hasattr(mcts, "set_c_puct_params"):
-            mcts.set_c_puct_params(CONFIG.c_puct_base, CONFIG.c_puct_init)
+        mcts.set_c_puct_params(CONFIG.c_puct_base, CONFIG.c_puct_init)
         data: list[tuple[Any, np.ndarray]] = []
         history: list[Any] = []
         move_count = 0
@@ -217,7 +218,7 @@ class SelfPlayEngine:
                 _, val_arr = self.evaluator.infer_positions([pos_copy])
                 value_est = float(val_arr[0])
                 if value_est <= CONFIG.resign_threshold:
-                    consecutive = getattr(self, "_resign_count", 0) + 1
+                    consecutive = self._resign_count + 1
                     self._resign_count = consecutive
                     if consecutive >= CONFIG.resign_consecutive:
                         break
@@ -259,7 +260,7 @@ class SelfPlayEngine:
         workers = max(1, CONFIG.selfplay_workers)
         with ThreadPoolExecutor(max_workers=workers) as ex:
             futures = [ex.submit(self.play_single_game) for _ in range(num_games)]
-            for _, fut in enumerate(as_completed(futures), 1):
+            for fut in as_completed(futures):
                 moves, result = fut.result()
                 results["games"] += 1
                 results["moves"] += moves

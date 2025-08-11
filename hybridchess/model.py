@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import threading
+import time
 from collections import deque
-from queue import Empty, Queue
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 import torch
@@ -11,37 +11,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .config import CONFIG
-
-
-def unwrap_compiled_module(module: nn.Module) -> nn.Module:
-    m = module
-    while hasattr(m, "_orig_mod"):
-        m = cast(nn.Module, m._orig_mod)  # type: ignore[attr-defined]
-    return m
-
-
-def strip_orig_mod_prefix(
-    state_dict: dict[str, torch.Tensor],
-) -> dict[str, torch.Tensor]:
-    if not state_dict:
-        return state_dict
-    keys = list(state_dict.keys())
-    if keys and keys[0].startswith("_orig_mod."):
-        return {k.replace("_orig_mod.", "", 1): v for k, v in state_dict.items()}
-    return state_dict
-
-
-def get_module_state_dict(module: nn.Module) -> dict[str, torch.Tensor]:
-    base = unwrap_compiled_module(module)
-    return base.state_dict()
-
-
-def load_module_state_dict(
-    module: nn.Module, state_dict: dict[str, torch.Tensor], strict: bool = True
-) -> None:
-    base = unwrap_compiled_module(module)
-    cleaned = strip_orig_mod_prefix(state_dict)
-    base.load_state_dict(cleaned, strict=strict)
 
 
 class ResBlock(nn.Module):
@@ -110,79 +79,26 @@ class ChessNet(nn.Module):
         return policy, value
 
 
-class _EvalRequest:
-    def __init__(self, position: Any) -> None:
-        self.position = position
-        try:
-            self.hash: int | None = int(getattr(position, "hash", 0))
-        except Exception:
-            self.hash = None
-        self.policy: np.ndarray | None = None
-        self.value: float | None = None
-        self.event = threading.Event()
-
-
 class BatchedEvaluator:
     def __init__(self, device: torch.device) -> None:
         self.device = device
         self.model_lock = threading.Lock()
         self.eval_model: nn.Module = ChessNet().to(self.device)
-        self._eval_no_cg = False
-        if CONFIG.use_torch_compile_eval:
-            self.eval_model = cast(
-                torch.nn.Module,
-                torch.compile(
-                    self.eval_model,
-                    backend=getattr(CONFIG, "compile_backend", "inductor"),
-                    mode=getattr(CONFIG, "compile_mode_eval", "reduce-overhead"),
-                    fullgraph=getattr(CONFIG, "compile_fullgraph_eval", False),
-                    dynamic=getattr(CONFIG, "compile_dynamic", False),
-                ),
-            )
         self.eval_model.eval()
-        if CONFIG.use_torch_compile_eval:
-            try:
-                self._warmup_once()
-            except Exception:
-                base_model = unwrap_compiled_module(self.eval_model)
-                try:
-                    self.eval_model = cast(
-                        torch.nn.Module,
-                        torch.compile(
-                            base_model,
-                            backend=getattr(CONFIG, "compile_backend", "inductor"),
-                            mode="max-autotune-no-cudagraphs",
-                            fullgraph=getattr(CONFIG, "compile_fullgraph_eval", False),
-                            dynamic=getattr(CONFIG, "compile_dynamic", False),
-                        ),
-                    )
-                    self.eval_model.eval()
-                    self._warmup_once()
-                except Exception:
-                    self.eval_model = base_model
-                    self.eval_model.eval()
-        self.queue: "Queue[_EvalRequest]" = Queue()
-        self.max_batch = CONFIG.eval_max_batch
-        self.timeout_ms = CONFIG.eval_batch_timeout_ms
-        self.stop_flag = threading.Event()
-        self.thread = threading.Thread(target=self._worker, daemon=True)
-        self.thread.start()
         self.cache_lock = threading.Lock()
         self.cache: dict[int, tuple[np.ndarray, float]] = {}
         self.cache_order: deque[int] = deque()
         self.cache_cap = CONFIG.eval_cache_size
-
-    def __enter__(self) -> "BatchedEvaluator":
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        self.shutdown()
+        self._pending_lock = threading.Condition()
+        self._pending: deque["_EvalRequest"] = deque()
+        worker = threading.Thread(
+            target=self._batch_worker, name="EvalBatchWorker", daemon=True
+        )
+        worker.start()
 
     def refresh_from(self, src_model: torch.nn.Module) -> None:
         with self.model_lock:
-            load_module_state_dict(
-                self.eval_model, get_module_state_dict(src_model), strict=True
-            )
+            self.eval_model.load_state_dict(src_model.state_dict(), strict=True)
             self.eval_model.eval()
         with self.cache_lock:
             self.cache.clear()
@@ -196,7 +112,7 @@ class BatchedEvaluator:
         else:
             x_np = ccore.encode_batch(positions)
         x_cpu = torch.from_numpy(x_np)
-        if self.device.type == "cuda" and CONFIG.eval_pin_memory:
+        if CONFIG.eval_pin_memory:
             x_cpu = x_cpu.pin_memory()
         x = x_cpu.to(self.device, non_blocking=True)
         if CONFIG.use_channels_last:
@@ -205,64 +121,10 @@ class BatchedEvaluator:
 
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         with self.model_lock:
-            if self.device.type == "cuda":
-                cudagraph_mark_step_begin = getattr(
-                    torch.compiler, "cudagraph_mark_step_begin", None
-                )
-                if callable(cudagraph_mark_step_begin):
-                    try:
-                        cudagraph_mark_step_begin()
-                    except Exception:
-                        pass
-
             with torch.inference_mode():
-                with torch.autocast(
-                    device_type="cuda", enabled=self.device.type == "cuda"
-                ):
-                    try:
-                        policy_logits, value = self.eval_model(x)
-                    except Exception:
-                        if CONFIG.use_torch_compile_eval and not self._eval_no_cg:
-                            base = unwrap_compiled_module(self.eval_model)
-                            try:
-                                self.eval_model = cast(
-                                    torch.nn.Module,
-                                    torch.compile(
-                                        base,
-                                        backend=getattr(
-                                            CONFIG, "compile_backend", "inductor"
-                                        ),
-                                        mode="max-autotune-no-cudagraphs",
-                                        fullgraph=getattr(
-                                            CONFIG, "compile_fullgraph_eval", False
-                                        ),
-                                        dynamic=getattr(CONFIG, "compile_dynamic", False),
-                                    ),
-                                )
-                                self.eval_model.eval()
-                                self._eval_no_cg = True
-                                policy_logits, value = self.eval_model(x)
-                            except Exception:
-                                self.eval_model = base
-                                self.eval_model.eval()
-                                self._eval_no_cg = True
-                                policy_logits, value = self.eval_model(x)
-                        else:
-                            raise
-
-            policy_logits = policy_logits.clone()
-            value = value.clone()
+                with torch.autocast(device_type="cuda", enabled=True):
+                    policy_logits, value = self.eval_model(x)
             return policy_logits, value
-
-    def _warmup_once(self) -> None:
-        b = 1
-        x = torch.zeros((b, CONFIG.input_planes, 8, 8), dtype=torch.float32)
-        if self.device.type == "cuda" and CONFIG.eval_pin_memory:
-            x = x.pin_memory()
-        x = x.to(self.device, non_blocking=True)
-        if CONFIG.use_channels_last:
-            x = x.contiguous(memory_format=torch.channels_last)
-        _ = self._forward(x)
 
     def infer_positions(self, positions: list[Any]) -> tuple[np.ndarray, np.ndarray]:
         if not positions:
@@ -272,8 +134,7 @@ class BatchedEvaluator:
             )
         cached_policies: list[np.ndarray | None] = [None] * len(positions)
         cached_values: list[float] = [0.0] * len(positions)
-        to_run: list[Any] = []
-        to_idx: list[int] = []
+        requests: list[tuple[int, _EvalRequest]] = []
         with self.cache_lock:
             for i, pos in enumerate(positions):
                 h = int(getattr(pos, "hash", 0))
@@ -282,24 +143,25 @@ class BatchedEvaluator:
                     cached_policies[i] = pol
                     cached_values[i] = val
                 else:
-                    to_run.append(pos)
-                    to_idx.append(i)
-        if to_run:
-            x = self._encode_batch(to_run)
-            policy_logits_t, values_t = self._forward(x)
-            pol_run = torch.softmax(policy_logits_t, dim=1).detach().cpu().numpy()
-            val_run = values_t.detach().cpu().numpy()
+                    req = _EvalRequest(pos)
+                    requests.append((i, req))
+        for _, req in requests:
+            with self._pending_lock:
+                self._pending.append(req)
+                self._pending_lock.notify()
+        for idx, req in requests:
+            req.event.wait()
+            cached_policies[idx] = req.policy
+            cached_values[idx] = req.value
+        if requests:
             with self.cache_lock:
-                for j, idx in enumerate(to_idx):
-                    cached_policies[idx] = pol_run[j]
-                    cached_values[idx] = float(val_run[j])
+                for idx, _ in requests:
                     h = int(getattr(positions[idx], "hash", 0))
-                    if h:
-                        if h not in self.cache:
-                            self.cache[h] = (
-                                pol_run[j].astype(np.float16),
-                                float(val_run[j]),
-                            )
+                    if h and h not in self.cache:
+                        pol = cached_policies[idx]
+                        val = cached_values[idx]
+                        if pol is not None:
+                            self.cache[h] = (pol.astype(np.float16), float(val))
                             self.cache_order.append(h)
                 while len(self.cache_order) > self.cache_cap:
                     k = self.cache_order.popleft()
@@ -317,62 +179,39 @@ class BatchedEvaluator:
         val_np = np.asarray(cached_values, dtype=np.float32)
         return pol_np, val_np
 
-    def _worker(self) -> None:
-        while not self.stop_flag.is_set():
-            batch: list[_EvalRequest] = []
-            deadline = None
-            try:
-                req = self.queue.get(timeout=self.timeout_ms / 1000.0)
-                batch.append(req)
-                import time as _time
-
-                deadline = _time.monotonic() + (self.timeout_ms / 1000.0)
-                while len(batch) < self.max_batch:
-                    remaining = deadline - _time.monotonic() if deadline else 0.0
-                    if remaining <= 0:
+    def _batch_worker(self) -> None:
+        timeout_s = max(0.0, float(CONFIG.eval_batch_timeout_ms) / 1000.0)
+        while True:
+            with self._pending_lock:
+                while not self._pending:
+                    self._pending_lock.wait()
+                batch: list[_EvalRequest] = []
+                batch.append(self._pending.popleft())
+                start_time = time.time()
+                while len(batch) < CONFIG.eval_max_batch:
+                    remaining = timeout_s - (time.time() - start_time)
+                    if remaining <= 0.0:
                         break
-                    try:
-                        batch.append(self.queue.get(timeout=remaining))
-                    except Empty:
-                        break
-            except Empty:
-                continue
-
+                    if not self._pending:
+                        self._pending_lock.wait(timeout=remaining)
+                        if not self._pending:
+                            break
+                    while self._pending and len(batch) < CONFIG.eval_max_batch:
+                        batch.append(self._pending.popleft())
             positions = [r.position for r in batch]
             x = self._encode_batch(positions)
-            policy_logits, values = self._forward(x)
-            policy = torch.softmax(policy_logits, dim=1).detach().cpu().numpy()
-            values_np = values.detach().cpu().numpy()
-            for i, r in enumerate(batch):
-                r.policy = policy[i]
-                r.value = float(values_np[i])
-                r.event.set()
-            with self.cache_lock:
-                for i, r in enumerate(batch):
-                    h = int(getattr(r.position, "hash", 0))
-                    if h and h not in self.cache:
-                        self.cache[h] = (
-                            policy[i].astype(np.float16),
-                            float(values_np[i]),
-                        )
-                        self.cache_order.append(h)
-                while len(self.cache_order) > self.cache_cap:
-                    k = self.cache_order.popleft()
-                    self.cache.pop(k, None)
+            policy_logits_t, values_t = self._forward(x)
+            pol_np = torch.softmax(policy_logits_t, dim=1).detach().cpu().numpy()
+            val_np = values_t.detach().cpu().numpy()
+            for i, req in enumerate(batch):
+                req.policy = pol_np[i]
+                req.value = float(val_np[i])
+                req.event.set()
 
-    def evaluate(self, position: Any) -> tuple[np.ndarray, float]:
-        h = int(getattr(position, "hash", 0))
-        if h:
-            with self.cache_lock:
-                if h in self.cache:
-                    pol, val = self.cache[h]
-                    return pol.astype(np.float32), val
-        req = _EvalRequest(position)
-        self.queue.put(req)
-        req.event.wait()
-        assert req.policy is not None and req.value is not None
-        return req.policy.astype(np.float32), req.value
 
-    def shutdown(self) -> None:
-        self.stop_flag.set()
-        self.thread.join(timeout=1.0)
+class _EvalRequest:
+    def __init__(self, position: Any) -> None:
+        self.position = position
+        self.event = threading.Event()
+        self.policy: np.ndarray | None = None
+        self.value: float = 0.0

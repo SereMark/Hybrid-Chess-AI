@@ -6,11 +6,14 @@ from typing import Tuple
 
 @dataclass(frozen=True)
 class Config:
+    input_planes: int = 119
+    planes_per_position: int = 14
+    policy_output: int = 73 * 64
     blocks: int = 6
     channels: int = 128
-    input_planes: int = 119
-    policy_output: int = 73 * 64
-    planes_per_position: int = 14
+    value_conv_channels: int = 4
+    value_hidden_dim: int = 256
+    use_channels_last: bool = True
 
     batch_size: int = 1024
     learning_rate_init: float = 0.02
@@ -24,38 +27,49 @@ class Config:
     gradient_clip: float = 1.0
     policy_weight: float = 1.0
     value_weight: float = 1.0
-    value_conv_channels: int = 4
-    value_hidden_dim: int = 256
 
-    games_per_iteration: int = 180
+    use_cudnn_benchmark: bool = True
+    allow_tf32: bool = True
+    matmul_precision: str = "high"
+    torch_num_threads: int = 1
+    torch_num_interop_threads: int = 1
+    use_cuda_alloc_tuning: bool = False
+
     iterations: int = 600
+    games_per_iteration: int = 180
     train_steps_per_iter: int = 1024
     eval_refresh_steps: int = 128
     checkpoint_freq: int = 25
     iteration_ema_alpha: float = 0.3
 
-    simulations_train: int = 128
-    mcts_min_sims: int = 32
-    simulations_decay_interval: int = 30
+    history_length: int = 8
+    max_game_moves: int = 512
+    buffer_size: int = 60000
+    selfplay_workers: int = 12
+    resign_threshold: float = -0.9
+    resign_consecutive: int = 0
     temp_moves: int = 30
     temp_high: float = 1.0
     temp_low: float = 0.01
     temp_deterministic_threshold: float = 0.01
-    history_length: int = 8
-    max_game_moves: int = 512
-    buffer_size: int = 60000
-    selfplay_workers: int = 8
-    resign_threshold: float = -0.9
-    resign_consecutive: int = 0
 
-    eval_max_batch: int = 256
-    eval_batch_timeout_ms: int = 3
-    eval_cache_size: int = 20000
+    eval_max_batch: int = 512
+    eval_cache_size: int = 80000
+    eval_batch_timeout_ms: int = 8
     eval_pin_memory: bool = True
 
-    simulations_eval: int = 600
-    arena_games: int = 120
-    arena_eval_every: int = 8
+    simulations_train: int = 160
+    mcts_min_sims: int = 32
+    simulations_decay_interval: int = 30
+    c_puct: float = 1.2
+    c_puct_base: float = 19652.0
+    c_puct_init: float = 1.25
+    dirichlet_alpha: float = 0.3
+    dirichlet_weight: float = 0.25
+
+    simulations_eval: int = 400
+    arena_games: int = 100
+    arena_eval_every: int = 10
     arena_openings_path: str = ""
     arena_openings_random: bool = True
     arena_accumulate: bool = True
@@ -71,32 +85,6 @@ class Config:
     arena_confidence_z: float = 1.28
     arena_threshold_base: float = 0.5
     arena_win_rate: float = 0.53
-    arena_sprt_enable: bool = False
-    arena_sprt_alpha: float = 0.05
-    arena_sprt_beta: float = 0.10
-    arena_sprt_p0: float = 0.50
-    arena_sprt_p1: float = 0.55
-    arena_sprt_epsilon: float = 1e-9
-
-    c_puct: float = 1.2
-    c_puct_base: float = 19652.0
-    c_puct_init: float = 1.25
-    dirichlet_alpha: float = 0.3
-    dirichlet_weight: float = 0.25
-
-    use_torch_compile: bool = True
-    use_torch_compile_eval: bool = True
-    use_channels_last: bool = True
-    torch_num_threads: int = 1
-    use_cudnn_benchmark: bool = True
-    matmul_precision: str = "high"
-
-    compile_backend: str = "inductor"
-    compile_mode_train: str = "default"
-    compile_mode_eval: str = "reduce-overhead"
-    compile_fullgraph_train: bool = False
-    compile_fullgraph_eval: bool = False
-    compile_dynamic: bool = False
 
     augment_mirror: bool = True
     augment_rotate180: bool = True
@@ -104,7 +92,6 @@ class Config:
     augment_mirror_prob: float = 0.5
     augment_rot180_prob: float = 0.25
     augment_vflip_cs_prob: float = 0.25
-    
 
 
 CONFIG = Config()

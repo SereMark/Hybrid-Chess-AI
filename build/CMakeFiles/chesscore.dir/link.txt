@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -O3 -DNDEBUG -flto -Wl,--dependency-file=CMakeFiles/chesscore.dir/link.d -shared  -o chesscore.cpython-313-x86_64-linux-gnu.so CMakeFiles/chesscore.dir/chess.cpp.o CMakeFiles/chesscore.dir/mcts.cpp.o CMakeFiles/chesscore.dir/encoder.cpp.o CMakeFiles/chesscore.dir/bindings.cpp.o
