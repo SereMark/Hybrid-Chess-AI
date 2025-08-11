@@ -127,6 +127,7 @@ class BatchedEvaluator:
         self.device = device
         self.model_lock = threading.Lock()
         self.eval_model: nn.Module = ChessNet().to(self.device)
+        self._eval_no_cg = False
         if CONFIG.use_torch_compile_eval:
             self.eval_model = cast(
                 torch.nn.Module,
@@ -139,6 +140,27 @@ class BatchedEvaluator:
                 ),
             )
         self.eval_model.eval()
+        if CONFIG.use_torch_compile_eval:
+            try:
+                self._warmup_once()
+            except Exception:
+                base_model = unwrap_compiled_module(self.eval_model)
+                try:
+                    self.eval_model = cast(
+                        torch.nn.Module,
+                        torch.compile(
+                            base_model,
+                            backend=getattr(CONFIG, "compile_backend", "inductor"),
+                            mode="max-autotune-no-cudagraphs",
+                            fullgraph=getattr(CONFIG, "compile_fullgraph_eval", False),
+                            dynamic=getattr(CONFIG, "compile_dynamic", False),
+                        ),
+                    )
+                    self.eval_model.eval()
+                    self._warmup_once()
+                except Exception:
+                    self.eval_model = base_model
+                    self.eval_model.eval()
         self.queue: "Queue[_EvalRequest]" = Queue()
         self.max_batch = CONFIG.eval_max_batch
         self.timeout_ms = CONFIG.eval_batch_timeout_ms
@@ -183,12 +205,64 @@ class BatchedEvaluator:
 
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         with self.model_lock:
+            if self.device.type == "cuda":
+                cudagraph_mark_step_begin = getattr(
+                    torch.compiler, "cudagraph_mark_step_begin", None
+                )
+                if callable(cudagraph_mark_step_begin):
+                    try:
+                        cudagraph_mark_step_begin()
+                    except Exception:
+                        pass
+
             with torch.inference_mode():
                 with torch.autocast(
                     device_type="cuda", enabled=self.device.type == "cuda"
                 ):
-                    policy_logits, value = self.eval_model(x)
+                    try:
+                        policy_logits, value = self.eval_model(x)
+                    except Exception:
+                        if CONFIG.use_torch_compile_eval and not self._eval_no_cg:
+                            base = unwrap_compiled_module(self.eval_model)
+                            try:
+                                self.eval_model = cast(
+                                    torch.nn.Module,
+                                    torch.compile(
+                                        base,
+                                        backend=getattr(
+                                            CONFIG, "compile_backend", "inductor"
+                                        ),
+                                        mode="max-autotune-no-cudagraphs",
+                                        fullgraph=getattr(
+                                            CONFIG, "compile_fullgraph_eval", False
+                                        ),
+                                        dynamic=getattr(CONFIG, "compile_dynamic", False),
+                                    ),
+                                )
+                                self.eval_model.eval()
+                                self._eval_no_cg = True
+                                policy_logits, value = self.eval_model(x)
+                            except Exception:
+                                self.eval_model = base
+                                self.eval_model.eval()
+                                self._eval_no_cg = True
+                                policy_logits, value = self.eval_model(x)
+                        else:
+                            raise
+
+            policy_logits = policy_logits.clone()
+            value = value.clone()
             return policy_logits, value
+
+    def _warmup_once(self) -> None:
+        b = 1
+        x = torch.zeros((b, CONFIG.input_planes, 8, 8), dtype=torch.float32)
+        if self.device.type == "cuda" and CONFIG.eval_pin_memory:
+            x = x.pin_memory()
+        x = x.to(self.device, non_blocking=True)
+        if CONFIG.use_channels_last:
+            x = x.contiguous(memory_format=torch.channels_last)
+        _ = self._forward(x)
 
     def infer_positions(self, positions: list[Any]) -> tuple[np.ndarray, np.ndarray]:
         if not positions:

@@ -12,7 +12,7 @@ class Config:
     policy_output: int = 73 * 64
     planes_per_position: int = 14
 
-    batch_size: int = 512
+    batch_size: int = 1024
     learning_rate_init: float = 0.02
     learning_rate_schedule: Tuple[Tuple[int, float], ...] = (
         (200, 0.01),
@@ -31,10 +31,10 @@ class Config:
     iterations: int = 600
     train_steps_per_iter: int = 1024
     eval_refresh_steps: int = 128
-    checkpoint_freq: int = 50
+    checkpoint_freq: int = 25
     iteration_ema_alpha: float = 0.3
 
-    simulations_train: int = 96
+    simulations_train: int = 128
     mcts_min_sims: int = 32
     simulations_decay_interval: int = 30
     temp_moves: int = 30
@@ -44,18 +44,18 @@ class Config:
     history_length: int = 8
     max_game_moves: int = 512
     buffer_size: int = 60000
-    selfplay_workers: int = 6
+    selfplay_workers: int = 8
     resign_threshold: float = -0.9
     resign_consecutive: int = 0
 
-    eval_max_batch: int = 192
+    eval_max_batch: int = 256
     eval_batch_timeout_ms: int = 3
     eval_cache_size: int = 20000
     eval_pin_memory: bool = True
 
     simulations_eval: int = 600
-    arena_games: int = 40
-    arena_eval_every: int = 6
+    arena_games: int = 120
+    arena_eval_every: int = 8
     arena_openings_path: str = ""
     arena_openings_random: bool = True
     arena_accumulate: bool = True
@@ -68,9 +68,9 @@ class Config:
     arena_opening_temperature_epsilon: float = 1e-6
     arena_draw_score: float = 0.5
     arena_confidence: bool = True
-    arena_confidence_z: float = 1.64
+    arena_confidence_z: float = 1.28
     arena_threshold_base: float = 0.5
-    arena_win_rate: float = 0.55
+    arena_win_rate: float = 0.53
     arena_sprt_enable: bool = False
     arena_sprt_alpha: float = 0.05
     arena_sprt_beta: float = 0.10
