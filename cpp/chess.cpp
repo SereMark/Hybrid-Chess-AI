@@ -384,7 +384,7 @@ Bitboard Position::occupied(Color color) const {
 }
 
 int Position::piece_at(Square square) const {
-  return (square & ~63) ? -1 : mailbox[square];
+  return (square < 0 || square >= NSQUARES) ? -1 : mailbox[square];
 }
 
 void Position::add_promotion_moves(Square from, Square to,
@@ -627,7 +627,7 @@ void Position::execute_move_core(const Move &move, MoveInfo *undo_info) {
     mailbox[to] = piece_type * 2 + color;
   }
 
-  if (piece_type == KING && std::abs(to - from) == 2) {
+  if (piece_type == KING && std::abs(to - from) == KING_CASTLE_DISTANCE) {
     handle_castling_rook_move(from, to, color);
   }
 
@@ -670,7 +670,7 @@ void Position::execute_move_core(const Move &move, MoveInfo *undo_info) {
   }
 
   ep_square = INVALID_SQUARE;
-  if (piece_type == PAWN && std::abs(to - from) == 16) {
+  if (piece_type == PAWN && std::abs(to - from) == PAWN_DOUBLE_MOVE_DISTANCE) {
     ep_square = (from + to) / 2;
   }
 
@@ -740,7 +740,7 @@ void Position::unmake_move_fast(const Move &move, const MoveInfo &info) {
     mailbox[to] = -1;
   }
 
-  if (piece_type == KING && std::abs(to - from) == 2) {
+  if (piece_type == KING && std::abs(to - from) == KING_CASTLE_DISTANCE) {
     if (to > from) {
       pieces[ROOK][color] &= ~bit(from + 1);
       pieces[ROOK][color] |= bit(from + 3);

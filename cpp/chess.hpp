@@ -61,6 +61,9 @@ constexpr Bitboard WHITE_QUEENSIDE_CLEAR = 0xEULL;
 constexpr Bitboard BLACK_KINGSIDE_CLEAR = 0x6000000000000000ULL;
 constexpr Bitboard BLACK_QUEENSIDE_CLEAR = 0xE00000000000000ULL;
 
+constexpr int PAWN_DOUBLE_MOVE_DISTANCE = 16;
+constexpr int KING_CASTLE_DISTANCE = 2;
+
 struct Move {
   uint16_t data;
 
