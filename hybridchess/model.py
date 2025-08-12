@@ -10,7 +10,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .config import CONFIG
+INPUT_PLANES = 119
+PLANES_PER_POSITION = 14
+HISTORY_LENGTH = 8
+POLICY_OUTPUT = 73 * 64
+BLOCKS = 6
+CHANNELS = 128
+VALUE_CONV_CHANNELS = 4
+VALUE_HIDDEN_DIM = 256
+
+EVAL_CACHE_SIZE = 20000
+EVAL_MAX_BATCH = 512
+EVAL_BATCH_TIMEOUT_MS = 8
 
 
 class ResBlock(nn.Module):
@@ -22,79 +33,71 @@ class ResBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(channels)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        residual = x
+        r = x
         x = F.relu(self.bn1(self.conv1(x)))
         x = self.bn2(self.conv2(x))
-        return F.relu(x + residual)
+        return F.relu(x + r)
 
 
 class ChessNet(nn.Module):
     def __init__(self, blocks: int | None = None, channels: int | None = None) -> None:
         super().__init__()
-        blocks = blocks or CONFIG.blocks
-        channels = channels or CONFIG.channels
-        policy_planes = CONFIG.policy_output // 64
-
-        self.conv_in = nn.Conv2d(
-            CONFIG.input_planes, channels, 3, padding=1, bias=False
-        )
+        blocks = blocks or BLOCKS
+        channels = channels or CHANNELS
+        policy_planes = POLICY_OUTPUT // 64
+        self.conv_in = nn.Conv2d(INPUT_PLANES, channels, 3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(channels)
         self.blocks = nn.Sequential(*[ResBlock(channels) for _ in range(blocks)])
-
         self.policy_conv = nn.Conv2d(channels, policy_planes, 1, bias=False)
         self.policy_bn = nn.BatchNorm2d(policy_planes)
-        self.policy_fc = nn.Linear(policy_planes * 64, CONFIG.policy_output)
-
-        self.value_conv = nn.Conv2d(channels, CONFIG.value_conv_channels, 1, bias=False)
-        self.value_bn = nn.BatchNorm2d(CONFIG.value_conv_channels)
-        self.value_fc1 = nn.Linear(
-            CONFIG.value_conv_channels * 64, CONFIG.value_hidden_dim
-        )
-        self.value_fc2 = nn.Linear(CONFIG.value_hidden_dim, 1)
-
-        for module in self.modules():
-            if isinstance(module, nn.Conv2d):
-                nn.init.xavier_uniform_(module.weight)
-            elif isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-            elif isinstance(module, nn.BatchNorm2d):
-                nn.init.constant_(module.weight, 1)
-                nn.init.constant_(module.bias, 0)
+        self.policy_fc = nn.Linear(policy_planes * 64, POLICY_OUTPUT)
+        self.value_conv = nn.Conv2d(channels, VALUE_CONV_CHANNELS, 1, bias=False)
+        self.value_bn = nn.BatchNorm2d(VALUE_CONV_CHANNELS)
+        self.value_fc1 = nn.Linear(VALUE_CONV_CHANNELS * 64, VALUE_HIDDEN_DIM)
+        self.value_fc2 = nn.Linear(VALUE_HIDDEN_DIM, 1)
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         x = F.relu(self.bn_in(self.conv_in(x)))
         x = self.blocks(x)
-
-        policy = F.relu(self.policy_bn(self.policy_conv(x)))
-        policy = policy.flatten(1)
-        policy = self.policy_fc(policy)
-
-        value = F.relu(self.value_bn(self.value_conv(x)))
-        value = value.flatten(1)
-        value = F.relu(self.value_fc1(value))
-        value = torch.tanh(self.value_fc2(value)).squeeze(-1)
-
-        return policy, value
+        p = F.relu(self.policy_bn(self.policy_conv(x)))
+        p = p.flatten(1)
+        p = self.policy_fc(p)
+        v = F.relu(self.value_bn(self.value_conv(x)))
+        v = v.flatten(1)
+        v = F.relu(self.value_fc1(v))
+        v = torch.tanh(self.value_fc2(v)).squeeze(-1)
+        return p, v
 
 
 class BatchedEvaluator:
     def __init__(self, device: torch.device) -> None:
         self.device = device
         self.model_lock = threading.Lock()
-        self.eval_model: nn.Module = ChessNet().to(self.device)
-        self.eval_model.eval()
+        any_mod: Any = ChessNet().to(self.device)
+        self.eval_model: nn.Module = any_mod.to(
+            memory_format=torch.channels_last
+        ).eval()
+        for p in self.eval_model.parameters():
+            p.requires_grad_(False)
         self.cache_lock = threading.Lock()
-        self.cache: dict[int, tuple[np.ndarray, float]] = {}
+        self.cache: dict[int, tuple[np.ndarray, float | np.floating[Any]]] = {}
         self.cache_order: deque[int] = deque()
-        self.cache_cap = CONFIG.eval_cache_size
+        self.cache_cap = EVAL_CACHE_SIZE
         self._pending_lock = threading.Condition()
         self._pending: deque["_EvalRequest"] = deque()
-        worker = threading.Thread(
+        threading.Thread(
             target=self._batch_worker, name="EvalBatchWorker", daemon=True
-        )
-        worker.start()
+        ).start()
 
     def refresh_from(self, src_model: torch.nn.Module) -> None:
         with self.model_lock:
@@ -103,6 +106,8 @@ class BatchedEvaluator:
                 base = base.module
             self.eval_model.load_state_dict(base.state_dict(), strict=True)
             self.eval_model.eval()
+            for p in self.eval_model.parameters():
+                p.requires_grad_(False)
         with self.cache_lock:
             self.cache.clear()
             self.cache_order.clear()
@@ -110,104 +115,110 @@ class BatchedEvaluator:
     def _encode_batch(self, positions: list[Any]) -> torch.Tensor:
         import chesscore as ccore
 
-        if not positions:
-            x_np = np.zeros((0, CONFIG.input_planes, 8, 8), dtype=np.float32)
-        else:
-            x_np = ccore.encode_batch(positions)
-        x_cpu = torch.from_numpy(x_np)
-        x_cpu = x_cpu.pin_memory()
-        x = x_cpu.to(self.device, non_blocking=True)
-        x = x.contiguous(memory_format=torch.channels_last)
-        return x
+        x_np = (
+            np.zeros((0, INPUT_PLANES, 8, 8), dtype=np.float32)
+            if not positions
+            else ccore.encode_batch(positions)
+        )
+        x = torch.from_numpy(x_np).pin_memory().to(self.device, non_blocking=True)
+        return x.contiguous(memory_format=torch.channels_last)
 
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         with self.model_lock:
             with torch.inference_mode():
                 with torch.autocast(device_type="cuda", enabled=True):
-                    policy_logits, value = self.eval_model(x)
-            return policy_logits, value
+                    return self.eval_model(x)
 
     def infer_positions(self, positions: list[Any]) -> tuple[np.ndarray, np.ndarray]:
         if not positions:
-            return (
-                np.zeros((0, CONFIG.policy_output), dtype=np.float32),
-                np.zeros((0,), dtype=np.float32),
+            return np.zeros((0, POLICY_OUTPUT), dtype=np.float32), np.zeros(
+                (0,), dtype=np.float32
             )
-        cached_policies: list[np.ndarray | None] = [None] * len(positions)
-        cached_values: list[float] = [0.0] * len(positions)
-        requests: list[tuple[int, _EvalRequest]] = []
+        cached_p: list[np.ndarray | None] = [None] * len(positions)
+        cached_v: list[float] = [0.0] * len(positions)
+        reqs: list[tuple[int, _EvalRequest]] = []
+        uniq: dict[int, int] = {}
         with self.cache_lock:
             for i, pos in enumerate(positions):
                 h = int(getattr(pos, "hash", 0))
                 if h and h in self.cache:
                     pol, val = self.cache[h]
-                    cached_policies[i] = pol
-                    cached_values[i] = val
+                    cached_p[i] = pol
+                    cached_v[i] = float(val)
                 else:
-                    req = _EvalRequest(pos)
-                    requests.append((i, req))
-        for _, req in requests:
+                    if h and h in uniq:
+                        reqs.append((i, reqs[uniq[h]][1]))
+                    else:
+                        r = _EvalRequest(pos)
+                        uniq[h] = len(reqs)
+                        reqs.append((i, r))
+        seen: set[int] = set()
+        unique_reqs = []
+        for _, r in reqs:
+            if id(r) not in seen:
+                unique_reqs.append(r)
+                seen.add(id(r))
+        for r in unique_reqs:
             with self._pending_lock:
-                self._pending.append(req)
+                self._pending.append(r)
                 self._pending_lock.notify()
-        for idx, req in requests:
-            req.event.wait()
-            cached_policies[idx] = req.policy
-            cached_values[idx] = req.value
-        if requests:
+        for idx, r in reqs:
+            r.event.wait()
+            cached_p[idx] = r.policy
+            cached_v[idx] = r.value
+        if reqs:
             with self.cache_lock:
-                for idx, _ in requests:
+                for idx, _ in reqs:
                     h = int(getattr(positions[idx], "hash", 0))
                     if h and h not in self.cache:
-                        pol = cached_policies[idx]
-                        val = cached_values[idx]
-                        if pol is not None:
-                            self.cache[h] = (pol.astype(np.float16), float(val))
+                        pol_opt = cached_p[idx]
+                        val = cached_v[idx]
+                        if pol_opt is not None:
+                            self.cache[h] = (
+                                pol_opt.astype(np.float16),
+                                np.float16(val),
+                            )
                             self.cache_order.append(h)
                 while len(self.cache_order) > self.cache_cap:
                     k = self.cache_order.popleft()
                     self.cache.pop(k, None)
         pol_np = np.stack(
             [
-                (
-                    p
-                    if p is not None
-                    else np.zeros((CONFIG.policy_output,), dtype=np.float32)
-                )
-                for p in cached_policies
+                (p if p is not None else np.zeros((POLICY_OUTPUT,), dtype=np.float32))
+                for p in cached_p
             ]
         ).astype(np.float32)
-        val_np = np.asarray(cached_values, dtype=np.float32)
+        val_np = np.asarray(cached_v, dtype=np.float32)
         return pol_np, val_np
 
     def _batch_worker(self) -> None:
-        timeout_s = max(0.0, float(CONFIG.eval_batch_timeout_ms) / 1000.0)
+        timeout_s = max(0.0, float(EVAL_BATCH_TIMEOUT_MS) / 1000.0)
         while True:
             with self._pending_lock:
                 while not self._pending:
                     self._pending_lock.wait()
-                batch: list[_EvalRequest] = []
-                batch.append(self._pending.popleft())
-                start_time = time.time()
-                while len(batch) < CONFIG.eval_max_batch:
-                    remaining = timeout_s - (time.time() - start_time)
-                    if remaining <= 0.0:
+                batch: list[_EvalRequest] = [self._pending.popleft()]
+                start = time.time()
+                while len(batch) < EVAL_MAX_BATCH:
+                    rem = timeout_s - (time.time() - start)
+                    if rem <= 0.0:
                         break
                     if not self._pending:
-                        self._pending_lock.wait(timeout=remaining)
+                        self._pending_lock.wait(timeout=rem)
                         if not self._pending:
                             break
-                    while self._pending and len(batch) < CONFIG.eval_max_batch:
+                    while self._pending and len(batch) < EVAL_MAX_BATCH:
                         batch.append(self._pending.popleft())
-            positions = [r.position for r in batch]
-            x = self._encode_batch(positions)
-            policy_logits_t, values_t = self._forward(x)
-            pol_np = torch.softmax(policy_logits_t, dim=1).detach().cpu().numpy()
-            val_np = values_t.detach().cpu().numpy()
-            for i, req in enumerate(batch):
-                req.policy = pol_np[i]
-                req.value = float(val_np[i])
-                req.event.set()
+            x = self._encode_batch([r.position for r in batch])
+            p_t, v_t = self._forward(x)
+            pol = (
+                torch.softmax(p_t, dim=1).detach().to(dtype=torch.float16).cpu().numpy()
+            )
+            val = v_t.detach().to(dtype=torch.float16).cpu().numpy()
+            for i, r in enumerate(batch):
+                r.policy = pol[i]
+                r.value = float(val[i])
+                r.event.set()
 
 
 class _EvalRequest:
