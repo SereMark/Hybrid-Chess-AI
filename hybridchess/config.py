@@ -44,7 +44,7 @@ class Config:
 
     history_length: int = 8
     max_game_moves: int = 512
-    buffer_size: int = 60000
+    buffer_size: int = 40000
     selfplay_workers: int = 12
     resign_threshold: float = -0.9
     resign_consecutive: int = 0
@@ -82,9 +82,9 @@ class Config:
     arena_opening_temperature_epsilon: float = 1e-6
     arena_draw_score: float = 0.5
     arena_confidence: bool = True
-    arena_confidence_z: float = 1.28
+    arena_confidence_z: float = 1.0
     arena_threshold_base: float = 0.5
-    arena_win_rate: float = 0.53
+    arena_win_rate: float = 0.52
 
     augment_mirror: bool = True
     augment_rotate180: bool = True

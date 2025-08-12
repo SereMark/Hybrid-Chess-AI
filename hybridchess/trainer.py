@@ -7,7 +7,6 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.cuda.amp import GradScaler
 
 from .config import CONFIG
 from .model import BatchedEvaluator, ChessNet
@@ -43,7 +42,7 @@ class Trainer:
             return target / CONFIG.learning_rate_init
 
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
-        self.scaler: GradScaler = GradScaler(enabled=True)
+        self.scaler = torch.amp.GradScaler("cuda", enabled=True)
         self.evaluator = BatchedEvaluator(self.device)
         self.evaluator.refresh_from(self.model)
         self.best_model = self._clone_model()
