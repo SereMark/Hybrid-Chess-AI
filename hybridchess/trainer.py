@@ -21,8 +21,12 @@ class Trainer:
             raise RuntimeError("CUDA device required")
         self.device = torch.device("cuda")
         self.model = ChessNet().to(self.device)
-        if CONFIG.use_channels_last:
-            self.model = self.model.to(memory_format=torch.channels_last)
+        self.model = self.model.to(memory_format=torch.channels_last)
+
+        try:
+            self.model = torch.compile(self.model, mode="default")
+        except Exception as compile_error:
+            print(f"Warning: torch.compile failed or unavailable: {compile_error}")
 
         self.optimizer = torch.optim.SGD(
             self.model.parameters(),
@@ -79,7 +83,10 @@ class Trainer:
 
     def _clone_model(self) -> torch.nn.Module:
         clone = ChessNet().to(self.device)
-        clone.load_state_dict(self.model.state_dict(), strict=True)
+        src = getattr(self.model, "_orig_mod", self.model)
+        if hasattr(src, "module"):
+            src = src.module
+        clone.load_state_dict(src.state_dict(), strict=True)
         clone.eval()
         return clone
 
@@ -91,8 +98,7 @@ class Trainer:
         x_cpu = torch.from_numpy(x_np)
         x_cpu = x_cpu.pin_memory()
         x = x_cpu.to(self.device, non_blocking=True)
-        if CONFIG.use_channels_last:
-            x = x.to(memory_format=torch.channels_last)
+        x = x.to(memory_format=torch.channels_last)
 
         pi_cpu = torch.from_numpy(np.stack(policies).astype(np.float32))
         pi_cpu = pi_cpu.pin_memory()
@@ -164,7 +170,7 @@ class Trainer:
             )
         )
         print(
-            "CFG  workers %2d | sims T/E %3d/%-3d | eval B %4d/%2dms | arena every %2d"
+            "CFG  workers %2d | sims T/E %3d/%-3d | eval B %4d @ %2dms | arena every %2d"
             % (
                 CONFIG.selfplay_workers,
                 CONFIG.simulations_train,
@@ -195,7 +201,7 @@ class Trainer:
         else:
             wpct = dpct = bpct = 0.0
         print(
-            "SP   games %5d | gpm %4.1f | mps %5.1fK | avg_len %4.1f | W/D/B %4d/%-4d/%-4d (%3.0f%%/%-3.0f%%/%-3.0f%%) | time %s"
+            "SP   games %5d | gpm %5.1f | mps %5.1fK | avg_len %5.1f | W/D/B %4d/%-4d/%-4d (%3.0f%%/%-3.0f%%/%-3.0f%%) | time %s"
             % (
                 gc,
                 gpm,
@@ -226,22 +232,13 @@ class Trainer:
             if batch:
                 s, p, v = batch
                 did_aug = False
-                if (
-                    CONFIG.augment_mirror
-                    and np.random.rand() < CONFIG.augment_mirror_prob
-                ):
+                if np.random.rand() < CONFIG.augment_mirror_prob:
                     s, p, _ = Augment.apply(s, p, "mirror")
                     did_aug = True
-                if (
-                    CONFIG.augment_rotate180
-                    and np.random.rand() < CONFIG.augment_rot180_prob
-                ):
+                if np.random.rand() < CONFIG.augment_rot180_prob:
                     s, p, _ = Augment.apply(s, p, "rot180")
                     did_aug = True
-                if (
-                    CONFIG.augment_vflip_cs
-                    and np.random.rand() < CONFIG.augment_vflip_cs_prob
-                ):
+                if np.random.rand() < CONFIG.augment_vflip_cs_prob:
                     s, p, cs = Augment.apply(s, p, "vflip_cs")
                     if cs:
                         v = [-val for val in v]
@@ -250,8 +247,6 @@ class Trainer:
                     batch = (s, p, v)
                 loss_vals = self.train_step(batch)
                 losses.append(loss_vals)
-            if step % CONFIG.eval_refresh_steps == 0:
-                self.evaluator.refresh_from(self.model)
         train_elapsed = time.time() - train_start
         if losses:
             pol_loss = float(np.mean([loss[0] for loss in losses]))
@@ -265,7 +260,7 @@ class Trainer:
                 else 0
             )
             print(
-                "TR   steps %5d | batch/s %5.1f | samp/s %7d | P %7.4f | V %7.4f | LR % .2e | buf %3d%% (%s) | time %s"
+                "TR   steps %5d | batch/s %5.1f | samp/s %7d | P %8.4f | V %8.4f | LR % .2e | buf %3d%% (%s) | time %s"
                 % (
                     len(losses),
                     batches_per_sec,
@@ -332,9 +327,7 @@ class Trainer:
             pos = _ccore.Position()
             if start_fen:
                 pos.from_fen(start_fen)
-            noise_w = (
-                0.0 if not CONFIG.arena_use_noise else CONFIG.arena_dirichlet_weight
-            )
+            noise_w = 0.0
             mcts1 = _ccore.MCTS(
                 CONFIG.simulations_eval,
                 CONFIG.c_puct,
@@ -379,23 +372,6 @@ class Trainer:
                         else:
                             probs /= s
                             idx = int(np.random.choice(len(moves), p=probs))
-                elif (
-                    CONFIG.arena_use_noise
-                    and CONFIG.arena_temperature > 0.0
-                    and turn < CONFIG.arena_temp_moves
-                ):
-                    v = np.asarray(visits, dtype=np.float64)
-                    v = np.maximum(v, 0)
-                    if v.sum() <= 0:
-                        idx = int(np.argmax(visits))
-                    else:
-                        probs = v ** (1.0 / float(CONFIG.arena_temperature))
-                        s = probs.sum()
-                        if s <= 0:
-                            idx = int(np.argmax(visits))
-                        else:
-                            probs /= s
-                            idx = int(np.random.choice(len(moves), p=probs))
                 else:
                     idx = int(np.argmax(visits))
                 pos.make_move(moves[idx])
@@ -410,10 +386,7 @@ class Trainer:
         for g in range(CONFIG.arena_games):
             start_fen: str | None = None
             if openings:
-                if CONFIG.arena_openings_random:
-                    start_fen = openings[np.random.randint(0, len(openings))]
-                else:
-                    start_fen = openings[g % len(openings)]
+                start_fen = openings[np.random.randint(0, len(openings))]
             if g % 2 == 0:
                 r = play(challenger_eval, incumbent_eval, start_fen)
             else:
@@ -429,61 +402,32 @@ class Trainer:
 
     def train(self) -> None:
         total_params = sum(p.numel() for p in self.model.parameters()) / 1e6
-        print("\nStarting training...")
-        print(
-            "\nDevice: %s (%s) | GPU total %.1fGB | AMP on"
-            % (
-                self.device,
-                self.device_name,
-                self.device_total_gb,
-            )
-        )
-        print(
-            "Model: %.1fM parameters | %d blocks x %d channels"
-            % (total_params, CONFIG.blocks, CONFIG.channels)
-        )
-        print(
-            "Training: %d iterations | %d games/iter"
-            % (CONFIG.iterations, CONFIG.games_per_iteration)
-        )
-        sched_pairs = ", ".join(
-            [f"{m} -> {lr:.1e}" for m, lr in CONFIG.learning_rate_schedule]
-        )
-        print("LR: init %.2e | schedule: %s" % (CONFIG.learning_rate_init, sched_pairs))
-        print(
-            "Expected: %d total games"
-            % (CONFIG.iterations * CONFIG.games_per_iteration)
-        )
-        print(
-            "Config: workers %d | sims_train %d | sims_eval %d | eval_batch %d/%dms | cache %d | arena %d/every %d | gate z %.2f thr %.2f | channels_last %s"
-            % (
-                CONFIG.selfplay_workers,
-                CONFIG.simulations_train,
-                CONFIG.simulations_eval,
-                CONFIG.eval_max_batch,
-                CONFIG.eval_batch_timeout_ms,
-                CONFIG.eval_cache_size,
-                CONFIG.arena_games,
-                CONFIG.arena_eval_every,
-                CONFIG.arena_confidence_z,
-                max(CONFIG.arena_threshold_base, CONFIG.arena_win_rate),
-                str(bool(CONFIG.use_channels_last)),
-            )
-        )
+        sched_pairs = ", ".join([f"{m} -> {lr:.1e}" for m, lr in CONFIG.learning_rate_schedule])
+        header_lines = [
+            "",
+            "Starting training...",
+            f"",
+            f"Device: {self.device} ({self.device_name}) | GPU {self.device_total_gb:.1f} GB | AMP on",
+            f"Model: {total_params:.1f}M parameters | {CONFIG.blocks} blocks x {CONFIG.channels} channels",
+            f"Training: {CONFIG.iterations} iterations | {CONFIG.games_per_iteration} games/iter",
+            f"LR: init {CONFIG.learning_rate_init:.2e} | schedule: {sched_pairs}",
+            f"Expected: {CONFIG.iterations * CONFIG.games_per_iteration:,} total games",
+            f"Config: workers {CONFIG.selfplay_workers} | sims T/E {CONFIG.simulations_train}/{CONFIG.simulations_eval} | eval batch {CONFIG.eval_max_batch}@{CONFIG.eval_batch_timeout_ms}ms | cache {CONFIG.eval_cache_size} | arena {CONFIG.arena_games}/every {CONFIG.arena_eval_every} | gate z {CONFIG.arena_confidence_z:.2f} thr {max(CONFIG.arena_threshold_base, CONFIG.arena_win_rate):.2f} | channels_last True",
+        ]
+        print("\n".join(header_lines))
 
         for iteration in range(1, CONFIG.iterations + 1):
             self.iteration = iteration
             iter_stats = self.training_iteration()
             if iteration % CONFIG.checkpoint_freq == 0:
                 ck_start = time.time()
+                src = getattr(self.model, "_orig_mod", self.model)
+                if hasattr(src, "module"):
+                    src = src.module
                 checkpoint = {
                     "iteration": self.iteration,
                     "total_games": self.total_games,
-                    "model_state_dict": (
-                        self.model.module.state_dict()
-                        if hasattr(self.model, "module")
-                        else self.model.state_dict()
-                    ),
+                    "model_state_dict": src.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
                     "scheduler_state_dict": self.scheduler.state_dict(),
                     "training_time": time.time() - self.start_time,
@@ -515,95 +459,56 @@ class Trainer:
                 win_rate, aw, ad, al = self._arena_match(challenger, self.best_model)
                 arena_elapsed = time.time() - arena_start
 
-                if CONFIG.arena_accumulate:
-                    self._arena_acc_w = getattr(self, "_arena_acc_w", 0) + aw
-                    self._arena_acc_d = getattr(self, "_arena_acc_d", 0) + ad
-                    self._arena_acc_l = getattr(self, "_arena_acc_l", 0) + al
-                    gw = self._arena_acc_w
-                    gd = self._arena_acc_d
-                    gl = self._arena_acc_l
-                    gn = max(1, gw + gd + gl)
-                    acc_mu = (gw + CONFIG.arena_draw_score * gd) / gn
-                    gating_mu = acc_mu
-                    gating_n = gn
-                else:
-                    gating_mu = (aw + CONFIG.arena_draw_score * ad) / max(
-                        1, CONFIG.arena_games
-                    )
-                    gating_n = CONFIG.arena_games
+                self._arena_acc_w = getattr(self, "_arena_acc_w", 0) + aw
+                self._arena_acc_d = getattr(self, "_arena_acc_d", 0) + ad
+                self._arena_acc_l = getattr(self, "_arena_acc_l", 0) + al
+                gw = self._arena_acc_w
+                gd = self._arena_acc_d
+                gl = self._arena_acc_l
+                gn = max(1, gw + gd + gl)
+                acc_mu = (gw + CONFIG.arena_draw_score * gd) / gn
+                gating_mu = acc_mu
+                gating_n = gn
 
                 promote = False
                 threshold = max(CONFIG.arena_threshold_base, CONFIG.arena_win_rate)
-                if CONFIG.arena_confidence:
-                    n = gating_n
-                    mu = gating_mu
-                    e_x2 = (
-                        (self._arena_acc_w if CONFIG.arena_accumulate else aw)
-                        + 0.25 * (self._arena_acc_d if CONFIG.arena_accumulate else ad)
-                    ) / max(1, n)
-                    var = max(0.0, e_x2 - mu * mu)
-                    se = (var / max(1, n)) ** 0.5
-                    lb = mu - CONFIG.arena_confidence_z * se
-                    promote = lb >= threshold
-                else:
-                    promote = gating_mu >= threshold
+                n = gating_n
+                mu = gating_mu
+                e_x2 = (self._arena_acc_w + 0.25 * self._arena_acc_d) / max(1, n)
+                var = max(0.0, e_x2 - mu * mu)
+                se = (var / max(1, n)) ** 0.5
+                lb = mu - CONFIG.arena_confidence_z * se
+                promote = lb >= threshold
 
-                if CONFIG.arena_confidence:
-                    cur_n = CONFIG.arena_games
-                    cur_mu = (aw + CONFIG.arena_draw_score * ad) / max(1, cur_n)
-                    cur_e_x2 = (aw + 0.25 * ad) / max(1, cur_n)
-                    cur_var = max(0.0, cur_e_x2 - cur_mu * cur_mu)
-                    cur_se = (cur_var / max(1, cur_n)) ** 0.5
-                    cur_lb = cur_mu - CONFIG.arena_confidence_z * cur_se
+                cur_n = CONFIG.arena_games
+                cur_mu = (aw + CONFIG.arena_draw_score * ad) / max(1, cur_n)
+                cur_e_x2 = (aw + 0.25 * ad) / max(1, cur_n)
+                cur_var = max(0.0, cur_e_x2 - cur_mu * cur_mu)
+                cur_se = (cur_var / max(1, cur_n)) ** 0.5
+                cur_lb = cur_mu - CONFIG.arena_confidence_z * cur_se
 
-                    if CONFIG.arena_accumulate:
-                        acc_n = gating_n
-                        acc_mu = gating_mu
-                        acc_e_x2 = (self._arena_acc_w + 0.25 * self._arena_acc_d) / max(
-                            1, acc_n
-                        )
-                        acc_var = max(0.0, acc_e_x2 - acc_mu * acc_mu)
-                        acc_se = (acc_var / max(1, acc_n)) ** 0.5
-                        acc_lb = acc_mu - CONFIG.arena_confidence_z * acc_se
-                        print(
-                            "AR   score %5.1f%% | cur LB %5.1f%% | acc LB %5.1f%% (%4d) | W/D/L %4d/%-4d/%-4d | games %4d | time %s"
-                            % (
-                                100.0 * win_rate,
-                                100.0 * cur_lb,
-                                100.0 * acc_lb,
-                                acc_n,
-                                aw,
-                                ad,
-                                al,
-                                CONFIG.arena_games,
-                                self._format_time(arena_elapsed),
-                            )
-                        )
-                    else:
-                        print(
-                            "AR   score %5.1f%% | LB %5.1f%% | W/D/L %4d/%-4d/%-4d | games %4d | time %s"
-                            % (
-                                100.0 * win_rate,
-                                100.0 * cur_lb,
-                                aw,
-                                ad,
-                                al,
-                                CONFIG.arena_games,
-                                self._format_time(arena_elapsed),
-                            )
-                        )
-                else:
-                    print(
-                        "AR   score %5.1f%% | W/D/L %4d/%-4d/%-4d | games %4d | time %s"
-                        % (
-                            100.0 * win_rate,
-                            aw,
-                            ad,
-                            al,
-                            CONFIG.arena_games,
-                            self._format_time(arena_elapsed),
-                        )
+                acc_n = gating_n
+                acc_mu = gating_mu
+                acc_e_x2 = (self._arena_acc_w + 0.25 * self._arena_acc_d) / max(
+                    1, acc_n
+                )
+                acc_var = max(0.0, acc_e_x2 - acc_mu * acc_mu)
+                acc_se = (acc_var / max(1, acc_n)) ** 0.5
+                acc_lb = acc_mu - CONFIG.arena_confidence_z * acc_se
+                print(
+                    "AR   score %5.1f%% | cur LB %5.1f%% | acc LB %5.1f%% (%4d) | W/D/L %4d/%-4d/%-4d | games %4d | time %s"
+                    % (
+                        100.0 * win_rate,
+                        100.0 * cur_lb,
+                        100.0 * acc_lb,
+                        acc_n,
+                        aw,
+                        ad,
+                        al,
+                        CONFIG.arena_games,
+                        self._format_time(arena_elapsed),
                     )
+                )
 
                 if promote:
                     self.best_model.load_state_dict(
@@ -692,7 +597,7 @@ class Trainer:
             brk = f"(sp {self._format_time(sp_time)} + tr {self._format_time(tr_time)} + ar {self._format_time(arena_elapsed)})"
             peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
-            print("SUM  iter %8s | %s" % (self._format_time(full_iter_time), brk))
+            print("SUM  iter %9s | %s" % (self._format_time(full_iter_time), brk))
             print(
                 "     avg %9s | elapsed %9s | ETA %9s | next_ar %3d | next_ck %3d | EMA sp/tr/ar %s/%s/%s"
                 % (
@@ -717,17 +622,7 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    torch.backends.cudnn.benchmark = CONFIG.use_cudnn_benchmark
-    if hasattr(torch.backends, "cudnn") and hasattr(torch.backends.cudnn, "allow_tf32"):
-        torch.backends.cudnn.allow_tf32 = bool(getattr(CONFIG, "allow_tf32", True))
-    if hasattr(torch, "set_float32_matmul_precision"):
-        torch.set_float32_matmul_precision(CONFIG.matmul_precision)
-    torch.set_num_threads(CONFIG.torch_num_threads)
-    if hasattr(torch, "set_num_interop_threads"):
-        torch.set_num_interop_threads(getattr(CONFIG, "torch_num_interop_threads", 1))
-    if getattr(CONFIG, "use_cuda_alloc_tuning", False):
-        os.environ.setdefault(
-            "PYTORCH_CUDA_ALLOC_CONF",
-            "max_split_size_mb:128,garbage_collection_threshold:0.8",
-        )
+    torch.backends.cudnn.benchmark = True
+    torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
     Trainer().train()

@@ -98,7 +98,10 @@ class BatchedEvaluator:
 
     def refresh_from(self, src_model: torch.nn.Module) -> None:
         with self.model_lock:
-            self.eval_model.load_state_dict(src_model.state_dict(), strict=True)
+            base = getattr(src_model, "_orig_mod", src_model)
+            if hasattr(base, "module"):
+                base = base.module
+            self.eval_model.load_state_dict(base.state_dict(), strict=True)
             self.eval_model.eval()
         with self.cache_lock:
             self.cache.clear()
@@ -112,11 +115,9 @@ class BatchedEvaluator:
         else:
             x_np = ccore.encode_batch(positions)
         x_cpu = torch.from_numpy(x_np)
-        if CONFIG.eval_pin_memory:
-            x_cpu = x_cpu.pin_memory()
+        x_cpu = x_cpu.pin_memory()
         x = x_cpu.to(self.device, non_blocking=True)
-        if CONFIG.use_channels_last:
-            x = x.contiguous(memory_format=torch.channels_last)
+        x = x.contiguous(memory_format=torch.channels_last)
         return x
 
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:

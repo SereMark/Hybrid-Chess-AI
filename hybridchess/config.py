@@ -13,7 +13,6 @@ class Config:
     channels: int = 128
     value_conv_channels: int = 4
     value_hidden_dim: int = 256
-    use_channels_last: bool = True
 
     batch_size: int = 1024
     learning_rate_init: float = 0.02
@@ -28,24 +27,16 @@ class Config:
     policy_weight: float = 1.0
     value_weight: float = 1.0
 
-    use_cudnn_benchmark: bool = True
-    allow_tf32: bool = True
-    matmul_precision: str = "high"
-    torch_num_threads: int = 1
-    torch_num_interop_threads: int = 1
-    use_cuda_alloc_tuning: bool = False
-
     iterations: int = 600
     games_per_iteration: int = 180
     train_steps_per_iter: int = 1024
-    eval_refresh_steps: int = 128
     checkpoint_freq: int = 25
     iteration_ema_alpha: float = 0.3
 
-    history_length: int = 8
-    max_game_moves: int = 512
     buffer_size: int = 40000
     selfplay_workers: int = 12
+    history_length: int = 8
+    max_game_moves: int = 512
     resign_threshold: float = -0.9
     resign_consecutive: int = 0
     temp_moves: int = 30
@@ -54,9 +45,8 @@ class Config:
     temp_deterministic_threshold: float = 0.01
 
     eval_max_batch: int = 512
-    eval_cache_size: int = 80000
     eval_batch_timeout_ms: int = 8
-    eval_pin_memory: bool = True
+    eval_cache_size: int = 80000
 
     simulations_train: int = 160
     mcts_min_sims: int = 32
@@ -68,12 +58,9 @@ class Config:
     dirichlet_weight: float = 0.25
 
     simulations_eval: int = 400
-    arena_games: int = 100
     arena_eval_every: int = 10
+    arena_games: int = 100
     arena_openings_path: str = ""
-    arena_openings_random: bool = True
-    arena_accumulate: bool = True
-    arena_use_noise: bool = False
     arena_temperature: float = 0.25
     arena_temp_moves: int = 8
     arena_dirichlet_weight: float = 0.03
@@ -81,14 +68,10 @@ class Config:
     arena_opening_temperature: float = 0.9
     arena_opening_temperature_epsilon: float = 1e-6
     arena_draw_score: float = 0.5
-    arena_confidence: bool = True
     arena_confidence_z: float = 1.0
     arena_threshold_base: float = 0.5
     arena_win_rate: float = 0.52
 
-    augment_mirror: bool = True
-    augment_rotate180: bool = True
-    augment_vflip_cs: bool = True
     augment_mirror_prob: float = 0.5
     augment_rot180_prob: float = 0.25
     augment_vflip_cs_prob: float = 0.25
