@@ -143,31 +143,16 @@ class Trainer:
                 next_lr_iter = future[0]
                 next_lr_val = self._schedule_map[next_lr_iter]
         pct_done = 100.0 * (self.iteration - 1) / max(1, CONFIG.iterations)
-        print(
-            "\n[Iter %4d/%d | %5.1f%%] | LR % .2e%s | Elapsed %s"
-            % (
-                self.iteration,
-                CONFIG.iterations,
-                pct_done,
-                current_lr,
-                (
-                    (" -> %d:%.2e" % (next_lr_iter, next_lr_val))
-                    if next_lr_iter is not None
-                    else ""
-                ),
-                self._format_time(total_elapsed),
-            )
+        next_lr_str = (
+            f" -> {next_lr_iter}:{next_lr_val:.2e}" if next_lr_iter is not None else ""
         )
         print(
-            "GPU %4.1f/%4.1f/%4.1f GB | Buffer %10s/%-10s (%3d%%)"
-            % (
-                mem["allocated_gb"],
-                mem["reserved_gb"],
-                mem["total_gb"],
-                f"{buffer_len_pre:,}",
-                f"{CONFIG.buffer_size:,}",
-                int(buffer_pct_pre),
-            )
+            f"\n[Iter {self.iteration}/{CONFIG.iterations} | {pct_done:.1f}%] | "
+            f"LR {current_lr:.2e}{next_lr_str} | Elapsed {self._format_time(total_elapsed)}"
+        )
+        print(
+            f"GPU {mem['allocated_gb']:.1f}/{mem['reserved_gb']:.1f}/{mem['total_gb']:.1f} GB | "
+            f"Buffer {buffer_len_pre:,}/{CONFIG.buffer_size:,} ({int(buffer_pct_pre)}%)"
         )
 
         selfplay_start = time.time()
@@ -190,19 +175,14 @@ class Trainer:
         else:
             wpct = dpct = bpct = 0.0
         print(
-            "SP   games %5d | gpm %5.1f | mps %5.1fK | avg_len %5.1f | W/D/B %4d/%-4d/%-4d (%3.0f%%/%-3.0f%%/%-3.0f%%) | time %s"
-            % (
-                gc,
-                gpm,
-                mps / 1000,
-                avg_len,
-                ww,
-                dd,
-                bb,
-                wpct,
-                dpct,
-                bpct,
-                self._format_time(elapsed),
+            (
+                "SP   "
+                f"games {gc} | "
+                f"gpm {gpm:.1f} | "
+                f"mps {mps / 1000:.1f}K | "
+                f"avg_len {avg_len:.1f} | "
+                f"W/D/B {ww}/{dd}/{bb} ({wpct:.0f}%/{dpct:.0f}%/{bpct:.0f}%) | "
+                f"time {self._format_time(elapsed)}"
             )
         )
 
@@ -249,17 +229,16 @@ class Trainer:
                 else 0
             )
             print(
-                "TR   steps %5d | batch/s %5.1f | samp/s %7d | P %8.4f | V %8.4f | LR % .2e | buf %3d%% (%s) | time %s"
-                % (
-                    len(losses),
-                    batches_per_sec,
-                    int(samples_per_sec),
-                    pol_loss,
-                    val_loss,
-                    current_lr,
-                    int(buffer_pct),
-                    f"{buffer_size:,}",
-                    self._format_time(train_elapsed),
+                (
+                    "TR   "
+                    f"steps {len(losses)} | "
+                    f"batch/s {batches_per_sec:.1f} | "
+                    f"samp/s {int(samples_per_sec)} | "
+                    f"P {pol_loss:.4f} | "
+                    f"V {val_loss:.4f} | "
+                    f"LR {current_lr:.2e} | "
+                    f"buf {int(buffer_pct)}% ({buffer_size:,}) | "
+                    f"time {self._format_time(train_elapsed)}"
                 )
             )
             stats.update(
@@ -485,17 +464,14 @@ class Trainer:
                 acc_se = (acc_var / max(1, acc_n)) ** 0.5
                 acc_lb = acc_mu - CONFIG.arena_confidence_z * acc_se
                 print(
-                    "AR   score %5.1f%% | cur LB %5.1f%% | acc LB %5.1f%% (%4d) | W/D/L %4d/%-4d/%-4d | games %4d | time %s"
-                    % (
-                        100.0 * win_rate,
-                        100.0 * cur_lb,
-                        100.0 * acc_lb,
-                        acc_n,
-                        aw,
-                        ad,
-                        al,
-                        CONFIG.arena_games,
-                        self._format_time(arena_elapsed),
+                    (
+                        "AR   "
+                        f"score {100.0 * win_rate:.1f}% | "
+                        f"cur LB {100.0 * cur_lb:.1f}% | "
+                        f"acc LB {100.0 * acc_lb:.1f}% ({acc_n}) | "
+                        f"W/D/L {aw}/{ad}/{al} | "
+                        f"games {CONFIG.arena_games} | "
+                        f"time {self._format_time(arena_elapsed)}"
                     )
                 )
 
@@ -517,8 +493,7 @@ class Trainer:
 
             else:
                 print(
-                    "AR   skipped | games    0 | time %s"
-                    % (self._format_time(arena_elapsed),)
+                    f"AR   skipped | games 0 | time {self._format_time(arena_elapsed)}"
                 )
 
             full_iter_time = (
@@ -586,27 +561,20 @@ class Trainer:
             brk = f"(sp {self._format_time(sp_time)} + tr {self._format_time(tr_time)} + ar {self._format_time(arena_elapsed)})"
             peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
-            print("SUM  iter %9s | %s" % (self._format_time(full_iter_time), brk))
+            print(f"SUM  iter {self._format_time(full_iter_time)} | {brk}")
             print(
-                "     avg %9s | elapsed %9s | ETA %9s | next_ar %3d | next_ck %3d | EMA sp/tr/ar %s/%s/%s"
-                % (
-                    self._format_time(avg_iter),
-                    self._format_time(time.time() - self.start_time),
-                    self._format_time(eta_sec),
-                    next_ar,
-                    next_ck,
-                    self._format_time(self.ema_sp_time) if self.ema_sp_time else "-",
-                    self._format_time(self.ema_tr_time) if self.ema_tr_time else "-",
-                    self._format_time(self.ema_ar_time) if self.ema_ar_time else "-",
-                )
+                "     "
+                f"avg {self._format_time(avg_iter)} | "
+                f"elapsed {self._format_time(time.time() - self.start_time)} | "
+                f"ETA {self._format_time(eta_sec)} | "
+                f"next_ar {next_ar} | next_ck {next_ck} | "
+                f"EMA sp/tr/ar "
+                f"{self._format_time(self.ema_sp_time) if self.ema_sp_time else '-'} / "
+                f"{self._format_time(self.ema_tr_time) if self.ema_tr_time else '-'} / "
+                f"{self._format_time(self.ema_ar_time) if self.ema_ar_time else '-'}"
             )
             print(
-                "     games %11s | peak GPU %4.1f/%-4.1f GB"
-                % (
-                    f"{self.total_games:,}",
-                    peak_alloc,
-                    peak_res,
-                )
+                f"     games {self.total_games:,} | peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB"
             )
 
 
