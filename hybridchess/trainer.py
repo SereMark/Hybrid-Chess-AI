@@ -169,17 +169,6 @@ class Trainer:
                 int(buffer_pct_pre),
             )
         )
-        print(
-            "CFG  workers %2d | sims T/E %3d/%-3d | eval B %4d @ %2dms | arena every %2d"
-            % (
-                CONFIG.selfplay_workers,
-                CONFIG.simulations_train,
-                CONFIG.simulations_eval,
-                CONFIG.eval_max_batch,
-                CONFIG.eval_batch_timeout_ms,
-                CONFIG.arena_eval_every,
-            )
-        )
 
         selfplay_start = time.time()
         game_stats = self.selfplay_engine.play_games(CONFIG.games_per_iteration)
