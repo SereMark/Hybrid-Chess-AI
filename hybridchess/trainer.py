@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn.functional as F
+
 from .model import (
     BLOCKS,
     CHANNELS,
@@ -303,6 +304,7 @@ class Trainer:
     ) -> tuple[float, int, int, int]:
         import chesscore as _ccore
         import numpy as np
+
         from .model import BatchedEvaluator as _BatchedEval
 
         wins = draws = losses = 0
@@ -447,10 +449,13 @@ class Trainer:
                 os.replace(tmp, path)
                 size_mb = os.path.getsize(path) / 1024**2
                 ck_elapsed = time.time() - ck_start
-                prev = self.ema_ck_time if self.ema_ck_time is not None else 0.0
-                self.ema_ck_time = (
-                    ITER_EMA_ALPHA * ck_elapsed + (1 - ITER_EMA_ALPHA) * prev
-                )
+                if self.ema_ck_time is None:
+                    self.ema_ck_time = ck_elapsed
+                else:
+                    self.ema_ck_time = (
+                        ITER_EMA_ALPHA * ck_elapsed
+                        + (1 - ITER_EMA_ALPHA) * self.ema_ck_time
+                    )
                 print(
                     "Checkpoint: %s | %.1fMB | Games %s | Time %s"
                     % (
@@ -541,15 +546,26 @@ class Trainer:
                     + (1 - ITER_EMA_ALPHA) * self.iter_ema_time
                 )
             )
-            prev_sp = self.ema_sp_time if self.ema_sp_time is not None else 0.0
-            self.ema_sp_time = ITER_EMA_ALPHA * sp_time + (1 - ITER_EMA_ALPHA) * prev_sp
-            prev_tr = self.ema_tr_time if self.ema_tr_time is not None else 0.0
-            self.ema_tr_time = ITER_EMA_ALPHA * tr_time + (1 - ITER_EMA_ALPHA) * prev_tr
-            if arena_elapsed > 0.0:
-                prev_ar = self.ema_ar_time if self.ema_ar_time is not None else 0.0
-                self.ema_ar_time = (
-                    ITER_EMA_ALPHA * arena_elapsed + (1 - ITER_EMA_ALPHA) * prev_ar
+            if self.ema_sp_time is None:
+                self.ema_sp_time = sp_time
+            else:
+                self.ema_sp_time = (
+                    ITER_EMA_ALPHA * sp_time + (1 - ITER_EMA_ALPHA) * self.ema_sp_time
                 )
+            if self.ema_tr_time is None:
+                self.ema_tr_time = tr_time
+            else:
+                self.ema_tr_time = (
+                    ITER_EMA_ALPHA * tr_time + (1 - ITER_EMA_ALPHA) * self.ema_tr_time
+                )
+            if arena_elapsed > 0.0:
+                if self.ema_ar_time is None:
+                    self.ema_ar_time = arena_elapsed
+                else:
+                    self.ema_ar_time = (
+                        ITER_EMA_ALPHA * arena_elapsed
+                        + (1 - ITER_EMA_ALPHA) * self.ema_ar_time
+                    )
             avg_iter = (
                 self.iter_ema_time if self.iter_ema_time is not None else full_iter_time
             )
@@ -558,11 +574,18 @@ class Trainer:
             if ARENA_EVAL_EVERY > 0:
                 k = ARENA_EVAL_EVERY
                 rem_arena = ((self.iteration + remaining) // k) - (self.iteration // k)
-                sp_est = self.ema_sp_time if self.ema_sp_time is not None else sp_time
-                tr_est = self.ema_tr_time if self.ema_tr_time is not None else tr_time
-                ar_est = (
-                    self.ema_ar_time if self.ema_ar_time is not None else arena_elapsed
+                sp_est_raw = (
+                    self.ema_sp_time if self.ema_sp_time is not None else sp_time
                 )
+                tr_est_raw = (
+                    self.ema_tr_time if self.ema_tr_time is not None else tr_time
+                )
+                sp_est = max(sp_est_raw, sp_time)
+                tr_est = max(tr_est_raw, tr_time)
+                if self.ema_ar_time is not None:
+                    ar_est = self.ema_ar_time
+                else:
+                    ar_est = max(arena_elapsed, sp_est + tr_est)
                 eta_sec = remaining * (sp_est + tr_est) + max(0, rem_arena) * max(
                     0.0, ar_est
                 )

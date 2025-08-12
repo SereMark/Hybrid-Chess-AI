@@ -7,12 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 import chesscore as ccore
 import numpy as np
-from .model import (
-    EVAL_MAX_BATCH,
-    HISTORY_LENGTH,
-    PLANES_PER_POSITION,
-    POLICY_OUTPUT,
-)
+
+from .model import EVAL_MAX_BATCH, HISTORY_LENGTH, PLANES_PER_POSITION, POLICY_OUTPUT
 
 BUFFER_SIZE = 40000
 SELFPLAY_WORKERS = 12
