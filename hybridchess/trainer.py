@@ -112,11 +112,6 @@ class Trainer:
         self.iteration = 0
         self.total_games = 0
         self.start_time = time.time()
-        self.iter_ema_time: float | None = None
-        self.ema_sp_time: float | None = None
-        self.ema_tr_time: float | None = None
-        self.ema_ar_time: float | None = None
-        self.ema_ck_time: float | None = None
         props = torch.cuda.get_device_properties(self.device)
         self.device_name = props.name
         self.device_total_gb = props.total_memory / 1024**3
@@ -451,13 +446,6 @@ class Trainer:
                 os.replace(tmp, path)
                 size_mb = os.path.getsize(path) / 1024**2
                 ck_elapsed = time.time() - ck_start
-                if self.ema_ck_time is None:
-                    self.ema_ck_time = ck_elapsed
-                else:
-                    self.ema_ck_time = (
-                        ITER_EMA_ALPHA * ck_elapsed
-                        + (1 - ITER_EMA_ALPHA) * self.ema_ck_time
-                    )
                 print(
                     "Checkpoint: %s | %.1fMB | Games %s | Time %s"
                     % (
@@ -540,62 +528,6 @@ class Trainer:
             sp_time = float(iter_stats.get("selfplay_time", 0.0))
             tr_time = float(iter_stats.get("training_time", 0.0))
             full_iter_time = sp_time + tr_time + arena_elapsed
-            self.iter_ema_time = (
-                full_iter_time
-                if self.iter_ema_time is None
-                else (
-                    ITER_EMA_ALPHA * full_iter_time
-                    + (1 - ITER_EMA_ALPHA) * self.iter_ema_time
-                )
-            )
-            if self.ema_sp_time is None:
-                self.ema_sp_time = sp_time
-            else:
-                self.ema_sp_time = (
-                    ITER_EMA_ALPHA * sp_time + (1 - ITER_EMA_ALPHA) * self.ema_sp_time
-                )
-            if self.ema_tr_time is None:
-                self.ema_tr_time = tr_time
-            else:
-                self.ema_tr_time = (
-                    ITER_EMA_ALPHA * tr_time + (1 - ITER_EMA_ALPHA) * self.ema_tr_time
-                )
-            if arena_elapsed > 0.0:
-                if self.ema_ar_time is None:
-                    self.ema_ar_time = arena_elapsed
-                else:
-                    self.ema_ar_time = (
-                        ITER_EMA_ALPHA * arena_elapsed
-                        + (1 - ITER_EMA_ALPHA) * self.ema_ar_time
-                    )
-            avg_iter = (
-                self.iter_ema_time if self.iter_ema_time is not None else full_iter_time
-            )
-            remaining = max(0, ITERATIONS - self.iteration)
-            eta_sec = avg_iter * remaining
-            if ARENA_EVAL_EVERY > 0:
-                k = ARENA_EVAL_EVERY
-                rem_arena = ((self.iteration + remaining) // k) - (self.iteration // k)
-                sp_est_raw = (
-                    self.ema_sp_time if self.ema_sp_time is not None else sp_time
-                )
-                tr_est_raw = (
-                    self.ema_tr_time if self.ema_tr_time is not None else tr_time
-                )
-                sp_est = max(sp_est_raw, sp_time)
-                tr_est = max(tr_est_raw, tr_time)
-                if self.ema_ar_time is not None:
-                    ar_est = self.ema_ar_time
-                else:
-                    ar_est = max(arena_elapsed, sp_est + tr_est)
-                eta_sec = remaining * (sp_est + tr_est) + max(0, rem_arena) * max(
-                    0.0, ar_est
-                )
-            if CHECKPOINT_FREQ > 0:
-                k = CHECKPOINT_FREQ
-                rem_ck = ((self.iteration + remaining) // k) - (self.iteration // k)
-                ck_est = self.ema_ck_time if self.ema_ck_time is not None else 0.0
-                eta_sec += max(0, rem_ck) * max(0.0, ck_est)
             next_ar = 0
             if ARENA_EVAL_EVERY > 0:
                 k = ARENA_EVAL_EVERY
@@ -616,16 +548,11 @@ class Trainer:
                     f"{self._format_time(arena_elapsed)})"
                 )
             )
-            sp_ema = self._format_time(self.ema_sp_time) if self.ema_sp_time else "-"
-            tr_ema = self._format_time(self.ema_tr_time) if self.ema_tr_time else "-"
-            ar_ema = self._format_time(self.ema_ar_time) if self.ema_ar_time else "-"
             print(
                 (
-                    f"     avg {self._format_time(avg_iter)} | elapsed "
+                    f"     elapsed "
                     f"{self._format_time(time.time() - self.start_time)} | "
-                    f"ETA {self._format_time(eta_sec)} | next_ar {next_ar} | "
-                    f"next_ck {next_ck} | EMA sp/tr/ar {sp_ema} / {tr_ema} / "
-                    f"{ar_ema}"
+                    f"next_ar {next_ar} | next_ck {next_ck}"
                 )
             )
             print(
