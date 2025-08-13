@@ -125,6 +125,19 @@ class Trainer:
                 for pg in self.opt.param_groups:
                     pg["lr"] = lr
 
+            def peek_next_lr(self):
+                t_next = self.t + 1
+                if t_next <= self.warm:
+                    lr = self.base * (t_next / self.warm)
+                else:
+                    import math
+
+                    progress = min(1.0, (t_next - self.warm) / 100_000)
+                    lr = self.final + (self.base - self.final) * 0.5 * (
+                        1.0 + math.cos(math.pi * progress)
+                    )
+                return lr
+
         self.scheduler = WarmupCosine(
             self.optimizer, LR_INIT, LR_WARMUP_STEPS, LR_FINAL
         )
@@ -267,17 +280,16 @@ class Trainer:
     def training_iteration(self) -> dict[str, int | float]:
         stats: dict[str, int | float] = {}
         torch.cuda.reset_peak_memory_stats(self.device)
-        current_lr = self.optimizer.param_groups[0]["lr"]
+        header_lr = float(self.scheduler.peek_next_lr())
         mem = self._get_mem_info()
         buf_len = len(self.selfplay_engine.buffer)
         buf_pct = (buf_len / self.selfplay_engine.buffer.maxlen) * 100
         total_elapsed = time.time() - self.start_time
         pct_done = 100.0 * (self.iteration - 1) / max(1, ITERATIONS)
         print(
-            f"\n[Iter {self.iteration:>3}/{ITERATIONS} | {pct_done:>4.1f}%]  LR {current_lr:.2e}  Elapsed {self._format_time(total_elapsed)}"
-        )
-        print(
-            f"GPU {mem['allocated_gb']:.1f}/{mem['reserved_gb']:.1f}/{mem['total_gb']:.1f} GB  |  Buffer {buf_len:,}/{self.selfplay_engine.buffer.maxlen:,} ({int(buf_pct):>3}%)"
+            f"\n[Iter {self.iteration:>3}/{ITERATIONS} | {pct_done:>4.1f}%] LRnext {header_lr:.2e} | elapsed {self._format_time(total_elapsed)} | "
+            f"GPU {mem['allocated_gb']:.1f}/{mem['reserved_gb']:.1f}/{mem['total_gb']:.1f} GB | "
+            f"buf {buf_len:,}/{self.selfplay_engine.buffer.maxlen:,} ({int(buf_pct):>3}%)"
         )
         t0 = time.time()
         game_stats = self.selfplay_engine.play_games(GAMES_PER_ITER)
@@ -302,25 +314,26 @@ class Trainer:
         eval_evalN = int(eval_m.get("eval_positions_total", 0))
         eval_bmax = int(eval_m.get("batch_size_max", 0))
         eval_qmax = int(eval_m.get("pending_queue_max", 0))
+        eval_uniq = int(eval_m.get("queued_unique_total", 0))
         enc_s = float(eval_m.get("encode_time_s_total", 0.0))
         fwd_s = float(eval_m.get("forward_time_s_total", 0.0))
         hit_rate = (100.0 * eval_hit / max(1, eval_req)) if eval_req else 0.0
         enc_ms_per = (1000.0 * enc_s / max(1, eval_evalN)) if eval_evalN else 0.0
         fwd_ms_per = (1000.0 * fwd_s / max(1, eval_evalN)) if eval_evalN else 0.0
-        print(
-            f"SP   games {gc:>5,} | gpm {gpm:>6.1f} | mps {mps/1000:>5.1f}K | avg_len {avg_len:>5.1f} | W/D/B {ww:>4}/{dd:>4}/{bb:>4} ({wpct:>3.0f}%/{dpct:>3.0f}%/{bpct:>3.0f}%) | time {self._format_time(sp_elapsed)}"
+        sp_line = (
+            f"games {gc:,} | avg_len {avg_len:>5.1f} | W/D/B {ww}/{dd}/{bb} ({wpct:>3.0f}%/{dpct:>3.0f}%/{bpct:>3.0f}%) | "
+            f"gpm {gpm:>6.1f} | mps {mps/1000:>5.1f}K | time {self._format_time(sp_elapsed)} | new {int(game_stats.get('moves',0)):,}"
         )
-        if spm:
-            print(
-                f"SP+  sims/calls {int(spm.get('mcts_sims_total',0)):,}/{int(spm.get('mcts_calls_total',0)):,} | temp H/L {int(spm.get('temp_moves_high_total',0)):,}/{int(spm.get('temp_moves_low_total',0)):,} | mcts_batch_max {int(spm.get('mcts_batch_max',0))} | resigns {int(spm.get('resigns_total',0))} | forced {int(spm.get('forced_results_total',0))}"
-            )
-        print(
-            f"EV   req {eval_req:,} | hit {eval_hit:,} ({hit_rate:>4.1f}%) | miss {eval_miss:,} | batches {eval_batches:,} | evalN {eval_evalN:,} | bmax {eval_bmax} | qmax {eval_qmax} | enc {enc_s:.2f}s ({enc_ms_per:.2f} ms/pos) | fwd {fwd_s:.2f}s ({fwd_ms_per:.2f} ms/pos)"
+        sp_plus_line = (
+            f"sims/calls {int(spm.get('mcts_sims_total',0)):,}/{int(spm.get('mcts_calls_total',0)):,} | "
+            f"temp H/L {int(spm.get('temp_moves_high_total',0)):,}/{int(spm.get('temp_moves_low_total',0)):,} | "
+            f"mcts_batch_max {int(spm.get('mcts_batch_max',0))} | resigns {int(spm.get('resigns_total',0))} | "
+            f"forced {int(spm.get('forced_results_total',0))}"
+        ) if spm else ""
+        ev_line = (
+            f"req {eval_req:,} | uniq {eval_uniq:,} | hits {eval_hit:,} ({hit_rate:>4.1f}%) | miss {eval_miss:,} | batches {eval_batches:,} | "
+            f"evalN {eval_evalN:,} | bmax {eval_bmax} | qmax {eval_qmax} | enc {enc_s:.2f}s ({enc_ms_per:.2f} ms/pos) | fwd {fwd_s:.2f}s ({fwd_ms_per:.2f} ms/pos)"
         )
-        try:
-            print(f"SP   new_examples (moves) {int(game_stats['moves']):,}")
-        except Exception:
-            pass
         stats.update(game_stats)
         stats["selfplay_time"] = sp_elapsed
         stats["games_per_min"] = gpm
@@ -333,17 +346,11 @@ class Trainer:
         desired_train_samples = int(RATIO_TARGET_TRAIN_PER_NEW * max(1, new_examples))
         steps = int(np.ceil(desired_train_samples / BATCH_SIZE))
         steps = max(RATIO_UPDATE_STEPS_MIN, min(RATIO_UPDATE_STEPS_MAX, steps))
+        ratio = 0.0
         if len(snap) < min_samples:
-            print(
-                "TR   warming up: buffer underfilled, skipping training this iteration"
-            )
             steps = 0
         else:
             ratio = (steps * BATCH_SIZE) / max(1, new_examples)
-            print(
-                f"TR   plan {steps:>4} | target {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | actual {ratio:>4.1f}x"
-            )
-            print("TR   mix recent 60% (last 20%), old 40%")
         grad_norm_running: float = 0.0
         ent_running: float = 0.0
         for i_step in range(steps):
@@ -373,34 +380,45 @@ class Trainer:
             val_loss_t = torch.stack([pair[1] for pair in losses]).mean()
             pol_loss = float(pol_loss_t.detach().cpu())
             val_loss = float(val_loss_t.detach().cpu())
-            buf_sz = len(self.selfplay_engine.buffer)
-            buf_pct2 = (buf_sz / self.selfplay_engine.buffer.maxlen) * 100
-            bps = len(losses) / max(1e-9, tr_elapsed)
-            sps = (len(losses) * BATCH_SIZE) / max(1e-9, tr_elapsed)
-            print(
-                f"TR   steps {len(losses):>4} | batch/s {bps:>5.1f} | samp/s {int(sps):>6,} | P {pol_loss:>7.4f} | V {val_loss:>7.4f} | LR {current_lr:.2e} | buf {int(buf_pct2):>3}% ({buf_sz:,}) | time {self._format_time(tr_elapsed)}"
+        else:
+            pol_loss = float("nan")
+            val_loss = float("nan")
+        buf_sz = len(self.selfplay_engine.buffer)
+        buf_pct2 = (buf_sz / self.selfplay_engine.buffer.maxlen) * 100
+        bps = (len(losses) / max(1e-9, tr_elapsed)) if losses else 0.0
+        sps = ((len(losses) * BATCH_SIZE) / max(1e-9, tr_elapsed)) if losses else 0.0
+        current_lr = self.optimizer.param_groups[0]["lr"]
+        avg_grad_norm = (grad_norm_running / max(1, len(losses))) if losses else 0.0
+        avg_entropy = (ent_running / max(1, len(losses))) if losses else 0.0
+        ent_coef_current = 0.0
+        if ENTROPY_COEF_INIT > 0 and self.iteration <= ENTROPY_ANNEAL_ITERS:
+            ent_coef_current = ENTROPY_COEF_INIT * (
+                1.0 - (self.iteration - 1) / max(1, ENTROPY_ANNEAL_ITERS)
             )
-            avg_grad_norm = grad_norm_running / max(1, len(losses))
-            avg_entropy = ent_running / max(1, len(losses))
-            ent_coef_current = 0.0
-            if ENTROPY_COEF_INIT > 0 and self.iteration <= ENTROPY_ANNEAL_ITERS:
-                ent_coef_current = ENTROPY_COEF_INIT * (
-                    1.0 - (self.iteration - 1) / max(1, ENTROPY_ANNEAL_ITERS)
-                )
-            print(
-                f"TR+  grad_norm ~{avg_grad_norm:>7.3f} | pred_entropy ~{avg_entropy:>6.3f} | ent_coef {ent_coef_current:.2e} | clip {GRAD_CLIP:.1f}"
-            )
-            stats.update(
-                {
-                    "policy_loss": pol_loss,
-                    "value_loss": val_loss,
-                    "learning_rate": current_lr,
-                    "buffer_size": buf_sz,
-                    "buffer_percent": buf_pct2,
-                    "training_time": tr_elapsed,
-                    "batches_per_sec": bps,
-                }
-            )
+        stats.update(
+            {
+                "policy_loss": pol_loss,
+                "value_loss": val_loss,
+                "learning_rate": float(current_lr),
+                "buffer_size": buf_sz,
+                "buffer_percent": buf_pct2,
+                "training_time": tr_elapsed,
+                "batches_per_sec": bps,
+            }
+        )
+        tr_plan_line = (
+            f"plan {steps} | target {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | actual {ratio:>4.1f}x | mix recent 60% (last 20%), old 40%"
+            if steps > 0
+            else "plan 0 skip (buffer underfilled)"
+        )
+        tr_line = (
+            f"steps {len(losses):>3} | batch/s {bps:>5.1f} | samp/s {int(sps):>6,} | time {self._format_time(tr_elapsed)} | "
+            f"P {pol_loss:>7.4f} | V {val_loss:>7.4f} | LR {current_lr:.2e} | grad {avg_grad_norm:>6.3f} | entropy {avg_entropy:>6.3f} | "
+            f"ent_coef {ent_coef_current:.2e} | clip {GRAD_CLIP:.1f} | buf {int(buf_pct2):>3}% ({buf_sz:,})"
+        )
+        print("SP " + sp_line + (" | " + sp_plus_line if sp_plus_line else ""))
+        print("EV " + ev_line)
+        print("TR " + tr_plan_line + " | " + tr_line)
         if self.ema is not None:
             ema_clone = self._clone_model()
             self.ema.copy_to(ema_clone)
@@ -589,13 +607,8 @@ class Trainer:
             peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
             print(
-                f"SUM  iter {self._format_time(full_iter_time)} | sp {self._format_time(sp_time)} | tr {self._format_time(tr_time)} | ar {self._format_time(arena_elapsed)}"
-            )
-            print(
-                f"     elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar}"
-            )
-            print(
-                f"     games {self.total_games:,} | peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB"
+                f"SUM  iter {self._format_time(full_iter_time)} | sp {self._format_time(sp_time)} | tr {self._format_time(tr_time)} | ar {self._format_time(arena_elapsed)} | "
+                f"elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB"
             )
 
 
