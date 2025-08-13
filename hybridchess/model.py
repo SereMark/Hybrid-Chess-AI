@@ -92,6 +92,19 @@ class BatchedEvaluator:
         self.cache: dict[int, tuple[np.ndarray, float | np.floating[Any]]] = {}
         self.cache_order: deque[int] = deque()
         self.cache_cap = EVAL_CACHE_SIZE
+        self._metrics_lock = threading.Lock()
+        self._metrics: dict[str, float] = {
+            "requests_total": 0,
+            "cache_hits_total": 0,
+            "cache_misses_total": 0,
+            "queued_unique_total": 0,
+            "batches_total": 0,
+            "eval_positions_total": 0,
+            "batch_size_max": 0,
+            "pending_queue_max": 0,
+            "encode_time_s_total": 0.0,
+            "forward_time_s_total": 0.0,
+        }
         self._pending_lock = threading.Condition()
         self._pending: deque["_EvalRequest"] = deque()
         threading.Thread(
@@ -133,6 +146,8 @@ class BatchedEvaluator:
             return np.zeros((0, POLICY_OUTPUT), dtype=np.float32), np.zeros(
                 (0,), dtype=np.float32
             )
+        with self._metrics_lock:
+            self._metrics["requests_total"] += len(positions)
         cached_p: list[np.ndarray | None] = [None] * len(positions)
         cached_v: list[float] = [0.0] * len(positions)
         reqs: list[tuple[int, _EvalRequest]] = []
@@ -144,6 +159,8 @@ class BatchedEvaluator:
                     pol, val = self.cache[h]
                     cached_p[i] = pol
                     cached_v[i] = float(val)
+                    with self._metrics_lock:
+                        self._metrics["cache_hits_total"] += 1
                 else:
                     if h and h in uniq:
                         reqs.append((i, reqs[uniq[h]][1]))
@@ -151,12 +168,15 @@ class BatchedEvaluator:
                         r = _EvalRequest(pos)
                         uniq[h] = len(reqs)
                         reqs.append((i, r))
+        unique_reqs: list[_EvalRequest] = []
         seen: set[int] = set()
-        unique_reqs = []
         for _, r in reqs:
             if id(r) not in seen:
                 unique_reqs.append(r)
                 seen.add(id(r))
+        with self._metrics_lock:
+            self._metrics["cache_misses_total"] += len(unique_reqs)
+            self._metrics["queued_unique_total"] += len(unique_reqs)
         for r in unique_reqs:
             with self._pending_lock:
                 self._pending.append(r)
@@ -196,6 +216,9 @@ class BatchedEvaluator:
             with self._pending_lock:
                 while not self._pending:
                     self._pending_lock.wait()
+                with self._metrics_lock:
+                    if len(self._pending) > int(self._metrics["pending_queue_max"]):
+                        self._metrics["pending_queue_max"] = float(len(self._pending))
                 batch: list[_EvalRequest] = [self._pending.popleft()]
                 start = time.time()
                 while len(batch) < EVAL_MAX_BATCH:
@@ -208,8 +231,11 @@ class BatchedEvaluator:
                             break
                     while self._pending and len(batch) < EVAL_MAX_BATCH:
                         batch.append(self._pending.popleft())
+            t_enc0 = time.time()
             x = self._encode_batch([r.position for r in batch])
+            t_enc1 = time.time()
             p_t, v_t = self._forward(x)
+            t_fwd1 = time.time()
             pol = (
                 torch.softmax(p_t, dim=1).detach().to(dtype=torch.float16).cpu().numpy()
             )
@@ -218,6 +244,17 @@ class BatchedEvaluator:
                 r.policy = pol[i]
                 r.value = float(val[i])
                 r.event.set()
+            with self._metrics_lock:
+                self._metrics["batches_total"] += 1
+                self._metrics["eval_positions_total"] += len(batch)
+                if len(batch) > int(self._metrics["batch_size_max"]):
+                    self._metrics["batch_size_max"] = float(len(batch))
+                self._metrics["encode_time_s_total"] += max(0.0, t_enc1 - t_enc0)
+                self._metrics["forward_time_s_total"] += max(0.0, t_fwd1 - t_enc1)
+
+    def get_metrics(self) -> dict[str, float]:
+        with self._metrics_lock:
+            return dict(self._metrics)
 
 
 class _EvalRequest:

@@ -199,7 +199,7 @@ class Trainer:
 
     def train_step(
         self, batch_data: tuple[list[Any], list[np.ndarray], list[float]]
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, float, float]:
         states, policies, values = batch_data
         x = (
             torch.from_numpy(np.stack(states).astype(np.float32, copy=False))
@@ -249,13 +249,20 @@ class Trainer:
         self.optimizer.zero_grad(set_to_none=True)
         self.scaler.scale(total_loss).backward()
         self.scaler.unscale_(self.optimizer)
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), GRAD_CLIP)
+        grad_total_norm_t = torch.nn.utils.clip_grad_norm_(
+            self.model.parameters(), GRAD_CLIP
+        )
         self.scaler.step(self.optimizer)
         self.scaler.update()
         self.scheduler.step()
         if self.ema is not None:
             self.ema.update(self.model)
-        return policy_loss.detach(), value_loss.detach()
+        return (
+            policy_loss.detach(),
+            value_loss.detach(),
+            float(grad_total_norm_t.detach().cpu()),
+            float(entropy.detach().cpu()),
+        )
 
     def training_iteration(self) -> dict[str, int | float]:
         stats: dict[str, int | float] = {}
@@ -286,8 +293,29 @@ class Trainer:
         dpct = 100.0 * dd / max(1, gc)
         bpct = 100.0 * bb / max(1, gc)
         avg_len = game_stats["moves"] / max(1, gc)
+        spm = game_stats.get("sp_metrics", {}) if isinstance(game_stats, dict) else {}
+        eval_m = self.evaluator.get_metrics()
+        eval_req = int(eval_m.get("requests_total", 0))
+        eval_hit = int(eval_m.get("cache_hits_total", 0))
+        eval_miss = int(eval_m.get("cache_misses_total", 0))
+        eval_batches = int(eval_m.get("batches_total", 0))
+        eval_evalN = int(eval_m.get("eval_positions_total", 0))
+        eval_bmax = int(eval_m.get("batch_size_max", 0))
+        eval_qmax = int(eval_m.get("pending_queue_max", 0))
+        enc_s = float(eval_m.get("encode_time_s_total", 0.0))
+        fwd_s = float(eval_m.get("forward_time_s_total", 0.0))
+        hit_rate = (100.0 * eval_hit / max(1, eval_req)) if eval_req else 0.0
+        enc_ms_per = (1000.0 * enc_s / max(1, eval_evalN)) if eval_evalN else 0.0
+        fwd_ms_per = (1000.0 * fwd_s / max(1, eval_evalN)) if eval_evalN else 0.0
         print(
             f"SP   games {gc:>5,} | gpm {gpm:>6.1f} | mps {mps/1000:>5.1f}K | avg_len {avg_len:>5.1f} | W/D/B {ww:>4}/{dd:>4}/{bb:>4} ({wpct:>3.0f}%/{dpct:>3.0f}%/{bpct:>3.0f}%) | time {self._format_time(sp_elapsed)}"
+        )
+        if spm:
+            print(
+                f"SP+  sims/calls {int(spm.get('mcts_sims_total',0)):,}/{int(spm.get('mcts_calls_total',0)):,} | temp H/L {int(spm.get('temp_moves_high_total',0)):,}/{int(spm.get('temp_moves_low_total',0)):,} | mcts_batch_max {int(spm.get('mcts_batch_max',0))} | resigns {int(spm.get('resigns_total',0))} | forced {int(spm.get('forced_results_total',0))}"
+            )
+        print(
+            f"EV   req {eval_req:,} | hit {eval_hit:,} ({hit_rate:>4.1f}%) | miss {eval_miss:,} | batches {eval_batches:,} | evalN {eval_evalN:,} | bmax {eval_bmax} | qmax {eval_qmax} | enc {enc_s:.2f}s ({enc_ms_per:.2f} ms/pos) | fwd {fwd_s:.2f}s ({fwd_ms_per:.2f} ms/pos)"
         )
         try:
             print(f"SP   new_examples (moves) {int(game_stats['moves']):,}")
@@ -316,7 +344,9 @@ class Trainer:
                 f"TR   plan {steps:>4} | target {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | actual {ratio:>4.1f}x"
             )
             print("TR   mix recent 60% (last 20%), old 40%")
-        for _ in range(steps):
+        grad_norm_running: float = 0.0
+        ent_running: float = 0.0
+        for i_step in range(steps):
             batch = self.selfplay_engine.sample_from_snapshot(
                 snap, BATCH_SIZE, recent_ratio=0.6
             )
@@ -331,7 +361,12 @@ class Trainer:
                 s, p, cs = Augment.apply(s, p, "vflip_cs")
                 if cs:
                     v = [-val for val in v]
-            losses.append(self.train_step((s, p, v)))
+            pol_loss_t, val_loss_t, grad_norm_val, pred_entropy = self.train_step(
+                (s, p, v)
+            )
+            grad_norm_running += float(grad_norm_val)
+            ent_running += float(pred_entropy)
+            losses.append((pol_loss_t, val_loss_t))
         tr_elapsed = time.time() - t1
         if losses:
             pol_loss_t = torch.stack([pair[0] for pair in losses]).mean()
@@ -344,6 +379,16 @@ class Trainer:
             sps = (len(losses) * BATCH_SIZE) / max(1e-9, tr_elapsed)
             print(
                 f"TR   steps {len(losses):>4} | batch/s {bps:>5.1f} | samp/s {int(sps):>6,} | P {pol_loss:>7.4f} | V {val_loss:>7.4f} | LR {current_lr:.2e} | buf {int(buf_pct2):>3}% ({buf_sz:,}) | time {self._format_time(tr_elapsed)}"
+            )
+            avg_grad_norm = grad_norm_running / max(1, len(losses))
+            avg_entropy = ent_running / max(1, len(losses))
+            ent_coef_current = 0.0
+            if ENTROPY_COEF_INIT > 0 and self.iteration <= ENTROPY_ANNEAL_ITERS:
+                ent_coef_current = ENTROPY_COEF_INIT * (
+                    1.0 - (self.iteration - 1) / max(1, ENTROPY_ANNEAL_ITERS)
+                )
+            print(
+                f"TR+  grad_norm ~{avg_grad_norm:>7.3f} | pred_entropy ~{avg_entropy:>6.3f} | ent_coef {ent_coef_current:.2e} | clip {GRAD_CLIP:.1f}"
             )
             stats.update(
                 {
