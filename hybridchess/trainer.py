@@ -38,7 +38,6 @@ VALUE_WEIGHT = 1.0
 ITERATIONS = 600
 GAMES_PER_ITER = 180
 TRAIN_STEPS_PER_ITER = 1024
-CHECKPOINT_FREQ = 25
 ITER_EMA_ALPHA = 0.3
 AUGMENT_MIRROR_PROB = 0.5
 AUGMENT_ROT180_PROB = 0.25
@@ -426,35 +425,6 @@ class Trainer:
         for iteration in range(1, ITERATIONS + 1):
             self.iteration = iteration
             iter_stats = self.training_iteration()
-            if iteration % CHECKPOINT_FREQ == 0:
-                ck_start = time.time()
-                src = getattr(self.model, "_orig_mod", self.model)
-                if hasattr(src, "module"):
-                    src = src.module
-                ckpt = {
-                    "iteration": self.iteration,
-                    "total_games": self.total_games,
-                    "model_state_dict": src.state_dict(),
-                    "optimizer_state_dict": self.optimizer.state_dict(),
-                    "scheduler_state_dict": self.scheduler.state_dict(),
-                    "training_time": time.time() - self.start_time,
-                }
-                os.makedirs(OUTPUT_DIR, exist_ok=True)
-                path = os.path.join(OUTPUT_DIR, f"checkpoint_{self.iteration}.pt")
-                tmp = path + ".tmp"
-                torch.save(ckpt, tmp)
-                os.replace(tmp, path)
-                size_mb = os.path.getsize(path) / 1024**2
-                ck_elapsed = time.time() - ck_start
-                print(
-                    "Checkpoint: %s | %.1fMB | Games %s | Time %s"
-                    % (
-                        path,
-                        size_mb,
-                        f"{self.total_games:,}",
-                        self._format_time(time.time() - self.start_time),
-                    )
-                )
             do_eval = (iteration % ARENA_EVAL_EVERY) == 0
             arena_elapsed = 0.0
             if do_eval:
@@ -533,11 +503,6 @@ class Trainer:
                 k = ARENA_EVAL_EVERY
                 r = self.iteration % k
                 next_ar = (k - r) if r != 0 else k
-            next_ck = 0
-            if CHECKPOINT_FREQ > 0:
-                k = CHECKPOINT_FREQ
-                r = self.iteration % k
-                next_ck = (k - r) if r != 0 else k
             peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
             print(
@@ -552,7 +517,7 @@ class Trainer:
                 (
                     f"     elapsed "
                     f"{self._format_time(time.time() - self.start_time)} | "
-                    f"next_ar {next_ar} | next_ck {next_ck}"
+                    f"next_ar {next_ar}"
                 )
             )
             print(
