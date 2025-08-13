@@ -148,6 +148,11 @@ class Trainer:
                 if hasattr(base, "module"):
                     base = base.module
                 for k, v in base.state_dict().items():
+                    if not torch.is_floating_point(v):
+                        self.shadow[k] = v.detach().clone()
+                        continue
+                    if self.shadow[k].dtype != v.dtype:
+                        self.shadow[k] = self.shadow[k].to(dtype=v.dtype)
                     self.shadow[k].mul_(self.decay).add_(
                         v.detach(), alpha=1.0 - self.decay
                     )
