@@ -267,10 +267,10 @@ class Trainer:
         total_elapsed = time.time() - self.start_time
         pct_done = 100.0 * (self.iteration - 1) / max(1, ITERATIONS)
         print(
-            f"\n[Iter {self.iteration}/{ITERATIONS} | {pct_done:.1f}%] | LR {current_lr:.2e} | Elapsed {self._format_time(total_elapsed)}"
+            f"\n[Iter {self.iteration:>3}/{ITERATIONS} | {pct_done:>4.1f}%]  LR {current_lr:.2e}  Elapsed {self._format_time(total_elapsed)}"
         )
         print(
-            f"GPU {mem['allocated_gb']:.1f}/{mem['reserved_gb']:.1f}/{mem['total_gb']:.1f} GB | Buffer {buf_len:,}/{self.selfplay_engine.buffer.maxlen:,} ({int(buf_pct)}%)"
+            f"GPU {mem['allocated_gb']:.1f}/{mem['reserved_gb']:.1f}/{mem['total_gb']:.1f} GB  |  Buffer {buf_len:,}/{self.selfplay_engine.buffer.maxlen:,} ({int(buf_pct):>3}%)"
         )
         t0 = time.time()
         game_stats = self.selfplay_engine.play_games(GAMES_PER_ITER)
@@ -287,7 +287,7 @@ class Trainer:
         bpct = 100.0 * bb / max(1, gc)
         avg_len = game_stats["moves"] / max(1, gc)
         print(
-            f"SP   games {gc} | gpm {gpm:.1f} | mps {mps/1000:.1f}K | avg_len {avg_len:.1f} | W/D/B {ww}/{dd}/{bb} ({wpct:.0f}%/{dpct:.0f}%/{bpct:.0f}%) | time {self._format_time(sp_elapsed)}"
+            f"SP   games {gc:>5,} | gpm {gpm:>6.1f} | mps {mps/1000:>5.1f}K | avg_len {avg_len:>5.1f} | W/D/B {ww:>4}/{dd:>4}/{bb:>4} ({wpct:>3.0f}%/{dpct:>3.0f}%/{bpct:>3.0f}%) | time {self._format_time(sp_elapsed)}"
         )
         try:
             print(f"SP   new_examples (moves) {int(game_stats['moves']):,}")
@@ -313,9 +313,9 @@ class Trainer:
         else:
             ratio = (steps * BATCH_SIZE) / max(1, new_examples)
             print(
-                f"TR   planned steps {steps} | target ratio {RATIO_TARGET_TRAIN_PER_NEW:.1f} | actual {ratio:.1f}x"
+                f"TR   plan {steps:>4} | target {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | actual {ratio:>4.1f}x"
             )
-            print("TR   sampling mix: recent 60% of last 20%, old 40%")
+            print("TR   mix recent 60% (last 20%), old 40%")
         for _ in range(steps):
             batch = self.selfplay_engine.sample_from_snapshot(
                 snap, BATCH_SIZE, recent_ratio=0.6
@@ -343,7 +343,7 @@ class Trainer:
             bps = len(losses) / max(1e-9, tr_elapsed)
             sps = (len(losses) * BATCH_SIZE) / max(1e-9, tr_elapsed)
             print(
-                f"TR   steps {len(losses)} | batch/s {bps:.1f} | samp/s {int(sps)} | P {pol_loss:.4f} | V {val_loss:.4f} | LR {current_lr:.2e} | buf {int(buf_pct2)}% ({buf_sz:,}) | time {self._format_time(tr_elapsed)}"
+                f"TR   steps {len(losses):>4} | batch/s {bps:>5.1f} | samp/s {int(sps):>6,} | P {pol_loss:>7.4f} | V {val_loss:>7.4f} | LR {current_lr:.2e} | buf {int(buf_pct2):>3}% ({buf_sz:,}) | time {self._format_time(tr_elapsed)}"
             )
             stats.update(
                 {
@@ -508,7 +508,7 @@ class Trainer:
                 acc_lb = acc_mu - ARENA_CONFIDENCE_Z * acc_se
                 pure_wr = aw / max(1, ARENA_GAMES)
                 print(
-                    f"AR   score {100.0 * score:.1f}% | win {100.0 * pure_wr:.1f}% | cur LB {100.0 * cur_lb:.1f}% | acc LB {100.0 * acc_lb:.1f}% ({gn}) | W/D/L {aw}/{ad}/{al} | games {ARENA_GAMES} | time {self._format_time(arena_elapsed)}"
+                    f"AR   score {100.0 * score:>5.1f}% | win {100.0 * pure_wr:>5.1f}% | cur LB {100.0 * cur_lb:>5.1f}% | acc LB {100.0 * acc_lb:>5.1f}% ({gn:,}) | W/D/L {aw:,}/{ad:,}/{al:,} | games {ARENA_GAMES:,} | time {self._format_time(arena_elapsed)}"
                 )
                 if promote:
                     self.best_model.load_state_dict(
@@ -544,7 +544,7 @@ class Trainer:
             peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
             print(
-                f"SUM  iter {self._format_time(full_iter_time)} | (sp {self._format_time(sp_time)} + tr {self._format_time(tr_time)} + ar {self._format_time(arena_elapsed)})"
+                f"SUM  iter {self._format_time(full_iter_time)} | sp {self._format_time(sp_time)} | tr {self._format_time(tr_time)} | ar {self._format_time(arena_elapsed)}"
             )
             print(
                 f"     elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar}"
