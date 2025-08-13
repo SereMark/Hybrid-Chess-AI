@@ -83,9 +83,7 @@ class BatchedEvaluator:
         self.device = device
         self.model_lock = threading.Lock()
         any_mod: Any = ChessNet().to(self.device)
-        self.eval_model: nn.Module = any_mod.to(
-            memory_format=torch.channels_last
-        ).eval()
+        self.eval_model: nn.Module = any_mod.to(memory_format=torch.channels_last).eval()
         for p in self.eval_model.parameters():
             p.requires_grad_(False)
         self.cache_lock = threading.Lock()
@@ -106,10 +104,8 @@ class BatchedEvaluator:
             "forward_time_s_total": 0.0,
         }
         self._pending_lock = threading.Condition()
-        self._pending: deque["_EvalRequest"] = deque()
-        threading.Thread(
-            target=self._batch_worker, name="EvalBatchWorker", daemon=True
-        ).start()
+        self._pending: deque[_EvalRequest] = deque()
+        threading.Thread(target=self._batch_worker, name="EvalBatchWorker", daemon=True).start()
 
     def refresh_from(self, src_model: torch.nn.Module) -> None:
         with self.model_lock:
@@ -136,16 +132,16 @@ class BatchedEvaluator:
         return x.contiguous(memory_format=torch.channels_last)
 
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        with self.model_lock:
-            with torch.inference_mode():
-                with torch.autocast(device_type="cuda", enabled=True):
-                    return self.eval_model(x)
+        with (
+            self.model_lock,
+            torch.inference_mode(),
+            torch.autocast(device_type="cuda", enabled=True),
+        ):
+            return self.eval_model(x)
 
     def infer_positions(self, positions: list[Any]) -> tuple[np.ndarray, np.ndarray]:
         if not positions:
-            return np.zeros((0, POLICY_OUTPUT), dtype=np.float32), np.zeros(
-                (0,), dtype=np.float32
-            )
+            return np.zeros((0, POLICY_OUTPUT), dtype=np.float32), np.zeros((0,), dtype=np.float32)
         with self._metrics_lock:
             self._metrics["requests_total"] += len(positions)
         cached_p: list[np.ndarray | None] = [None] * len(positions)
@@ -236,9 +232,7 @@ class BatchedEvaluator:
             t_enc1 = time.time()
             p_t, v_t = self._forward(x)
             t_fwd1 = time.time()
-            pol = (
-                torch.softmax(p_t, dim=1).detach().to(dtype=torch.float16).cpu().numpy()
-            )
+            pol = torch.softmax(p_t, dim=1).detach().to(dtype=torch.float16).cpu().numpy()
             val = v_t.detach().to(dtype=torch.float16).cpu().numpy()
             for i, r in enumerate(batch):
                 r.policy = pol[i]

@@ -152,11 +152,9 @@ class Augment:
 
 
 class SelfPlayEngine:
-    def __init__(self, evaluator: "BatchedEvaluator") -> None:
+    def __init__(self, evaluator: BatchedEvaluator) -> None:
         self.evaluator = evaluator
-        self.buffer: deque[tuple[np.ndarray, np.ndarray, np.int8]] = deque(
-            maxlen=BUFFER_SIZE
-        )
+        self.buffer: deque[tuple[np.ndarray, np.ndarray, np.int8]] = deque(maxlen=BUFFER_SIZE)
         self.buffer_lock = threading.Lock()
         self.metrics_lock = threading.Lock()
         self._metrics = {
@@ -180,9 +178,7 @@ class SelfPlayEngine:
     def _value_to_i8(v: float) -> np.int8:
         return np.int8(np.clip(np.rint(v * 127.0), -127, 127))
 
-    def _temp_select(
-        self, moves: list[Any], visits: list[int], move_number: int
-    ) -> Any:
+    def _temp_select(self, moves: list[Any], visits: list[int], move_number: int) -> Any:
         temperature = TEMP_HIGH if move_number < TEMP_MOVES else TEMP_LOW
         if temperature > TEMP_DETERMINISTIC_THRESHOLD:
             probs = np.maximum(np.array(visits, dtype=np.float64), 0)
@@ -201,9 +197,7 @@ class SelfPlayEngine:
             idx = int(np.argmax(visits))
         return moves[idx]
 
-    def _process_result(
-        self, data: list[tuple[np.ndarray, np.ndarray]], result: int
-    ) -> None:
+    def _process_result(self, data: list[tuple[np.ndarray, np.ndarray]], result: int) -> None:
         if result == ccore.WHITE_WIN:
             values = [1.0 if i % 2 == 0 else -1.0 for i in range(len(data))]
         elif result == ccore.BLACK_WIN:
@@ -212,9 +206,7 @@ class SelfPlayEngine:
             values = [0.0] * len(data)
         with self.buffer_lock:
             for (position_u8, counts_u16), value in zip(data, values, strict=False):
-                self.buffer.append(
-                    (position_u8, counts_u16, SelfPlayEngine._value_to_i8(value))
-                )
+                self.buffer.append((position_u8, counts_u16, SelfPlayEngine._value_to_i8(value)))
 
     def play_single_game(self) -> tuple[int, int]:
         position = ccore.Position()
@@ -241,9 +233,7 @@ class SelfPlayEngine:
             mcts.set_simulations(sims)
             local_mcts_sims_total += int(sims)
             local_mcts_calls_total += 1
-            visits = mcts.search_batched(
-                position, self.evaluator.infer_positions, EVAL_MAX_BATCH
-            )
+            visits = mcts.search_batched(position, self.evaluator.infer_positions, EVAL_MAX_BATCH)
             if not visits:
                 break
             moves = position.legal_moves()
@@ -270,9 +260,7 @@ class SelfPlayEngine:
                     resign_count += 1
                     if resign_count >= RESIGN_CONSECUTIVE:
                         stm_white = position.turn == ccore.WHITE
-                        forced_result = (
-                            ccore.BLACK_WIN if stm_white else ccore.WHITE_WIN
-                        )
+                        forced_result = ccore.BLACK_WIN if stm_white else ccore.WHITE_WIN
                         local_resigns += 1
                         break
                 else:
@@ -316,7 +304,7 @@ class SelfPlayEngine:
         recent_ratio: float = 0.6,
     ) -> tuple[list[np.ndarray], list[np.ndarray], list[float]] | None:
         N = len(snapshot)
-        if N < batch_size:
+        if batch_size > N:
             return None
         recent_N = max(1, int(N * 0.2))
         n_recent = int(round(batch_size * recent_ratio))
@@ -324,9 +312,7 @@ class SelfPlayEngine:
         recent_idx = np.random.randint(max(0, N - recent_N), N, size=n_recent)
         old_idx = np.random.randint(0, max(1, N - recent_N), size=n_old)
         sel_idx = np.concatenate([recent_idx, old_idx])
-        states_u8, counts_u16, values_i8 = zip(
-            *[snapshot[int(i)] for i in sel_idx], strict=False
-        )
+        states_u8, counts_u16, values_i8 = zip(*[snapshot[int(i)] for i in sel_idx], strict=False)
         states = [s.astype(np.float32) / 255.0 for s in states_u8]
         counts = [p.astype(np.float32) for p in counts_u16]
         policies: list[np.ndarray] = []
@@ -366,7 +352,7 @@ class SelfPlayEngine:
         res["sp_metrics"] = sp_end
         sp_delta: dict[str, int | float] = {}
         for k, v in sp_end.items():
-            if k in sp_start and isinstance(v, (int, float)):
+            if k in sp_start and isinstance(v, int | float):
                 sp_delta[k] = float(v) - float(sp_start.get(k, 0.0))
         res["sp_metrics_iter"] = sp_delta
         return res
