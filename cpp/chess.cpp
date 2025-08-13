@@ -1,5 +1,4 @@
 #include "chess.hpp"
-#include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <mutex>
@@ -14,8 +13,12 @@ Hash zobrist_turn;
 Bitboard pawn_attack_table[2][64];
 Bitboard knight_attack_table[64];
 Bitboard king_attack_table[64];
-alignas(16) const int ROOK_DIRS[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-alignas(16) const int BISHOP_DIRS[4][2] = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+alignas(64) static unsigned char ray_squares[8][64][7];
+alignas(64) static unsigned char ray_len[8][64];
+static constexpr int DIR[8][2] = {{-1,-1},{-1,0},{-1,1},{0,-1},{0,1},{1,-1},{1,0},{1,1}};
+static constexpr int KJ[8][2] = {{-2,-1},{-2,1},{-1,-2},{-1,2},{1,-2},{1,2},{2,-1},{2,1}};
+static constexpr int ROOK_DIRS[4]   = {1, 3, 4, 6};
+static constexpr int BISHOP_DIRS[4] = {0, 2, 5, 7};
 
 void init_tables() {
   static std::once_flag once;
@@ -47,9 +50,7 @@ void init_tables() {
           pawn_attack_table[BLACK][s] |= bit(s - 7);
       }
       knight_attack_table[s] = 0;
-      const int K[8][2] = {{-2, -1}, {-2, 1}, {-1, -2}, {-1, 2},
-                           {1, -2},  {1, 2},  {2, -1},  {2, 1}};
-      for (auto &d : K) {
+      for (auto &d : KJ) {
         int nr = r + d[0], nf = f + d[1];
         if (nr >= 0 && nr < BOARD_SIZE && nf >= 0 && nf < BOARD_SIZE)
           knight_attack_table[s] |= bit(nr * BOARD_SIZE + nf);
@@ -63,6 +64,16 @@ void init_tables() {
           if (nr >= 0 && nr < BOARD_SIZE && nf >= 0 && nf < BOARD_SIZE)
             king_attack_table[s] |= bit(nr * BOARD_SIZE + nf);
         }
+      for (int d = 0; d < 8; ++d) {
+        int nr = r + DIR[d][0], nf = f + DIR[d][1];
+        int k = 0;
+        while (nr >= 0 && nr < BOARD_SIZE && nf >= 0 && nf < BOARD_SIZE) {
+          ray_squares[d][s][k++] = static_cast<unsigned char>(nr * BOARD_SIZE + nf);
+          nr += DIR[d][0];
+          nf += DIR[d][1];
+        }
+        ray_len[d][s] = static_cast<unsigned char>(k);
+      }
     }
   });
 }
@@ -71,21 +82,19 @@ Bitboard get_pawn_attacks(Square s, Color c) { return pawn_attack_table[c][s]; }
 Bitboard knight_attacks(Square s) { return knight_attack_table[s]; }
 Bitboard king_attacks(Square s) { return king_attack_table[s]; }
 
-[[gnu::hot]] static Bitboard sliding_attacks(Square s, Bitboard occ,
-                                             const int dirs[][2], int nd) {
+[[gnu::hot]] static inline Bitboard sliding_attacks(Square s, Bitboard occ,
+                                                    const int dir_ids[], int nd) {
   Bitboard a = 0;
-  const int r = s >> 3, f = s & 7;
   for (int i = 0; i < nd; ++i) {
-    int dr = dirs[i][0], df = dirs[i][1], nr = r + dr, nf = f + df;
-    while (__builtin_expect(
-        (nr >= 0 && nr < BOARD_SIZE && nf >= 0 && nf < BOARD_SIZE), 1)) {
-      Square t = (nr << 3) | nf;
-      Bitboard b = 1ULL << t;
+    const int d = dir_ids[i];
+    const int len = ray_len[d][s];
+    const unsigned char* rs = ray_squares[d][s];
+    for (int k = 0; k < len; ++k) {
+      const Square t = static_cast<Square>(rs[k]);
+      const Bitboard b = 1ULL << t;
       a |= b;
-      if (__builtin_expect(!!(occ & b), 0))
+      if (occ & b)
         break;
-      nr += dr;
-      nf += df;
     }
   }
   return a;
@@ -308,8 +317,8 @@ int Position::piece_at(Square s) const noexcept {
 }
 
 void Position::add_promotion_moves(Square f, Square t, MoveList &m) const {
-  for (Piece pc = QUEEN; pc >= KNIGHT; pc = Piece(pc - 1))
-    m.add(f, t, pc);
+  static constexpr Piece promos[] = {QUEEN, ROOK, BISHOP, KNIGHT};
+  for (Piece pc : promos) m.add(f, t, pc);
 }
 
 void Position::add_pawn_moves(Square from, MoveList &m) const {

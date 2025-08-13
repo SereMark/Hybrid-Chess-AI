@@ -33,6 +33,66 @@ if TYPE_CHECKING:
 
 
 class Augment:
+    _policy_map_cache: dict[str, np.ndarray] = {}
+
+    @staticmethod
+    def _policy_index_map(which: str) -> np.ndarray:
+        if which in Augment._policy_map_cache:
+            return Augment._policy_map_cache[which]
+        planes = POLICY_OUTPUT // 64
+        base = np.arange(POLICY_OUTPUT, dtype=np.int32).reshape(planes, 8, 8).copy()
+        if which == "mirror":
+            arr = base[:, :, ::-1]
+            out = np.empty_like(arr)
+            dir_map = [2, 1, 0, 4, 3, 7, 6, 5]
+            for d in range(8):
+                for r in range(7):
+                    out[dir_map[d] * 7 + r] = arr[d * 7 + r]
+            kmap = [1, 0, 3, 2, 5, 4, 7, 6]
+            for i in range(8):
+                out[56 + kmap[i]] = arr[56 + i]
+            pmap = [0, 2, 1]
+            for p in range(3):
+                b = 64 + p * 3
+                out[b + pmap[0]] = arr[b + 0]
+                out[b + pmap[1]] = arr[b + 1]
+                out[b + pmap[2]] = arr[b + 2]
+        elif which == "rot180":
+            arr = base[:, ::-1, ::-1]
+            out = np.empty_like(arr)
+            dir_map = [7, 6, 5, 4, 3, 2, 1, 0]
+            for d in range(8):
+                for r in range(7):
+                    out[dir_map[d] * 7 + r] = arr[d * 7 + r]
+            kmap = [7, 6, 5, 4, 3, 2, 1, 0]
+            for i in range(8):
+                out[56 + kmap[i]] = arr[56 + i]
+            for p in range(3):
+                b = 64 + p * 3
+                out[b + 0] = arr[b + 0]
+                out[b + 1] = arr[b + 1]
+                out[b + 2] = arr[b + 2]
+        elif which == "vflip_cs":
+            arr = base[:, ::-1, :]
+            out = np.empty_like(arr)
+            dir_map = [5, 6, 7, 4, 3, 2, 1, 0]
+            for d in range(8):
+                for r in range(7):
+                    out[dir_map[d] * 7 + r] = arr[d * 7 + r]
+            kmap = [6, 7, 4, 5, 2, 3, 0, 1]
+            for i in range(8):
+                out[56 + kmap[i]] = arr[56 + i]
+            for p in range(3):
+                b = 64 + p * 3
+                out[b + 0] = arr[b + 0]
+                out[b + 1] = arr[b + 1]
+                out[b + 2] = arr[b + 2]
+        else:
+            Augment._policy_map_cache[which] = np.arange(POLICY_OUTPUT, dtype=np.int32)
+            return Augment._policy_map_cache[which]
+        Augment._policy_map_cache[which] = out.reshape(-1)
+        return Augment._policy_map_cache[which]
+
     @staticmethod
     def _plane_indices() -> dict[str, int]:
         turn_plane = HISTORY_LENGTH * PLANES_PER_POSITION
@@ -49,105 +109,49 @@ class Augment:
         }
 
     @staticmethod
-    def mirror_policy(pi: np.ndarray) -> np.ndarray:
-        arr = pi.reshape((POLICY_OUTPUT // 64, 8, 8))[:, :, ::-1].copy()
-        out = np.empty_like(arr)
-        dir_map = [2, 1, 0, 4, 3, 7, 6, 5]
-        for d in range(8):
-            for r in range(7):
-                out[dir_map[d] * 7 + r] = arr[d * 7 + r]
-        kmap = [1, 0, 3, 2, 5, 4, 7, 6]
-        for i in range(8):
-            out[56 + kmap[i]] = arr[56 + i]
-        pmap = [0, 2, 1]
-        for p in range(3):
-            b = 64 + p * 3
-            out[b + pmap[0]] = arr[b + 0]
-            out[b + pmap[1]] = arr[b + 1]
-            out[b + pmap[2]] = arr[b + 2]
-        return out.reshape(-1)
-
-    @staticmethod
-    def rotate180_policy(pi: np.ndarray) -> np.ndarray:
-        arr = pi.reshape((POLICY_OUTPUT // 64, 8, 8))[:, ::-1, ::-1].copy()
-        out = np.empty_like(arr)
-        dir_map = [7, 6, 5, 4, 3, 2, 1, 0]
-        for d in range(8):
-            for r in range(7):
-                out[dir_map[d] * 7 + r] = arr[d * 7 + r]
-        kmap = [7, 6, 5, 4, 3, 2, 1, 0]
-        for i in range(8):
-            out[56 + kmap[i]] = arr[56 + i]
-        for p in range(3):
-            b = 64 + p * 3
-            out[b + 0] = arr[b + 0]
-            out[b + 1] = arr[b + 1]
-            out[b + 2] = arr[b + 2]
-        return out.reshape(-1)
-
-    @staticmethod
-    def vflip_colorswap_policy(pi: np.ndarray) -> np.ndarray:
-        arr = pi.reshape((POLICY_OUTPUT // 64, 8, 8))[:, ::-1, :].copy()
-        out = np.empty_like(arr)
-        dir_map = [5, 6, 7, 4, 3, 2, 1, 0]
-        for d in range(8):
-            for r in range(7):
-                out[dir_map[d] * 7 + r] = arr[d * 7 + r]
-        kmap = [6, 7, 4, 5, 2, 3, 0, 1]
-        for i in range(8):
-            out[56 + kmap[i]] = arr[56 + i]
-        for p in range(3):
-            b = 64 + p * 3
-            out[b + 0] = arr[b + 0]
-            out[b + 1] = arr[b + 1]
-            out[b + 2] = arr[b + 2]
-        return out.reshape(-1)
+    def _vflip_cs_plane_perm(num_planes: int) -> np.ndarray:
+        idx = Augment._plane_indices()
+        perm = np.arange(num_planes, dtype=np.int32)
+        for t in range(idx["hist_len"]):
+            base = t * idx["planes_per_pos"]
+            for piece in range(6):
+                a = base + piece * 2 + 0
+                b = base + piece * 2 + 1
+                perm[a], perm[b] = perm[b], perm[a]
+        cs = idx["castling_base"]
+        perm[cs + 0], perm[cs + 2] = perm[cs + 2], perm[cs + 0]
+        perm[cs + 1], perm[cs + 3] = perm[cs + 3], perm[cs + 1]
+        return perm
 
     @staticmethod
     def apply(
         states: list[np.ndarray], policies: list[np.ndarray], which: str
     ) -> tuple[list[np.ndarray], list[np.ndarray], bool]:
+        if not states:
+            return states, policies, False
+        st = np.stack(states, axis=0)
+        pol = np.stack(policies, axis=0)
+        swapped = False
         if which == "mirror":
-            return (
-                [s[..., ::-1].copy() for s in states],
-                [Augment.mirror_policy(p) for p in policies],
-                False,
-            )
-        if which == "rot180":
-            return (
-                [s[..., ::-1, ::-1].copy() for s in states],
-                [Augment.rotate180_policy(p) for p in policies],
-                False,
-            )
-        if which == "vflip_cs":
-            out_states: list[np.ndarray] = []
-            for s in states:
-                x = s[..., ::-1, :].copy()
-                idx = Augment._plane_indices()
-                for t in range(idx["hist_len"]):
-                    base = t * idx["planes_per_pos"]
-                    for piece in range(6):
-                        a = base + piece * 2 + 0
-                        b = base + piece * 2 + 1
-                        xa = x[a].copy()
-                        x[a] = x[b]
-                        x[b] = xa
-                tp = idx["turn_plane"]
-                x[tp] = 1.0 - x[tp]
-                cs = idx["castling_base"]
-                xa = x[cs + 0].copy()
-                x[cs + 0] = x[cs + 2]
-                x[cs + 2] = xa
-                xb = x[cs + 1].copy()
-                x[cs + 1] = x[cs + 3]
-                x[cs + 3] = xb
-                out_states.append(x)
-            return (
-                out_states,
-                [Augment.vflip_colorswap_policy(p) for p in policies],
-                True,
-            )
-        return states, policies, False
+            st = st[..., ::-1].copy()
+            pol = pol[:, Augment._policy_index_map("mirror")]
+        elif which == "rot180":
+            st = st[..., ::-1, ::-1].copy()
+            pol = pol[:, Augment._policy_index_map("rot180")]
+        elif which == "vflip_cs":
+            st = st[..., ::-1, :].copy()
+            perm = Augment._vflip_cs_plane_perm(st.shape[1])
+            st = st[:, perm]
+            idx = Augment._plane_indices()
+            tp = idx["turn_plane"]
+            st[:, tp] = 1.0 - st[:, tp]
+            pol = pol[:, Augment._policy_index_map("vflip_cs")]
+            swapped = True
+        else:
+            return states, policies, False
+        out_states = [st[i].copy() for i in range(st.shape[0])]
+        out_pols = [pol[i].copy() for i in range(pol.shape[0])]
+        return out_states, out_pols, swapped
 
 
 class SelfPlayEngine:

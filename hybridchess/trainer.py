@@ -60,7 +60,7 @@ OUTPUT_DIR = "out"
 
 class Trainer:
     def __init__(self, device: str | torch.device | None = None) -> None:
-        device = torch.device(device or "cuda")
+        device: torch.device = torch.device(device or "cuda")
         if device.type != "cuda" or not torch.cuda.is_available():
             raise RuntimeError("CUDA device required (accepts 'cuda' or 'cuda:N')")
         self.device = device
@@ -147,7 +147,7 @@ class Trainer:
 
     def train_step(
         self, batch_data: tuple[list[Any], list[np.ndarray], list[float]]
-    ) -> tuple[float, float]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         states, policies, values = batch_data
         x = (
             torch.from_numpy(np.stack(states).astype(np.float32, copy=False))
@@ -179,7 +179,7 @@ class Trainer:
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), GRAD_CLIP)
         self.scaler.step(self.optimizer)
         self.scaler.update()
-        return float(policy_loss.item()), float(value_loss.item())
+        return policy_loss.detach(), value_loss.detach()
 
     def training_iteration(self) -> dict[str, int | float]:
         stats: dict[str, int | float] = {}
@@ -240,7 +240,7 @@ class Trainer:
         stats["games_per_min"] = gpm
         stats["moves_per_sec"] = mps
         t1 = time.time()
-        losses: list[tuple[float, float]] = []
+        losses: list[tuple[torch.Tensor, torch.Tensor]] = []
         snap = self.selfplay_engine.snapshot()
         min_samples = max(1, BATCH_SIZE // 2)
         steps = TRAIN_STEPS_PER_ITER
@@ -268,8 +268,10 @@ class Trainer:
             losses.append(self.train_step((s, p, v)))
         tr_elapsed = time.time() - t1
         if losses:
-            pol_loss = float(np.mean([pair[0] for pair in losses]))
-            val_loss = float(np.mean([pair[1] for pair in losses]))
+            pol_loss_t = torch.stack([pair[0] for pair in losses]).mean()
+            val_loss_t = torch.stack([pair[1] for pair in losses]).mean()
+            pol_loss = float(pol_loss_t.detach().cpu())
+            val_loss = float(val_loss_t.detach().cpu())
             buf_sz = len(self.selfplay_engine.buffer)
             buf_pct2 = (buf_sz / BUFFER_SIZE) * 100
             bps = len(losses) / tr_elapsed if tr_elapsed > 0 else 0
