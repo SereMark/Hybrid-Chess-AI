@@ -28,38 +28,46 @@ from .selfplay import (
 )
 
 BATCH_SIZE = 1024
-LR_INIT = 0.02
-LR_SCHEDULE = ((200, 0.01), (450, 0.003), (550, 0.001))
+LR_INIT = 1.0e-2
+LR_WARMUP_STEPS = 5_000
+LR_FINAL = 3.0e-4
 WEIGHT_DECAY = 1e-4
 MOMENTUM = 0.9
 GRAD_CLIP = 1.0
 POLICY_WEIGHT = 1.0
-VALUE_WEIGHT = 1.0
+VALUE_WEIGHT = 0.25
 ITERATIONS = 600
-GAMES_PER_ITER = 180
+GAMES_PER_ITER = 240
 TRAIN_STEPS_PER_ITER = 1024
-ITER_EMA_ALPHA = 0.3
+RATIO_TARGET_TRAIN_PER_NEW = 6.0
+RATIO_UPDATE_STEPS_MIN = 48
+RATIO_UPDATE_STEPS_MAX = 128
 AUGMENT_MIRROR_PROB = 0.5
 AUGMENT_ROT180_PROB = 0.25
 AUGMENT_VFLIP_CS_PROB = 0.25
 SIMULATIONS_EVAL = 400
-ARENA_EVAL_EVERY = 10
-ARENA_GAMES = 100
+ARENA_EVAL_EVERY = 5
+ARENA_GAMES = 300
 ARENA_OPENINGS_PATH = ""
 ARENA_TEMPERATURE = 0.25
 ARENA_TEMP_MOVES = 8
 ARENA_DIRICHLET_WEIGHT = 0.03
 ARENA_OPENING_TEMPERATURE_EPS = 1e-6
 ARENA_DRAW_SCORE = 0.5
-ARENA_CONFIDENCE_Z = 1.0
+ARENA_CONFIDENCE_Z = 1.96
 ARENA_THRESHOLD_BASE = 0.5
-ARENA_WIN_RATE = 0.52
+ARENA_WIN_RATE = 0.55
+POLICY_LABEL_SMOOTH = 0.05
+ENTROPY_COEF_INIT = 1.0e-3
+ENTROPY_ANNEAL_ITERS = 100
+EMA_ENABLED = True
+EMA_DECAY = 0.999
 OUTPUT_DIR = "out"
 
 
 class Trainer:
     def __init__(self, device: str | torch.device | None = None) -> None:
-        device: torch.device = torch.device(device or "cuda")
+        device = torch.device(device or "cuda")
         if device.type != "cuda" or not torch.cuda.is_available():
             raise RuntimeError("CUDA device required (accepts 'cuda' or 'cuda:N')")
         self.device = device
@@ -92,20 +100,65 @@ class Trainer:
             momentum=MOMENTUM,
             nesterov=True,
         )
-        sched_map = {m: lr for m, lr in LR_SCHEDULE}
-        self._sched_map = sched_map
 
-        def lr_lambda(epoch: int) -> float:
-            t = LR_INIT
-            for m in sorted(sched_map):
-                if epoch >= m:
-                    t = sched_map[m]
-            return t / LR_INIT
+        class WarmupCosine:
+            def __init__(
+                self, optimizer, base_lr: float, warmup_steps: int, final_lr: float
+            ):
+                self.opt = optimizer
+                self.base = base_lr
+                self.warm = max(1, int(warmup_steps))
+                self.final = final_lr
+                self.t = 0
 
-        self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
+            def step(self):
+                self.t += 1
+                if self.t <= self.warm:
+                    lr = self.base * (self.t / self.warm)
+                else:
+                    import math
+
+                    progress = min(1.0, (self.t - self.warm) / 100_000)
+                    lr = self.final + (self.base - self.final) * 0.5 * (
+                        1.0 + math.cos(math.pi * progress)
+                    )
+                for pg in self.opt.param_groups:
+                    pg["lr"] = lr
+
+        self.scheduler = WarmupCosine(
+            self.optimizer, LR_INIT, LR_WARMUP_STEPS, LR_FINAL
+        )
         self.scaler = torch.amp.GradScaler("cuda", enabled=True)
         self.evaluator = BatchedEvaluator(self.device)
         self.evaluator.refresh_from(self.model)
+
+        class EMA:
+            def __init__(self, model: torch.nn.Module, decay: float = 0.999):
+                self.decay = decay
+                base = getattr(model, "_orig_mod", model)
+                if hasattr(base, "module"):
+                    base = base.module
+                self.shadow = {
+                    k: v.detach().clone() for k, v in base.state_dict().items()
+                }
+
+            @torch.no_grad()
+            def update(self, model: torch.nn.Module):
+                base = getattr(model, "_orig_mod", model)
+                if hasattr(base, "module"):
+                    base = base.module
+                for k, v in base.state_dict().items():
+                    self.shadow[k].mul_(self.decay).add_(
+                        v.detach(), alpha=1.0 - self.decay
+                    )
+
+            def copy_to(self, model: torch.nn.Module):
+                base = getattr(model, "_orig_mod", model)
+                if hasattr(base, "module"):
+                    base = base.module
+                base.load_state_dict(self.shadow, strict=True)
+
+        self.ema = EMA(self.model, EMA_DECAY) if EMA_ENABLED else None
         self.best_model = self._clone_model()
         self.selfplay_engine = SelfPlayEngine(self.evaluator)
         self.iteration = 0
@@ -162,17 +215,41 @@ class Trainer:
         self.model.train()
         with torch.autocast(device_type="cuda", enabled=True):
             pi_pred, v_pred = self.model(x)
+            if POLICY_LABEL_SMOOTH > 0.0:
+                A = pi_target.shape[1]
+                pi_smooth = (1.0 - POLICY_LABEL_SMOOTH) * pi_target + (
+                    POLICY_LABEL_SMOOTH / A
+                )
+            else:
+                pi_smooth = pi_target
             policy_loss = F.kl_div(
-                F.log_softmax(pi_pred, dim=1), pi_target, reduction="batchmean"
+                F.log_softmax(pi_pred, dim=1), pi_smooth, reduction="batchmean"
             )
             value_loss = F.mse_loss(v_pred, v_target)
-            total_loss = POLICY_WEIGHT * policy_loss + VALUE_WEIGHT * value_loss
+            ent_coef = 0.0
+            if ENTROPY_COEF_INIT > 0 and self.iteration <= ENTROPY_ANNEAL_ITERS:
+                ent_coef = ENTROPY_COEF_INIT * (
+                    1.0 - (self.iteration - 1) / max(1, ENTROPY_ANNEAL_ITERS)
+                )
+            entropy = (
+                -(F.softmax(pi_pred, dim=1) * F.log_softmax(pi_pred, dim=1))
+                .sum(dim=1)
+                .mean()
+            )
+            total_loss = (
+                POLICY_WEIGHT * policy_loss
+                + VALUE_WEIGHT * value_loss
+                - ent_coef * entropy
+            )
         self.optimizer.zero_grad(set_to_none=True)
         self.scaler.scale(total_loss).backward()
         self.scaler.unscale_(self.optimizer)
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), GRAD_CLIP)
         self.scaler.step(self.optimizer)
         self.scaler.update()
+        self.scheduler.step()
+        if self.ema is not None:
+            self.ema.update(self.model)
         return policy_loss.detach(), value_loss.detach()
 
     def training_iteration(self) -> dict[str, int | float]:
@@ -181,54 +258,36 @@ class Trainer:
         current_lr = self.optimizer.param_groups[0]["lr"]
         mem = self._get_mem_info()
         buf_len = len(self.selfplay_engine.buffer)
-        buf_pct = (buf_len / BUFFER_SIZE) * 100
+        buf_pct = (buf_len / self.selfplay_engine.buffer.maxlen) * 100
         total_elapsed = time.time() - self.start_time
-        fut = [m for m in sorted(self._sched_map) if m > self.iteration]
-        next_lr_iter = fut[0] if fut else None
-        next_lr_val = self._sched_map[fut[0]] if fut else None
         pct_done = 100.0 * (self.iteration - 1) / max(1, ITERATIONS)
-        nxt = (
-            f" -> {next_lr_iter}:{next_lr_val:.2e}" if next_lr_iter is not None else ""
+        print(
+            f"\n[Iter {self.iteration}/{ITERATIONS} | {pct_done:.1f}%] | LR {current_lr:.2e} | Elapsed {self._format_time(total_elapsed)}"
         )
         print(
-            (
-                f"\n[Iter {self.iteration}/{ITERATIONS} | {pct_done:.1f}%] | "
-                f"LR {current_lr:.2e}{nxt} | "
-                f"Elapsed {self._format_time(total_elapsed)}"
-            )
-        )
-        print(
-            (
-                f"GPU {mem['allocated_gb']:.1f}/"
-                f"{mem['reserved_gb']:.1f}/"
-                f"{mem['total_gb']:.1f} GB | "
-                f"Buffer {buf_len:,}/{BUFFER_SIZE:,} "
-                f"({int(buf_pct)}%)"
-            )
+            f"GPU {mem['allocated_gb']:.1f}/{mem['reserved_gb']:.1f}/{mem['total_gb']:.1f} GB | Buffer {buf_len:,}/{self.selfplay_engine.buffer.maxlen:,} ({int(buf_pct)}%)"
         )
         t0 = time.time()
         game_stats = self.selfplay_engine.play_games(GAMES_PER_ITER)
         self.total_games += int(game_stats["games"])
         sp_elapsed = time.time() - t0
-        gpm = (game_stats["games"] / (sp_elapsed / 60)) if sp_elapsed > 0 else 0
-        mps = (game_stats["moves"] / sp_elapsed) if sp_elapsed > 0 else 0
+        gpm = game_stats["games"] / max(1e-9, sp_elapsed / 60)
+        mps = game_stats["moves"] / max(1e-9, sp_elapsed)
         gc = int(game_stats["games"])
         ww = int(game_stats["white_wins"])
         bb = int(game_stats["black_wins"])
         dd = int(game_stats["draws"])
-        wpct = 100.0 * ww / gc if gc > 0 else 0.0
-        dpct = 100.0 * dd / gc if gc > 0 else 0.0
-        bpct = 100.0 * bb / gc if gc > 0 else 0.0
-        avg_len = (game_stats["moves"] / max(1, gc)) if sp_elapsed > 0 else 0
+        wpct = 100.0 * ww / max(1, gc)
+        dpct = 100.0 * dd / max(1, gc)
+        bpct = 100.0 * bb / max(1, gc)
+        avg_len = game_stats["moves"] / max(1, gc)
         print(
-            (
-                f"SP   games {gc} | gpm {gpm:.1f} | "
-                f"mps {mps/1000:.1f}K | avg_len {avg_len:.1f} | "
-                f"W/D/B {ww}/{dd}/{bb} ("
-                f"{wpct:.0f}%/{dpct:.0f}%/{bpct:.0f}%) | "
-                f"time {self._format_time(sp_elapsed)}"
-            )
+            f"SP   games {gc} | gpm {gpm:.1f} | mps {mps/1000:.1f}K | avg_len {avg_len:.1f} | W/D/B {ww}/{dd}/{bb} ({wpct:.0f}%/{dpct:.0f}%/{bpct:.0f}%) | time {self._format_time(sp_elapsed)}"
         )
+        try:
+            print(f"SP   new_examples (moves) {int(game_stats['moves']):,}")
+        except Exception:
+            pass
         stats.update(game_stats)
         stats["selfplay_time"] = sp_elapsed
         stats["games_per_min"] = gpm
@@ -237,17 +296,25 @@ class Trainer:
         losses: list[tuple[torch.Tensor, torch.Tensor]] = []
         snap = self.selfplay_engine.snapshot()
         min_samples = max(1, BATCH_SIZE // 2)
-        steps = TRAIN_STEPS_PER_ITER
+        new_examples = int(game_stats.get("moves", 0))
+        desired_train_samples = int(RATIO_TARGET_TRAIN_PER_NEW * max(1, new_examples))
+        steps = int(np.ceil(desired_train_samples / BATCH_SIZE))
+        steps = max(RATIO_UPDATE_STEPS_MIN, min(RATIO_UPDATE_STEPS_MAX, steps))
         if len(snap) < min_samples:
             print(
-                (
-                    "TR   warming up: buffer underfilled, "
-                    "skipping training this iteration"
-                )
+                "TR   warming up: buffer underfilled, skipping training this iteration"
             )
             steps = 0
+        else:
+            ratio = (steps * BATCH_SIZE) / max(1, new_examples)
+            print(
+                f"TR   planned steps {steps} | target ratio {RATIO_TARGET_TRAIN_PER_NEW:.1f} | actual {ratio:.1f}x"
+            )
+            print("TR   sampling mix: recent 60% of last 20%, old 40%")
         for _ in range(steps):
-            batch = self.selfplay_engine.sample_from_snapshot(snap, BATCH_SIZE)
+            batch = self.selfplay_engine.sample_from_snapshot(
+                snap, BATCH_SIZE, recent_ratio=0.6
+            )
             if not batch:
                 continue
             s, p, v = batch
@@ -267,17 +334,11 @@ class Trainer:
             pol_loss = float(pol_loss_t.detach().cpu())
             val_loss = float(val_loss_t.detach().cpu())
             buf_sz = len(self.selfplay_engine.buffer)
-            buf_pct2 = (buf_sz / BUFFER_SIZE) * 100
-            bps = len(losses) / tr_elapsed if tr_elapsed > 0 else 0
-            sps = (len(losses) * BATCH_SIZE) / tr_elapsed if tr_elapsed > 0 else 0
+            buf_pct2 = (buf_sz / self.selfplay_engine.buffer.maxlen) * 100
+            bps = len(losses) / max(1e-9, tr_elapsed)
+            sps = (len(losses) * BATCH_SIZE) / max(1e-9, tr_elapsed)
             print(
-                (
-                    f"TR   steps {len(losses)} | batch/s {bps:.1f} | "
-                    f"samp/s {int(sps)} | P {pol_loss:.4f} | "
-                    f"V {val_loss:.4f} | LR {current_lr:.2e} | "
-                    f"buf {int(buf_pct2)}% ({buf_sz:,}) | time "
-                    f"{self._format_time(tr_elapsed)}"
-                )
+                f"TR   steps {len(losses)} | batch/s {bps:.1f} | samp/s {int(sps)} | P {pol_loss:.4f} | V {val_loss:.4f} | LR {current_lr:.2e} | buf {int(buf_pct2)}% ({buf_sz:,}) | time {self._format_time(tr_elapsed)}"
             )
             stats.update(
                 {
@@ -290,16 +351,25 @@ class Trainer:
                     "batches_per_sec": bps,
                 }
             )
-        if losses:
-            self.scheduler.step()
-        self.evaluator.refresh_from(self.model)
+        if self.ema is not None:
+            ema_clone = self._clone_model()
+            self.ema.copy_to(ema_clone)
+            self.evaluator.refresh_from(ema_clone)
+        else:
+            self.evaluator.refresh_from(self.model)
         return stats
+
+    def _clone_from_ema(self) -> torch.nn.Module:
+        m = self._clone_model()
+        if self.ema is not None:
+            self.ema.copy_to(m)
+        return m
 
     def _arena_match(
         self, challenger: torch.nn.Module, incumbent: torch.nn.Module
     ) -> tuple[float, int, int, int]:
         import chesscore as _ccore
-        import numpy as np
+        import numpy as _np
 
         from .model import BatchedEvaluator as _BatchedEval
 
@@ -324,7 +394,7 @@ class Trainer:
                 "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1",
                 "rnbqkbnr/pppppppp/8/8/2P5/8/PP1PPPPP/RNBQKBNR b KQkq c3 0 1",
                 "rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq - 1 1",
-                ("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/" "RNBQKBNR w KQkq c6 0 2"),
+                "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2",
             ]
 
         def play(e1: _BatchedEval, e2: _BatchedEval, start_fen: str | None) -> int:
@@ -332,17 +402,11 @@ class Trainer:
             if start_fen:
                 pos.from_fen(start_fen)
             m1 = _ccore.MCTS(
-                SIMULATIONS_EVAL,
-                C_PUCT,
-                DIRICHLET_ALPHA,
-                float(ARENA_DIRICHLET_WEIGHT),
+                SIMULATIONS_EVAL, C_PUCT, DIRICHLET_ALPHA, float(ARENA_DIRICHLET_WEIGHT)
             )
             m1.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
             m2 = _ccore.MCTS(
-                SIMULATIONS_EVAL,
-                C_PUCT,
-                DIRICHLET_ALPHA,
-                float(ARENA_DIRICHLET_WEIGHT),
+                SIMULATIONS_EVAL, C_PUCT, DIRICHLET_ALPHA, float(ARENA_DIRICHLET_WEIGHT)
             )
             m2.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
             t = 0
@@ -356,23 +420,22 @@ class Trainer:
                     break
                 moves = pos.legal_moves()
                 if t < ARENA_TEMP_MOVES:
-                    v = np.maximum(np.asarray(visits, dtype=np.float64), 0)
+                    v = _np.maximum(_np.asarray(visits, dtype=_np.float64), 0)
                     if v.sum() <= 0:
-                        idx = int(np.argmax(visits))
+                        idx = int(_np.argmax(visits))
                     else:
                         temp = max(
-                            ARENA_OPENING_TEMPERATURE_EPS,
-                            float(ARENA_TEMPERATURE),
+                            ARENA_OPENING_TEMPERATURE_EPS, float(ARENA_TEMPERATURE)
                         )
                         probs = v ** (1.0 / temp)
                         s = probs.sum()
                         idx = (
-                            int(np.argmax(visits))
+                            int(_np.argmax(visits))
                             if s <= 0
-                            else int(np.random.choice(len(moves), p=probs / s))
+                            else int(_np.random.choice(len(moves), p=probs / s))
                         )
                 else:
-                    idx = int(np.argmax(visits))
+                    idx = int(_np.argmax(visits))
                 pos.make_move(moves[idx])
                 t += 1
             r = pos.result()
@@ -380,7 +443,7 @@ class Trainer:
 
         for g in range(ARENA_GAMES):
             start_fen = (
-                openings[np.random.randint(0, len(openings))] if openings else None
+                openings[_np.random.randint(0, len(openings))] if openings else None
             )
             r = play(ce, ie, start_fen) if g % 2 == 0 else -play(ie, ce, start_fen)
             if r > 0:
@@ -394,32 +457,16 @@ class Trainer:
 
     def train(self) -> None:
         total_params = sum(p.numel() for p in self.model.parameters()) / 1e6
-        sched_pairs = ", ".join([f"{m} -> {lr:.1e}" for m, lr in LR_SCHEDULE])
         header = [
             "",
             "Starting training...",
             "",
-            (
-                f"Device: {self.device} ({self.device_name}) | GPU "
-                f"{self.device_total_gb:.1f} GB | AMP on"
-            ),
-            (
-                f"Model: {total_params:.1f}M parameters | {BLOCKS} blocks x "
-                f"{CHANNELS} channels"
-            ),
-            (f"Training: {ITERATIONS} iterations | {GAMES_PER_ITER} " f"games/iter"),
-            f"LR: init {LR_INIT:.2e} | schedule: {sched_pairs}",
+            f"Device: {self.device} ({self.device_name}) | GPU {self.device_total_gb:.1f} GB | AMP on",
+            f"Model: {total_params:.1f}M parameters | {BLOCKS} blocks x {CHANNELS} channels",
+            f"Training: {ITERATIONS} iterations | {GAMES_PER_ITER} games/iter",
+            f"LR: init {LR_INIT:.2e} | warmup {LR_WARMUP_STEPS} | final {LR_FINAL:.2e}",
             f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games",
-            (
-                "Config: eval batch "
-                f"{EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | "
-                "cache "
-                f"{EVAL_CACHE_SIZE} | arena {ARENA_GAMES}/every "
-                f"{ARENA_EVAL_EVERY} | gate z {ARENA_CONFIDENCE_Z:.2f} "
-                "thr "
-                f"{max(ARENA_THRESHOLD_BASE, ARENA_WIN_RATE):.2f} | "
-                "channels_last True"
-            ),
+            f"Config: eval batch {EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | cache {EVAL_CACHE_SIZE} | arena {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | gate z {ARENA_CONFIDENCE_Z:.2f} thr {max(ARENA_THRESHOLD_BASE, ARENA_WIN_RATE):.2f} | channels_last True",
         ]
         print("\n".join(header))
         for iteration in range(1, ITERATIONS + 1):
@@ -428,18 +475,14 @@ class Trainer:
             do_eval = (iteration % ARENA_EVAL_EVERY) == 0
             arena_elapsed = 0.0
             if do_eval:
-                challenger = self._clone_model()
+                challenger = self._clone_from_ema()
                 t_ar = time.time()
                 score, aw, ad, al = self._arena_match(challenger, self.best_model)
                 arena_elapsed = time.time() - t_ar
                 self._arena_acc_w = getattr(self, "_arena_acc_w", 0) + aw
                 self._arena_acc_d = getattr(self, "_arena_acc_d", 0) + ad
                 self._arena_acc_l = getattr(self, "_arena_acc_l", 0) + al
-                gw, gd, gl = (
-                    self._arena_acc_w,
-                    self._arena_acc_d,
-                    self._arena_acc_l,
-                )
+                gw, gd, gl = self._arena_acc_w, self._arena_acc_d, self._arena_acc_l
                 gn = max(1, gw + gd + gl)
                 acc_mu = (gw + ARENA_DRAW_SCORE * gd) / gn
                 threshold = max(ARENA_THRESHOLD_BASE, ARENA_WIN_RATE)
@@ -460,14 +503,7 @@ class Trainer:
                 acc_lb = acc_mu - ARENA_CONFIDENCE_Z * acc_se
                 pure_wr = aw / max(1, ARENA_GAMES)
                 print(
-                    (
-                        f"AR   score {100.0 * score:.1f}% | "
-                        f"win {100.0 * pure_wr:.1f}% | "
-                        f"cur LB {100.0 * cur_lb:.1f}% | "
-                        f"acc LB {100.0 * acc_lb:.1f}% ({gn}) | "
-                        f"W/D/L {aw}/{ad}/{al} | games {ARENA_GAMES} | "
-                        f"time {self._format_time(arena_elapsed)}"
-                    )
+                    f"AR   score {100.0 * score:.1f}% | win {100.0 * pure_wr:.1f}% | cur LB {100.0 * cur_lb:.1f}% | acc LB {100.0 * acc_lb:.1f}% ({gn}) | W/D/L {aw}/{ad}/{al} | games {ARENA_GAMES} | time {self._format_time(arena_elapsed)}"
                 )
                 if promote:
                     self.best_model.load_state_dict(
@@ -490,10 +526,7 @@ class Trainer:
                         self._arena_acc_l = 0
             else:
                 print(
-                    (
-                        f"AR   skipped | games 0 | time "
-                        f"{self._format_time(arena_elapsed)}"
-                    )
+                    f"AR   skipped | games 0 | time {self._format_time(arena_elapsed)}"
                 )
             sp_time = float(iter_stats.get("selfplay_time", 0.0))
             tr_time = float(iter_stats.get("training_time", 0.0))
@@ -506,31 +539,17 @@ class Trainer:
             peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
             print(
-                (
-                    f"SUM  iter {self._format_time(full_iter_time)} | (sp "
-                    f"{self._format_time(sp_time)} + tr "
-                    f"{self._format_time(tr_time)} + ar "
-                    f"{self._format_time(arena_elapsed)})"
-                )
+                f"SUM  iter {self._format_time(full_iter_time)} | (sp {self._format_time(sp_time)} + tr {self._format_time(tr_time)} + ar {self._format_time(arena_elapsed)})"
             )
             print(
-                (
-                    f"     elapsed "
-                    f"{self._format_time(time.time() - self.start_time)} | "
-                    f"next_ar {next_ar}"
-                )
+                f"     elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar}"
             )
             print(
-                (
-                    f"     games {self.total_games:,} | peak GPU "
-                    f"{peak_alloc:.1f}/{peak_res:.1f} GB"
-                )
+                f"     games {self.total_games:,} | peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB"
             )
 
 
 if __name__ == "__main__":
-    from .selfplay import BUFFER_SIZE
-
     torch.backends.cudnn.benchmark = True
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)

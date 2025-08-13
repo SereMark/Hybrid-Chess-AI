@@ -4,14 +4,11 @@
 #include <cstdint>
 #include <functional>
 #include <vector>
-
 namespace mcts {
 constexpr float UCB_UNVISITED_BONUS = 1e6f, POLICY_EPSILON = 1e-8f,
                 DIRICHLET_EPSILON = 1e-10f;
 constexpr int POLICY_SIZE = 73 * 64;
-
 int encode_move_index(const chess::Move &move);
-
 struct alignas(32) Node {
   uint32_t child_idx = 0;
   uint16_t nchildren = 0;
@@ -23,7 +20,6 @@ struct alignas(32) Node {
                                              float sqrt_visits) const;
   [[gnu::always_inline]] void update(float v);
 };
-
 class NodePool {
   std::vector<Node> nodes;
   size_t used = 0;
@@ -37,7 +33,6 @@ public:
   [[nodiscard]] Node *get_node(uint32_t index);
   [[nodiscard]] uint32_t get_index(Node *node);
 };
-
 class MCTS {
 public:
   MCTS(int simulations = 800, float c_puct = 1.0f, float dirichlet_alpha = 0.3f,
@@ -64,7 +59,7 @@ private:
   float dirichlet_weight_;
   NodePool node_pool_;
   mutable chess::Position working_pos_;
-  mutable std::array<chess::Position::MoveInfo, 512> undo_stack_;
+  mutable std::array<chess::Position::MoveInfo, 1024> undo_stack_;
   std::array<uint32_t, 1024> path_buffer_;
   static constexpr float VIRTUAL_LOSS = 1.0f;
   [[gnu::hot]] Node *select_child(Node *parent);

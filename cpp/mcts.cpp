@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <random>
 #include <vector>
-
 namespace mcts {
 [[gnu::hot, gnu::always_inline]] inline float Node::ucb(float c,
                                                         float s) const {
@@ -17,7 +16,6 @@ namespace mcts {
   ++visits;
   val_sum += v;
 }
-
 NodePool::NodePool() {
   nodes.reserve(DEFAULT_CAPACITY);
   nodes.resize(DEFAULT_CAPACITY);
@@ -46,14 +44,14 @@ Node *NodePool::get_node(uint32_t i) { return &nodes[i]; }
 uint32_t NodePool::get_index(Node *n) {
   return static_cast<uint32_t>(n - nodes.data());
 }
-
 static int encode_move_73x64(const chess::Move &move) {
   const int from = move.from(), to = move.to();
   const int fr = from >> 3, fc = from & 7, tr = to >> 3, tc = to & 7,
-            dr = tr - fr, dc = tc - fc,
-            promo = static_cast<int>(move.promotion());
-  if (promo == chess::BISHOP || promo == chess::ROOK || promo == chess::QUEEN) {
-    const int pp = promo - 2;
+            dr = tr - fr, dc = tc - fc;
+  const int promo = static_cast<int>(move.promotion());
+  if (promo == chess::KNIGHT || promo == chess::ROOK ||
+      promo == chess::BISHOP) {
+    int pp = (promo == chess::KNIGHT) ? 0 : ((promo == chess::ROOK) ? 1 : 2);
     int plane;
     if (dc == 0)
       plane = 64 + pp * 3 + 0;
@@ -83,7 +81,6 @@ static int encode_move_73x64(const chess::Move &move) {
   return -1;
 }
 int encode_move_index(const chess::Move &m) { return encode_move_73x64(m); }
-
 [[gnu::hot]] Node *MCTS::select_child(Node *parent) {
   Node *ch = node_pool_.get_node(parent->child_idx);
   const float s = sqrtf(static_cast<float>(parent->visits));
@@ -102,7 +99,6 @@ int encode_move_index(const chess::Move &m) { return encode_move_73x64(m); }
   }
   return best;
 }
-
 [[gnu::hot]] void MCTS::expand_node(Node *node, const chess::MoveList &moves,
                                     const std::vector<float> &policy) {
   const size_t n = moves.size();
@@ -131,7 +127,6 @@ int encode_move_index(const chess::Move &m) { return encode_move_73x64(m); }
     ch[i].prior = pri[i];
   }
 }
-
 [[gnu::hot]] void MCTS::add_dirichlet_noise(Node *node) {
   if (node->nchildren == 0)
     return;
@@ -156,7 +151,6 @@ int encode_move_index(const chess::Move &m) { return encode_move_73x64(m); }
     }
   }
 }
-
 std::vector<int> MCTS::search_batched(const chess::Position &position,
                                       EvalBatchFn eval_fn, int max_batch) {
   node_pool_.reset();
@@ -180,8 +174,7 @@ std::vector<int> MCTS::search_batched(const chess::Position &position,
   eval_paths.reserve(static_cast<size_t>(max_batch));
   pending_nodes.reserve(static_cast<size_t>(max_batch));
   std::vector<float> root_policy(POLICY_SIZE, 0.0f);
-
-  auto flush_and_expand = [&] {
+  auto flush_and_expand = [&]() {
     if (to_eval.empty())
       return;
     for (uint32_t idx : pending_nodes) {
@@ -216,7 +209,6 @@ std::vector<int> MCTS::search_batched(const chess::Position &position,
     eval_path_offsets.clear();
     eval_paths.clear();
   };
-
   {
     std::vector<chess::Position> root_vec{position};
     std::vector<std::vector<float>> pol(1);
@@ -226,13 +218,14 @@ std::vector<int> MCTS::search_batched(const chess::Position &position,
     expand_node(root, root_moves, root_policy);
     add_dirichlet_noise(root);
   }
-
   for (int sim = 0; sim < simulations_; ++sim) {
     Node *node = root;
     int depth = 0;
     working_pos_ = position;
+    const int max_depth =
+        static_cast<int>(std::min(undo_stack_.size(), path_buffer_.size()));
     while (node->nchildren > 0) {
-      if (depth >= static_cast<int>(undo_stack_.size()))
+      if (depth >= max_depth)
         break;
       node = select_child(node);
       path_buffer_[depth] = node_pool_.get_index(node);
@@ -275,7 +268,6 @@ std::vector<int> MCTS::search_batched(const chess::Position &position,
                                     undo_stack_[i]);
   }
   flush_and_expand();
-
   std::vector<int> visits;
   visits.reserve(root->nchildren);
   Node *ch = node_pool_.get_node(root->child_idx);
@@ -283,10 +275,9 @@ std::vector<int> MCTS::search_batched(const chess::Position &position,
     visits.push_back(ch[i].visits);
   return visits;
 }
-
 MCTS::MCTS(int sims, float c, float alpha, float w)
-    : simulations_(sims), c_puct_(c), dirichlet_alpha_(alpha),
-      dirichlet_weight_(w) {
+    : simulations_(sims), c_puct_(c), c_puct_base_(19652.0f),
+      c_puct_init_(1.25f), dirichlet_alpha_(alpha), dirichlet_weight_(w) {
   node_pool_.reset();
 }
 void MCTS::set_c_puct_params(float base, float init) {

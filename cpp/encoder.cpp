@@ -1,6 +1,5 @@
 #include "encoder.hpp"
 #include <algorithm>
-
 namespace encoder {
 static inline void set_plane_value(float *out, int plane, int row, int col) {
   const size_t A = static_cast<size_t>(chess::BOARD_SIZE) *
@@ -9,7 +8,6 @@ static inline void set_plane_value(float *out, int plane, int row, int col) {
       static_cast<size_t>(row) * static_cast<size_t>(chess::BOARD_SIZE) +
       static_cast<size_t>(col)] = 1.0f;
 }
-
 static inline void
 fill_repetition_planes(const std::vector<chess::Position> &hist, float *out) {
   static constexpr size_t A = static_cast<size_t>(chess::BOARD_SIZE) *
@@ -31,7 +29,6 @@ fill_repetition_planes(const std::vector<chess::Position> &hist, float *out) {
                 out + static_cast<size_t>(base + 14) * A, 1.0f);
   }
 }
-
 void encode_position_into(const chess::Position &pos, float *out) {
   constexpr int ppp = PLANES_PER_POSITION, H = HISTORY_LENGTH, P = INPUT_PLANES;
   const size_t A = static_cast<size_t>(chess::BOARD_SIZE) *
@@ -81,7 +78,6 @@ void encode_position_into(const chess::Position &pos, float *out) {
   std::fill(out + static_cast<size_t>(halfmove_plane) * A,
             out + static_cast<size_t>(halfmove_plane + 1) * A, hm);
 }
-
 void encode_position_with_history(const std::vector<chess::Position> &history,
                                   float *out) {
   const int ppp = PLANES_PER_POSITION, H = HISTORY_LENGTH;

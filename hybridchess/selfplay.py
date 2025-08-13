@@ -10,7 +10,7 @@ import numpy as np
 
 from .model import EVAL_MAX_BATCH, HISTORY_LENGTH, PLANES_PER_POSITION, POLICY_OUTPUT
 
-BUFFER_SIZE = 40000
+BUFFER_SIZE = 200000
 SELFPLAY_WORKERS = 12
 MAX_GAME_MOVES = 512
 RESIGN_THRESHOLD = -0.9
@@ -27,7 +27,6 @@ C_PUCT_BASE = 19652.0
 C_PUCT_INIT = 1.25
 DIRICHLET_ALPHA = 0.3
 DIRICHLET_WEIGHT = 0.25
-
 if TYPE_CHECKING:
     from .model import BatchedEvaluator
 
@@ -98,14 +97,12 @@ class Augment:
         turn_plane = HISTORY_LENGTH * PLANES_PER_POSITION
         fifty_plane = turn_plane + 1
         castling_base = turn_plane + 2
-        enpassant_base = castling_base + 4
         return {
             "planes_per_pos": PLANES_PER_POSITION,
             "hist_len": HISTORY_LENGTH,
             "turn_plane": turn_plane,
             "fifty_plane": fifty_plane,
             "castling_base": castling_base,
-            "enpassant_base": enpassant_base,
         }
 
     @staticmethod
@@ -157,8 +154,19 @@ class Augment:
 class SelfPlayEngine:
     def __init__(self, evaluator: "BatchedEvaluator") -> None:
         self.evaluator = evaluator
-        self.buffer: deque[tuple[Any, np.ndarray, float]] = deque(maxlen=BUFFER_SIZE)
+        self.buffer: deque[tuple[np.ndarray, np.ndarray, np.int8]] = deque(
+            maxlen=BUFFER_SIZE
+        )
         self.buffer_lock = threading.Lock()
+
+    @staticmethod
+    def _to_u8_plane(enc: np.ndarray) -> np.ndarray:
+        x = np.clip(enc, 0.0, 1.0) * 255.0
+        return np.rint(x).astype(np.uint8, copy=False)
+
+    @staticmethod
+    def _value_to_i8(v: float) -> np.int8:
+        return np.int8(np.clip(np.rint(v * 127.0), -127, 127))
 
     def _temp_select(
         self, moves: list[Any], visits: list[int], move_number: int
@@ -181,7 +189,9 @@ class SelfPlayEngine:
             idx = int(np.argmax(visits))
         return moves[idx]
 
-    def _process_result(self, data: list[tuple[Any, np.ndarray]], result: int) -> None:
+    def _process_result(
+        self, data: list[tuple[np.ndarray, np.ndarray]], result: int
+    ) -> None:
         if result == ccore.WHITE_WIN:
             values = [1.0 if i % 2 == 0 else -1.0 for i in range(len(data))]
         elif result == ccore.BLACK_WIN:
@@ -189,8 +199,10 @@ class SelfPlayEngine:
         else:
             values = [0.0] * len(data)
         with self.buffer_lock:
-            for (position, policy), value in zip(data, values, strict=False):
-                self.buffer.append((position, policy, value))
+            for (position_u8, counts_u16), value in zip(data, values, strict=False):
+                self.buffer.append(
+                    (position_u8, counts_u16, SelfPlayEngine._value_to_i8(value))
+                )
 
     def play_single_game(self) -> tuple[int, int]:
         position = ccore.Position()
@@ -198,7 +210,7 @@ class SelfPlayEngine:
         forced_result: int | None = None
         mcts = ccore.MCTS(SIMULATIONS_TRAIN, C_PUCT, DIRICHLET_ALPHA, DIRICHLET_WEIGHT)
         mcts.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
-        data: list[tuple[Any, np.ndarray]] = []
+        data: list[tuple[np.ndarray, np.ndarray]] = []
         history: list[Any] = []
         move_count = 0
         while position.result() == ccore.ONGOING and move_count < MAX_GAME_MOVES:
@@ -214,38 +226,27 @@ class SelfPlayEngine:
             if not visits:
                 break
             moves = position.legal_moves()
-            target = np.zeros(POLICY_OUTPUT, dtype=np.float32)
+            counts = np.zeros(POLICY_OUTPUT, dtype=np.uint16)
             for mv, vc in zip(moves, visits, strict=False):
                 idx = ccore.encode_move_index(mv)
                 if (idx is not None) and (0 <= int(idx) < POLICY_OUTPUT):
-                    target[int(idx)] = vc
-            ps = target.sum()
-            if ps > 0:
-                target /= ps
+                    c = int(vc)
+                    counts[int(idx)] = np.uint16(min(c, np.iinfo(np.uint16).max))
             if history:
                 histories = history[-HISTORY_LENGTH:] + [pos_copy]
                 encoded = ccore.encode_batch([histories])[0]
             else:
                 encoded = ccore.encode_position(pos_copy)
-            encoded = encoded.astype(np.float16, copy=False)
-            target = target.astype(np.float16, copy=False)
-            data.append((encoded, target))
+            encoded_u8 = SelfPlayEngine._to_u8_plane(encoded)
+            counts_u16 = counts
+            data.append((encoded_u8, counts_u16))
             if RESIGN_CONSECUTIVE > 0:
                 _, val_arr = self.evaluator.infer_positions([pos_copy])
                 v = float(val_arr[0])
                 if v <= RESIGN_THRESHOLD:
                     resign_count += 1
                     if resign_count >= RESIGN_CONSECUTIVE:
-                        try:
-                            stm_white = bool(
-                                getattr(
-                                    position,
-                                    "white_to_move",
-                                    (move_count % 2) == 0,
-                                )
-                            )
-                        except Exception:
-                            stm_white = (move_count % 2) == 0
+                        stm_white = position.turn == ccore.WHITE
                         forced_result = (
                             ccore.BLACK_WIN if stm_white else ccore.WHITE_WIN
                         )
@@ -262,19 +263,39 @@ class SelfPlayEngine:
         self._process_result(data, final_result)
         return move_count, final_result
 
-    def snapshot(self) -> list[tuple[Any, np.ndarray, float]]:
+    def snapshot(self) -> list[tuple[np.ndarray, np.ndarray, np.int8]]:
         with self.buffer_lock:
             return list(self.buffer)
 
     def sample_from_snapshot(
-        self, snapshot: list[tuple[Any, np.ndarray, float]], batch_size: int
-    ):
-        if len(snapshot) < batch_size:
+        self,
+        snapshot: list[tuple[np.ndarray, np.ndarray, np.int8]],
+        batch_size: int,
+        recent_ratio: float = 0.6,
+    ) -> tuple[list[np.ndarray], list[np.ndarray], list[float]] | None:
+        N = len(snapshot)
+        if N < batch_size:
             return None
-        idx = np.random.randint(0, len(snapshot), size=batch_size)
-        batch = [snapshot[int(i)] for i in idx]
-        s, p, v = zip(*batch, strict=False)
-        return list(s), list(p), list(v)
+        recent_N = max(1, int(N * 0.2))
+        n_recent = int(round(batch_size * recent_ratio))
+        n_old = batch_size - n_recent
+        recent_idx = np.random.randint(max(0, N - recent_N), N, size=n_recent)
+        old_idx = np.random.randint(0, max(1, N - recent_N), size=n_old)
+        sel_idx = np.concatenate([recent_idx, old_idx])
+        states_u8, counts_u16, values_i8 = zip(
+            *[snapshot[int(i)] for i in sel_idx], strict=False
+        )
+        states = [s.astype(np.float32) / 255.0 for s in states_u8]
+        counts = [p.astype(np.float32) for p in counts_u16]
+        policies: list[np.ndarray] = []
+        for c in counts:
+            s = float(c.sum())
+            if s > 0.0 and np.isfinite(s):
+                policies.append(c / s)
+            else:
+                policies.append(np.zeros_like(c, dtype=np.float32))
+        values = [float(v) / 127.0 for v in values_i8]
+        return states, policies, values
 
     def play_games(self, num_games: int) -> dict[str, int | float]:
         res: dict[str, int | float] = {
