@@ -83,7 +83,9 @@ class BatchedEvaluator:
         self.device = device
         self.model_lock = threading.Lock()
         any_mod: Any = ChessNet().to(self.device)
-        self.eval_model: nn.Module = any_mod.to(memory_format=torch.channels_last).eval()
+        self.eval_model: nn.Module = any_mod.to(
+            memory_format=torch.channels_last
+        ).eval()
         if self.device.type == "cuda":
             self.eval_model.half()
         for p in self.eval_model.parameters():
@@ -107,7 +109,40 @@ class BatchedEvaluator:
         }
         self._pending_lock = threading.Condition()
         self._pending: deque[_EvalRequest] = deque()
-        threading.Thread(target=self._batch_worker, name="EvalBatchWorker", daemon=True).start()
+        self._shutdown = threading.Event()
+        self._thread = threading.Thread(
+            target=self._batch_worker, name="EvalBatchWorker", daemon=True
+        )
+        self._thread.start()
+
+    def close(self) -> None:
+        self._shutdown.set()
+        with self._pending_lock:
+            for r in list(self._pending):
+                r.policy = np.zeros((POLICY_OUTPUT,), dtype=np.float16)
+                r.value = 0.0
+                r.event.set()
+            self._pending.clear()
+            self._pending_lock.notify_all()
+        try:
+            self._thread.join(timeout=1.0)
+        except Exception:
+            pass
+        with self.cache_lock:
+            self.cache.clear()
+            self.cache_order.clear()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def refresh_from(self, src_model: torch.nn.Module) -> None:
         with self.model_lock:
@@ -152,7 +187,9 @@ class BatchedEvaluator:
 
     def infer_positions(self, positions: list[Any]) -> tuple[np.ndarray, np.ndarray]:
         if not positions:
-            return np.zeros((0, POLICY_OUTPUT), dtype=np.float32), np.zeros((0,), dtype=np.float32)
+            return np.zeros((0, POLICY_OUTPUT), dtype=np.float32), np.zeros(
+                (0,), dtype=np.float32
+            )
         with self._metrics_lock:
             self._metrics["requests_total"] += len(positions)
         cached_p: list[np.ndarray | None] = [None] * len(positions)
@@ -219,16 +256,18 @@ class BatchedEvaluator:
 
     def _batch_worker(self) -> None:
         timeout_s = max(0.0, float(EVAL_BATCH_TIMEOUT_MS) / 1000.0)
-        while True:
+        while not self._shutdown.is_set():
             with self._pending_lock:
-                while not self._pending:
+                while not self._pending and not self._shutdown.is_set():
                     self._pending_lock.wait()
+                if self._shutdown.is_set():
+                    break
                 with self._metrics_lock:
                     if len(self._pending) > int(self._metrics["pending_queue_max"]):
                         self._metrics["pending_queue_max"] = float(len(self._pending))
                 batch: list[_EvalRequest] = [self._pending.popleft()]
                 start = time.time()
-                while len(batch) < EVAL_MAX_BATCH:
+                while len(batch) < EVAL_MAX_BATCH and not self._shutdown.is_set():
                     rem = timeout_s - (time.time() - start)
                     if rem <= 0.0:
                         break
@@ -238,12 +277,16 @@ class BatchedEvaluator:
                             break
                     while self._pending and len(batch) < EVAL_MAX_BATCH:
                         batch.append(self._pending.popleft())
+            if self._shutdown.is_set():
+                break
             t_enc0 = time.time()
             x = self._encode_batch([r.position for r in batch])
             t_enc1 = time.time()
             p_t, v_t = self._forward(x)
             t_fwd1 = time.time()
-            pol = torch.softmax(p_t, dim=1).detach().to(dtype=torch.float16).cpu().numpy()
+            pol = (
+                torch.softmax(p_t, dim=1).detach().to(dtype=torch.float16).cpu().numpy()
+            )
             val = v_t.detach().to(dtype=torch.float16).cpu().numpy()
             for i, r in enumerate(batch):
                 r.policy = pol[i]

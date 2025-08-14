@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import os
-import psutil
 import time
 from typing import Any
 
 import numpy as np
+import psutil
 import torch
 import torch.nn.functional as F
 
@@ -87,7 +87,9 @@ class Trainer:
                 continue
             (
                 nodecay
-                if (n.endswith(".bias") or "bn" in n.lower() or "batchnorm" in n.lower())
+                if (
+                    n.endswith(".bias") or "bn" in n.lower() or "batchnorm" in n.lower()
+                )
                 else decay
             ).append(p)
         self.optimizer = torch.optim.SGD(
@@ -101,7 +103,9 @@ class Trainer:
         )
 
         class WarmupCosine:
-            def __init__(self, optimizer, base_lr: float, warmup_steps: int, final_lr: float):
+            def __init__(
+                self, optimizer, base_lr: float, warmup_steps: int, final_lr: float
+            ):
                 self.opt = optimizer
                 self.base = base_lr
                 self.warm = max(1, int(warmup_steps))
@@ -135,7 +139,9 @@ class Trainer:
                     )
                 return lr
 
-        self.scheduler = WarmupCosine(self.optimizer, LR_INIT, LR_WARMUP_STEPS, LR_FINAL)
+        self.scheduler = WarmupCosine(
+            self.optimizer, LR_INIT, LR_WARMUP_STEPS, LR_FINAL
+        )
         self.scaler = torch.amp.GradScaler("cuda", enabled=True)
         self.evaluator = BatchedEvaluator(self.device)
         self.evaluator.refresh_from(self.model)
@@ -146,7 +152,9 @@ class Trainer:
                 base = getattr(model, "_orig_mod", model)
                 if hasattr(base, "module"):
                     base = base.module
-                self.shadow = {k: v.detach().clone() for k, v in base.state_dict().items()}
+                self.shadow = {
+                    k: v.detach().clone() for k, v in base.state_dict().items()
+                }
 
             @torch.no_grad()
             def update(self, model: torch.nn.Module):
@@ -159,7 +167,9 @@ class Trainer:
                         continue
                     if self.shadow[k].dtype != v.dtype:
                         self.shadow[k] = self.shadow[k].to(dtype=v.dtype)
-                    self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1.0 - self.decay)
+                    self.shadow[k].mul_(self.decay).add_(
+                        v.detach(), alpha=1.0 - self.decay
+                    )
 
             def copy_to(self, model: torch.nn.Module):
                 base = getattr(model, "_orig_mod", model)
@@ -179,7 +189,11 @@ class Trainer:
 
     @staticmethod
     def _format_time(s: float) -> str:
-        return f"{s:.1f}s" if s < 60 else (f"{s/60:.1f}m" if s < 3600 else f"{s/3600:.1f}h")
+        return (
+            f"{s:.1f}s"
+            if s < 60
+            else (f"{s/60:.1f}m" if s < 3600 else f"{s/3600:.1f}h")
+        )
 
     def _get_mem_info(self) -> dict[str, float]:
         p = psutil.Process(os.getpid())
@@ -224,24 +238,36 @@ class Trainer:
             pi_pred, v_pred = self.model(x)
             if POLICY_LABEL_SMOOTH > 0.0:
                 A = pi_target.shape[1]
-                pi_smooth = (1.0 - POLICY_LABEL_SMOOTH) * pi_target + (POLICY_LABEL_SMOOTH / A)
+                pi_smooth = (1.0 - POLICY_LABEL_SMOOTH) * pi_target + (
+                    POLICY_LABEL_SMOOTH / A
+                )
             else:
                 pi_smooth = pi_target
-            policy_loss = F.kl_div(F.log_softmax(pi_pred, dim=1), pi_smooth, reduction="batchmean")
+            policy_loss = F.kl_div(
+                F.log_softmax(pi_pred, dim=1), pi_smooth, reduction="batchmean"
+            )
             value_loss = F.mse_loss(v_pred, v_target)
             ent_coef = 0.0
             if ENTROPY_COEF_INIT > 0 and self.iteration <= ENTROPY_ANNEAL_ITERS:
                 ent_coef = ENTROPY_COEF_INIT * (
                     1.0 - (self.iteration - 1) / max(1, ENTROPY_ANNEAL_ITERS)
                 )
-            entropy = -(F.softmax(pi_pred, dim=1) * F.log_softmax(pi_pred, dim=1)).sum(dim=1).mean()
+            entropy = (
+                -(F.softmax(pi_pred, dim=1) * F.log_softmax(pi_pred, dim=1))
+                .sum(dim=1)
+                .mean()
+            )
             total_loss = (
-                POLICY_WEIGHT * policy_loss + VALUE_WEIGHT * value_loss - ent_coef * entropy
+                POLICY_WEIGHT * policy_loss
+                + VALUE_WEIGHT * value_loss
+                - ent_coef * entropy
             )
         self.optimizer.zero_grad(set_to_none=True)
         self.scaler.scale(total_loss).backward()
         self.scaler.unscale_(self.optimizer)
-        grad_total_norm_t = torch.nn.utils.clip_grad_norm_(self.model.parameters(), GRAD_CLIP)
+        grad_total_norm_t = torch.nn.utils.clip_grad_norm_(
+            self.model.parameters(), GRAD_CLIP
+        )
         self.scaler.step(self.optimizer)
         self.scaler.update()
         self.scheduler.step()
@@ -335,7 +361,9 @@ class Trainer:
         grad_norm_running: float = 0.0
         ent_running: float = 0.0
         for _i_step in range(steps):
-            batch = self.selfplay_engine.sample_from_snapshot(snap, BATCH_SIZE, recent_ratio=0.6)
+            batch = self.selfplay_engine.sample_from_snapshot(
+                snap, BATCH_SIZE, recent_ratio=0.6
+            )
             if not batch:
                 continue
             s, p, v = batch
@@ -347,7 +375,9 @@ class Trainer:
                 s, p, cs = Augment.apply(s, p, "vflip_cs")
                 if cs:
                     v = [-val for val in v]
-            pol_loss_t, val_loss_t, grad_norm_val, pred_entropy = self.train_step((s, p, v))
+            pol_loss_t, val_loss_t, grad_norm_val, pred_entropy = self.train_step(
+                (s, p, v)
+            )
             grad_norm_running += float(grad_norm_val)
             ent_running += float(pred_entropy)
             losses.append((pol_loss_t, val_loss_t))
@@ -419,80 +449,93 @@ class Trainer:
         from .model import BatchedEvaluator as _BatchedEval
 
         wins = draws = losses = 0
-        ce = _BatchedEval(self.device)
-        ce.eval_model.load_state_dict(challenger.state_dict(), strict=True)
-        ce.eval_model.eval()
-        ie = _BatchedEval(self.device)
-        ie.eval_model.load_state_dict(incumbent.state_dict(), strict=True)
-        ie.eval_model.eval()
-        openings: list[str] = []
-        if ARENA_OPENINGS_PATH:
-            try:
-                with open(ARENA_OPENINGS_PATH, encoding="utf-8") as f:
-                    openings = [line.strip() for line in f if line.strip()]
-            except Exception:
-                openings = []
-        if not openings:
-            openings = [
-                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-                "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
-                "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1",
-                "rnbqkbnr/pppppppp/8/8/2P5/8/PP1PPPPP/RNBQKBNR b KQkq c3 0 1",
-                "rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq - 1 1",
-                "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2",
-            ]
+        with _BatchedEval(self.device) as ce, _BatchedEval(self.device) as ie:
+            ce.eval_model.load_state_dict(challenger.state_dict(), strict=True)
+            ce.eval_model.eval()
+            ie.eval_model.load_state_dict(incumbent.state_dict(), strict=True)
+            ie.eval_model.eval()
+            ce.cache_cap = 2048
+            ie.cache_cap = 2048
+            openings: list[str] = []
+            if ARENA_OPENINGS_PATH:
+                try:
+                    with open(ARENA_OPENINGS_PATH, encoding="utf-8") as f:
+                        openings = [line.strip() for line in f if line.strip()]
+                except Exception:
+                    openings = []
+            if not openings:
+                openings = [
+                    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                    "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+                    "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1",
+                    "rnbqkbnr/pppppppp/8/8/2P5/8/PP1PPPPP/RNBQKBNR b KQkq c3 0 1",
+                    "rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq - 1 1",
+                    "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2",
+                ]
 
-        def play(e1: _BatchedEval, e2: _BatchedEval, start_fen: str | None) -> int:
-            pos = _ccore.Position()
-            if start_fen:
-                pos.from_fen(start_fen)
-            m1 = _ccore.MCTS(
-                SIMULATIONS_EVAL, C_PUCT, DIRICHLET_ALPHA, float(ARENA_DIRICHLET_WEIGHT)
-            )
-            m1.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
-            m2 = _ccore.MCTS(
-                SIMULATIONS_EVAL, C_PUCT, DIRICHLET_ALPHA, float(ARENA_DIRICHLET_WEIGHT)
-            )
-            m2.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
-            t = 0
-            while pos.result() == _ccore.ONGOING and t < MAX_GAME_MOVES:
-                visits = (
-                    m1.search_batched(pos, e1.infer_positions, EVAL_MAX_BATCH)
-                    if t % 2 == 0
-                    else m2.search_batched(pos, e2.infer_positions, EVAL_MAX_BATCH)
+            def play(e1: _BatchedEval, e2: _BatchedEval, start_fen: str | None) -> int:
+                pos = _ccore.Position()
+                if start_fen:
+                    pos.from_fen(start_fen)
+                m1 = _ccore.MCTS(
+                    SIMULATIONS_EVAL,
+                    C_PUCT,
+                    DIRICHLET_ALPHA,
+                    float(ARENA_DIRICHLET_WEIGHT),
                 )
-                if not visits:
-                    break
-                moves = pos.legal_moves()
-                if t < ARENA_TEMP_MOVES:
-                    v = _np.maximum(_np.asarray(visits, dtype=_np.float64), 0)
-                    if v.sum() <= 0:
-                        idx = int(_np.argmax(visits))
+                m1.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
+                m2 = _ccore.MCTS(
+                    SIMULATIONS_EVAL,
+                    C_PUCT,
+                    DIRICHLET_ALPHA,
+                    float(ARENA_DIRICHLET_WEIGHT),
+                )
+                m2.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
+                t = 0
+                while pos.result() == _ccore.ONGOING and t < MAX_GAME_MOVES:
+                    visits = (
+                        m1.search_batched(pos, e1.infer_positions, EVAL_MAX_BATCH)
+                        if t % 2 == 0
+                        else m2.search_batched(pos, e2.infer_positions, EVAL_MAX_BATCH)
+                    )
+                    if not visits:
+                        break
+                    moves = pos.legal_moves()
+                    if t < ARENA_TEMP_MOVES:
+                        v = _np.maximum(_np.asarray(visits, dtype=_np.float64), 0)
+                        if v.sum() <= 0:
+                            idx = int(_np.argmax(visits))
+                        else:
+                            temp = max(
+                                ARENA_OPENING_TEMPERATURE_EPS, float(ARENA_TEMPERATURE)
+                            )
+                            probs = v ** (1.0 / temp)
+                            s = probs.sum()
+                            idx = (
+                                int(_np.argmax(visits))
+                                if s <= 0
+                                else int(_np.random.choice(len(moves), p=probs / s))
+                            )
                     else:
-                        temp = max(ARENA_OPENING_TEMPERATURE_EPS, float(ARENA_TEMPERATURE))
-                        probs = v ** (1.0 / temp)
-                        s = probs.sum()
-                        idx = (
-                            int(_np.argmax(visits))
-                            if s <= 0
-                            else int(_np.random.choice(len(moves), p=probs / s))
-                        )
-                else:
-                    idx = int(_np.argmax(visits))
-                pos.make_move(moves[idx])
-                t += 1
-            r = pos.result()
-            return 1 if r == _ccore.WHITE_WIN else (-1 if r == _ccore.BLACK_WIN else 0)
+                        idx = int(_np.argmax(visits))
+                    pos.make_move(moves[idx])
+                    t += 1
+                r = pos.result()
+                return (
+                    1 if r == _ccore.WHITE_WIN else (-1 if r == _ccore.BLACK_WIN else 0)
+                )
 
-        for g in range(ARENA_GAMES):
-            start_fen = openings[_np.random.randint(0, len(openings))] if openings else None
-            r = play(ce, ie, start_fen) if g % 2 == 0 else -play(ie, ce, start_fen)
-            if r > 0:
-                wins += 1
-            elif r < 0:
-                losses += 1
-            else:
-                draws += 1
+            for g in range(ARENA_GAMES):
+                start_fen = (
+                    openings[_np.random.randint(0, len(openings))] if openings else None
+                )
+                r = play(ce, ie, start_fen) if g % 2 == 0 else -play(ie, ce, start_fen)
+                if r > 0:
+                    wins += 1
+                elif r < 0:
+                    losses += 1
+                else:
+                    draws += 1
         score = (wins + ARENA_DRAW_SCORE * draws) / max(1, ARENA_GAMES)
         return score, wins, draws, losses
 
@@ -547,7 +590,9 @@ class Trainer:
                     f"AR   score {100.0 * score:>5.1f}% | win {100.0 * pure_wr:>5.1f}% | cur LB {100.0 * cur_lb:>5.1f}% | acc LB {100.0 * acc_lb:>5.1f}% ({gn:,}) | W/D/L {aw:,}/{ad:,}/{al:,} | games {ARENA_GAMES:,} | time {self._format_time(arena_elapsed)}"
                 )
                 if promote:
-                    self.best_model.load_state_dict(challenger.state_dict(), strict=True)
+                    self.best_model.load_state_dict(
+                        challenger.state_dict(), strict=True
+                    )
                     self.best_model.eval()
                     self.evaluator.refresh_from(self.best_model)
                     try:
@@ -564,7 +609,9 @@ class Trainer:
                         self._arena_acc_d = 0
                         self._arena_acc_l = 0
             else:
-                print(f"AR   skipped | games 0 | time {self._format_time(arena_elapsed)}")
+                print(
+                    f"AR   skipped | games 0 | time {self._format_time(arena_elapsed)}"
+                )
             sp_time = float(iter_stats.get("selfplay_time", 0.0))
             tr_time = float(iter_stats.get("training_time", 0.0))
             full_iter_time = sp_time + tr_time + arena_elapsed
