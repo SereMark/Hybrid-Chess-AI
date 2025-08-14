@@ -381,24 +381,30 @@ void Position::legal_moves(MoveList &m) {
     const Square k = lsb(pieces[KING][turn]);
     const Color e = Color(1 - turn);
     if (turn == WHITE) {
-      if ((castling & WHITE_KINGSIDE) && !(occupied() & WHITE_KINGSIDE_CLEAR) &&
-          k == WHITE_KING_START && !is_square_attacked(WHITE_KING_START, e) &&
+      if ((castling & WHITE_KINGSIDE) &&
+          (pieces[ROOK][WHITE] & bit(WHITE_ROOK_KINGSIDE_START)) &&
+          !(occupied() & WHITE_KINGSIDE_CLEAR) && k == WHITE_KING_START &&
+          !is_square_attacked(WHITE_KING_START, e) &&
           !is_square_attacked(F1, e) &&
           !is_square_attacked(WHITE_KING_KINGSIDE, e))
         m.add(WHITE_KING_START, WHITE_KING_KINGSIDE);
       if ((castling & WHITE_QUEENSIDE) &&
+          (pieces[ROOK][WHITE] & bit(WHITE_ROOK_QUEENSIDE_START)) &&
           !(occupied() & WHITE_QUEENSIDE_CLEAR) && k == WHITE_KING_START &&
           !is_square_attacked(WHITE_KING_START, e) &&
           !is_square_attacked(D1, e) &&
           !is_square_attacked(WHITE_KING_QUEENSIDE, e))
         m.add(WHITE_KING_START, WHITE_KING_QUEENSIDE);
     } else {
-      if ((castling & BLACK_KINGSIDE) && !(occupied() & BLACK_KINGSIDE_CLEAR) &&
-          k == BLACK_KING_START && !is_square_attacked(BLACK_KING_START, e) &&
+      if ((castling & BLACK_KINGSIDE) &&
+          (pieces[ROOK][BLACK] & bit(BLACK_ROOK_KINGSIDE_START)) &&
+          !(occupied() & BLACK_KINGSIDE_CLEAR) && k == BLACK_KING_START &&
+          !is_square_attacked(BLACK_KING_START, e) &&
           !is_square_attacked(F8, e) &&
           !is_square_attacked(BLACK_KING_KINGSIDE, e))
         m.add(BLACK_KING_START, BLACK_KING_KINGSIDE);
       if ((castling & BLACK_QUEENSIDE) &&
+          (pieces[ROOK][BLACK] & bit(BLACK_ROOK_QUEENSIDE_START)) &&
           !(occupied() & BLACK_QUEENSIDE_CLEAR) && k == BLACK_KING_START &&
           !is_square_attacked(BLACK_KING_START, e) &&
           !is_square_attacked(D8, e) &&
@@ -469,6 +475,8 @@ void Position::execute_move_core(const Move &move, MoveInfo *undo) {
     undo->old_occupancy_color[BLACK] = occupancy_color[BLACK];
   }
   const int p = piece_at(from);
+  if (undo)
+    undo->moved_piece = p;
   const Piece pt = Piece(p / 2);
   const Color c = Color(p % 2);
   hash ^= zob_pieces[pt][c][from];
@@ -548,7 +556,17 @@ Result Position::make_move(const Move &m) {
   return result();
 }
 void Position::make_move_fast(const Move &m, MoveInfo &info) {
+  info.old_halfmove = halfmove;
+  info.old_fullmove = fullmove;
+  history.push_back(hash);
   execute_move_core(m, &info);
+  const int moved_type = (info.moved_piece >= 0) ? (info.moved_piece / 2) : -1;
+  if (info.captured_piece >= 0 || moved_type == PAWN)
+    halfmove = 0;
+  else
+    ++halfmove;
+  if (turn == WHITE)
+    ++fullmove;
 }
 void Position::unmake_move_fast(const Move &m, const MoveInfo &info) {
   Square from = m.from(), to = m.to();
@@ -565,6 +583,19 @@ void Position::unmake_move_fast(const Move &m, const MoveInfo &info) {
     mailbox[from] = pt * 2 + c;
   }
   mailbox[to] = -1;
+  if (pt == KING && std::abs(to - from) == KING_CASTLE_DISTANCE) {
+    if (to > from) {
+      pieces[ROOK][c] &= ~bit(from + 1);
+      pieces[ROOK][c] |= bit(from + 3);
+      mailbox[from + 1] = -1;
+      mailbox[from + 3] = ROOK * 2 + c;
+    } else {
+      pieces[ROOK][c] &= ~bit(from - 1);
+      pieces[ROOK][c] |= bit(from - 4);
+      mailbox[from - 1] = -1;
+      mailbox[from - 4] = ROOK * 2 + c;
+    }
+  }
   if (info.captured_piece >= 0) {
     pieces[info.captured_piece / 2][info.captured_piece % 2] |=
         bit(info.captured_square);
@@ -576,6 +607,10 @@ void Position::unmake_move_fast(const Move &m, const MoveInfo &info) {
   occupancy_all = info.old_occupancy_all;
   occupancy_color[WHITE] = info.old_occupancy_color[WHITE];
   occupancy_color[BLACK] = info.old_occupancy_color[BLACK];
+  halfmove = info.old_halfmove;
+  fullmove = info.old_fullmove;
+  if (!history.empty())
+    history.pop_back();
 }
 Result Position::result() {
   if (halfmove >= 100)

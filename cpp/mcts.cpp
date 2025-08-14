@@ -7,9 +7,8 @@
 namespace mcts {
 [[gnu::hot, gnu::always_inline]] inline float Node::ucb(float c,
                                                         float s) const {
-  if (visits == 0) [[unlikely]]
-    return UCB_UNVISITED_BONUS + prior;
-  const float q = val_sum / visits, u = c * prior * s / (1 + visits);
+  const float q = (visits > 0) ? (val_sum / visits) : 0.0f;
+  const float u = c * prior * s / (1.0f + visits);
   return q + u;
 }
 [[gnu::always_inline]] inline void Node::update(float v) {
@@ -83,7 +82,7 @@ static int encode_move_73x64(const chess::Move &move) {
 int encode_move_index(const chess::Move &m) { return encode_move_73x64(m); }
 [[gnu::hot]] Node *MCTS::select_child(Node *parent) {
   Node *ch = node_pool_.get_node(parent->child_idx);
-  const float s = sqrtf(static_cast<float>(parent->visits));
+  const float s = sqrtf(1.0f + static_cast<float>(parent->visits));
   float c = c_puct_;
   if (parent->visits > 0)
     c = logf((parent->visits + c_puct_base_ + 1.0f) / c_puct_base_) +

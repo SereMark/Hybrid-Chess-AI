@@ -5,8 +5,7 @@
 #include <functional>
 #include <vector>
 namespace mcts {
-constexpr float UCB_UNVISITED_BONUS = 1e6f, POLICY_EPSILON = 1e-8f,
-                DIRICHLET_EPSILON = 1e-10f;
+constexpr float POLICY_EPSILON = 1e-8f, DIRICHLET_EPSILON = 1e-10f;
 constexpr int POLICY_SIZE = 73 * 64;
 int encode_move_index(const chess::Move &move);
 struct alignas(32) Node {

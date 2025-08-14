@@ -117,13 +117,16 @@ private:
   int8_t mailbox[64];
   std::vector<Hash> history;
   struct MoveInfo {
-    int captured_piece;
-    Square captured_square;
-    Square old_ep_square;
-    uint8_t old_castling;
-    Hash old_hash;
-    Bitboard old_occupancy_all;
-    Bitboard old_occupancy_color[2];
+    int captured_piece = -1;
+    Square captured_square = INVALID_SQUARE;
+    Square old_ep_square = INVALID_SQUARE;
+    uint8_t old_castling = 0;
+    Hash old_hash = 0;
+    Bitboard old_occupancy_all = 0;
+    Bitboard old_occupancy_color[2]{0, 0};
+    uint16_t old_halfmove = 0;
+    uint16_t old_fullmove = 1;
+    int moved_piece = -1;
   };
   void make_move_fast(const Move &, MoveInfo &);
   void unmake_move_fast(const Move &, const MoveInfo &);
