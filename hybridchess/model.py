@@ -19,7 +19,7 @@ CHANNELS = 128
 VALUE_CONV_CHANNELS = 4
 VALUE_HIDDEN_DIM = 256
 EVAL_CACHE_SIZE = 20000
-EVAL_MAX_BATCH = 512
+EVAL_MAX_BATCH = 256
 EVAL_BATCH_TIMEOUT_MS = 8
 
 
@@ -84,6 +84,8 @@ class BatchedEvaluator:
         self.model_lock = threading.Lock()
         any_mod: Any = ChessNet().to(self.device)
         self.eval_model: nn.Module = any_mod.to(memory_format=torch.channels_last).eval()
+        if self.device.type == "cuda":
+            self.eval_model.half()
         for p in self.eval_model.parameters():
             p.requires_grad_(False)
         self.cache_lock = threading.Lock()
@@ -113,6 +115,8 @@ class BatchedEvaluator:
             if hasattr(base, "module"):
                 base = base.module
             self.eval_model.load_state_dict(base.state_dict(), strict=True)
+            if self.device.type == "cuda":
+                self.eval_model.half()
             self.eval_model.eval()
             for p in self.eval_model.parameters():
                 p.requires_grad_(False)
@@ -135,8 +139,15 @@ class BatchedEvaluator:
         with (
             self.model_lock,
             torch.inference_mode(),
-            torch.autocast(device_type="cuda", enabled=True),
+            torch.autocast(device_type="cuda", enabled=(self.device.type == "cuda")),
         ):
+            x = (
+                x.contiguous(memory_format=torch.channels_last)
+                if x.dim() == 4
+                else x.contiguous()
+            )
+            if self.device.type == "cuda":
+                x = x.to(dtype=torch.float16)
             return self.eval_model(x)
 
     def infer_positions(self, positions: list[Any]) -> tuple[np.ndarray, np.ndarray]:

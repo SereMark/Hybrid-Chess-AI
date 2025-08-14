@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import psutil
 import time
 from typing import Any
 
@@ -35,7 +36,7 @@ WEIGHT_DECAY = 1e-4
 MOMENTUM = 0.9
 GRAD_CLIP = 1.0
 POLICY_WEIGHT = 1.0
-VALUE_WEIGHT = 0.25
+VALUE_WEIGHT = 0.5
 ITERATIONS = 600
 GAMES_PER_ITER = 240
 TRAIN_STEPS_PER_ITER = 1024
@@ -45,9 +46,9 @@ RATIO_UPDATE_STEPS_MAX = 128
 AUGMENT_MIRROR_PROB = 0.5
 AUGMENT_ROT180_PROB = 0.25
 AUGMENT_VFLIP_CS_PROB = 0.25
-SIMULATIONS_EVAL = 400
+SIMULATIONS_EVAL = 256
 ARENA_EVAL_EVERY = 5
-ARENA_GAMES = 300
+ARENA_GAMES = 200
 ARENA_OPENINGS_PATH = ""
 ARENA_TEMPERATURE = 0.25
 ARENA_TEMP_MOVES = 8
@@ -181,10 +182,12 @@ class Trainer:
         return f"{s:.1f}s" if s < 60 else (f"{s/60:.1f}m" if s < 3600 else f"{s/3600:.1f}h")
 
     def _get_mem_info(self) -> dict[str, float]:
+        p = psutil.Process(os.getpid())
         return {
             "allocated_gb": torch.cuda.memory_allocated(self.device) / 1024**3,
             "reserved_gb": torch.cuda.memory_reserved(self.device) / 1024**3,
             "total_gb": self.device_total_gb,
+            "rss_gb": p.memory_info().rss / 1024**3,
         }
 
     def _clone_model(self) -> torch.nn.Module:
@@ -262,7 +265,7 @@ class Trainer:
         pct_done = 100.0 * (self.iteration - 1) / max(1, ITERATIONS)
         print(
             f"\n[Iter {self.iteration:>3}/{ITERATIONS} | {pct_done:>4.1f}%] LRnext {header_lr:.2e} | elapsed {self._format_time(total_elapsed)} | "
-            f"GPU {mem['allocated_gb']:.1f}/{mem['reserved_gb']:.1f}/{mem['total_gb']:.1f} GB | "
+            f"GPU {mem['allocated_gb']:.1f}/{mem['reserved_gb']:.1f}/{mem['total_gb']:.1f} GB | RSS {mem['rss_gb']:.1f} GB | "
             f"buf {buf_len:,}/{self.selfplay_engine.buffer.maxlen:,} ({int(buf_pct):>3}%)"
         )
         t0 = time.time()
@@ -572,9 +575,10 @@ class Trainer:
                 next_ar = (k - r) if r != 0 else k
             peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
+            mem2 = self._get_mem_info()
             print(
                 f"SUM  iter {self._format_time(full_iter_time)} | sp {self._format_time(sp_time)} | tr {self._format_time(tr_time)} | ar {self._format_time(arena_elapsed)} | "
-                f"elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB"
+                f"elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB | RSS {mem2['rss_gb']:.1f} GB"
             )
 
 

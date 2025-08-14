@@ -10,7 +10,7 @@ import numpy as np
 
 from .model import EVAL_MAX_BATCH, HISTORY_LENGTH, PLANES_PER_POSITION, POLICY_OUTPUT
 
-BUFFER_SIZE = 200000
+BUFFER_SIZE = 80_000
 SELFPLAY_WORKERS = 12
 MAX_GAME_MOVES = 512
 RESIGN_THRESHOLD = -0.9
@@ -205,8 +205,8 @@ class SelfPlayEngine:
         else:
             values = [0.0] * len(data)
         with self.buffer_lock:
-            for (position_u8, counts_u16), value in zip(data, values, strict=False):
-                self.buffer.append((position_u8, counts_u16, SelfPlayEngine._value_to_i8(value)))
+            for (position_u8, counts_u8), value in zip(data, values, strict=False):
+                self.buffer.append((position_u8, counts_u8, SelfPlayEngine._value_to_i8(value)))
 
     def play_single_game(self) -> tuple[int, int]:
         position = ccore.Position()
@@ -239,20 +239,20 @@ class SelfPlayEngine:
             moves = position.legal_moves()
             if moves:
                 local_mcts_batch_max = max(local_mcts_batch_max, len(moves))
-            counts = np.zeros(POLICY_OUTPUT, dtype=np.uint16)
+            counts = np.zeros(POLICY_OUTPUT, dtype=np.uint8)
             for mv, vc in zip(moves, visits, strict=False):
                 idx = ccore.encode_move_index(mv)
                 if (idx is not None) and (0 <= int(idx) < POLICY_OUTPUT):
-                    c = int(vc)
-                    counts[int(idx)] = np.uint16(min(c, np.iinfo(np.uint16).max))
+                    c = min(int(vc), 255)
+                    counts[int(idx)] = np.uint8(c)
             if history:
                 histories = history[-HISTORY_LENGTH:] + [pos_copy]
                 encoded = ccore.encode_batch([histories])[0]
             else:
                 encoded = ccore.encode_position(pos_copy)
             encoded_u8 = SelfPlayEngine._to_u8_plane(encoded)
-            counts_u16 = counts
-            data.append((encoded_u8, counts_u16))
+            counts_u8 = counts
+            data.append((encoded_u8, counts_u8))
             if RESIGN_CONSECUTIVE > 0:
                 _, val_arr = self.evaluator.infer_positions([pos_copy])
                 v = float(val_arr[0])
@@ -312,16 +312,16 @@ class SelfPlayEngine:
         recent_idx = np.random.randint(max(0, N - recent_N), N, size=n_recent)
         old_idx = np.random.randint(0, max(1, N - recent_N), size=n_old)
         sel_idx = np.concatenate([recent_idx, old_idx])
-        states_u8, counts_u16, values_i8 = zip(*[snapshot[int(i)] for i in sel_idx], strict=False)
+        states_u8, counts_u8, values_i8 = zip(*[snapshot[int(i)] for i in sel_idx], strict=False)
         states = [s.astype(np.float32) / 255.0 for s in states_u8]
-        counts = [p.astype(np.float32) for p in counts_u16]
+        counts = [p.astype(np.float32) for p in counts_u8]
         policies: list[np.ndarray] = []
         for c in counts:
             s = float(c.sum())
             if s > 0.0 and np.isfinite(s):
                 policies.append(c / s)
             else:
-                policies.append(np.zeros_like(c, dtype=np.float32))
+                policies.append(np.full_like(c, 1.0 / max(1, c.size), dtype=np.float32))
         values = [float(v) / 127.0 for v in values_i8]
         return states, policies, values
 
