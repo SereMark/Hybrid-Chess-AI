@@ -38,7 +38,7 @@ from .selfplay import (
     SelfPlayEngine,
 )
 
-BATCH_SIZE = 1024
+BATCH_SIZE = 2048
 LR_INIT = 1.0e-2
 LR_WARMUP_STEPS = 5_000
 LR_FINAL = 3.0e-4
@@ -47,18 +47,20 @@ MOMENTUM = 0.9
 GRAD_CLIP = 1.0
 POLICY_WEIGHT = 1.0
 VALUE_WEIGHT = 0.5
+VALUE_WEIGHT_LATE = 1.0
+VALUE_WEIGHT_SWITCH_ITER = 80
 ITERATIONS = 600
 GAMES_PER_ITER = 240
 TRAIN_STEPS_PER_ITER = 1024
 RATIO_TARGET_TRAIN_PER_NEW = 6.0
 RATIO_UPDATE_STEPS_MIN = 48
-RATIO_UPDATE_STEPS_MAX = 128
+RATIO_UPDATE_STEPS_MAX = 224
 AUGMENT_MIRROR_PROB = 0.5
 AUGMENT_ROT180_PROB = 0.25
 AUGMENT_VFLIP_CS_PROB = 0.25
-SIMULATIONS_EVAL = 256
-ARENA_EVAL_EVERY = 5
-ARENA_GAMES = 200
+SIMULATIONS_EVAL = 128
+ARENA_EVAL_EVERY = 10
+ARENA_GAMES = 100
 ARENA_OPENINGS_PATH = ""
 ARENA_TEMPERATURE = 0.25
 ARENA_TEMP_MOVES = 8
@@ -310,9 +312,14 @@ class Trainer:
                 .sum(dim=1)
                 .mean()
             )
+            value_weight_now = (
+                VALUE_WEIGHT_LATE
+                if self.iteration >= VALUE_WEIGHT_SWITCH_ITER
+                else VALUE_WEIGHT
+            )
             total_loss = (
                 POLICY_WEIGHT * policy_loss
-                + VALUE_WEIGHT * value_loss
+                + value_weight_now * value_loss
                 - ent_coef * entropy
             )
         self.optimizer.zero_grad(set_to_none=True)

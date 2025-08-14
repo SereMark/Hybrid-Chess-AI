@@ -660,25 +660,14 @@ bool Position::is_insufficient_material() const {
   if ((wb == 1 && wn == 0 && bn == 0 && bb == 0) ||
       (bb == 1 && bn == 0 && wn == 0 && wb == 0))
     return true;
-  if (wn == 0 && bn == 0 && wb == 1 && bb == 1) {
-    auto bishop_color_mask = [](Bitboard bb) {
-      int mask = 0;
-      while (bb) {
-        int s = lsb(bb);
-        pop_lsb(bb);
-        int r = s / BOARD_SIZE, f = s % BOARD_SIZE;
-        if (((r + f) & 1) == 0)
-          mask |= 1;
-        else
-          mask |= 2;
-      }
-      return mask;
-    };
-    int wmask = bishop_color_mask(pieces[BISHOP][WHITE]);
-    int bmask = bishop_color_mask(pieces[BISHOP][BLACK]);
-    if ((wmask == 1 && bmask == 1) || (wmask == 2 && bmask == 2))
-      return true;
-  }
+  if (wn == 0 && bn == 0 && wb == 1 && bb == 1)
+    return true;
+
+  if (wb == 0 && bb == 0 && wn == 1 && bn == 1)
+    return true;
+
+  if ((wn + wb) == 1 && (bn + bb) == 1)
+    return true;
   return false;
 }
 } // namespace chess
