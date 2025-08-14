@@ -106,6 +106,7 @@ class BatchedEvaluator:
             "pending_queue_max": 0,
             "encode_time_s_total": 0.0,
             "forward_time_s_total": 0.0,
+            "wait_time_s_total": 0.0,
         }
         self._pending_lock = threading.Condition()
         self._pending: deque[_EvalRequest] = deque()
@@ -223,6 +224,7 @@ class BatchedEvaluator:
             self._metrics["queued_unique_total"] += len(unique_reqs)
         for r in unique_reqs:
             with self._pending_lock:
+                r.t_submit = time.time()
                 self._pending.append(r)
                 self._pending_lock.notify()
         for idx, r in reqs:
@@ -288,9 +290,13 @@ class BatchedEvaluator:
                 torch.softmax(p_t, dim=1).detach().to(dtype=torch.float16).cpu().numpy()
             )
             val = v_t.detach().to(dtype=torch.float16).cpu().numpy()
+            now = time.time()
+            accum_wait = 0.0
             for i, r in enumerate(batch):
                 r.policy = pol[i]
                 r.value = float(val[i])
+                if hasattr(r, "t_submit"):
+                    accum_wait += max(0.0, now - float(getattr(r, "t_submit", now)))
                 r.event.set()
             with self._metrics_lock:
                 self._metrics["batches_total"] += 1
@@ -299,6 +305,7 @@ class BatchedEvaluator:
                     self._metrics["batch_size_max"] = float(len(batch))
                 self._metrics["encode_time_s_total"] += max(0.0, t_enc1 - t_enc0)
                 self._metrics["forward_time_s_total"] += max(0.0, t_fwd1 - t_enc1)
+                self._metrics["wait_time_s_total"] += float(accum_wait)
 
     def get_metrics(self) -> dict[str, float]:
         with self._metrics_lock:
@@ -311,3 +318,4 @@ class _EvalRequest:
         self.event = threading.Event()
         self.policy: np.ndarray | None = None
         self.value: float = 0.0
+        self.t_submit: float = 0.0

@@ -9,10 +9,34 @@ import psutil
 import torch
 import torch.nn.functional as F
 
-from .model import (BLOCKS, CHANNELS, EVAL_BATCH_TIMEOUT_MS, EVAL_CACHE_SIZE,
-                    EVAL_MAX_BATCH, BatchedEvaluator, ChessNet)
-from .selfplay import (C_PUCT, C_PUCT_BASE, C_PUCT_INIT, DIRICHLET_ALPHA,
-                       MAX_GAME_MOVES, Augment, SelfPlayEngine)
+from .model import (
+    BLOCKS,
+    CHANNELS,
+    EVAL_BATCH_TIMEOUT_MS,
+    EVAL_CACHE_SIZE,
+    EVAL_MAX_BATCH,
+    BatchedEvaluator,
+    ChessNet,
+)
+from .selfplay import (
+    BUFFER_SIZE,
+    C_PUCT,
+    C_PUCT_BASE,
+    C_PUCT_INIT,
+    DIRICHLET_ALPHA,
+    DIRICHLET_WEIGHT,
+    MAX_GAME_MOVES,
+    MCTS_MIN_SIMS,
+    RESIGN_CONSECUTIVE,
+    RESIGN_THRESHOLD,
+    SELFPLAY_WORKERS,
+    SIMULATIONS_TRAIN,
+    TEMP_HIGH,
+    TEMP_LOW,
+    TEMP_MOVES,
+    Augment,
+    SelfPlayEngine,
+)
 
 BATCH_SIZE = 1024
 LR_INIT = 1.0e-2
@@ -62,9 +86,11 @@ class Trainer:
         torch.backends.cudnn.allow_tf32 = True
         m_any: Any = ChessNet().to(self.device)
         self.model = m_any.to(memory_format=torch.channels_last)
+        self._compiled = True
         try:
             self.model = torch.compile(self.model, mode="default")
         except Exception as e:
+            self._compiled = False
             print(f"Warning: torch.compile failed or unavailable: {e}")
         decay: list[torch.nn.Parameter] = []
         nodecay: list[torch.nn.Parameter] = []
@@ -147,6 +173,9 @@ class Trainer:
         self.scaler = torch.amp.GradScaler("cuda", enabled=True)
         self.evaluator = BatchedEvaluator(self.device)
         self.evaluator.refresh_from(self.model)
+        self._proc = psutil.Process(os.getpid())
+        psutil.cpu_percent(0.0)
+        self._proc.cpu_percent(0.0)
 
         class EMA:
             def __init__(self, model: torch.nn.Module, decay: float = 0.999):
@@ -188,6 +217,7 @@ class Trainer:
         props = torch.cuda.get_device_properties(self.device)
         self.device_name = props.name
         self.device_total_gb = props.total_memory / 1024**3
+        self._prev_eval_m: dict[str, float] = {}
 
     @staticmethod
     def _format_time(s: float) -> str:
@@ -198,12 +228,33 @@ class Trainer:
         )
 
     def _get_mem_info(self) -> dict[str, float]:
-        p = psutil.Process(os.getpid())
+        p = self._proc
         return {
             "allocated_gb": torch.cuda.memory_allocated(self.device) / 1024**3,
             "reserved_gb": torch.cuda.memory_reserved(self.device) / 1024**3,
             "total_gb": self.device_total_gb,
             "rss_gb": p.memory_info().rss / 1024**3,
+        }
+
+    def _get_sys_info(self) -> dict[str, float]:
+        vm = psutil.virtual_memory()
+        sm = psutil.swap_memory()
+        try:
+            la1, la5, la15 = os.getloadavg()
+        except Exception:
+            la1 = la5 = la15 = 0.0
+        return {
+            "cpu_sys_pct": float(psutil.cpu_percent(0.0)),
+            "cpu_proc_pct": float(self._proc.cpu_percent(0.0)),
+            "ram_used_gb": float(vm.used) / 1024**3,
+            "ram_total_gb": float(vm.total) / 1024**3,
+            "ram_pct": float(vm.percent),
+            "swap_used_gb": float(sm.used) / 1024**3,
+            "swap_total_gb": float(sm.total) / 1024**3,
+            "swap_pct": float(sm.percent),
+            "load1": float(la1),
+            "load5": float(la5),
+            "load15": float(la15),
         }
 
     def _clone_model(self) -> torch.nn.Module:
@@ -287,6 +338,7 @@ class Trainer:
         torch.cuda.reset_peak_memory_stats(self.device)
         header_lr = float(self.scheduler.peek_next_lr())
         mem = self._get_mem_info()
+        sysi = self._get_sys_info()
         buf_len = len(self.selfplay_engine.buffer)
         buf_pct = (buf_len / self.selfplay_engine.buffer.maxlen) * 100
         total_elapsed = time.time() - self.start_time
@@ -294,7 +346,8 @@ class Trainer:
         print(
             f"\n[Iter {self.iteration:>3}/{ITERATIONS} | {pct_done:>4.1f}%] LRnext {header_lr:.2e} | elapsed {self._format_time(total_elapsed)} | "
             f"GPU {mem['allocated_gb']:.1f}/{mem['reserved_gb']:.1f}/{mem['total_gb']:.1f} GB | RSS {mem['rss_gb']:.1f} GB | "
-            f"buf {buf_len:,}/{self.selfplay_engine.buffer.maxlen:,} ({int(buf_pct):>3}%)"
+            f"CPU {sysi['cpu_sys_pct']:>4.0f}%/{sysi['cpu_proc_pct']:>4.0f}% | RAM {sysi['ram_used_gb']:.1f}/{sysi['ram_total_gb']:.1f} GB ({sysi['ram_pct']:>3.0f}%) | "
+            f"load {sysi['load1']:.2f} | buf {buf_len:,}/{self.selfplay_engine.buffer.maxlen:,} ({int(buf_pct):>3}%)"
         )
         t0 = time.time()
         game_stats = self.selfplay_engine.play_games(GAMES_PER_ITER)
@@ -311,6 +364,11 @@ class Trainer:
         bpct = 100.0 * bb / max(1, gc)
         avg_len = game_stats["moves"] / max(1, gc)
         spm = game_stats.get("sp_metrics", {}) if isinstance(game_stats, dict) else {}
+        spi = (
+            game_stats.get("sp_metrics_iter", {})
+            if isinstance(game_stats, dict)
+            else {}
+        )
         eval_m = self.evaluator.get_metrics()
         eval_req = int(eval_m.get("requests_total", 0))
         eval_hit = int(eval_m.get("cache_hits_total", 0))
@@ -322,26 +380,52 @@ class Trainer:
         eval_uniq = int(eval_m.get("queued_unique_total", 0))
         enc_s = float(eval_m.get("encode_time_s_total", 0.0))
         fwd_s = float(eval_m.get("forward_time_s_total", 0.0))
+        wait_s = float(eval_m.get("wait_time_s_total", 0.0))
+        prev = getattr(self, "_prev_eval_m", {}) or {}
+        d_req = int(eval_req - int(prev.get("requests_total", 0)))
+        d_hit = int(eval_hit - int(prev.get("cache_hits_total", 0)))
+        d_miss = int(eval_miss - int(prev.get("cache_misses_total", 0)))
+        d_batches = int(eval_batches - int(prev.get("batches_total", 0)))
+        d_evalN = int(eval_evalN - int(prev.get("eval_positions_total", 0)))
         hit_rate = (100.0 * eval_hit / max(1, eval_req)) if eval_req else 0.0
+        hit_rate_d = (100.0 * d_hit / max(1, d_req)) if d_req > 0 else 0.0
         enc_ms_per = (1000.0 * enc_s / max(1, eval_evalN)) if eval_evalN else 0.0
         fwd_ms_per = (1000.0 * fwd_s / max(1, eval_evalN)) if eval_evalN else 0.0
+        wait_ms_per = (1000.0 * wait_s / max(1, eval_evalN)) if eval_evalN else 0.0
+        req_per_s = d_req / max(1e-9, sp_elapsed)
+        pos_per_s = d_evalN / max(1e-9, sp_elapsed)
         sp_line = (
-            f"games {gc:,} | avg_len {avg_len:>5.1f} | W/D/B {ww}/{dd}/{bb} ({wpct:>3.0f}%/{dpct:>3.0f}%/{bpct:>3.0f}%) | "
-            f"gpm {gpm:>6.1f} | mps {mps/1000:>5.1f}K | time {self._format_time(sp_elapsed)} | new {int(game_stats.get('moves',0)):,}"
+            f"games {gc:,} | avg_len {avg_len:>5.1f} | "
+            f"W/D/B {ww}/{dd}/{bb} ({wpct:>3.0f}%/{dpct:>3.0f}%/{bpct:>3.0f}%) | "
+            f"gpm {gpm:>6.1f} | mps {mps/1000:>5.1f}K | "
+            f"time {self._format_time(sp_elapsed)} | new {int(game_stats.get('moves', 0)):,}"
         )
         sp_plus_line = (
             (
-                f"sims/calls {int(spm.get('mcts_sims_total',0)):,}/{int(spm.get('mcts_calls_total',0)):,} | "
-                f"temp H/L {int(spm.get('temp_moves_high_total',0)):,}/{int(spm.get('temp_moves_low_total',0)):,} | "
-                f"mcts_batch_max {int(spm.get('mcts_batch_max',0))} | resigns {int(spm.get('resigns_total',0))} | "
-                f"forced {int(spm.get('forced_results_total',0))}"
+                f"sims/calls {int(spm.get('mcts_sims_total', 0)):,}"
+                f"(+{int(spi.get('mcts_sims_total', 0)):,})/"
+                f"{int(spm.get('mcts_calls_total', 0)):,}"
+                f"(+{int(spi.get('mcts_calls_total', 0)):,}) | "
+                f"temp H/L {int(spm.get('temp_moves_high_total', 0)):,}"
+                f"(+{int(spi.get('temp_moves_high_total', 0)):,})/"
+                f"{int(spm.get('temp_moves_low_total', 0)):,}"
+                f"(+{int(spi.get('temp_moves_low_total', 0)):,}) | "
+                f"mcts_batch_max {int(spm.get('mcts_batch_max', 0))} | "
+                f"resigns {int(spm.get('resigns_total', 0)):,}"
+                f"(+{int(spi.get('resigns_total', 0)):,}) | "
+                f"forced {int(spm.get('forced_results_total', 0)):,}"
+                f"(+{int(spi.get('forced_results_total', 0)):,})"
             )
             if spm
             else ""
         )
         ev_line = (
-            f"req {eval_req:,} | uniq {eval_uniq:,} | hits {eval_hit:,} ({hit_rate:>4.1f}%) | miss {eval_miss:,} | batches {eval_batches:,} | "
-            f"evalN {eval_evalN:,} | bmax {eval_bmax} | qmax {eval_qmax} | enc {enc_s:.2f}s ({enc_ms_per:.2f} ms/pos) | fwd {fwd_s:.2f}s ({fwd_ms_per:.2f} ms/pos)"
+            f"req {eval_req:,}(+{d_req:,}) | uniq {eval_uniq:,} | "
+            f"hits {eval_hit:,} ({hit_rate:>4.1f}%) (+{d_hit:,} {hit_rate_d:>4.1f}%) | "
+            f"miss {eval_miss:,}(+{d_miss:,}) | batches {eval_batches:,}(+{d_batches:,}) | "
+            f"evalN {eval_evalN:,}(+{d_evalN:,}) | r/s {req_per_s:>6.1f} | n/s {int(pos_per_s):,} | "
+            f"bmax {eval_bmax} | qmax {eval_qmax} | enc {enc_s:.2f}s ({enc_ms_per:.2f} ms/pos) | "
+            f"fwd {fwd_s:.2f}s ({fwd_ms_per:.2f} ms/pos) | wait {wait_s:.2f}s ({wait_ms_per:.2f} ms/pos)"
         )
         stats.update(game_stats)
         stats["selfplay_time"] = sp_elapsed
@@ -428,6 +512,7 @@ class Trainer:
         print("SP " + sp_line + (" | " + sp_plus_line if sp_plus_line else ""))
         print("EV " + ev_line)
         print("TR " + tr_plan_line + " | " + tr_line)
+        self._prev_eval_m = eval_m
         if self.ema is not None:
             ema_clone = self._clone_model()
             self.ema.copy_to(ema_clone)
@@ -547,12 +632,19 @@ class Trainer:
             "",
             "Starting training...",
             "",
-            f"Device: {self.device} ({self.device_name}) | GPU {self.device_total_gb:.1f} GB | AMP on",
-            f"Model: {total_params:.1f}M parameters | {BLOCKS} blocks x {CHANNELS} channels",
-            f"Training: {ITERATIONS} iterations | {GAMES_PER_ITER} games/iter",
-            f"LR: init {LR_INIT:.2e} | warmup {LR_WARMUP_STEPS} | final {LR_FINAL:.2e}",
-            f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games",
-            f"Config: eval batch {EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | cache {EVAL_CACHE_SIZE} | arena {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | gate z {ARENA_CONFIDENCE_Z:.2f} thr {max(ARENA_THRESHOLD_BASE, ARENA_WIN_RATE):.2f} | channels_last True",
+            f"Device: {self.device} ({self.device_name}) | GPU {self.device_total_gb:.1f} GB | AMP on | compiled {self._compiled}",
+            f"Torch: {torch.__version__} | CUDA {torch.version.cuda} | cuDNN {torch.backends.cudnn.version()} | TF32 matmul {torch.backends.cuda.matmul.allow_tf32} | cuDNN TF32 {torch.backends.cudnn.allow_tf32}",
+            f"Threads: torch intra {torch.get_num_threads()} | inter {torch.get_num_interop_threads()} | CPU cores {os.cpu_count()} | selfplay workers {SELFPLAY_WORKERS}",
+            f"Model: {total_params:.1f}M parameters | {BLOCKS} blocks x {CHANNELS} channels | channels_last True",
+            f"Buffer: size {BUFFER_SIZE:,}",
+            f"Selfplay: sims {SIMULATIONS_TRAIN}→≥{MCTS_MIN_SIMS} | temp {TEMP_HIGH}->{TEMP_LOW}@{TEMP_MOVES} | resign {RESIGN_THRESHOLD} x{RESIGN_CONSECUTIVE} | dirichlet α {DIRICHLET_ALPHA} w {DIRICHLET_WEIGHT}",
+            f"Training: {ITERATIONS} iterations | {GAMES_PER_ITER} games/iter | steps/iter target {TRAIN_STEPS_PER_ITER} | batch {BATCH_SIZE}",
+            f"LR: init {LR_INIT:.2e} | warmup {LR_WARMUP_STEPS} | final {LR_FINAL:.2e} | wd {WEIGHT_DECAY} | mom {MOMENTUM}",
+            f"Augment: mirror {AUGMENT_MIRROR_PROB:.2f} | rot180 {AUGMENT_ROT180_PROB:.2f} | vflip_cs {AUGMENT_VFLIP_CS_PROB:.2f} | policy_smooth {POLICY_LABEL_SMOOTH:.2f}",
+            f"EMA: {'on' if EMA_ENABLED else 'off'} decay {EMA_DECAY if EMA_ENABLED else 0}",
+            f"Eval: batch {EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | cache {EVAL_CACHE_SIZE}",
+            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | temp {ARENA_TEMPERATURE} for {ARENA_TEMP_MOVES} | dirichlet {ARENA_DIRICHLET_WEIGHT} | draw {ARENA_DRAW_SCORE} | Z {ARENA_CONFIDENCE_Z:.2f} thr {max(ARENA_THRESHOLD_BASE, ARENA_WIN_RATE):.2f}",
+            f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games | output {OUTPUT_DIR}",
         ]
         print("\n".join(header))
         for iteration in range(1, ITERATIONS + 1):
@@ -629,6 +721,7 @@ class Trainer:
                 f"SUM  iter {self._format_time(full_iter_time)} | sp {self._format_time(sp_time)} | tr {self._format_time(tr_time)} | ar {self._format_time(arena_elapsed)} | "
                 f"elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB | RSS {mem2['rss_gb']:.1f} GB"
             )
+            self._prev_eval_m = self.evaluator.get_metrics()
 
 
 if __name__ == "__main__":
