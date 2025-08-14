@@ -51,7 +51,7 @@ VALUE_WEIGHT_LATE = 1.0
 VALUE_WEIGHT_SWITCH_ITER = 80
 ITERATIONS = 600
 GAMES_PER_ITER = 240
-TRAIN_STEPS_PER_ITER = 1024
+LR_SCHED_STEPS_PER_ITER_EST = 100
 RATIO_TARGET_TRAIN_PER_NEW = 6.0
 RATIO_UPDATE_STEPS_MIN = 48
 RATIO_UPDATE_STEPS_MAX = 224
@@ -118,7 +118,10 @@ class Trainer:
             nesterov=True,
         )
 
-        TOTAL_EXPECTED_TRAIN_STEPS = int(ITERATIONS * TRAIN_STEPS_PER_ITER)
+        TOTAL_EXPECTED_TRAIN_STEPS = int(ITERATIONS * LR_SCHED_STEPS_PER_ITER_EST)
+        WARMUP_STEPS_CLAMPED = int(
+            max(1, min(LR_WARMUP_STEPS, max(1, TOTAL_EXPECTED_TRAIN_STEPS - 1)))
+        )
 
         class WarmupCosine:
             def __init__(
@@ -167,10 +170,15 @@ class Trainer:
                     )
                 return lr
 
+            def set_total_steps(self, total_steps: int):
+                self.total = max(self.t + 1, int(total_steps))
+                if self.warm >= self.total:
+                    self.warm = max(1, self.total - 1)
+
         self.scheduler = WarmupCosine(
             self.optimizer,
             LR_INIT,
-            LR_WARMUP_STEPS,
+            WARMUP_STEPS_CLAMPED,
             LR_FINAL,
             TOTAL_EXPECTED_TRAIN_STEPS,
         )
@@ -477,6 +485,7 @@ class Trainer:
             ent_running += float(pred_entropy)
             losses.append((pol_loss_t, val_loss_t))
         tr_elapsed = time.time() - t1
+        actual_steps = len(losses)
         if losses:
             pol_loss_t = torch.stack([pair[0] for pair in losses]).mean()
             val_loss_t = torch.stack([pair[1] for pair in losses]).mean()
@@ -497,6 +506,28 @@ class Trainer:
             ent_coef_current = ENTROPY_COEF_INIT * (
                 1.0 - (self.iteration - 1) / max(1, ENTROPY_ANNEAL_ITERS)
             )
+
+        drift_pct = 0.0
+        if LR_SCHED_STEPS_PER_ITER_EST > 0:
+            drift_pct = (
+                100.0
+                * (actual_steps - LR_SCHED_STEPS_PER_ITER_EST)
+                / LR_SCHED_STEPS_PER_ITER_EST
+                if actual_steps > 0
+                else 0.0
+            )
+
+        at_edge = steps in (RATIO_UPDATE_STEPS_MIN, RATIO_UPDATE_STEPS_MAX)
+        if self.iteration == 1 and actual_steps > 0 and abs(drift_pct) > 20.0 and not at_edge:
+            remaining_iters = max(0, ITERATIONS - self.iteration)
+            new_total = int(self.scheduler.t + remaining_iters * actual_steps)
+            new_total = max(self.scheduler.t + 1, new_total)
+            self.scheduler.set_total_steps(new_total)
+            print(
+                f"LR   adjusted total_steps -> {self.scheduler.total} "
+                f"(iter1 measured {actual_steps} vs est {LR_SCHED_STEPS_PER_ITER_EST}, drift {drift_pct:+.1f}%)"
+            )
+
         stats.update(
             {
                 "policy_loss": pol_loss,
@@ -506,6 +537,9 @@ class Trainer:
                 "buffer_percent": buf_pct2,
                 "training_time": tr_elapsed,
                 "batches_per_sec": bps,
+                "optimizer_steps": actual_steps,
+                "lr_sched_t": self.scheduler.t,
+                "lr_sched_total": self.scheduler.total,
             }
         )
         tr_plan_line = (
@@ -518,9 +552,13 @@ class Trainer:
             f"P {pol_loss:>7.4f} | V {val_loss:>7.4f} | LR {current_lr:.2e} | grad {avg_grad_norm:>6.3f} | entropy {avg_entropy:>6.3f} | "
             f"ent_coef {ent_coef_current:.2e} | clip {GRAD_CLIP:.1f} | buf {int(buf_pct2):>3}% ({buf_sz:,})"
         )
+        lr_sched_fragment = (
+            f"sched est/iter {LR_SCHED_STEPS_PER_ITER_EST} | actual {actual_steps} | "
+            f"drift {drift_pct:+.1f}% | pos {self.scheduler.t}/{self.scheduler.total}"
+        )
         print("SP " + sp_line + (" | " + sp_plus_line if sp_plus_line else ""))
         print("EV " + ev_line)
-        print("TR " + tr_plan_line + " | " + tr_line)
+        print("TR " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment)
         self._prev_eval_m = eval_m
         if self.ema is not None:
             ema_clone = self._clone_model()
@@ -647,8 +685,8 @@ class Trainer:
             f"Model: {total_params:.1f}M parameters | {BLOCKS} blocks x {CHANNELS} channels | channels_last True",
             f"Buffer: size {BUFFER_SIZE:,}",
             f"Selfplay: sims {SIMULATIONS_TRAIN}→≥{MCTS_MIN_SIMS} | temp {TEMP_HIGH}->{TEMP_LOW}@{TEMP_MOVES} | resign {RESIGN_THRESHOLD} x{RESIGN_CONSECUTIVE} | dirichlet α {DIRICHLET_ALPHA} w {DIRICHLET_WEIGHT}",
-            f"Training: {ITERATIONS} iterations | {GAMES_PER_ITER} games/iter | steps/iter target {TRAIN_STEPS_PER_ITER} | batch {BATCH_SIZE}",
-            f"LR: init {LR_INIT:.2e} | warmup {LR_WARMUP_STEPS} | final {LR_FINAL:.2e} | wd {WEIGHT_DECAY} | mom {MOMENTUM}",
+            f"Training: {ITERATIONS} iterations | {GAMES_PER_ITER} games/iter | sched_est {LR_SCHED_STEPS_PER_ITER_EST} | batch {BATCH_SIZE}",
+            f"LR: init {LR_INIT:.2e} | warmup {self.scheduler.warm} | final {LR_FINAL:.2e} | wd {WEIGHT_DECAY} | mom {MOMENTUM}",
             f"Augment: mirror {AUGMENT_MIRROR_PROB:.2f} | rot180 {AUGMENT_ROT180_PROB:.2f} | vflip_cs {AUGMENT_VFLIP_CS_PROB:.2f} | policy_smooth {POLICY_LABEL_SMOOTH:.2f}",
             f"EMA: {'on' if EMA_ENABLED else 'off'} decay {EMA_DECAY if EMA_ENABLED else 0}",
             f"Eval: batch {EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | cache {EVAL_CACHE_SIZE}",
