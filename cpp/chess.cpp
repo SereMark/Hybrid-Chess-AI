@@ -171,15 +171,23 @@ void Position::parse_game_state_from_fen(const std::string &side,
                                          const std::string &castle,
                                          const std::string &ep, uint16_t h,
                                          uint16_t f) {
-  turn = (side == "w") ? WHITE : BLACK;
+  bool side_bad = false;
+  if (side == "w" || side == "W")
+    turn = WHITE;
+  else if (side == "b" || side == "B")
+    turn = BLACK;
+  else {
+    turn = WHITE;
+    side_bad = true;
+  }
   castling = 0;
-  if (castle.find('K') != std::string::npos)
+  if (!side_bad && castle.find('K') != std::string::npos)
     castling |= WHITE_KINGSIDE;
-  if (castle.find('Q') != std::string::npos)
+  if (!side_bad && castle.find('Q') != std::string::npos)
     castling |= WHITE_QUEENSIDE;
-  if (castle.find('k') != std::string::npos)
+  if (!side_bad && castle.find('k') != std::string::npos)
     castling |= BLACK_KINGSIDE;
-  if (castle.find('q') != std::string::npos)
+  if (!side_bad && castle.find('q') != std::string::npos)
     castling |= BLACK_QUEENSIDE;
   if (ep == "-")
     ep_square = INVALID_SQUARE;
@@ -188,11 +196,26 @@ void Position::parse_game_state_from_fen(const std::string &side,
     ep_square = (ep[0] - 'a') + (ep[1] - '1') * BOARD_SIZE;
   else
     ep_square = INVALID_SQUARE;
+  if (side_bad) {
+    castling = 0;
+    ep_square = INVALID_SQUARE;
+  }
   halfmove = h;
   fullmove = f;
 }
 void Position::finalize_position_setup() {
   update_occupancy();
+  if (ep_square != INVALID_SQUARE) {
+    const Color stm = turn;
+    const Color opp = Color(1 - stm);
+    const Square cs = ep_square + ((stm == WHITE) ? -BOARD_SIZE : BOARD_SIZE);
+    const bool oppPawnBehind =
+        (cs >= 0 && cs < NSQUARES) && (pieces[PAWN][opp] & bit(cs));
+    const bool stmCanCapture =
+        (get_pawn_attacks(ep_square, opp) & pieces[PAWN][stm]) != 0;
+    if (!oppPawnBehind || !stmCanCapture)
+      ep_square = INVALID_SQUARE;
+  }
   update_hash();
   history.clear();
   history.push_back(hash);
@@ -663,6 +686,10 @@ bool Position::is_insufficient_material() const {
   if (wn == 0 && bn == 0 && wb == 1 && bb == 1)
     return true;
 
+  if (wb == 0 && bb == 0 && wn == 2 && bn == 0)
+    return true;
+  if (wb == 0 && bb == 0 && bn == 2 && wn == 0)
+    return true;
   if (wb == 0 && bb == 0 && wn == 1 && bn == 1)
     return true;
 

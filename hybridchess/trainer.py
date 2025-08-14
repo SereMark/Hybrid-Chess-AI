@@ -90,7 +90,9 @@ class Trainer:
         self.model = m_any.to(memory_format=torch.channels_last)
         self._compiled = True
         try:
-            self.model = torch.compile(self.model, mode="default")
+            self.model = torch.compile(
+                self.model, mode="reduce-overhead", fullgraph=True, dynamic=False
+            )
         except Exception as e:
             self._compiled = False
             print(f"Warning: torch.compile failed or unavailable: {e}")
