@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -8,14 +9,15 @@ from typing import TYPE_CHECKING, Any
 import chesscore as ccore
 import numpy as np
 
-from .model import EVAL_MAX_BATCH, HISTORY_LENGTH, PLANES_PER_POSITION, POLICY_OUTPUT
+from .model import (EVAL_MAX_BATCH, HISTORY_LENGTH, PLANES_PER_POSITION,
+                    POLICY_OUTPUT)
 
 BUFFER_SIZE = 80_000
-SELFPLAY_WORKERS = 12
+SELFPLAY_WORKERS = max(8, (os.cpu_count() or 8) - 1)
 MAX_GAME_MOVES = 512
 RESIGN_THRESHOLD = -0.9
 RESIGN_CONSECUTIVE = 0
-TEMP_MOVES = 30
+TEMP_MOVES = 50
 TEMP_HIGH = 1.0
 TEMP_LOW = 0.01
 TEMP_DETERMINISTIC_THRESHOLD = 0.01
@@ -25,7 +27,7 @@ SIMULATIONS_DECAY_INTERVAL = 50
 C_PUCT = 1.25
 C_PUCT_BASE = 19652.0
 C_PUCT_INIT = 1.25
-DIRICHLET_ALPHA = 0.3
+DIRICHLET_ALPHA = 0.6
 DIRICHLET_WEIGHT = 0.25
 if TYPE_CHECKING:
     from .model import BatchedEvaluator
@@ -95,13 +97,13 @@ class Augment:
     @staticmethod
     def _plane_indices() -> dict[str, int]:
         turn_plane = HISTORY_LENGTH * PLANES_PER_POSITION
-        fifty_plane = turn_plane + 1
+        fullmove_plane = turn_plane + 1
         castling_base = turn_plane + 2
         return {
             "planes_per_pos": PLANES_PER_POSITION,
             "hist_len": HISTORY_LENGTH,
             "turn_plane": turn_plane,
-            "fifty_plane": fifty_plane,
+            "fullmove_plane": fullmove_plane,
             "castling_base": castling_base,
         }
 
@@ -232,6 +234,14 @@ class SelfPlayEngine:
         local_temp_low = 0
         local_resigns = 0
         local_forced_results = 0
+        open_plies = int(np.random.randint(0, 7))
+        for _ in range(open_plies):
+            if position.result() != ccore.ONGOING:
+                break
+            moves = position.legal_moves()
+            if not moves:
+                break
+            position.make_move(moves[int(np.random.randint(0, len(moves)))])
         while position.result() == ccore.ONGOING and move_count < MAX_GAME_MOVES:
             pos_copy = ccore.Position(position)
             sims = max(

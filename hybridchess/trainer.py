@@ -9,24 +9,10 @@ import psutil
 import torch
 import torch.nn.functional as F
 
-from .model import (
-    BLOCKS,
-    CHANNELS,
-    EVAL_BATCH_TIMEOUT_MS,
-    EVAL_CACHE_SIZE,
-    EVAL_MAX_BATCH,
-    BatchedEvaluator,
-    ChessNet,
-)
-from .selfplay import (
-    C_PUCT,
-    C_PUCT_BASE,
-    C_PUCT_INIT,
-    DIRICHLET_ALPHA,
-    MAX_GAME_MOVES,
-    Augment,
-    SelfPlayEngine,
-)
+from .model import (BLOCKS, CHANNELS, EVAL_BATCH_TIMEOUT_MS, EVAL_CACHE_SIZE,
+                    EVAL_MAX_BATCH, BatchedEvaluator, ChessNet)
+from .selfplay import (C_PUCT, C_PUCT_BASE, C_PUCT_INIT, DIRICHLET_ALPHA,
+                       MAX_GAME_MOVES, Augment, SelfPlayEngine)
 
 BATCH_SIZE = 1024
 LR_INIT = 1.0e-2
@@ -102,14 +88,22 @@ class Trainer:
             nesterov=True,
         )
 
+        TOTAL_EXPECTED_TRAIN_STEPS = int(ITERATIONS * TRAIN_STEPS_PER_ITER)
+
         class WarmupCosine:
             def __init__(
-                self, optimizer, base_lr: float, warmup_steps: int, final_lr: float
+                self,
+                optimizer,
+                base_lr: float,
+                warmup_steps: int,
+                final_lr: float,
+                total_steps: int,
             ):
                 self.opt = optimizer
                 self.base = base_lr
                 self.warm = max(1, int(warmup_steps))
                 self.final = final_lr
+                self.total = max(1, int(total_steps))
                 self.t = 0
 
             def step(self):
@@ -119,7 +113,9 @@ class Trainer:
                 else:
                     import math
 
-                    progress = min(1.0, (self.t - self.warm) / 100_000)
+                    progress = min(
+                        1.0, (self.t - self.warm) / max(1, self.total - self.warm)
+                    )
                     lr = self.final + (self.base - self.final) * 0.5 * (
                         1.0 + math.cos(math.pi * progress)
                     )
@@ -133,14 +129,20 @@ class Trainer:
                 else:
                     import math
 
-                    progress = min(1.0, (t_next - self.warm) / 100_000)
+                    progress = min(
+                        1.0, (t_next - self.warm) / max(1, self.total - self.warm)
+                    )
                     lr = self.final + (self.base - self.final) * 0.5 * (
                         1.0 + math.cos(math.pi * progress)
                     )
                 return lr
 
         self.scheduler = WarmupCosine(
-            self.optimizer, LR_INIT, LR_WARMUP_STEPS, LR_FINAL
+            self.optimizer,
+            LR_INIT,
+            LR_WARMUP_STEPS,
+            LR_FINAL,
+            TOTAL_EXPECTED_TRAIN_STEPS,
         )
         self.scaler = torch.amp.GradScaler("cuda", enabled=True)
         self.evaluator = BatchedEvaluator(self.device)

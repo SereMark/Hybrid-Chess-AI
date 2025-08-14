@@ -47,6 +47,7 @@ PYBIND11_MODULE(chesscore, m) {
            })
       .def("make_move", &chess::Position::make_move, py::arg("move"))
       .def("result", &chess::Position::result)
+      .def("count_repetitions", &chess::Position::repetition_count)
       .def_property_readonly(
           "pieces",
           [](const chess::Position &pos) {

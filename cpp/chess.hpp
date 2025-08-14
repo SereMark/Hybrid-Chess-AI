@@ -85,6 +85,9 @@ public:
   [[nodiscard]] MoveList legal_moves();
   Result make_move(const Move &);
   Result result();
+  [[nodiscard]] inline int repetition_count() const {
+    return count_repetitions();
+  }
   [[nodiscard]] Bitboard occupied() const noexcept;
   [[nodiscard]] Bitboard occupied(Color) const noexcept;
   [[nodiscard]] int piece_at(Square) const noexcept;

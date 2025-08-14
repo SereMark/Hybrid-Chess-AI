@@ -35,8 +35,8 @@ void encode_position_into(const chess::Position &pos, float *out) {
                    static_cast<size_t>(chess::BOARD_SIZE),
                T = static_cast<size_t>(P) * A;
   std::fill(out, out + T, 0.0f);
-  for (int t = 0; t < H; ++t) {
-    const int base = t * ppp;
+  {
+    const int base = 0;
     for (int piece = 0; piece < 6; ++piece)
       for (int color = 0; color < 2; ++color) {
         const int plane = base + piece * 2 + color;
@@ -48,6 +48,13 @@ void encode_position_into(const chess::Position &pos, float *out) {
           set_plane_value(out, plane, s >> 3, s & 7);
         }
       }
+    const int reps = pos.repetition_count();
+    if (reps >= 2)
+      std::fill(out + static_cast<size_t>(base + 12) * A,
+                out + static_cast<size_t>(base + 13) * A, 1.0f);
+    if (reps >= 3)
+      std::fill(out + static_cast<size_t>(base + 13) * A,
+                out + static_cast<size_t>(base + 14) * A, 1.0f);
   }
   const int turn_plane = H * ppp;
   if (pos.get_turn() == chess::WHITE)

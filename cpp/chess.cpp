@@ -194,6 +194,8 @@ void Position::parse_game_state_from_fen(const std::string &side,
 void Position::finalize_position_setup() {
   update_occupancy();
   update_hash();
+  history.clear();
+  history.push_back(hash);
 }
 void Position::from_fen(const std::string &fen) {
   if (fen.empty()) {
@@ -542,11 +544,11 @@ void Position::execute_move_core(const Move &move, MoveInfo *undo) {
 Result Position::make_move(const Move &m) {
   if (piece_at(m.from()) == -1)
     return ONGOING;
-  history.push_back(hash);
   const int p = piece_at(m.from());
   const Piece pt = Piece(p / 2);
   const int cap = piece_at(m.to());
   execute_move_core(m);
+  history.push_back(hash);
   if (cap >= 0 || pt == PAWN)
     halfmove = 0;
   else
@@ -558,8 +560,8 @@ Result Position::make_move(const Move &m) {
 void Position::make_move_fast(const Move &m, MoveInfo &info) {
   info.old_halfmove = halfmove;
   info.old_fullmove = fullmove;
-  history.push_back(hash);
   execute_move_core(m, &info);
+  history.push_back(hash);
   const int moved_type = (info.moved_piece >= 0) ? (info.moved_piece / 2) : -1;
   if (info.captured_piece >= 0 || moved_type == PAWN)
     halfmove = 0;
@@ -615,7 +617,7 @@ void Position::unmake_move_fast(const Move &m, const MoveInfo &info) {
 Result Position::result() {
   if (halfmove >= 100)
     return DRAW;
-  if (count_repetitions() >= 2)
+  if (count_repetitions() >= 3)
     return DRAW;
   if (is_insufficient_material())
     return DRAW;
@@ -633,9 +635,12 @@ Result Position::result() {
 }
 int Position::count_repetitions() const {
   int c = 0;
-  for (Hash h : history)
-    if (h == hash)
+  for (auto it = history.rbegin(); it != history.rend(); ++it)
+    if (*it == hash) {
       ++c;
+      if (c >= 3)
+        break;
+    }
   return c;
 }
 bool Position::is_insufficient_material() const {
@@ -655,8 +660,25 @@ bool Position::is_insufficient_material() const {
   if ((wb == 1 && wn == 0 && bn == 0 && bb == 0) ||
       (bb == 1 && bn == 0 && wn == 0 && wb == 0))
     return true;
-  if (wn == 0 && bn == 0 && wb > 0 && bb > 0)
-    return (wb <= 1 && bb <= 1);
+  if (wn == 0 && bn == 0 && wb == 1 && bb == 1) {
+    auto bishop_color_mask = [](Bitboard bb) {
+      int mask = 0;
+      while (bb) {
+        int s = lsb(bb);
+        pop_lsb(bb);
+        int r = s / BOARD_SIZE, f = s % BOARD_SIZE;
+        if (((r + f) & 1) == 0)
+          mask |= 1;
+        else
+          mask |= 2;
+      }
+      return mask;
+    };
+    int wmask = bishop_color_mask(pieces[BISHOP][WHITE]);
+    int bmask = bishop_color_mask(pieces[BISHOP][BLACK]);
+    if ((wmask == 1 && bmask == 1) || (wmask == 2 && bmask == 2))
+      return true;
+  }
   return false;
 }
 } // namespace chess

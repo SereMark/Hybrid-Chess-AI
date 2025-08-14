@@ -85,8 +85,8 @@ int encode_move_index(const chess::Move &m) { return encode_move_73x64(m); }
   const float s = sqrtf(1.0f + static_cast<float>(parent->visits));
   float c = c_puct_;
   if (parent->visits > 0)
-    c = logf((parent->visits + c_puct_base_ + 1.0f) / c_puct_base_) +
-        c_puct_init_;
+    c = c_puct_ * (logf((parent->visits + c_puct_base_ + 1.0f) / c_puct_base_) +
+                   c_puct_init_);
   Node *best = &ch[0];
   float best_score = best->ucb(c, s);
   for (uint16_t i = 1; i < parent->nchildren; ++i) {
