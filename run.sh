@@ -10,4 +10,6 @@ cmake -S cpp -B build -Dpybind11_DIR="$(venv/bin/python -m pybind11 --cmakedir)"
 cmake --build build -j"$(nproc)"
 
 export PYTHONPATH="${PWD}:${PWD}/build"
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
 exec venv/bin/python -m hybridchess.trainer
