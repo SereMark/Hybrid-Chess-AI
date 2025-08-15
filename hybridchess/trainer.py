@@ -38,7 +38,7 @@ from .selfplay import (
     SelfPlayEngine,
 )
 
-BATCH_SIZE = 2048
+BATCH_SIZE = 1024
 LR_INIT = 1.0e-2
 LR_WARMUP_STEPS = 5_000
 LR_FINAL = 3.0e-4
