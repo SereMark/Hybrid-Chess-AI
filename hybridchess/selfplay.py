@@ -12,17 +12,17 @@ import numpy as np
 from .model import EVAL_MAX_BATCH, HISTORY_LENGTH, PLANES_PER_POSITION, POLICY_OUTPUT
 
 BUFFER_SIZE = 300_000
-SELFPLAY_WORKERS = 10
+SELFPLAY_WORKERS = 12
 MAX_GAME_MOVES = 512
 RESIGN_THRESHOLD = -0.9
 RESIGN_CONSECUTIVE = 0
-TEMP_MOVES = 40
+TEMP_MOVES = 30
 TEMP_HIGH = 1.0
 TEMP_LOW = 0.01
 TEMP_DETERMINISTIC_THRESHOLD = 0.01
-SIMULATIONS_TRAIN = 384
-MCTS_MIN_SIMS = 64
-SIMULATIONS_DECAY_INTERVAL = 60
+SIMULATIONS_TRAIN = 320
+MCTS_MIN_SIMS = 96
+SIMULATIONS_DECAY_INTERVAL = 50
 C_PUCT = 1.25
 C_PUCT_BASE = 19652.0
 C_PUCT_INIT = 1.25
@@ -154,6 +154,7 @@ class Augment:
 
 class SelfPlayEngine:
     def __init__(self, evaluator: BatchedEvaluator) -> None:
+        self.resign_consecutive = RESIGN_CONSECUTIVE
         self.evaluator = evaluator
         self.buffer: deque[tuple[np.ndarray, np.ndarray, np.int8]] = deque(
             maxlen=BUFFER_SIZE
@@ -272,12 +273,12 @@ class SelfPlayEngine:
             encoded_u8 = SelfPlayEngine._to_u8_plane(encoded)
             counts_u8 = counts
             data.append((encoded_u8, counts_u8))
-            if RESIGN_CONSECUTIVE > 0:
+            if self.resign_consecutive > 0:
                 _, val_arr = self.evaluator.infer_positions([pos_copy])
                 v = float(val_arr[0])
                 if v <= RESIGN_THRESHOLD:
                     resign_count += 1
-                    if resign_count >= RESIGN_CONSECUTIVE:
+                    if resign_count >= self.resign_consecutive:
                         stm_white = position.turn == ccore.WHITE
                         forced_result = (
                             ccore.BLACK_WIN if stm_white else ccore.WHITE_WIN

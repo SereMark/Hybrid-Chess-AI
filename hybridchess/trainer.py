@@ -38,7 +38,7 @@ from .selfplay import (
     SelfPlayEngine,
 )
 
-BATCH_SIZE = 1536
+BATCH_SIZE = 1792
 LR_INIT = 1.0e-2
 LR_WARMUP_STEPS = 3_000
 LR_FINAL = 3.0e-4
@@ -75,7 +75,7 @@ POLICY_LABEL_SMOOTH = 0.05
 ENTROPY_COEF_INIT = 1.0e-3
 ENTROPY_ANNEAL_ITERS = 100
 EMA_ENABLED = True
-EMA_DECAY = 0.999
+EMA_DECAY = 0.9995
 OUTPUT_DIR = "out"
 
 
@@ -352,6 +352,8 @@ class Trainer:
         )
 
     def training_iteration(self) -> dict[str, int | float]:
+        if self.iteration >= 200 and self.selfplay_engine.resign_consecutive < 2:
+            self.selfplay_engine.resign_consecutive = 2
         stats: dict[str, int | float] = {}
         torch.cuda.reset_peak_memory_stats(self.device)
         header_lr = float(self.scheduler.peek_next_lr())
