@@ -60,6 +60,7 @@ AUGMENT_ROT180_PROB = 0.25
 AUGMENT_VFLIP_CS_PROB = 0.25
 SIMULATIONS_EVAL = 128
 ARENA_EVAL_EVERY = 10
+ARENA_EVAL_CACHE_CAP = 8192
 ARENA_GAMES = 100
 ARENA_OPENINGS_PATH = ""
 ARENA_TEMPERATURE = 0.25
@@ -588,8 +589,8 @@ class Trainer:
             ce.eval_model.eval()
             ie.eval_model.load_state_dict(incumbent.state_dict(), strict=True)
             ie.eval_model.eval()
-            ce.cache_cap = 2048
-            ie.cache_cap = 2048
+            ce.cache_cap = ARENA_EVAL_CACHE_CAP
+            ie.cache_cap = ARENA_EVAL_CACHE_CAP
             openings: list[str] = []
             if ARENA_OPENINGS_PATH:
                 try:
