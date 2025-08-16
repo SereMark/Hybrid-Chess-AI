@@ -68,9 +68,15 @@ ARENA_TEMP_MOVES = 0
 ARENA_DIRICHLET_WEIGHT = 0.0
 ARENA_OPENING_TEMPERATURE_EPS = 1e-6
 ARENA_DRAW_SCORE = 0.5
-ARENA_CONFIDENCE_Z = 1.90
+ARENA_CONFIDENCE_Z = 1.64
 ARENA_THRESHOLD_BASE = 0.5
 ARENA_WIN_RATE = 0.55
+ARENA_GATING_MODE = "hybrid"
+ARENA_ELO_TARGET = 8.0
+ARENA_DRAW_TARGET_SCALE = 0.5
+ARENA_PROMOTE_ON_CURRENT = True
+ARENA_PROMOTE_ON_ACC = False
+ARENA_MIN_GAMES_PROMOTE = 120
 POLICY_LABEL_SMOOTH = 0.05
 ENTROPY_COEF_INIT = 5.0e-4
 ENTROPY_ANNEAL_ITERS = 60
@@ -475,6 +481,33 @@ class Trainer:
             self.ema.copy_to(m)
         return m
 
+    def _arena_metrics(self, w: int, d: int, l: int, z: float) -> dict[str, float]:
+        n = max(1, int(w + d + l))
+        p = (float(w) + 0.5 * float(d)) / float(n)
+        p2 = (float(w) + 0.25 * float(d)) / float(n)
+        var = max(0.0, p2 - p * p)
+        se = (var / float(n)) ** 0.5
+        draw = float(d) / float(n)
+        eps = 1e-6
+        p_clip = min(1.0 - eps, max(eps, p))
+        elo = 400.0 * float(np.log10(p_clip / (1.0 - p_clip)))
+        denom = max(eps, p_clip * (1.0 - p_clip))
+        se_elo = (400.0 / float(np.log(10.0))) * se / denom
+        lb = p - z * se
+        elo_lb = elo - z * se_elo
+        return {
+            "n": float(n),
+            "p": float(p),
+            "p2": float(p2),
+            "var": float(var),
+            "se": float(se),
+            "draw": float(draw),
+            "elo": float(elo),
+            "se_elo": float(se_elo),
+            "lb": float(lb),
+            "elo_lb": float(elo_lb),
+        }
+
     def _arena_match(self, challenger: torch.nn.Module, incumbent: torch.nn.Module) -> tuple[float, int, int, int]:
         import chesscore as _ccore
         import numpy as _np
@@ -561,7 +594,7 @@ class Trainer:
             f"Augment: mirror {AUGMENT_MIRROR_PROB:.2f} | rot180 {AUGMENT_ROT180_PROB:.2f} | vflip_cs {AUGMENT_VFLIP_CS_PROB:.2f} | policy_smooth {POLICY_LABEL_SMOOTH:.2f}",
             f"EMA: {'on' if EMA_ENABLED else 'off'} decay {EMA_DECAY if EMA_ENABLED else 0}",
             f"Eval: batch {EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | cache {EVAL_CACHE_SIZE}",
-            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | temp {ARENA_TEMPERATURE} for {ARENA_TEMP_MOVES} | dirichlet {ARENA_DIRICHLET_WEIGHT} | draw {ARENA_DRAW_SCORE} | Z {ARENA_CONFIDENCE_Z:.2f} thr {max(ARENA_THRESHOLD_BASE, ARENA_WIN_RATE):.2f}",
+            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | mode {ARENA_GATING_MODE} | Z {ARENA_CONFIDENCE_Z:.2f} | WRthr {max(ARENA_THRESHOLD_BASE, ARENA_WIN_RATE):.2f} | EloTarget {ARENA_ELO_TARGET:.1f} | drawScale {ARENA_DRAW_TARGET_SCALE:.2f} | cur {ARENA_PROMOTE_ON_CURRENT} acc {ARENA_PROMOTE_ON_ACC}",
             f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games | output {OUTPUT_DIR}",
         ]
         print("\n".join(header))
@@ -579,27 +612,33 @@ class Trainer:
                 self._arena_acc_d = getattr(self, "_arena_acc_d", 0) + ad
                 self._arena_acc_l = getattr(self, "_arena_acc_l", 0) + al
                 gw, gd, gl = self._arena_acc_w, self._arena_acc_d, self._arena_acc_l
-                gn = max(1, gw + gd + gl)
-                acc_mu = (gw + ARENA_DRAW_SCORE * gd) / gn
-                threshold = max(ARENA_THRESHOLD_BASE, ARENA_WIN_RATE)
-                e_x2 = (self._arena_acc_w + 0.25 * self._arena_acc_d) / max(1, gn)
-                var = max(0.0, e_x2 - acc_mu * acc_mu)
-                se = (var / max(1, gn)) ** 0.5
-                lb = acc_mu - ARENA_CONFIDENCE_Z * se
-                promote = lb >= threshold
-                cur_n = ARENA_GAMES
-                cur_mu = (aw + ARENA_DRAW_SCORE * ad) / max(1, cur_n)
-                cur_e_x2 = (aw + 0.25 * ad) / max(1, cur_n)
-                cur_var = max(0.0, cur_e_x2 - cur_mu * cur_mu)
-                cur_se = (cur_var / max(1, cur_n)) ** 0.5
-                cur_lb = cur_mu - ARENA_CONFIDENCE_Z * cur_se
-                acc_e_x2 = (self._arena_acc_w + 0.25 * self._arena_acc_d) / max(1, gn)
-                acc_var = max(0.0, acc_e_x2 - acc_mu * acc_mu)
-                acc_se = (acc_var / max(1, gn)) ** 0.5
-                acc_lb = acc_mu - ARENA_CONFIDENCE_Z * acc_se
+                cur_m = self._arena_metrics(aw, ad, al, ARENA_CONFIDENCE_Z)
+                acc_m = self._arena_metrics(gw, gd, gl, ARENA_CONFIDENCE_Z)
+                thr_wr = max(ARENA_THRESHOLD_BASE, ARENA_WIN_RATE)
+                tgt_elo_cur = ARENA_ELO_TARGET * (1.0 - ARENA_DRAW_TARGET_SCALE * cur_m["draw"])
+                tgt_elo_acc = ARENA_ELO_TARGET * (1.0 - ARENA_DRAW_TARGET_SCALE * acc_m["draw"])
+                if ARENA_GATING_MODE == "lb":
+                    cur_pass = (cur_m["lb"] >= thr_wr) and (cur_m["n"] >= ARENA_MIN_GAMES_PROMOTE)
+                    acc_pass = (acc_m["lb"] >= thr_wr)
+                elif ARENA_GATING_MODE == "elo":
+                    cur_pass = (cur_m["elo_lb"] >= tgt_elo_cur) and (cur_m["n"] >= ARENA_MIN_GAMES_PROMOTE)
+                    acc_pass = (acc_m["elo_lb"] >= tgt_elo_acc)
+                else:
+                    cur_pass = ((cur_m["elo_lb"] >= tgt_elo_cur) or (cur_m["lb"] >= thr_wr)) and (cur_m["n"] >= ARENA_MIN_GAMES_PROMOTE)
+                    acc_pass = ((acc_m["elo_lb"] >= tgt_elo_acc) or (acc_m["lb"] >= thr_wr))
+                promote = (ARENA_PROMOTE_ON_CURRENT and cur_pass) or (ARENA_PROMOTE_ON_ACC and acc_pass)
                 pure_wr = aw / max(1, ARENA_GAMES)
                 print(
-                    f"AR   score {100.0 * score:>5.1f}% | win {100.0 * pure_wr:>5.1f}% | cur LB {100.0 * cur_lb:>5.1f}% | acc LB {100.0 * acc_lb:>5.1f}% ({gn:,}) | W/D/L {aw:,}/{ad:,}/{al:,} | games {ARENA_GAMES:,} | time {self._format_time(arena_elapsed)}"
+                    "AR   "
+                    f"cur n {int(cur_m['n'])} | score {100.0*cur_m['p']:>5.1f}% | lb {100.0*cur_m['lb']:>5.1f}% | "
+                    f"elo {cur_m['elo']:>6.1f} | elo_lb {cur_m['elo_lb']:>6.1f} | tgtE {tgt_elo_cur:>4.1f} | draw {100.0*cur_m['draw']:>4.1f}% | "
+                    f"W/D/L {aw}/{ad}/{al} | time {self._format_time(arena_elapsed)}"
+                )
+                print(
+                    "AR+  "
+                    f"acc n {int(acc_m['n'])} | score {100.0*acc_m['p']:>5.1f}% | lb {100.0*acc_m['lb']:>5.1f}% | "
+                    f"elo {acc_m['elo']:>6.1f} | elo_lb {acc_m['elo_lb']:>6.1f} | tgtE {tgt_elo_acc:>4.1f} | draw {100.0*acc_m['draw']:>4.1f}% | "
+                    f"gate {ARENA_GATING_MODE} | curPass {cur_pass} accPass {acc_pass} -> {'PROMOTE' if promote else 'hold'}"
                 )
                 if promote:
                     self.best_model.load_state_dict(challenger.state_dict(), strict=True)
@@ -614,7 +653,7 @@ class Trainer:
                         print(f"Saved best model to {dst}")
                     except Exception as e:
                         print(f"Warning: failed to save best model: {e}")
-                    if hasattr(self, "_arena_acc_w"):
+                    if hasattr(self, "_arena_acc_w") and not ARENA_PROMOTE_ON_ACC:
                         self._arena_acc_w = 0
                         self._arena_acc_d = 0
                         self._arena_acc_l = 0
