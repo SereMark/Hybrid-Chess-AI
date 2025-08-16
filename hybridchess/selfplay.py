@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import threading
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -11,7 +10,7 @@ import numpy as np
 
 from .model import EVAL_MAX_BATCH, HISTORY_LENGTH, PLANES_PER_POSITION, POLICY_OUTPUT
 
-BUFFER_SIZE = 300_000
+BUFFER_SIZE = 120_000
 SELFPLAY_WORKERS = 12
 MAX_GAME_MOVES = 512
 RESIGN_THRESHOLD = -0.9
@@ -122,9 +121,7 @@ class Augment:
         return perm
 
     @staticmethod
-    def apply(
-        states: list[np.ndarray], policies: list[np.ndarray], which: str
-    ) -> tuple[list[np.ndarray], list[np.ndarray], bool]:
+    def apply(states: list[np.ndarray], policies: list[np.ndarray], which: str) -> tuple[list[np.ndarray], list[np.ndarray], bool]:
         if not states:
             return states, policies, False
         st = np.stack(states, axis=0)
@@ -156,9 +153,7 @@ class SelfPlayEngine:
     def __init__(self, evaluator: BatchedEvaluator) -> None:
         self.resign_consecutive = RESIGN_CONSECUTIVE
         self.evaluator = evaluator
-        self.buffer: deque[tuple[np.ndarray, np.ndarray, np.int8]] = deque(
-            maxlen=BUFFER_SIZE
-        )
+        self.buffer: deque[tuple[np.ndarray, np.ndarray, np.int8]] = deque(maxlen=BUFFER_SIZE)
         self.buffer_lock = threading.Lock()
         self.metrics_lock = threading.Lock()
         self._metrics = {
@@ -182,9 +177,7 @@ class SelfPlayEngine:
     def _value_to_i8(v: float) -> np.int8:
         return np.int8(np.clip(np.rint(v * 127.0), -127, 127))
 
-    def _temp_select(
-        self, moves: list[Any], visits: list[int], move_number: int
-    ) -> Any:
+    def _temp_select(self, moves: list[Any], visits: list[int], move_number: int) -> Any:
         temperature = TEMP_HIGH if move_number < TEMP_MOVES else TEMP_LOW
         if temperature > TEMP_DETERMINISTIC_THRESHOLD:
             probs = np.maximum(np.array(visits, dtype=np.float64), 0)
@@ -194,18 +187,12 @@ class SelfPlayEngine:
             else:
                 probs = probs ** (1.0 / temperature)
                 s = probs.sum()
-                idx = (
-                    int(np.argmax(visits))
-                    if (not np.isfinite(s) or s <= 0)
-                    else int(np.random.choice(len(moves), p=probs / s))
-                )
+                idx = int(np.argmax(visits)) if (not np.isfinite(s) or s <= 0) else int(np.random.choice(len(moves), p=probs / s))
         else:
             idx = int(np.argmax(visits))
         return moves[idx]
 
-    def _process_result(
-        self, data: list[tuple[np.ndarray, np.ndarray]], result: int
-    ) -> None:
+    def _process_result(self, data: list[tuple[np.ndarray, np.ndarray]], result: int) -> None:
         if result == ccore.WHITE_WIN:
             values = [1.0 if i % 2 == 0 else -1.0 for i in range(len(data))]
         elif result == ccore.BLACK_WIN:
@@ -213,10 +200,8 @@ class SelfPlayEngine:
         else:
             values = [0.0] * len(data)
         with self.buffer_lock:
-            for (position_u8, counts_u8), value in zip(data, values, strict=False):
-                self.buffer.append(
-                    (position_u8, counts_u8, SelfPlayEngine._value_to_i8(value))
-                )
+            for (position_u8, counts_u16), value in zip(data, values, strict=False):
+                self.buffer.append((position_u8, counts_u16, SelfPlayEngine._value_to_i8(value)))
 
     def play_single_game(self) -> tuple[int, int]:
         position = ccore.Position()
@@ -244,35 +229,30 @@ class SelfPlayEngine:
             position.make_move(moves[int(np.random.randint(0, len(moves)))])
         while position.result() == ccore.ONGOING and move_count < MAX_GAME_MOVES:
             pos_copy = ccore.Position(position)
-            sims = max(
-                MCTS_MIN_SIMS,
-                SIMULATIONS_TRAIN // (1 + move_count // SIMULATIONS_DECAY_INTERVAL),
-            )
+            sims = max(MCTS_MIN_SIMS, SIMULATIONS_TRAIN // (1 + move_count // SIMULATIONS_DECAY_INTERVAL))
             mcts.set_simulations(sims)
             local_mcts_sims_total += int(sims)
             local_mcts_calls_total += 1
-            visits = mcts.search_batched(
-                position, self.evaluator.infer_positions, EVAL_MAX_BATCH
-            )
+            visits = mcts.search_batched(position, self.evaluator.infer_positions, EVAL_MAX_BATCH)
             if not visits:
                 break
             moves = position.legal_moves()
             if moves:
                 local_mcts_batch_max = max(local_mcts_batch_max, len(moves))
-            counts = np.zeros(POLICY_OUTPUT, dtype=np.uint8)
+            counts = np.zeros(POLICY_OUTPUT, dtype=np.uint16)
             for mv, vc in zip(moves, visits, strict=False):
                 idx = ccore.encode_move_index(mv)
                 if (idx is not None) and (0 <= int(idx) < POLICY_OUTPUT):
-                    c = min(int(vc), 255)
-                    counts[int(idx)] = np.uint8(c)
+                    c = min(int(vc), 65535)
+                    counts[int(idx)] = np.uint16(c)
             if history:
                 histories = history[-HISTORY_LENGTH:] + [pos_copy]
                 encoded = ccore.encode_batch([histories])[0]
             else:
                 encoded = ccore.encode_position(pos_copy)
             encoded_u8 = SelfPlayEngine._to_u8_plane(encoded)
-            counts_u8 = counts
-            data.append((encoded_u8, counts_u8))
+            counts_u16 = counts
+            data.append((encoded_u8, counts_u16))
             if self.resign_consecutive > 0:
                 _, val_arr = self.evaluator.infer_positions([pos_copy])
                 v = float(val_arr[0])
@@ -280,9 +260,7 @@ class SelfPlayEngine:
                     resign_count += 1
                     if resign_count >= self.resign_consecutive:
                         stm_white = position.turn == ccore.WHITE
-                        forced_result = (
-                            ccore.BLACK_WIN if stm_white else ccore.WHITE_WIN
-                        )
+                        forced_result = ccore.BLACK_WIN if stm_white else ccore.WHITE_WIN
                         local_resigns += 1
                         break
                 else:
@@ -306,9 +284,7 @@ class SelfPlayEngine:
             self._metrics["moves_total"] += int(move_count)
             self._metrics["mcts_sims_total"] += local_mcts_sims_total
             self._metrics["mcts_calls_total"] += local_mcts_calls_total
-            self._metrics["mcts_batch_max"] = max(
-                int(self._metrics["mcts_batch_max"]), local_mcts_batch_max
-            )
+            self._metrics["mcts_batch_max"] = max(int(self._metrics["mcts_batch_max"]), local_mcts_batch_max)
             self._metrics["temp_moves_high_total"] += local_temp_high
             self._metrics["temp_moves_low_total"] += local_temp_low
             self._metrics["resigns_total"] += local_resigns
@@ -319,12 +295,7 @@ class SelfPlayEngine:
         with self.buffer_lock:
             return list(self.buffer)
 
-    def sample_from_snapshot(
-        self,
-        snapshot: list[tuple[np.ndarray, np.ndarray, np.int8]],
-        batch_size: int,
-        recent_ratio: float = 0.6,
-    ) -> tuple[list[np.ndarray], list[np.ndarray], list[float]] | None:
+    def sample_from_snapshot(self, snapshot: list[tuple[np.ndarray, np.ndarray, np.int8]], batch_size: int, recent_ratio: float = 0.6) -> tuple[list[np.ndarray], list[np.ndarray], list[float]] | None:
         N = len(snapshot)
         if batch_size > N:
             return None
@@ -334,11 +305,9 @@ class SelfPlayEngine:
         recent_idx = np.random.randint(max(0, N - recent_N), N, size=n_recent)
         old_idx = np.random.randint(0, max(1, N - recent_N), size=n_old)
         sel_idx = np.concatenate([recent_idx, old_idx])
-        states_u8, counts_u8, values_i8 = zip(
-            *[snapshot[int(i)] for i in sel_idx], strict=False
-        )
+        states_u8, counts_u16, values_i8 = zip(*[snapshot[int(i)] for i in sel_idx], strict=False)
         states = [s.astype(np.float32) / 255.0 for s in states_u8]
-        counts = [p.astype(np.float32) for p in counts_u8]
+        counts = [p.astype(np.float32) for p in counts_u16]
         policies: list[np.ndarray] = []
         for c in counts:
             s = float(c.sum())
@@ -350,13 +319,7 @@ class SelfPlayEngine:
         return states, policies, values
 
     def play_games(self, num_games: int) -> dict[str, int | float]:
-        res: dict[str, int | float] = {
-            "games": 0,
-            "moves": 0,
-            "white_wins": 0,
-            "black_wins": 0,
-            "draws": 0,
-        }
+        res: dict[str, int | float] = {"games": 0, "moves": 0, "white_wins": 0, "black_wins": 0, "draws": 0}
         with self.metrics_lock:
             sp_start = dict(self._metrics)
         with ThreadPoolExecutor(max_workers=max(1, SELFPLAY_WORKERS)) as ex:

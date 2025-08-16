@@ -83,9 +83,7 @@ class BatchedEvaluator:
         self.device = device
         self.model_lock = threading.Lock()
         any_mod: Any = ChessNet().to(self.device)
-        self.eval_model: nn.Module = any_mod.to(
-            memory_format=torch.channels_last
-        ).eval()
+        self.eval_model: nn.Module = any_mod.to(memory_format=torch.channels_last).eval()
         if self.device.type == "cuda":
             self.eval_model.half()
         for p in self.eval_model.parameters():
@@ -111,9 +109,7 @@ class BatchedEvaluator:
         self._pending_lock = threading.Condition()
         self._pending: deque[_EvalRequest] = deque()
         self._shutdown = threading.Event()
-        self._thread = threading.Thread(
-            target=self._batch_worker, name="EvalBatchWorker", daemon=True
-        )
+        self._thread = threading.Thread(target=self._batch_worker, name="EvalBatchWorker", daemon=True)
         self._thread.start()
 
     def close(self) -> None:
@@ -162,12 +158,7 @@ class BatchedEvaluator:
 
     def _encode_batch(self, positions: list[Any]) -> torch.Tensor:
         import chesscore as ccore
-
-        x_np = (
-            np.zeros((0, INPUT_PLANES, 8, 8), dtype=np.float32)
-            if not positions
-            else ccore.encode_batch(positions)
-        )
+        x_np = np.zeros((0, INPUT_PLANES, 8, 8), dtype=np.float32) if not positions else ccore.encode_batch(positions)
         x = torch.from_numpy(x_np).pin_memory().to(self.device, non_blocking=True)
         return x.contiguous(memory_format=torch.channels_last)
 
@@ -177,20 +168,14 @@ class BatchedEvaluator:
             torch.inference_mode(),
             torch.autocast(device_type="cuda", enabled=(self.device.type == "cuda")),
         ):
-            x = (
-                x.contiguous(memory_format=torch.channels_last)
-                if x.dim() == 4
-                else x.contiguous()
-            )
+            x = x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
             if self.device.type == "cuda":
                 x = x.to(dtype=torch.float16)
             return self.eval_model(x)
 
     def infer_positions(self, positions: list[Any]) -> tuple[np.ndarray, np.ndarray]:
         if not positions:
-            return np.zeros((0, POLICY_OUTPUT), dtype=np.float32), np.zeros(
-                (0,), dtype=np.float32
-            )
+            return np.zeros((0, POLICY_OUTPUT), dtype=np.float32), np.zeros((0,), dtype=np.float32)
         with self._metrics_lock:
             self._metrics["requests_total"] += len(positions)
         cached_p: list[np.ndarray | None] = [None] * len(positions)
@@ -239,20 +224,12 @@ class BatchedEvaluator:
                         pol_opt = cached_p[idx]
                         val = cached_v[idx]
                         if pol_opt is not None:
-                            self.cache[h] = (
-                                pol_opt.astype(np.float16),
-                                np.float16(val),
-                            )
+                            self.cache[h] = (pol_opt.astype(np.float16), np.float16(val))
                             self.cache_order.append(h)
                 while len(self.cache_order) > self.cache_cap:
                     k = self.cache_order.popleft()
                     self.cache.pop(k, None)
-        pol_np = np.stack(
-            [
-                (p if p is not None else np.zeros((POLICY_OUTPUT,), dtype=np.float32))
-                for p in cached_p
-            ]
-        ).astype(np.float32)
+        pol_np = np.stack([(p if p is not None else np.zeros((POLICY_OUTPUT,), dtype=np.float32)) for p in cached_p]).astype(np.float32)
         val_np = np.asarray(cached_v, dtype=np.float32)
         return pol_np, val_np
 
@@ -286,9 +263,7 @@ class BatchedEvaluator:
             t_enc1 = time.time()
             p_t, v_t = self._forward(x)
             t_fwd1 = time.time()
-            pol = (
-                torch.softmax(p_t, dim=1).detach().to(dtype=torch.float16).cpu().numpy()
-            )
+            pol = torch.softmax(p_t, dim=1).detach().to(dtype=torch.float16).cpu().numpy()
             val = v_t.detach().to(dtype=torch.float16).cpu().numpy()
             now = time.time()
             accum_wait = 0.0

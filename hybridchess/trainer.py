@@ -58,22 +58,22 @@ RATIO_UPDATE_STEPS_MAX = 224
 AUGMENT_MIRROR_PROB = 0.5
 AUGMENT_ROT180_PROB = 0.25
 AUGMENT_VFLIP_CS_PROB = 0.25
-SIMULATIONS_EVAL = 128
+SIMULATIONS_EVAL = 64
 ARENA_EVAL_EVERY = 20
 ARENA_EVAL_CACHE_CAP = 8192
 ARENA_GAMES = 160
 ARENA_OPENINGS_PATH = ""
-ARENA_TEMPERATURE = 0.20
-ARENA_TEMP_MOVES = 6
-ARENA_DIRICHLET_WEIGHT = 0.02
+ARENA_TEMPERATURE = 0.0
+ARENA_TEMP_MOVES = 0
+ARENA_DIRICHLET_WEIGHT = 0.0
 ARENA_OPENING_TEMPERATURE_EPS = 1e-6
 ARENA_DRAW_SCORE = 0.5
 ARENA_CONFIDENCE_Z = 1.90
 ARENA_THRESHOLD_BASE = 0.5
 ARENA_WIN_RATE = 0.55
 POLICY_LABEL_SMOOTH = 0.05
-ENTROPY_COEF_INIT = 1.0e-3
-ENTROPY_ANNEAL_ITERS = 100
+ENTROPY_COEF_INIT = 5.0e-4
+ENTROPY_ANNEAL_ITERS = 60
 EMA_ENABLED = True
 EMA_DECAY = 0.9995
 OUTPUT_DIR = "out"
@@ -91,9 +91,7 @@ class Trainer:
         self.model = m_any.to(memory_format=torch.channels_last)
         self._compiled = True
         try:
-            self.model = torch.compile(
-                self.model, mode="reduce-overhead", fullgraph=True, dynamic=False
-            )
+            self.model = torch.compile(self.model, mode="reduce-overhead", fullgraph=True, dynamic=False)
         except Exception as e:
             self._compiled = False
             print(f"Warning: torch.compile failed or unavailable: {e}")
@@ -102,13 +100,7 @@ class Trainer:
         for n, p in self.model.named_parameters():
             if not p.requires_grad:
                 continue
-            (
-                nodecay
-                if (
-                    n.endswith(".bias") or "bn" in n.lower() or "batchnorm" in n.lower()
-                )
-                else decay
-            ).append(p)
+            (nodecay if (n.endswith(".bias") or "bn" in n.lower() or "batchnorm" in n.lower()) else decay).append(p)
         self.optimizer = torch.optim.SGD(
             [
                 {"params": decay, "weight_decay": WEIGHT_DECAY},
@@ -118,21 +110,11 @@ class Trainer:
             momentum=MOMENTUM,
             nesterov=True,
         )
-
         TOTAL_EXPECTED_TRAIN_STEPS = int(ITERATIONS * LR_SCHED_STEPS_PER_ITER_EST)
-        WARMUP_STEPS_CLAMPED = int(
-            max(1, min(LR_WARMUP_STEPS, max(1, TOTAL_EXPECTED_TRAIN_STEPS - 1)))
-        )
+        WARMUP_STEPS_CLAMPED = int(max(1, min(LR_WARMUP_STEPS, max(1, TOTAL_EXPECTED_TRAIN_STEPS - 1))))
 
         class WarmupCosine:
-            def __init__(
-                self,
-                optimizer,
-                base_lr: float,
-                warmup_steps: int,
-                final_lr: float,
-                total_steps: int,
-            ):
+            def __init__(self, optimizer, base_lr: float, warmup_steps: int, final_lr: float, total_steps: int):
                 self.opt = optimizer
                 self.base = base_lr
                 self.warm = max(1, int(warmup_steps))
@@ -146,13 +128,8 @@ class Trainer:
                     lr = self.base * (self.t / self.warm)
                 else:
                     import math
-
-                    progress = min(
-                        1.0, (self.t - self.warm) / max(1, self.total - self.warm)
-                    )
-                    lr = self.final + (self.base - self.final) * 0.5 * (
-                        1.0 + math.cos(math.pi * progress)
-                    )
+                    progress = min(1.0, (self.t - self.warm) / max(1, self.total - self.warm))
+                    lr = self.final + (self.base - self.final) * 0.5 * (1.0 + math.cos(math.pi * progress))
                 for pg in self.opt.param_groups:
                     pg["lr"] = lr
 
@@ -162,13 +139,8 @@ class Trainer:
                     lr = self.base * (t_next / self.warm)
                 else:
                     import math
-
-                    progress = min(
-                        1.0, (t_next - self.warm) / max(1, self.total - self.warm)
-                    )
-                    lr = self.final + (self.base - self.final) * 0.5 * (
-                        1.0 + math.cos(math.pi * progress)
-                    )
+                    progress = min(1.0, (t_next - self.warm) / max(1, self.total - self.warm))
+                    lr = self.final + (self.base - self.final) * 0.5 * (1.0 + math.cos(math.pi * progress))
                 return lr
 
             def set_total_steps(self, total_steps: int):
@@ -176,13 +148,7 @@ class Trainer:
                 if self.warm >= self.total:
                     self.warm = max(1, self.total - 1)
 
-        self.scheduler = WarmupCosine(
-            self.optimizer,
-            LR_INIT,
-            WARMUP_STEPS_CLAMPED,
-            LR_FINAL,
-            TOTAL_EXPECTED_TRAIN_STEPS,
-        )
+        self.scheduler = WarmupCosine(self.optimizer, LR_INIT, WARMUP_STEPS_CLAMPED, LR_FINAL, TOTAL_EXPECTED_TRAIN_STEPS)
         self.scaler = torch.amp.GradScaler("cuda", enabled=True)
         self.evaluator = BatchedEvaluator(self.device)
         self.evaluator.refresh_from(self.model)
@@ -196,9 +162,7 @@ class Trainer:
                 base = getattr(model, "_orig_mod", model)
                 if hasattr(base, "module"):
                     base = base.module
-                self.shadow = {
-                    k: v.detach().clone() for k, v in base.state_dict().items()
-                }
+                self.shadow = {k: v.detach().clone() for k, v in base.state_dict().items()}
 
             @torch.no_grad()
             def update(self, model: torch.nn.Module):
@@ -211,9 +175,7 @@ class Trainer:
                         continue
                     if self.shadow[k].dtype != v.dtype:
                         self.shadow[k] = self.shadow[k].to(dtype=v.dtype)
-                    self.shadow[k].mul_(self.decay).add_(
-                        v.detach(), alpha=1.0 - self.decay
-                    )
+                    self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1.0 - self.decay)
 
             def copy_to(self, model: torch.nn.Module):
                 base = getattr(model, "_orig_mod", model)
@@ -234,11 +196,7 @@ class Trainer:
 
     @staticmethod
     def _format_time(s: float) -> str:
-        return (
-            f"{s:.1f}s"
-            if s < 60
-            else (f"{s/60:.1f}m" if s < 3600 else f"{s/3600:.1f}h")
-        )
+        return f"{s:.1f}s" if s < 60 else (f"{s/60:.1f}m" if s < 3600 else f"{s/3600:.1f}h")
 
     def _get_mem_info(self) -> dict[str, float]:
         p = self._proc
@@ -279,9 +237,7 @@ class Trainer:
         clone.eval()
         return clone
 
-    def train_step(
-        self, batch_data: tuple[list[Any], list[np.ndarray], list[float]]
-    ) -> tuple[torch.Tensor, torch.Tensor, float, float]:
+    def train_step(self, batch_data: tuple[list[Any], list[np.ndarray], list[float]]) -> tuple[torch.Tensor, torch.Tensor, float, float]:
         states, policies, values = batch_data
         x = (
             torch.from_numpy(np.stack(states).astype(np.float32, copy=False))
@@ -289,67 +245,34 @@ class Trainer:
             .to(self.device, non_blocking=True)
             .contiguous(memory_format=torch.channels_last)
         )
-        pi_target = (
-            torch.from_numpy(np.stack(policies).astype(np.float32))
-            .pin_memory()
-            .to(self.device, non_blocking=True)
-        )
-        v_target = (
-            torch.tensor(values, dtype=torch.float32)
-            .pin_memory()
-            .to(self.device, non_blocking=True)
-        )
+        pi_target = torch.from_numpy(np.stack(policies).astype(np.float32)).pin_memory().to(self.device, non_blocking=True)
+        v_target = torch.tensor(values, dtype=torch.float32).pin_memory().to(self.device, non_blocking=True)
         self.model.train()
         with torch.autocast(device_type="cuda", enabled=True):
             pi_pred, v_pred = self.model(x)
             if POLICY_LABEL_SMOOTH > 0.0:
                 A = pi_target.shape[1]
-                pi_smooth = (1.0 - POLICY_LABEL_SMOOTH) * pi_target + (
-                    POLICY_LABEL_SMOOTH / A
-                )
+                pi_smooth = (1.0 - POLICY_LABEL_SMOOTH) * pi_target + (POLICY_LABEL_SMOOTH / A)
             else:
                 pi_smooth = pi_target
-            policy_loss = F.kl_div(
-                F.log_softmax(pi_pred, dim=1), pi_smooth, reduction="batchmean"
-            )
+            policy_loss = F.kl_div(F.log_softmax(pi_pred, dim=1), pi_smooth, reduction="batchmean")
             value_loss = F.mse_loss(v_pred, v_target)
             ent_coef = 0.0
             if ENTROPY_COEF_INIT > 0 and self.iteration <= ENTROPY_ANNEAL_ITERS:
-                ent_coef = ENTROPY_COEF_INIT * (
-                    1.0 - (self.iteration - 1) / max(1, ENTROPY_ANNEAL_ITERS)
-                )
-            entropy = (
-                -(F.softmax(pi_pred, dim=1) * F.log_softmax(pi_pred, dim=1))
-                .sum(dim=1)
-                .mean()
-            )
-            value_weight_now = (
-                VALUE_WEIGHT_LATE
-                if self.iteration >= VALUE_WEIGHT_SWITCH_ITER
-                else VALUE_WEIGHT
-            )
-            total_loss = (
-                POLICY_WEIGHT * policy_loss
-                + value_weight_now * value_loss
-                - ent_coef * entropy
-            )
+                ent_coef = ENTROPY_COEF_INIT * (1.0 - (self.iteration - 1) / max(1, ENTROPY_ANNEAL_ITERS))
+            entropy = (-(F.softmax(pi_pred, dim=1) * F.log_softmax(pi_pred, dim=1)).sum(dim=1)).mean()
+            value_weight_now = VALUE_WEIGHT_LATE if self.iteration >= VALUE_WEIGHT_SWITCH_ITER else VALUE_WEIGHT
+            total_loss = POLICY_WEIGHT * policy_loss + value_weight_now * value_loss - ent_coef * entropy
         self.optimizer.zero_grad(set_to_none=True)
         self.scaler.scale(total_loss).backward()
         self.scaler.unscale_(self.optimizer)
-        grad_total_norm_t = torch.nn.utils.clip_grad_norm_(
-            self.model.parameters(), GRAD_CLIP
-        )
+        grad_total_norm_t = torch.nn.utils.clip_grad_norm_(self.model.parameters(), GRAD_CLIP)
         self.scaler.step(self.optimizer)
         self.scaler.update()
         self.scheduler.step()
         if self.ema is not None:
             self.ema.update(self.model)
-        return (
-            policy_loss.detach(),
-            value_loss.detach(),
-            float(grad_total_norm_t.detach().cpu()),
-            float(entropy.detach().cpu()),
-        )
+        return policy_loss.detach(), value_loss.detach(), float(grad_total_norm_t.detach().cpu()), float(entropy.detach().cpu())
 
     def training_iteration(self) -> dict[str, int | float]:
         if self.iteration >= 200 and self.selfplay_engine.resign_consecutive < 2:
@@ -384,11 +307,7 @@ class Trainer:
         bpct = 100.0 * bb / max(1, gc)
         avg_len = game_stats["moves"] / max(1, gc)
         spm = game_stats.get("sp_metrics", {}) if isinstance(game_stats, dict) else {}
-        spi = (
-            game_stats.get("sp_metrics_iter", {})
-            if isinstance(game_stats, dict)
-            else {}
-        )
+        spi = game_stats.get("sp_metrics_iter", {}) if isinstance(game_stats, dict) else {}
         eval_m = self.evaluator.get_metrics()
         eval_req = int(eval_m.get("requests_total", 0))
         eval_hit = int(eval_m.get("cache_hits_total", 0))
@@ -467,9 +386,7 @@ class Trainer:
         grad_norm_running: float = 0.0
         ent_running: float = 0.0
         for _i_step in range(steps):
-            batch = self.selfplay_engine.sample_from_snapshot(
-                snap, BATCH_SIZE, recent_ratio=0.6
-            )
+            batch = self.selfplay_engine.sample_from_snapshot(snap, BATCH_SIZE, recent_ratio=0.6)
             if not batch:
                 continue
             s, p, v = batch
@@ -481,9 +398,7 @@ class Trainer:
                 s, p, cs = Augment.apply(s, p, "vflip_cs")
                 if cs:
                     v = [-val for val in v]
-            pol_loss_t, val_loss_t, grad_norm_val, pred_entropy = self.train_step(
-                (s, p, v)
-            )
+            pol_loss_t, val_loss_t, grad_norm_val, pred_entropy = self.train_step((s, p, v))
             grad_norm_running += float(grad_norm_val)
             ent_running += float(pred_entropy)
             losses.append((pol_loss_t, val_loss_t))
@@ -506,31 +421,17 @@ class Trainer:
         avg_entropy = (ent_running / max(1, len(losses))) if losses else 0.0
         ent_coef_current = 0.0
         if ENTROPY_COEF_INIT > 0 and self.iteration <= ENTROPY_ANNEAL_ITERS:
-            ent_coef_current = ENTROPY_COEF_INIT * (
-                1.0 - (self.iteration - 1) / max(1, ENTROPY_ANNEAL_ITERS)
-            )
-
+            ent_coef_current = ENTROPY_COEF_INIT * (1.0 - (self.iteration - 1) / max(1, ENTROPY_ANNEAL_ITERS))
         drift_pct = 0.0
         if LR_SCHED_STEPS_PER_ITER_EST > 0:
-            drift_pct = (
-                100.0
-                * (actual_steps - LR_SCHED_STEPS_PER_ITER_EST)
-                / LR_SCHED_STEPS_PER_ITER_EST
-                if actual_steps > 0
-                else 0.0
-            )
-
+            drift_pct = 100.0 * (actual_steps - LR_SCHED_STEPS_PER_ITER_EST) / LR_SCHED_STEPS_PER_ITER_EST if actual_steps > 0 else 0.0
         at_edge = steps in (RATIO_UPDATE_STEPS_MIN, RATIO_UPDATE_STEPS_MAX)
         if self.iteration == 1 and actual_steps > 0 and abs(drift_pct) > 20.0 and not at_edge:
             remaining_iters = max(0, ITERATIONS - self.iteration)
             new_total = int(self.scheduler.t + remaining_iters * actual_steps)
             new_total = max(self.scheduler.t + 1, new_total)
             self.scheduler.set_total_steps(new_total)
-            print(
-                f"LR   adjusted total_steps -> {self.scheduler.total} "
-                f"(iter1 measured {actual_steps} vs est {LR_SCHED_STEPS_PER_ITER_EST}, drift {drift_pct:+.1f}%)"
-            )
-
+            print(f"LR   adjusted total_steps -> {self.scheduler.total} (iter1 measured {actual_steps} vs est {LR_SCHED_STEPS_PER_ITER_EST}, drift {drift_pct:+.1f}%)")
         stats.update(
             {
                 "policy_loss": pol_loss,
@@ -555,10 +456,7 @@ class Trainer:
             f"P {pol_loss:>7.4f} | V {val_loss:>7.4f} | LR {current_lr:.2e} | grad {avg_grad_norm:>6.3f} | entropy {avg_entropy:>6.3f} | "
             f"ent_coef {ent_coef_current:.2e} | clip {GRAD_CLIP:.1f} | buf {int(buf_pct2):>3}% ({buf_sz:,})"
         )
-        lr_sched_fragment = (
-            f"sched est/iter {LR_SCHED_STEPS_PER_ITER_EST} | actual {actual_steps} | "
-            f"drift {drift_pct:+.1f}% | pos {self.scheduler.t}/{self.scheduler.total}"
-        )
+        lr_sched_fragment = f"sched est/iter {LR_SCHED_STEPS_PER_ITER_EST} | actual {actual_steps} | drift {drift_pct:+.1f}% | pos {self.scheduler.t}/{self.scheduler.total}"
         print("SP " + sp_line + (" | " + sp_plus_line if sp_plus_line else ""))
         print("EV " + ev_line)
         print("TR " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment)
@@ -577,14 +475,10 @@ class Trainer:
             self.ema.copy_to(m)
         return m
 
-    def _arena_match(
-        self, challenger: torch.nn.Module, incumbent: torch.nn.Module
-    ) -> tuple[float, int, int, int]:
+    def _arena_match(self, challenger: torch.nn.Module, incumbent: torch.nn.Module) -> tuple[float, int, int, int]:
         import chesscore as _ccore
         import numpy as _np
-
         from .model import BatchedEvaluator as _BatchedEval
-
         wins = draws = losses = 0
         with _BatchedEval(self.device) as ce, _BatchedEval(self.device) as ie:
             ce.eval_model.load_state_dict(challenger.state_dict(), strict=True)
@@ -614,27 +508,13 @@ class Trainer:
                 pos = _ccore.Position()
                 if start_fen:
                     pos.from_fen(start_fen)
-                m1 = _ccore.MCTS(
-                    SIMULATIONS_EVAL,
-                    C_PUCT,
-                    DIRICHLET_ALPHA,
-                    float(ARENA_DIRICHLET_WEIGHT),
-                )
+                m1 = _ccore.MCTS(SIMULATIONS_EVAL, C_PUCT, DIRICHLET_ALPHA, float(ARENA_DIRICHLET_WEIGHT))
                 m1.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
-                m2 = _ccore.MCTS(
-                    SIMULATIONS_EVAL,
-                    C_PUCT,
-                    DIRICHLET_ALPHA,
-                    float(ARENA_DIRICHLET_WEIGHT),
-                )
+                m2 = _ccore.MCTS(SIMULATIONS_EVAL, C_PUCT, DIRICHLET_ALPHA, float(ARENA_DIRICHLET_WEIGHT))
                 m2.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
                 t = 0
                 while pos.result() == _ccore.ONGOING and t < MAX_GAME_MOVES:
-                    visits = (
-                        m1.search_batched(pos, e1.infer_positions, EVAL_MAX_BATCH)
-                        if t % 2 == 0
-                        else m2.search_batched(pos, e2.infer_positions, EVAL_MAX_BATCH)
-                    )
+                    visits = m1.search_batched(pos, e1.infer_positions, EVAL_MAX_BATCH) if t % 2 == 0 else m2.search_batched(pos, e2.infer_positions, EVAL_MAX_BATCH)
                     if not visits:
                         break
                     moves = pos.legal_moves()
@@ -643,29 +523,19 @@ class Trainer:
                         if v.sum() <= 0:
                             idx = int(_np.argmax(visits))
                         else:
-                            temp = max(
-                                ARENA_OPENING_TEMPERATURE_EPS, float(ARENA_TEMPERATURE)
-                            )
+                            temp = max(ARENA_OPENING_TEMPERATURE_EPS, float(ARENA_TEMPERATURE))
                             probs = v ** (1.0 / temp)
                             s = probs.sum()
-                            idx = (
-                                int(_np.argmax(visits))
-                                if s <= 0
-                                else int(_np.random.choice(len(moves), p=probs / s))
-                            )
+                            idx = int(_np.argmax(visits)) if s <= 0 else int(_np.random.choice(len(moves), p=probs / s))
                     else:
                         idx = int(_np.argmax(visits))
                     pos.make_move(moves[idx])
                     t += 1
                 r = pos.result()
-                return (
-                    1 if r == _ccore.WHITE_WIN else (-1 if r == _ccore.BLACK_WIN else 0)
-                )
+                return 1 if r == _ccore.WHITE_WIN else (-1 if r == _ccore.BLACK_WIN else 0)
 
             for g in range(ARENA_GAMES):
-                start_fen = (
-                    openings[_np.random.randint(0, len(openings))] if openings else None
-                )
+                start_fen = openings[_np.random.randint(0, len(openings))] if openings else None
                 r = play(ce, ie, start_fen) if g % 2 == 0 else -play(ie, ce, start_fen)
                 if r > 0:
                     wins += 1
@@ -734,9 +604,7 @@ class Trainer:
                     f"AR   score {100.0 * score:>5.1f}% | win {100.0 * pure_wr:>5.1f}% | cur LB {100.0 * cur_lb:>5.1f}% | acc LB {100.0 * acc_lb:>5.1f}% ({gn:,}) | W/D/L {aw:,}/{ad:,}/{al:,} | games {ARENA_GAMES:,} | time {self._format_time(arena_elapsed)}"
                 )
                 if promote:
-                    self.best_model.load_state_dict(
-                        challenger.state_dict(), strict=True
-                    )
+                    self.best_model.load_state_dict(challenger.state_dict(), strict=True)
                     self.best_model.eval()
                     self.evaluator.refresh_from(self.best_model)
                     try:
@@ -753,9 +621,7 @@ class Trainer:
                         self._arena_acc_d = 0
                         self._arena_acc_l = 0
             else:
-                print(
-                    f"AR   skipped | games 0 | time {self._format_time(arena_elapsed)}"
-                )
+                print(f"AR   skipped | games 0 | time {self._format_time(arena_elapsed)}")
             sp_time = float(iter_stats.get("selfplay_time", 0.0))
             tr_time = float(iter_stats.get("training_time", 0.0))
             full_iter_time = sp_time + tr_time + arena_elapsed
@@ -771,6 +637,21 @@ class Trainer:
                 f"SUM  iter {self._format_time(full_iter_time)} | sp {self._format_time(sp_time)} | tr {self._format_time(tr_time)} | ar {self._format_time(arena_elapsed)} | "
                 f"elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB | RSS {mem2['rss_gb']:.1f} GB"
             )
+            if (iteration % 50) == 0:
+                try:
+                    os.makedirs(OUTPUT_DIR, exist_ok=True)
+                    torch.save(
+                        {
+                            "model": getattr(self.model, "_orig_mod", self.model).state_dict(),
+                            "optimizer": self.optimizer.state_dict(),
+                            "sched_t": self.scheduler.t,
+                            "iter": self.iteration,
+                        },
+                        os.path.join(OUTPUT_DIR, f"ckpt_{self.iteration:04d}.pt"),
+                    )
+                    print("Saved checkpoint")
+                except Exception as e:
+                    print(f"Warning: failed to save checkpoint: {e}")
             self._prev_eval_m = self.evaluator.get_metrics()
 
 
