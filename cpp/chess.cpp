@@ -395,6 +395,9 @@ void Position::generate_piece_moves(Piece pc, MoveList &m) const {
 }
 void Position::legal_moves(MoveList &m) {
   m.clear();
+  if (!pieces[KING][turn]) {
+    return;
+  }
   for_each_piece(pieces[PAWN][turn],
                  [&](Square from) { add_pawn_moves(from, m); });
   generate_piece_moves(KNIGHT, m);
@@ -638,6 +641,10 @@ void Position::unmake_move_fast(const Move &m, const MoveInfo &info) {
     history.pop_back();
 }
 Result Position::result() {
+  if (!pieces[KING][WHITE])
+    return BLACK_WIN;
+  if (!pieces[KING][BLACK])
+    return WHITE_WIN;
   if (halfmove >= 100)
     return DRAW;
   if (count_repetitions() >= 3)
@@ -649,8 +656,6 @@ Result Position::result() {
   if (!m.empty())
     return ONGOING;
   Bitboard kb = pieces[KING][turn];
-  if (!kb)
-    return turn == WHITE ? BLACK_WIN : WHITE_WIN;
   const Square ks = lsb(kb);
   const Color e = Color(1 - turn);
   const bool check = is_square_attacked(ks, e);

@@ -47,7 +47,7 @@ PYBIND11_MODULE(chesscore, m) {
            })
       .def("make_move", &chess::Position::make_move, py::arg("move"))
       .def("result", &chess::Position::result)
-      .def("count_repetitions", &chess::Position::repetition_count)
+      .def("count_repetitions", &chess::Position::count_repetitions)
       .def_property_readonly(
           "pieces",
           [](const chess::Position &pos) {
@@ -89,16 +89,25 @@ PYBIND11_MODULE(chesscore, m) {
               Arr val = tup[1].cast<Arr>();
               auto pinfo = pol.request();
               auto vinfo = val.request();
+              if (pinfo.ndim != 2)
+                throw std::runtime_error("evaluator(): policy must be 2D [B, POLICY_SIZE]");
+              if (pinfo.shape.size() < 2 || static_cast<size_t>(pinfo.shape[1]) != static_cast<size_t>(mcts::POLICY_SIZE))
+                throw std::runtime_error("evaluator(): policy has wrong size");
+              if (!(vinfo.ndim == 1 || (vinfo.ndim == 2 && vinfo.shape.size() >= 2 && vinfo.shape[1] == 1)))
+                throw std::runtime_error("evaluator(): value must be [B] or [B,1]");
+              if (vinfo.shape[0] != pinfo.shape[0])
+                throw std::runtime_error("evaluator(): policy/value batch size mismatch");
               const float *pbase = static_cast<const float *>(pinfo.ptr);
               const float *vbase = static_cast<const float *>(vinfo.ptr);
               const ssize_t B = pinfo.shape[0];
               const ssize_t P = pinfo.shape[1];
+              const bool v2d = (vinfo.ndim == 2);
               policies.resize(static_cast<size_t>(B));
               values.resize(static_cast<size_t>(B));
               for (ssize_t i = 0; i < B; ++i) {
                 policies[static_cast<size_t>(i)].assign(pbase + i * P,
                                                         pbase + (i + 1) * P);
-                values[static_cast<size_t>(i)] = vbase[i];
+                values[static_cast<size_t>(i)] = v2d ? vbase[i * vinfo.shape[1]] : vbase[i];
               }
             };
             py::gil_scoped_release rel;

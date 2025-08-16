@@ -10,7 +10,7 @@ import numpy as np
 
 from .model import EVAL_MAX_BATCH, HISTORY_LENGTH, PLANES_PER_POSITION, POLICY_OUTPUT
 
-BUFFER_SIZE = 120_000
+BUFFER_SIZE = 80_000
 SELFPLAY_WORKERS = 12
 MAX_GAME_MOVES = 512
 RESIGN_THRESHOLD = -0.9
@@ -192,16 +192,18 @@ class SelfPlayEngine:
             idx = int(np.argmax(visits))
         return moves[idx]
 
-    def _process_result(self, data: list[tuple[np.ndarray, np.ndarray]], result: int) -> None:
+    def _process_result(self, data: list[tuple[np.ndarray, np.ndarray]], result: int, first_to_move_is_white: bool) -> None:
         if result == ccore.WHITE_WIN:
-            values = [1.0 if i % 2 == 0 else -1.0 for i in range(len(data))]
+            base = 1.0
         elif result == ccore.BLACK_WIN:
-            values = [-1.0 if i % 2 == 0 else 1.0 for i in range(len(data))]
+            base = -1.0
         else:
-            values = [0.0] * len(data)
+            base = 0.0
         with self.buffer_lock:
-            for (position_u8, counts_u16), value in zip(data, values, strict=False):
-                self.buffer.append((position_u8, counts_u16, SelfPlayEngine._value_to_i8(value)))
+            for i, (position_u8, counts_u16) in enumerate(data):
+                stm_is_white = ((i % 2) == 0) == bool(first_to_move_is_white)
+                v = base if stm_is_white else -base
+                self.buffer.append((position_u8, counts_u16, SelfPlayEngine._value_to_i8(v)))
 
     def play_single_game(self) -> tuple[int, int]:
         position = ccore.Position()
@@ -227,6 +229,7 @@ class SelfPlayEngine:
             if not moves:
                 break
             position.make_move(moves[int(np.random.randint(0, len(moves)))])
+        first_stm_white: bool | None = None
         while position.result() == ccore.ONGOING and move_count < MAX_GAME_MOVES:
             pos_copy = ccore.Position(position)
             sims = max(MCTS_MIN_SIMS, SIMULATIONS_TRAIN // (1 + move_count // SIMULATIONS_DECAY_INTERVAL))
@@ -253,6 +256,8 @@ class SelfPlayEngine:
             encoded_u8 = SelfPlayEngine._to_u8_plane(encoded)
             counts_u16 = counts
             data.append((encoded_u8, counts_u16))
+            if first_stm_white is None:
+                first_stm_white = (pos_copy.turn == ccore.WHITE)
             if self.resign_consecutive > 0:
                 _, val_arr = self.evaluator.infer_positions([pos_copy])
                 v = float(val_arr[0])
@@ -278,7 +283,11 @@ class SelfPlayEngine:
         final_result = forced_result if forced_result is not None else position.result()
         if forced_result is not None:
             local_forced_results += 1
-        self._process_result(data, final_result)
+        self._process_result(
+            data,
+            final_result,
+            True if first_stm_white is None else bool(first_stm_white),
+        )
         with self.metrics_lock:
             self._metrics["games_total"] += 1
             self._metrics["moves_total"] += int(move_count)

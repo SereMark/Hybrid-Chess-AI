@@ -481,10 +481,8 @@ class Trainer:
         from .model import BatchedEvaluator as _BatchedEval
         wins = draws = losses = 0
         with _BatchedEval(self.device) as ce, _BatchedEval(self.device) as ie:
-            ce.eval_model.load_state_dict(challenger.state_dict(), strict=True)
-            ce.eval_model.eval()
-            ie.eval_model.load_state_dict(incumbent.state_dict(), strict=True)
-            ie.eval_model.eval()
+            ce.refresh_from(challenger)
+            ie.refresh_from(incumbent)
             ce.cache_cap = ARENA_EVAL_CACHE_CAP
             ie.cache_cap = ARENA_EVAL_CACHE_CAP
             openings: list[str] = []
