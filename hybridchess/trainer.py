@@ -205,10 +205,8 @@ class Trainer:
         self._prev_eval_m: dict[str, float] = {}
 
         self._arena_openings = self._load_openings()
-        if not self._arena_openings:
-            raise RuntimeError(
-                "No arena openings found."
-            )
+        if ARENA_EVAL_EVERY > 0 and ARENA_GAMES > 0 and not self._arena_openings:
+            raise RuntimeError("No arena openings found.")
 
         self._gate = EloGater(z=1.96, min_games=400, draw_w=0.5)
         self._gate_active = False
@@ -296,6 +294,7 @@ class Trainer:
         self.model.train()
         with torch.autocast(device_type="cuda", enabled=True):
             pi_pred, v_pred = self.model(x)
+            v_pred = v_pred.squeeze(-1)
             if POLICY_LABEL_SMOOTH > 0.0:
                 A = pi_target.shape[1]
                 pi_smooth = (1.0 - POLICY_LABEL_SMOOTH) * pi_target + (POLICY_LABEL_SMOOTH / A)
@@ -497,7 +496,7 @@ class Trainer:
         )
 
         tr_plan_line = (
-            f"plan {steps} | target {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | actual {ratio:>4.1f}x | mix recent 60% (last 20%), old 40%"
+            f"plan {steps} | target {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | actual {ratio:>4.1f}x | mix recent 60%, old 40%"
             if steps > 0
             else "plan 0 skip (buffer underfilled)"
         )
@@ -549,20 +548,27 @@ class Trainer:
                 t = 0
                 while pos.result() == _ccore.ONGOING and t < MAX_GAME_MOVES:
                     visits = m1.search_batched(pos, e1.infer_positions, EVAL_MAX_BATCH) if t % 2 == 0 else m2.search_batched(pos, e2.infer_positions, EVAL_MAX_BATCH)
-                    if not visits:
+                    if visits is None:
+                        break
+                    v = _np.asarray(visits, dtype=_np.float64)
+                    if v.size == 0:
                         break
                     moves = pos.legal_moves()
                     if t < ARENA_TEMP_MOVES:
-                        v = _np.maximum(_np.asarray(visits, dtype=_np.float64), 0)
-                        if v.sum() <= 0:
-                            idx = int(_np.argmax(visits))
+                        temp = float(ARENA_TEMPERATURE)
+                        if temp <= 0.0:
+                            idx = int(_np.argmax(v))
                         else:
-                            temp = max(ARENA_OPENING_TEMPERATURE_EPS, float(ARENA_TEMPERATURE))
-                            probs = v ** (1.0 / temp)
-                            s = probs.sum()
-                            idx = int(_np.argmax(visits)) if s <= 0 else int(_np.random.choice(len(moves), p=probs / s))
+                            v_pos = _np.maximum(v, 0.0)
+                            s0 = v_pos.sum()
+                            if s0 <= 0:
+                                idx = int(_np.argmax(v))
+                            else:
+                                probs = v_pos ** (1.0 / temp)
+                                s = probs.sum()
+                                idx = int(_np.argmax(v)) if s <= 0 else int(_np.random.choice(len(moves), p=probs / s))
                     else:
-                        idx = int(_np.argmax(visits))
+                        idx = int(_np.argmax(v))
                     pos.make_move(moves[idx])
                     t += 1
                 r = pos.result()
@@ -612,7 +618,7 @@ class Trainer:
             self.iteration = iteration
             iter_stats = self.training_iteration()
 
-            do_eval = (iteration % ARENA_EVAL_EVERY) == 0
+            do_eval = (iteration % ARENA_EVAL_EVERY) == 0 if ARENA_EVAL_EVERY > 0 else False
             arena_elapsed = 0.0
             if do_eval:
                 if not self._gate_active:
