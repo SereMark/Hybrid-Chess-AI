@@ -77,12 +77,18 @@ class Augment:
                 kmap = [7, 6, 5, 4, 3, 2, 1, 0]
                 for i in range(8):
                     out[56 + kmap[i]] = arr[56 + i]
+                pmap = [0, 2, 1]
+                for p in range(3):
+                    b = 64 + p * 3
+                    out[b + pmap[0]] = arr[b + 0]
+                    out[b + pmap[1]] = arr[b + 1]
+                    out[b + pmap[2]] = arr[b + 2]
 
         elif which == "vflip_cs":
             arr = base[:, ::-1, :]
             out = arr.copy()
             if planes >= 73:
-                dir_map = [5, 6, 7, 4, 3, 2, 1, 0]
+                dir_map = [5, 6, 7, 3, 4, 0, 1, 2]
                 for d in range(8):
                     for r in range(7):
                         out[dir_map[d] * 7 + r] = arr[d * 7 + r]
