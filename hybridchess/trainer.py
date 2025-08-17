@@ -73,6 +73,10 @@ ARENA_TEMP_MOVES = 0
 ARENA_DIRICHLET_WEIGHT = 0.0
 ARENA_OPENING_TEMPERATURE_EPS = 1e-6
 ARENA_DRAW_SCORE = 0.5
+ARENA_GATE_Z = 1.96
+ARENA_GATE_MIN_GAMES = 400
+ARENA_GATE_DRAW_WEIGHT = ARENA_DRAW_SCORE
+ARENA_GATE_BASELINE_P = 0.5
 
 POLICY_LABEL_SMOOTH = 0.05
 ENTROPY_COEF_INIT = 5.0e-4
@@ -208,7 +212,12 @@ class Trainer:
         if ARENA_EVAL_EVERY > 0 and ARENA_GAMES > 0 and not self._arena_openings:
             raise RuntimeError("No arena openings found.")
 
-        self._gate = EloGater(z=1.96, min_games=400, draw_w=0.5)
+        self._gate = EloGater(
+            z=ARENA_GATE_Z,
+            min_games=ARENA_GATE_MIN_GAMES,
+            draw_w=ARENA_GATE_DRAW_WEIGHT,
+            baseline_p=ARENA_GATE_BASELINE_P,
+        )
         self._gate_active = False
         self._pending_challenger: torch.nn.Module | None = None
 
@@ -608,7 +617,7 @@ class Trainer:
             f"Augment: mirror {AUGMENT_MIRROR_PROB:.2f} | rot180 {AUGMENT_ROT180_PROB:.2f} | vflip_cs {AUGMENT_VFLIP_CS_PROB:.2f} | policy_smooth {POLICY_LABEL_SMOOTH:.2f}",
             f"EMA: {'on' if EMA_ENABLED else 'off'} decay {EMA_DECAY if EMA_ENABLED else 0}",
             f"Eval: batch {EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | cache {EVAL_CACHE_SIZE}",
-            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | rule per-candidate LB>50% @Z=1.96",
+            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | rule LB>{100.0*ARENA_GATE_BASELINE_P:.0f}% @Z={ARENA_GATE_Z}",
             f"Arena openings: {len(self._arena_openings):,} positions loaded",
             f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games | output {OUTPUT_DIR}",
         ]
@@ -695,10 +704,17 @@ class Trainer:
 
 
 class EloGater:
-    def __init__(self, z: float = 1.96, min_games: int = 400, draw_w: float = 0.5):
+    def __init__(
+        self,
+        z: float = 1.96,
+        min_games: int = 400,
+        draw_w: float = 0.5,
+        baseline_p: float = 0.5,
+    ):
         self.z = float(z)
         self.min_games = int(min_games)
         self.draw_w = float(draw_w)
+        self.baseline_p = float(baseline_p)
         self.reset()
 
     def reset(self):
@@ -725,9 +741,9 @@ class EloGater:
         elo = 400.0 * math.log10(pc / (1.0 - pc))
         denom = max(eps, pc * (1.0 - pc))
         se_elo = (400.0 / math.log(10.0)) * se / denom
-        if lb > 0.5:
+        if lb > self.baseline_p:
             return "accept", {"n": float(n), "p": p, "lb": lb, "elo": elo, "se_elo": se_elo}
-        if ub < 0.5:
+        if ub < self.baseline_p:
             return "reject", {"n": float(n), "p": p, "ub": ub, "elo": elo, "se_elo": se_elo}
         return "undecided", {"n": float(n), "p": p, "lb": lb, "ub": ub, "elo": elo, "se_elo": se_elo}
 
