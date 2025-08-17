@@ -39,38 +39,45 @@ from .selfplay import (
     SelfPlayEngine,
 )
 
-BATCH_SIZE = 1792
+BATCH_SIZE = 3072
 LR_INIT = 1.0e-2
 LR_WARMUP_STEPS = 3_000
 LR_FINAL = 3.0e-4
 WEIGHT_DECAY = 1e-4
 MOMENTUM = 0.9
 GRAD_CLIP = 1.0
+
 POLICY_WEIGHT = 1.0
 VALUE_WEIGHT = 0.5
 VALUE_WEIGHT_LATE = 1.0
 VALUE_WEIGHT_SWITCH_ITER = 60
+
 ITERATIONS = 600
 GAMES_PER_ITER = 220
 LR_SCHED_STEPS_PER_ITER_EST = 100
+
 RATIO_TARGET_TRAIN_PER_NEW = 6.0
-RATIO_UPDATE_STEPS_MIN = 48
-RATIO_UPDATE_STEPS_MAX = 224
+RATIO_UPDATE_STEPS_MIN = 32
+RATIO_UPDATE_STEPS_MAX = 320
+
 AUGMENT_MIRROR_PROB = 0.5
 AUGMENT_ROT180_PROB = 0.25
 AUGMENT_VFLIP_CS_PROB = 0.25
-SIMULATIONS_EVAL = 64
-ARENA_EVAL_EVERY = 20
+
+SIMULATIONS_EVAL = 256
+ARENA_EVAL_EVERY = 10
 ARENA_EVAL_CACHE_CAP = 8192
-ARENA_GAMES = 160
+ARENA_GAMES = 200
 ARENA_TEMPERATURE = 0.0
 ARENA_TEMP_MOVES = 0
 ARENA_DIRICHLET_WEIGHT = 0.0
 ARENA_OPENING_TEMPERATURE_EPS = 1e-6
 ARENA_DRAW_SCORE = 0.5
+
 POLICY_LABEL_SMOOTH = 0.05
 ENTROPY_COEF_INIT = 5.0e-4
 ENTROPY_ANNEAL_ITERS = 60
+
 EMA_ENABLED = True
 EMA_DECAY = 0.9995
 OUTPUT_DIR = "out"
@@ -152,7 +159,6 @@ class Trainer:
         self.scaler = torch.amp.GradScaler("cuda", enabled=True)
 
         self.evaluator = BatchedEvaluator(self.device)
-        self.evaluator.refresh_from(self.model)
 
         self._proc = psutil.Process(os.getpid())
         psutil.cpu_percent(0.0)
@@ -187,6 +193,7 @@ class Trainer:
 
         self.ema = EMA(self.model, EMA_DECAY) if EMA_ENABLED else None
         self.best_model = self._clone_model()
+        self.evaluator.refresh_from(self.best_model)
 
         self.selfplay_engine = SelfPlayEngine(self.evaluator)
         self.iteration = 0
@@ -505,8 +512,6 @@ class Trainer:
         print("EV " + ev_line)
         print("TR " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment)
         self._prev_eval_m = eval_m
-
-        self.evaluator.refresh_from(self.best_model)
 
         return stats
 
