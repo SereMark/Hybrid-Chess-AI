@@ -165,8 +165,7 @@ PYBIND11_MODULE(chesscore, m) {
              py::gil_scoped_release rel;
              return engine.search_batched(pos, eval_fn, max_batch);
            },
-           py::arg("position"), py::arg("evaluator"), py::arg("max_batch") = 64,
-           py::keep_alive<1, 3>())
+           py::arg("position"), py::arg("evaluator"), py::arg("max_batch") = 64)
       .def("set_simulations", &mcts::MCTS::set_simulations, py::arg("sims"))
       .def("set_c_puct", &mcts::MCTS::set_c_puct, py::arg("c_puct"))
       .def("set_dirichlet_params", &mcts::MCTS::set_dirichlet_params, py::arg("alpha"), py::arg("weight"))
