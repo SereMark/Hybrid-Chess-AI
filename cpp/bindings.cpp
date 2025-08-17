@@ -4,9 +4,12 @@
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+
 namespace py = pybind11;
+
 PYBIND11_MODULE(chesscore, m) {
   chess::init_tables();
+
   py::enum_<chess::Piece>(m, "Piece")
       .value("PAWN", chess::PAWN)
       .value("KNIGHT", chess::KNIGHT)
@@ -14,14 +17,17 @@ PYBIND11_MODULE(chesscore, m) {
       .value("ROOK", chess::ROOK)
       .value("QUEEN", chess::QUEEN)
       .value("KING", chess::KING);
+
   py::enum_<chess::Color>(m, "Color")
       .value("WHITE", chess::WHITE)
       .value("BLACK", chess::BLACK);
+
   py::enum_<chess::Result>(m, "Result")
       .value("ONGOING", chess::ONGOING)
       .value("WHITE_WIN", chess::WHITE_WIN)
       .value("BLACK_WIN", chess::BLACK_WIN)
       .value("DRAW", chess::DRAW);
+
   py::class_<chess::Move>(m, "Move")
       .def(py::init<>())
       .def(py::init<int, int>(), py::arg("from_sq"), py::arg("to_sq"))
@@ -30,6 +36,7 @@ PYBIND11_MODULE(chesscore, m) {
       .def_property_readonly("from_square", &chess::Move::from)
       .def_property_readonly("to_square", &chess::Move::to)
       .def_property_readonly("promotion", &chess::Move::promotion);
+
   py::class_<chess::Position>(m, "Position")
       .def(py::init<>())
       .def(py::init<const chess::Position &>())
@@ -68,6 +75,7 @@ PYBIND11_MODULE(chesscore, m) {
       .def_property_readonly("halfmove", &chess::Position::get_halfmove)
       .def_property_readonly("fullmove", &chess::Position::get_fullmove)
       .def_property_readonly("hash", &chess::Position::get_hash);
+
   py::class_<mcts::MCTS>(m, "MCTS")
       .def(py::init<int, float, float, float>(), py::arg("simulations") = 800,
            py::arg("c_puct") = 1.0f, py::arg("dirichlet_alpha") = 0.3f,
@@ -119,8 +127,12 @@ PYBIND11_MODULE(chesscore, m) {
       .def("set_dirichlet_params", &mcts::MCTS::set_dirichlet_params,
            py::arg("alpha"), py::arg("weight"))
       .def("set_c_puct_params", &mcts::MCTS::set_c_puct_params,
-           py::arg("c_puct_base"), py::arg("c_puct_init"));
+           py::arg("c_puct_base"), py::arg("c_puct_init"))
+      .def("set_fpu_reduction", &mcts::MCTS::set_fpu_reduction,
+           py::arg("fpu"));
+
   m.def("encode_move_index", &mcts::encode_move_index);
+
   m.def(
       "encode_position",
       [](const chess::Position &pos) {
@@ -136,6 +148,7 @@ PYBIND11_MODULE(chesscore, m) {
         return a;
       },
       py::arg("position"));
+
   m.def(
       "encode_batch",
       [](const std::vector<chess::Position> &positions) {
@@ -158,6 +171,7 @@ PYBIND11_MODULE(chesscore, m) {
         return a;
       },
       py::arg("positions"));
+
   m.def(
       "encode_batch",
       [](const std::vector<std::vector<chess::Position>> &histories) {
@@ -180,14 +194,17 @@ PYBIND11_MODULE(chesscore, m) {
         return a;
       },
       py::arg("histories"));
+
   m.attr("INPUT_PLANES") = encoder::INPUT_PLANES;
   m.attr("HISTORY_LENGTH") = encoder::HISTORY_LENGTH;
   m.attr("PLANES_PER_POSITION") = encoder::PLANES_PER_POSITION;
+
   m.attr("WHITE") = chess::WHITE;
   m.attr("BLACK") = chess::BLACK;
   m.attr("ONGOING") = chess::ONGOING;
   m.attr("WHITE_WIN") = chess::WHITE_WIN;
   m.attr("BLACK_WIN") = chess::BLACK_WIN;
   m.attr("DRAW") = chess::DRAW;
+
   m.attr("POLICY_SIZE") = mcts::POLICY_SIZE;
 }

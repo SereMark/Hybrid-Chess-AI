@@ -15,6 +15,7 @@ SELFPLAY_WORKERS = 12
 MAX_GAME_MOVES = 512
 RESIGN_THRESHOLD = -0.9
 RESIGN_CONSECUTIVE = 0
+RESIGN_PLAYTHROUGH_FRAC = 0.15
 TEMP_MOVES = 30
 TEMP_HIGH = 1.0
 TEMP_LOW = 0.01
@@ -27,6 +28,7 @@ C_PUCT_BASE = 19652.0
 C_PUCT_INIT = 1.25
 DIRICHLET_ALPHA = 0.3
 DIRICHLET_WEIGHT = 0.25
+
 if TYPE_CHECKING:
     from .model import BatchedEvaluator
 
@@ -211,6 +213,8 @@ class SelfPlayEngine:
         forced_result: int | None = None
         mcts = ccore.MCTS(SIMULATIONS_TRAIN, C_PUCT, DIRICHLET_ALPHA, DIRICHLET_WEIGHT)
         mcts.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
+        mcts.set_fpu_reduction(0.10)
+
         data: list[tuple[np.ndarray, np.ndarray]] = []
         history: list[Any] = []
         move_count = 0
@@ -221,6 +225,7 @@ class SelfPlayEngine:
         local_temp_low = 0
         local_resigns = 0
         local_forced_results = 0
+
         open_plies = int(np.random.randint(0, 7))
         for _ in range(open_plies):
             if position.result() != ccore.ONGOING:
@@ -229,25 +234,35 @@ class SelfPlayEngine:
             if not moves:
                 break
             position.make_move(moves[int(np.random.randint(0, len(moves)))])
+
         first_stm_white: bool | None = None
         while position.result() == ccore.ONGOING and move_count < MAX_GAME_MOVES:
             pos_copy = ccore.Position(position)
+
             sims = max(MCTS_MIN_SIMS, SIMULATIONS_TRAIN // (1 + move_count // SIMULATIONS_DECAY_INTERVAL))
             mcts.set_simulations(sims)
             local_mcts_sims_total += int(sims)
             local_mcts_calls_total += 1
+
+            if move_count < TEMP_MOVES:
+                mcts.set_dirichlet_params(DIRICHLET_ALPHA, DIRICHLET_WEIGHT)
+            else:
+                mcts.set_dirichlet_params(DIRICHLET_ALPHA, 0.0)
+
             visits = mcts.search_batched(position, self.evaluator.infer_positions, EVAL_MAX_BATCH)
             if not visits:
                 break
             moves = position.legal_moves()
             if moves:
                 local_mcts_batch_max = max(local_mcts_batch_max, len(moves))
+
             counts = np.zeros(POLICY_OUTPUT, dtype=np.uint16)
             for mv, vc in zip(moves, visits, strict=False):
                 idx = ccore.encode_move_index(mv)
                 if (idx is not None) and (0 <= int(idx) < POLICY_OUTPUT):
                     c = min(int(vc), 65535)
                     counts[int(idx)] = np.uint16(c)
+
             if history:
                 histories = history[-HISTORY_LENGTH:] + [pos_copy]
                 encoded = ccore.encode_batch([histories])[0]
@@ -256,20 +271,26 @@ class SelfPlayEngine:
             encoded_u8 = SelfPlayEngine._to_u8_plane(encoded)
             counts_u16 = counts
             data.append((encoded_u8, counts_u16))
+
             if first_stm_white is None:
                 first_stm_white = (pos_copy.turn == ccore.WHITE)
+
             if self.resign_consecutive > 0:
                 _, val_arr = self.evaluator.infer_positions([pos_copy])
                 v = float(val_arr[0])
                 if v <= RESIGN_THRESHOLD:
                     resign_count += 1
                     if resign_count >= self.resign_consecutive:
-                        stm_white = position.turn == ccore.WHITE
-                        forced_result = ccore.BLACK_WIN if stm_white else ccore.WHITE_WIN
-                        local_resigns += 1
-                        break
+                        if np.random.rand() < RESIGN_PLAYTHROUGH_FRAC:
+                            resign_count = 0
+                        else:
+                            stm_white = position.turn == ccore.WHITE
+                            forced_result = ccore.BLACK_WIN if stm_white else ccore.WHITE_WIN
+                            local_resigns += 1
+                            break
                 else:
                     resign_count = 0
+
             move = self._temp_select(moves, visits, move_count)
             if move_count < TEMP_MOVES:
                 local_temp_high += 1
@@ -280,14 +301,17 @@ class SelfPlayEngine:
             if len(history) > HISTORY_LENGTH:
                 history.pop(0)
             move_count += 1
+
         final_result = forced_result if forced_result is not None else position.result()
         if forced_result is not None:
             local_forced_results += 1
+
         self._process_result(
             data,
             final_result,
             True if first_stm_white is None else bool(first_stm_white),
         )
+
         with self.metrics_lock:
             self._metrics["games_total"] += 1
             self._metrics["moves_total"] += int(move_count)

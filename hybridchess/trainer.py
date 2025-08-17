@@ -62,7 +62,7 @@ SIMULATIONS_EVAL = 64
 ARENA_EVAL_EVERY = 20
 ARENA_EVAL_CACHE_CAP = 8192
 ARENA_GAMES = 160
-ARENA_OPENINGS_PATH = ""
+ARENA_OPENINGS_PATH = "openings_small.epd"
 ARENA_TEMPERATURE = 0.0
 ARENA_TEMP_MOVES = 0
 ARENA_DIRICHLET_WEIGHT = 0.0
@@ -93,12 +93,14 @@ class Trainer:
         except Exception as e:
             self._compiled = False
             print(f"Warning: torch.compile failed or unavailable: {e}")
+
         decay: list[torch.nn.Parameter] = []
         nodecay: list[torch.nn.Parameter] = []
         for n, p in self.model.named_parameters():
             if not p.requires_grad:
                 continue
             (nodecay if (n.endswith(".bias") or "bn" in n.lower() or "batchnorm" in n.lower()) else decay).append(p)
+
         self.optimizer = torch.optim.SGD(
             [
                 {"params": decay, "weight_decay": WEIGHT_DECAY},
@@ -108,6 +110,7 @@ class Trainer:
             momentum=MOMENTUM,
             nesterov=True,
         )
+
         TOTAL_EXPECTED_TRAIN_STEPS = int(ITERATIONS * LR_SCHED_STEPS_PER_ITER_EST)
         WARMUP_STEPS_CLAMPED = int(max(1, min(LR_WARMUP_STEPS, max(1, TOTAL_EXPECTED_TRAIN_STEPS - 1))))
 
@@ -148,8 +151,10 @@ class Trainer:
 
         self.scheduler = WarmupCosine(self.optimizer, LR_INIT, WARMUP_STEPS_CLAMPED, LR_FINAL, TOTAL_EXPECTED_TRAIN_STEPS)
         self.scaler = torch.amp.GradScaler("cuda", enabled=True)
+
         self.evaluator = BatchedEvaluator(self.device)
         self.evaluator.refresh_from(self.model)
+
         self._proc = psutil.Process(os.getpid())
         psutil.cpu_percent(0.0)
         self._proc.cpu_percent(0.0)
@@ -183,6 +188,7 @@ class Trainer:
 
         self.ema = EMA(self.model, EMA_DECAY) if EMA_ENABLED else None
         self.best_model = self._clone_model()
+
         self.selfplay_engine = SelfPlayEngine(self.evaluator)
         self.iteration = 0
         self.total_games = 0
@@ -191,9 +197,10 @@ class Trainer:
         self.device_name = props.name
         self.device_total_gb = props.total_memory / 1024**3
         self._prev_eval_m: dict[str, float] = {}
-        self._arena_acc_w = 0
-        self._arena_acc_d = 0
-        self._arena_acc_l = 0
+
+        self._gate = EloGater(z=1.96, min_games=400, draw_w=0.5)
+        self._gate_active = False
+        self._pending_challenger: torch.nn.Module | None = None
 
     @staticmethod
     def _format_time(s: float) -> str:
@@ -278,6 +285,7 @@ class Trainer:
     def training_iteration(self) -> dict[str, int | float]:
         if self.iteration >= 200 and self.selfplay_engine.resign_consecutive < 2:
             self.selfplay_engine.resign_consecutive = 2
+
         stats: dict[str, int | float] = {}
         torch.cuda.reset_peak_memory_stats(self.device)
         header_lr = float(self.scheduler.peek_next_lr())
@@ -293,10 +301,12 @@ class Trainer:
             f"CPU {sysi['cpu_sys_pct']:>4.0f}%/{sysi['cpu_proc_pct']:>4.0f}% | RAM {sysi['ram_used_gb']:.1f}/{sysi['ram_total_gb']:.1f} GB ({sysi['ram_pct']:>3.0f}%) | "
             f"load {sysi['load1']:.2f} | buf {buf_len:,}/{self.selfplay_engine.buffer.maxlen:,} ({int(buf_pct):>3}%)"
         )
+
         t0 = time.time()
         game_stats = self.selfplay_engine.play_games(GAMES_PER_ITER)
         self.total_games += int(game_stats["games"])
         sp_elapsed = time.time() - t0
+
         gpm = game_stats["games"] / max(1e-9, sp_elapsed / 60)
         mps = game_stats["moves"] / max(1e-9, sp_elapsed)
         gc = int(game_stats["games"])
@@ -309,6 +319,7 @@ class Trainer:
         avg_len = game_stats["moves"] / max(1, gc)
         spm = game_stats.get("sp_metrics", {}) if isinstance(game_stats, dict) else {}
         spi = game_stats.get("sp_metrics_iter", {}) if isinstance(game_stats, dict) else {}
+
         eval_m = self.evaluator.get_metrics()
         eval_req = int(eval_m.get("requests_total", 0))
         eval_hit = int(eval_m.get("cache_hits_total", 0))
@@ -334,6 +345,7 @@ class Trainer:
         wait_ms_per = (1000.0 * wait_s / max(1, eval_evalN)) if eval_evalN else 0.0
         req_per_s = d_req / max(1e-9, sp_elapsed)
         pos_per_s = d_evalN / max(1e-9, sp_elapsed)
+
         sp_line = (
             f"games {gc:,} | avg_len {avg_len:>5.1f} | "
             f"W/D/B {ww}/{dd}/{bb} ({wpct:>3.0f}%/{dpct:>3.0f}%/{bpct:>3.0f}%) | "
@@ -371,6 +383,7 @@ class Trainer:
         stats["selfplay_time"] = sp_elapsed
         stats["games_per_min"] = gpm
         stats["moves_per_sec"] = mps
+
         t1 = time.time()
         losses: list[tuple[torch.Tensor, torch.Tensor]] = []
         snap = self.selfplay_engine.snapshot()
@@ -384,6 +397,7 @@ class Trainer:
             steps = 0
         else:
             ratio = (steps * BATCH_SIZE) / max(1, new_examples)
+
         grad_norm_running: float = 0.0
         ent_running: float = 0.0
         for _i_step in range(steps):
@@ -403,6 +417,7 @@ class Trainer:
             grad_norm_running += float(grad_norm_val)
             ent_running += float(pred_entropy)
             losses.append((pol_loss_t, val_loss_t))
+
         tr_elapsed = time.time() - t1
         actual_steps = len(losses)
         pol_loss = float(torch.stack([pair[0] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
@@ -427,6 +442,7 @@ class Trainer:
             new_total = max(self.scheduler.t + 1, new_total)
             self.scheduler.set_total_steps(new_total)
             print(f"LR   adjusted total_steps -> {self.scheduler.total} (iter1 measured {actual_steps} vs est {LR_SCHED_STEPS_PER_ITER_EST}, drift {drift_pct:+.1f}%)")
+
         stats.update(
             {
                 "policy_loss": pol_loss,
@@ -441,6 +457,7 @@ class Trainer:
                 "lr_sched_total": self.scheduler.total,
             }
         )
+
         tr_plan_line = (
             f"plan {steps} | target {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | actual {ratio:>4.1f}x | mix recent 60% (last 20%), old 40%"
             if steps > 0
@@ -452,16 +469,14 @@ class Trainer:
             f"ent_coef {ent_coef_current:.2e} | clip {GRAD_CLIP:.1f} | buf {int(buf_pct2):>3}% ({buf_sz:,})"
         )
         lr_sched_fragment = f"sched est/iter {LR_SCHED_STEPS_PER_ITER_EST} | actual {actual_steps} | drift {drift_pct:+.1f}% | pos {self.scheduler.t}/{self.scheduler.total}"
+
         print("SP " + sp_line + (" | " + sp_plus_line if sp_plus_line else ""))
         print("EV " + ev_line)
         print("TR " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment)
         self._prev_eval_m = eval_m
-        if self.ema is not None:
-            ema_clone = self._clone_model()
-            self.ema.copy_to(ema_clone)
-            self.evaluator.refresh_from(ema_clone)
-        else:
-            self.evaluator.refresh_from(self.model)
+
+        self.evaluator.refresh_from(self.best_model)
+
         return stats
 
     def _clone_from_ema(self) -> torch.nn.Module:
@@ -470,59 +485,38 @@ class Trainer:
             self.ema.copy_to(m)
         return m
 
-    def _arena_metrics(self, w: int, d: int, l: int, z: float) -> dict[str, float]:
-        n = max(1, int(w + d + l))
-        p = (float(w) + 0.5 * float(d)) / float(n)
-        p2 = (float(w) + 0.25 * float(d)) / float(n)
-        var = max(0.0, p2 - p * p)
-        se = (var / float(n)) ** 0.5
-        draw = float(d) / float(n)
-        eps = 1e-6
-        p_clip = min(1.0 - eps, max(eps, p))
-        elo = 400.0 * float(np.log10(p_clip / (1.0 - p_clip)))
-        denom = max(eps, p_clip * (1.0 - p_clip))
-        se_elo = (400.0 / float(np.log(10.0))) * se / denom
-        lb = p - z * se
-        elo_lb = elo - z * se_elo
-        return {
-            "n": float(n),
-            "p": float(p),
-            "p2": float(p2),
-            "var": float(var),
-            "se": float(se),
-            "draw": float(draw),
-            "elo": float(elo),
-            "se_elo": float(se_elo),
-            "lb": float(lb),
-            "elo_lb": float(elo_lb),
-        }
-
     def _arena_match(self, challenger: torch.nn.Module, incumbent: torch.nn.Module) -> tuple[float, int, int, int]:
         import chesscore as _ccore
         import numpy as _np
         from .model import BatchedEvaluator as _BatchedEval
+
+        def _load_openings(path: str) -> list[str]:
+            out: list[str] = []
+            try:
+                with open(path, encoding="utf-8") as f:
+                    for raw in f:
+                        s = raw.strip()
+                        if not s or s.startswith("#") or s.startswith(";"):
+                            continue
+                        s = s.split(";", 1)[0].strip()
+                        toks = s.split()
+                        if len(toks) >= 6:
+                            out.append(" ".join(toks[:6]))
+                        elif len(toks) >= 4:
+                            out.append(" ".join(toks[:4] + ["0", "1"]))
+            except Exception as e:
+                print(f"Warning: failed to read arena openings from '{path}': {e}")
+            return out
+
         wins = draws = losses = 0
         with _BatchedEval(self.device) as ce, _BatchedEval(self.device) as ie:
             ce.refresh_from(challenger)
             ie.refresh_from(incumbent)
             ce.cache_cap = ARENA_EVAL_CACHE_CAP
             ie.cache_cap = ARENA_EVAL_CACHE_CAP
-            openings: list[str] = []
-            if ARENA_OPENINGS_PATH:
-                try:
-                    with open(ARENA_OPENINGS_PATH, encoding="utf-8") as f:
-                        openings = [line.strip() for line in f if line.strip()]
-                except Exception:
-                    openings = []
+            openings = _load_openings(ARENA_OPENINGS_PATH) if ARENA_OPENINGS_PATH else []
             if not openings:
-                openings = [
-                    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-                    "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
-                    "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1",
-                    "rnbqkbnr/pppppppp/8/8/2P5/8/PP1PPPPP/RNBQKBNR b KQkq c3 0 1",
-                    "rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq - 1 1",
-                    "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2",
-                ]
+                print(f"Warning: arena openings file missing or empty ('{ARENA_OPENINGS_PATH}'); using start position.")
 
             def play(e1: _BatchedEval, e2: _BatchedEval, start_fen: str | None) -> int:
                 pos = _ccore.Position()
@@ -530,8 +524,10 @@ class Trainer:
                     pos.from_fen(start_fen)
                 m1 = _ccore.MCTS(SIMULATIONS_EVAL, C_PUCT, DIRICHLET_ALPHA, float(ARENA_DIRICHLET_WEIGHT))
                 m1.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
+                m1.set_fpu_reduction(0.10)
                 m2 = _ccore.MCTS(SIMULATIONS_EVAL, C_PUCT, DIRICHLET_ALPHA, float(ARENA_DIRICHLET_WEIGHT))
                 m2.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
+                m2.set_fpu_reduction(0.10)
                 t = 0
                 while pos.result() == _ccore.ONGOING and t < MAX_GAME_MOVES:
                     visits = m1.search_batched(pos, e1.infer_positions, EVAL_MAX_BATCH) if t % 2 == 0 else m2.search_batched(pos, e2.infer_positions, EVAL_MAX_BATCH)
@@ -554,16 +550,21 @@ class Trainer:
                 r = pos.result()
                 return 1 if r == _ccore.WHITE_WIN else (-1 if r == _ccore.BLACK_WIN else 0)
 
-            for g in range(ARENA_GAMES):
+            pairs = max(1, ARENA_GAMES // 2)
+            for _ in range(pairs):
                 start_fen = openings[_np.random.randint(0, len(openings))] if openings else None
-                r = play(ce, ie, start_fen) if g % 2 == 0 else -play(ie, ce, start_fen)
-                if r > 0:
-                    wins += 1
-                elif r < 0:
-                    losses += 1
-                else:
-                    draws += 1
-        score = (wins + ARENA_DRAW_SCORE * draws) / max(1, ARENA_GAMES)
+                r1 = play(ce, ie, start_fen)
+                r2 = -play(ie, ce, start_fen)
+                for r in (r1, r2):
+                    if r > 0:
+                        wins += 1
+                    elif r < 0:
+                        losses += 1
+                    else:
+                        draws += 1
+
+        total_games = max(1, wins + draws + losses)
+        score = (wins + ARENA_DRAW_SCORE * draws) / total_games
         return score, wins, draws, losses
 
     def train(self) -> None:
@@ -583,40 +584,37 @@ class Trainer:
             f"Augment: mirror {AUGMENT_MIRROR_PROB:.2f} | rot180 {AUGMENT_ROT180_PROB:.2f} | vflip_cs {AUGMENT_VFLIP_CS_PROB:.2f} | policy_smooth {POLICY_LABEL_SMOOTH:.2f}",
             f"EMA: {'on' if EMA_ENABLED else 'off'} decay {EMA_DECAY if EMA_ENABLED else 0}",
             f"Eval: batch {EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | cache {EVAL_CACHE_SIZE}",
-            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | rule LB>50% cumulative @Z={ARENA_CONFIDENCE_Z:.2f}",
+            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | rule per-candidate LB>50% @Z=1.96",
             f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games | output {OUTPUT_DIR}",
         ]
         print("\n".join(header))
+
         for iteration in range(1, ITERATIONS + 1):
             self.iteration = iteration
             iter_stats = self.training_iteration()
+
             do_eval = (iteration % ARENA_EVAL_EVERY) == 0
             arena_elapsed = 0.0
             if do_eval:
-                challenger = self._clone_from_ema()
+                if not self._gate_active:
+                    self._pending_challenger = self._clone_from_ema()
+                    self._gate.reset()
+                    self._gate_active = True
                 t_ar = time.time()
-                score, aw, ad, al = self._arena_match(challenger, self.best_model)
+                score, aw, ad, al = self._arena_match(self._pending_challenger, self.best_model)
                 arena_elapsed = time.time() - t_ar
-                self._arena_acc_w += aw
-                self._arena_acc_d += ad
-                self._arena_acc_l += al
-                cur_m = self._arena_metrics(aw, ad, al, ARENA_CONFIDENCE_Z)
-                acc_m = self._arena_metrics(self._arena_acc_w, self._arena_acc_d, self._arena_acc_l, ARENA_CONFIDENCE_Z)
+
+                self._gate.update(aw, ad, al)
+                decision, m = self._gate.decision()
                 print(
                     "AR   "
-                    f"cur n {int(cur_m['n'])} | score {100.0*cur_m['p']:>5.1f}% | lb {100.0*cur_m['lb']:>5.1f}% | "
-                    f"elo {cur_m['elo']:>6.1f} | elo_lb {cur_m['elo_lb']:>6.1f} | draw {100.0*cur_m['draw']:>4.1f}% | "
+                    f"n {int(m.get('n',0))} | p {100.0*m.get('p',0):>5.1f}% | "
+                    f"elo {m.get('elo',0):>6.1f} ±{m.get('se_elo',0):.1f} | decision {decision.upper()} | "
                     f"W/D/L {aw}/{ad}/{al} | time {self._format_time(arena_elapsed)}"
                 )
-                print(
-                    "AR+  "
-                    f"acc n {int(acc_m['n'])} | score {100.0*acc_m['p']:>5.1f}% | lb {100.0*acc_m['lb']:>5.1f}% | "
-                    f"elo {acc_m['elo']:>6.1f} | elo_lb {acc_m['elo_lb']:>6.1f} | draw {100.0*acc_m['draw']:>4.1f}% -> "
-                    f"{'PROMOTE' if acc_m['lb'] > 0.5 else 'hold'}"
-                )
-                promote = acc_m["lb"] > 0.5
-                if promote:
-                    self.best_model.load_state_dict(challenger.state_dict(), strict=True)
+
+                if decision == "accept":
+                    self.best_model.load_state_dict(self._pending_challenger.state_dict(), strict=True)
                     self.best_model.eval()
                     self.evaluator.refresh_from(self.best_model)
                     try:
@@ -628,11 +626,14 @@ class Trainer:
                         print(f"Saved best model to {dst}")
                     except Exception as e:
                         print(f"Warning: failed to save best model: {e}")
-                    self._arena_acc_w = 0
-                    self._arena_acc_d = 0
-                    self._arena_acc_l = 0
+                    self._gate_active = False
+                    self._pending_challenger = None
+                elif decision == "reject":
+                    self._gate_active = False
+                    self._pending_challenger = None
             else:
                 print(f"AR   skipped | games 0 | time {self._format_time(arena_elapsed)}")
+
             sp_time = float(iter_stats.get("selfplay_time", 0.0))
             tr_time = float(iter_stats.get("training_time", 0.0))
             full_iter_time = sp_time + tr_time + arena_elapsed
@@ -648,6 +649,7 @@ class Trainer:
                 f"SUM  iter {self._format_time(full_iter_time)} | sp {self._format_time(sp_time)} | tr {self._format_time(tr_time)} | ar {self._format_time(arena_elapsed)} | "
                 f"elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB | RSS {mem2['rss_gb']:.1f} GB"
             )
+
             if (iteration % 50) == 0:
                 try:
                     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -663,7 +665,47 @@ class Trainer:
                     print("Saved checkpoint")
                 except Exception as e:
                     print(f"Warning: failed to save checkpoint: {e}")
+
             self._prev_eval_m = self.evaluator.get_metrics()
+
+
+class EloGater:
+    """Simple Elo-LB gate with draw weight and min sample requirement."""
+    def __init__(self, z: float = 1.96, min_games: int = 400, draw_w: float = 0.5):
+        self.z = float(z)
+        self.min_games = int(min_games)
+        self.draw_w = float(draw_w)
+        self.reset()
+
+    def reset(self):
+        self.w = 0
+        self.d = 0
+        self.l = 0
+
+    def update(self, w: int, d: int, l: int):
+        self.w += int(w)
+        self.d += int(d)
+        self.l += int(l)
+
+    def decision(self) -> tuple[str, dict[str, float]]:
+        n = self.w + self.d + self.l
+        if n < self.min_games:
+            return "undecided", {"n": float(n)}
+        p = (self.w + self.draw_w * self.d) / max(1, n)
+        import math
+        se = math.sqrt(max(1e-9, p * (1.0 - p) / max(1, n)))
+        lb = p - self.z * se
+        ub = p + self.z * se
+        eps = 1e-9
+        pc = min(1.0 - eps, max(eps, p))
+        elo = 400.0 * math.log10(pc / (1.0 - pc))
+        denom = max(eps, pc * (1.0 - pc))
+        se_elo = (400.0 / math.log(10.0)) * se / denom
+        if lb > 0.5:
+            return "accept", {"n": float(n), "p": p, "lb": lb, "elo": elo, "se_elo": se_elo}
+        if ub < 0.5:
+            return "reject", {"n": float(n), "p": p, "ub": ub, "elo": elo, "se_elo": se_elo}
+        return "undecided", {"n": float(n), "p": p, "lb": lb, "ub": ub, "elo": elo, "se_elo": se_elo}
 
 
 if __name__ == "__main__":
