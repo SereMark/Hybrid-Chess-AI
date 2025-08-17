@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+import csv 
 from typing import Any
 
 import numpy as np
@@ -198,6 +199,12 @@ class Trainer:
         self.device_total_gb = props.total_memory / 1024**3
         self._prev_eval_m: dict[str, float] = {}
 
+        self._arena_openings = self._load_openings()
+        if not self._arena_openings:
+            raise RuntimeError(
+                "No arena openings found."
+            )
+
         self._gate = EloGater(z=1.96, min_games=400, draw_w=0.5)
         self._gate_active = False
         self._pending_challenger: torch.nn.Module | None = None
@@ -244,6 +251,55 @@ class Trainer:
         clone.load_state_dict(src.state_dict(), strict=True)
         clone.eval()
         return clone
+
+    def _load_openings(self) -> list[str]:
+        seen: set[str] = set()
+
+        def _add_fenish(s: str) -> None:
+            s = s.strip()
+            if not s or s.startswith("#") or s.startswith(";"):
+                return
+            s = s.split(";", 1)[0].strip()
+            toks = s.split()
+            if len(toks) >= 6:
+                fen6 = " ".join(toks[:6])
+            elif len(toks) >= 4:
+                fen6 = " ".join(toks[:4] + ["0", "1"])
+            else:
+                return
+            seen.add(fen6)
+
+        for ch in "abcde":
+            path = os.path.join("data", f"{ch}.tsv")
+            if not os.path.isfile(path):
+                continue
+            try:
+                with open(path, "r", encoding="utf-8", newline="") as f:
+                    r = csv.DictReader(f, delimiter="\t")
+                    for row in r:
+                        epd = (row.get("epd") or "").strip()
+                        if epd:
+                            _add_fenish(epd)
+            except Exception as e:
+                print(f"Warning: failed to read '{path}': {e}")
+
+        if isinstance(ARENA_OPENINGS_PATH, str) and os.path.isfile(ARENA_OPENINGS_PATH):
+            try:
+                if ARENA_OPENINGS_PATH.lower().endswith(".tsv"):
+                    with open(ARENA_OPENINGS_PATH, "r", encoding="utf-8", newline="") as f:
+                        r = csv.DictReader(f, delimiter="\t")
+                        for row in r:
+                            epd = (row.get("epd") or "").strip()
+                            if epd:
+                                _add_fenish(epd)
+                else:
+                    with open(ARENA_OPENINGS_PATH, "r", encoding="utf-8") as f:
+                        for line in f:
+                            _add_fenish(line)
+            except Exception as e:
+                print(f"Warning: failed to read ARENA_OPENINGS_PATH '{ARENA_OPENINGS_PATH}': {e}")
+
+        return sorted(seen)
 
     def train_step(self, batch_data: tuple[list[Any], list[np.ndarray], list[float]]) -> tuple[torch.Tensor, torch.Tensor, float, float]:
         states, policies, values = batch_data
@@ -490,38 +546,20 @@ class Trainer:
         import numpy as _np
         from .model import BatchedEvaluator as _BatchedEval
 
-        def _load_openings(path: str) -> list[str]:
-            out: list[str] = []
-            try:
-                with open(path, encoding="utf-8") as f:
-                    for raw in f:
-                        s = raw.strip()
-                        if not s or s.startswith("#") or s.startswith(";"):
-                            continue
-                        s = s.split(";", 1)[0].strip()
-                        toks = s.split()
-                        if len(toks) >= 6:
-                            out.append(" ".join(toks[:6]))
-                        elif len(toks) >= 4:
-                            out.append(" ".join(toks[:4] + ["0", "1"]))
-            except Exception as e:
-                print(f"Warning: failed to read arena openings from '{path}': {e}")
-            return out
-
         wins = draws = losses = 0
+        openings = self._arena_openings
+        if not openings:
+            raise RuntimeError("Arena openings not loaded.")
+
         with _BatchedEval(self.device) as ce, _BatchedEval(self.device) as ie:
             ce.refresh_from(challenger)
             ie.refresh_from(incumbent)
             ce.cache_cap = ARENA_EVAL_CACHE_CAP
             ie.cache_cap = ARENA_EVAL_CACHE_CAP
-            openings = _load_openings(ARENA_OPENINGS_PATH) if ARENA_OPENINGS_PATH else []
-            if not openings:
-                print(f"Warning: arena openings file missing or empty ('{ARENA_OPENINGS_PATH}'); using start position.")
 
-            def play(e1: _BatchedEval, e2: _BatchedEval, start_fen: str | None) -> int:
+            def play(e1: _BatchedEval, e2: _BatchedEval, start_fen: str) -> int:
                 pos = _ccore.Position()
-                if start_fen:
-                    pos.from_fen(start_fen)
+                pos.from_fen(start_fen)
                 m1 = _ccore.MCTS(SIMULATIONS_EVAL, C_PUCT, DIRICHLET_ALPHA, float(ARENA_DIRICHLET_WEIGHT))
                 m1.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
                 m1.set_fpu_reduction(0.10)
@@ -552,7 +590,7 @@ class Trainer:
 
             pairs = max(1, ARENA_GAMES // 2)
             for _ in range(pairs):
-                start_fen = openings[_np.random.randint(0, len(openings))] if openings else None
+                start_fen = openings[_np.random.randint(0, len(openings))]
                 r1 = play(ce, ie, start_fen)
                 r2 = -play(ie, ce, start_fen)
                 for r in (r1, r2):
@@ -585,6 +623,7 @@ class Trainer:
             f"EMA: {'on' if EMA_ENABLED else 'off'} decay {EMA_DECAY if EMA_ENABLED else 0}",
             f"Eval: batch {EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | cache {EVAL_CACHE_SIZE}",
             f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | rule per-candidate LB>50% @Z=1.96",
+            f"Arena openings: {len(self._arena_openings):,} positions loaded",
             f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games | output {OUTPUT_DIR}",
         ]
         print("\n".join(header))
