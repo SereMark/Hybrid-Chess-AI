@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 namespace mcts {
@@ -174,13 +175,16 @@ int encode_move_index(const chess::Move &m) { return encode_move_73x64(m); }
 
 std::vector<int> MCTS::search_batched(const chess::Position &position,
                                       EvalBatchFn eval_fn, int max_batch) {
+  if (max_batch < 1) max_batch = 1;
   node_pool_.reset();
-  Node *root = node_pool_.get_root();
-  root->child_idx = 0;
-  root->nchildren = 0;
-  root->val_sum = 0.0f;
-  root->prior = 0.0f;
-  root->visits = 0;
+  {
+    Node *root = node_pool_.get_root();
+    root->child_idx = 0;
+    root->nchildren = 0;
+    root->val_sum = 0.0f;
+    root->prior = 0.0f;
+    root->visits = 0;
+  }
 
   working_pos_ = position;
 
@@ -214,6 +218,9 @@ std::vector<int> MCTS::search_batched(const chess::Position &position,
     std::vector<float> val(to_eval.size(), 0.0f);
     eval_fn(to_eval, pol, val);
 
+    if (pol.size() != to_eval.size() || val.size() != to_eval.size()) {
+      throw std::runtime_error("MCTS evaluator returned mismatched batch size");
+    }
     for (size_t i = 0; i < to_eval.size(); ++i) {
       const uint32_t idx = eval_path_offsets[i];
       Node *node = node_pool_.get_node(idx);
@@ -226,14 +233,14 @@ std::vector<int> MCTS::search_batched(const chess::Position &position,
       if (!child_moves.empty())
         expand_node(node, child_moves, pol[i]);
 
-      float v = val[i];
       node->val_sum += VIRTUAL_LOSS;
+      float v = val[i];
       const auto &path = eval_paths[i];
       for (auto it = path.rbegin(); it != path.rend(); ++it) {
         node_pool_.get_node(*it)->update(-v);
         v = -v;
       }
-      root->update(v);
+      node_pool_.get_node(0)->update(v);
     }
 
     to_eval.clear();
@@ -246,13 +253,18 @@ std::vector<int> MCTS::search_batched(const chess::Position &position,
     std::vector<std::vector<float>> pol(1);
     std::vector<float> val(1, 0.0f);
     eval_fn(root_vec, pol, val);
+    if (pol.size() != 1 || val.size() != 1) {
+      throw std::runtime_error("MCTS root evaluator returned wrong batch size");
+    }
+    Node *root = node_pool_.get_root();
     root_policy = pol[0];
     expand_node(root, root_moves, root_policy);
+    root = node_pool_.get_root();
     add_dirichlet_noise(root);
   }
 
   for (int sim = 0; sim < simulations_; ++sim) {
-    Node *node = root;
+    Node *node = node_pool_.get_node(0);
     int depth = 0;
     working_pos_ = position;
     const int max_depth =
@@ -281,7 +293,7 @@ std::vector<int> MCTS::search_batched(const chess::Position &position,
         node_pool_.get_node(path_buffer_[i])->update(-v);
         v = -v;
       }
-      root->update(v);
+      node_pool_.get_node(0)->update(v);
     } else {
       const uint32_t idx = node_pool_.get_index(node);
       eval_path_offsets.push_back(idx);
@@ -307,10 +319,13 @@ std::vector<int> MCTS::search_batched(const chess::Position &position,
   flush_and_expand();
 
   std::vector<int> visits;
-  visits.reserve(root->nchildren);
-  Node *ch = node_pool_.get_node(root->child_idx);
-  for (uint16_t i = 0; i < root->nchildren; ++i)
-    visits.push_back(ch[i].visits);
+  {
+    Node *root = node_pool_.get_node(0);
+    visits.reserve(root->nchildren);
+    Node *ch = node_pool_.get_node(root->child_idx);
+    for (uint16_t i = 0; i < root->nchildren; ++i)
+      visits.push_back(ch[i].visits);
+  }
   return visits;
 }
 
