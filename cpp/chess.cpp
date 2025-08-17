@@ -445,6 +445,9 @@ void Position::legal_moves(MoveList &m) {
     const Move &mv = m[i];
     if (piece_at(mv.from()) == -1)
       continue;
+    const int dst = piece_at(mv.to());
+    if (dst == KING * 2 + (1 - turn))
+      continue;
     MoveInfo info;
     make_move_fast(mv, info);
     bool ok = true;
@@ -507,9 +510,16 @@ void Position::execute_move_core(const Move &move, MoveInfo *undo) {
     undo->moved_piece = p;
   const Piece pt = Piece(p / 2);
   const Color c = Color(p % 2);
+  const bool is_pawn_promo =
+      (pt == PAWN) &&
+      ((c == WHITE && to / BOARD_SIZE == 7) ||
+       (c == BLACK && to / BOARD_SIZE == 0));
+  const Piece promo = move.promotion();
+  const bool valid_promo = (promo == QUEEN || promo == ROOK ||
+                            promo == BISHOP || promo == KNIGHT);
   hash ^= zob_pieces[pt][c][from];
-  if (move.promotion() <= KING)
-    hash ^= zob_pieces[move.promotion()][c][to];
+  if (is_pawn_promo && valid_promo)
+    hash ^= zob_pieces[promo][c][to];
   else
     hash ^= zob_pieces[pt][c][to];
   const int cap = piece_at(to);
@@ -519,9 +529,9 @@ void Position::execute_move_core(const Move &move, MoveInfo *undo) {
   }
   pieces[pt][c] &= ~bit(from);
   mailbox[from] = -1;
-  if (move.promotion() <= KING) {
-    pieces[move.promotion()][c] |= bit(to);
-    mailbox[to] = move.promotion() * 2 + c;
+  if (is_pawn_promo && valid_promo) {
+    pieces[promo][c] |= bit(to);
+    mailbox[to] = promo * 2 + c;
   } else {
     pieces[pt][c] |= bit(to);
     mailbox[to] = pt * 2 + c;
@@ -568,8 +578,13 @@ void Position::execute_move_core(const Move &move, MoveInfo *undo) {
   update_occupancy();
 }
 Result Position::make_move(const Move &m) {
-  if (piece_at(m.from()) == -1)
-    return ONGOING;
+  MoveList legals;
+  legal_moves(legals);
+  bool is_legal = false;
+  for (size_t i = 0; i < legals.size(); ++i) {
+    if (legals[i] == m) { is_legal = true; break; }
+  }
+  if (!is_legal) return ONGOING;
   const int p = piece_at(m.from());
   const Piece pt = Piece(p / 2);
   const int cap = piece_at(m.to());
@@ -599,19 +614,28 @@ void Position::make_move_fast(const Move &m, MoveInfo &info) {
 void Position::unmake_move_fast(const Move &m, const MoveInfo &info) {
   Square from = m.from(), to = m.to();
   turn = Color(1 - turn);
-  int p = piece_at(to);
-  Piece pt = (m.promotion() <= KING) ? m.promotion() : Piece(p / 2);
-  Color c = Color(p % 2);
-  pieces[pt][c] &= ~bit(to);
-  if (m.promotion() <= KING) {
+  int p_to = piece_at(to);
+  Color c = Color(p_to % 2);
+  Piece pt_to = Piece(p_to / 2);
+  const bool moved_was_pawn =
+      (info.moved_piece >= 0) && (info.moved_piece / 2 == PAWN);
+  const bool promo_requested =
+      (m.promotion() == QUEEN || m.promotion() == ROOK ||
+       m.promotion() == BISHOP || m.promotion() == KNIGHT);
+  const bool reached_last =
+      ((c == WHITE && to / BOARD_SIZE == 7) ||
+       (c == BLACK && to / BOARD_SIZE == 0));
+  const bool was_promo = moved_was_pawn && promo_requested && reached_last;
+  pieces[pt_to][c] &= ~bit(to);
+  if (was_promo) {
     pieces[PAWN][c] |= bit(from);
     mailbox[from] = PAWN * 2 + c;
   } else {
-    pieces[pt][c] |= bit(from);
-    mailbox[from] = pt * 2 + c;
+    pieces[pt_to][c] |= bit(from);
+    mailbox[from] = pt_to * 2 + c;
   }
   mailbox[to] = -1;
-  if (pt == KING && std::abs(to - from) == KING_CASTLE_DISTANCE) {
+  if (pt_to == KING && std::abs(to - from) == KING_CASTLE_DISTANCE) {
     if (to > from) {
       pieces[ROOK][c] &= ~bit(from + 1);
       pieces[ROOK][c] |= bit(from + 3);
