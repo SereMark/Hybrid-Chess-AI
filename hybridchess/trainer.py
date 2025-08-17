@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import time
-import csv 
+import csv
 from typing import Any
 
 import numpy as np
@@ -63,13 +63,11 @@ SIMULATIONS_EVAL = 64
 ARENA_EVAL_EVERY = 20
 ARENA_EVAL_CACHE_CAP = 8192
 ARENA_GAMES = 160
-ARENA_OPENINGS_PATH = "openings_small.epd"
 ARENA_TEMPERATURE = 0.0
 ARENA_TEMP_MOVES = 0
 ARENA_DIRICHLET_WEIGHT = 0.0
 ARENA_OPENING_TEMPERATURE_EPS = 1e-6
 ARENA_DRAW_SCORE = 0.5
-ARENA_CONFIDENCE_Z = 1.64
 POLICY_LABEL_SMOOTH = 0.05
 ENTROPY_COEF_INIT = 5.0e-4
 ENTROPY_ANNEAL_ITERS = 60
@@ -269,35 +267,12 @@ class Trainer:
                 return
             seen.add(fen6)
 
-        for ch in "abcde":
-            path = os.path.join("data", f"{ch}.tsv")
-            if not os.path.isfile(path):
-                continue
-            try:
-                with open(path, "r", encoding="utf-8", newline="") as f:
-                    r = csv.DictReader(f, delimiter="\t")
-                    for row in r:
-                        epd = (row.get("epd") or "").strip()
-                        if epd:
-                            _add_fenish(epd)
-            except Exception as e:
-                print(f"Warning: failed to read '{path}': {e}")
+        if not os.path.isfile("openings.txt"):
+            return []
 
-        if isinstance(ARENA_OPENINGS_PATH, str) and os.path.isfile(ARENA_OPENINGS_PATH):
-            try:
-                if ARENA_OPENINGS_PATH.lower().endswith(".tsv"):
-                    with open(ARENA_OPENINGS_PATH, "r", encoding="utf-8", newline="") as f:
-                        r = csv.DictReader(f, delimiter="\t")
-                        for row in r:
-                            epd = (row.get("epd") or "").strip()
-                            if epd:
-                                _add_fenish(epd)
-                else:
-                    with open(ARENA_OPENINGS_PATH, "r", encoding="utf-8") as f:
-                        for line in f:
-                            _add_fenish(line)
-            except Exception as e:
-                print(f"Warning: failed to read ARENA_OPENINGS_PATH '{ARENA_OPENINGS_PATH}': {e}")
+        with open("openings.txt", "r", encoding="utf-8") as f:
+            for line in f:
+                _add_fenish(line)
 
         return sorted(seen)
 
@@ -709,7 +684,6 @@ class Trainer:
 
 
 class EloGater:
-    """Simple Elo-LB gate with draw weight and min sample requirement."""
     def __init__(self, z: float = 1.96, min_games: int = 400, draw_w: float = 0.5):
         self.z = float(z)
         self.min_games = int(min_games)
