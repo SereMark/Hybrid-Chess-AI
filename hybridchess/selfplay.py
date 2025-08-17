@@ -46,54 +46,49 @@ class Augment:
     def _policy_index_map(which: str) -> np.ndarray:
         if which in Augment._policy_map_cache:
             return Augment._policy_map_cache[which]
+        assert POLICY_OUTPUT % 64 == 0, "POLICY_OUTPUT must be divisible by 64"
         planes = POLICY_OUTPUT // 64
-        base = np.arange(POLICY_OUTPUT, dtype=np.int32).reshape(planes, 8, 8).copy()
+        base = np.arange(POLICY_OUTPUT, dtype=np.int32).reshape(planes, 8, 8)
         if which == "mirror":
             arr = base[:, :, ::-1]
-            out = np.empty_like(arr)
-            dir_map = [2, 1, 0, 4, 3, 7, 6, 5]
-            for d in range(8):
-                for r in range(7):
-                    out[dir_map[d] * 7 + r] = arr[d * 7 + r]
-            kmap = [1, 0, 3, 2, 5, 4, 7, 6]
-            for i in range(8):
-                out[56 + kmap[i]] = arr[56 + i]
-            pmap = [0, 2, 1]
-            for p in range(3):
-                b = 64 + p * 3
-                out[b + pmap[0]] = arr[b + 0]
-                out[b + pmap[1]] = arr[b + 1]
-                out[b + pmap[2]] = arr[b + 2]
+            out = arr.copy()
+            if planes >= 73:
+                dir_map = [2, 1, 0, 4, 3, 7, 6, 5]
+                for d in range(8):
+                    for r in range(7):
+                        out[dir_map[d] * 7 + r] = arr[d * 7 + r]
+                kmap = [1, 0, 3, 2, 5, 4, 7, 6]
+                for i in range(8):
+                    out[56 + kmap[i]] = arr[56 + i]
+                pmap = [0, 2, 1]
+                for p in range(3):
+                    b = 64 + p * 3
+                    out[b + pmap[0]] = arr[b + 0]
+                    out[b + pmap[1]] = arr[b + 1]
+                    out[b + pmap[2]] = arr[b + 2]
         elif which == "rot180":
             arr = base[:, ::-1, ::-1]
-            out = np.empty_like(arr)
-            dir_map = [7, 6, 5, 4, 3, 2, 1, 0]
-            for d in range(8):
-                for r in range(7):
-                    out[dir_map[d] * 7 + r] = arr[d * 7 + r]
-            kmap = [7, 6, 5, 4, 3, 2, 1, 0]
-            for i in range(8):
-                out[56 + kmap[i]] = arr[56 + i]
-            for p in range(3):
-                b = 64 + p * 3
-                out[b + 0] = arr[b + 0]
-                out[b + 1] = arr[b + 1]
-                out[b + 2] = arr[b + 2]
+            out = arr.copy()
+            if planes >= 73:
+                dir_map = [7, 6, 5, 4, 3, 2, 1, 0]
+                for d in range(8):
+                    for r in range(7):
+                        out[dir_map[d] * 7 + r] = arr[d * 7 + r]
+                kmap = [7, 6, 5, 4, 3, 2, 1, 0]
+                for i in range(8):
+                    out[56 + kmap[i]] = arr[56 + i]
+
         elif which == "vflip_cs":
             arr = base[:, ::-1, :]
-            out = np.empty_like(arr)
-            dir_map = [5, 6, 7, 4, 3, 2, 1, 0]
-            for d in range(8):
-                for r in range(7):
-                    out[dir_map[d] * 7 + r] = arr[d * 7 + r]
-            kmap = [6, 7, 4, 5, 2, 3, 0, 1]
-            for i in range(8):
-                out[56 + kmap[i]] = arr[56 + i]
-            for p in range(3):
-                b = 64 + p * 3
-                out[b + 0] = arr[b + 0]
-                out[b + 1] = arr[b + 1]
-                out[b + 2] = arr[b + 2]
+            out = arr.copy()
+            if planes >= 73:
+                dir_map = [5, 6, 7, 4, 3, 2, 1, 0]
+                for d in range(8):
+                    for r in range(7):
+                        out[dir_map[d] * 7 + r] = arr[d * 7 + r]
+                kmap = [6, 7, 4, 5, 2, 3, 0, 1]
+                for i in range(8):
+                    out[56 + kmap[i]] = arr[56 + i]
         else:
             Augment._policy_map_cache[which] = np.arange(POLICY_OUTPUT, dtype=np.int32)
             return Augment._policy_map_cache[which]
@@ -124,12 +119,17 @@ class Augment:
                 b = base + piece * 2 + 1
                 perm[a], perm[b] = perm[b], perm[a]
         cs = idx["castling_base"]
-        perm[cs + 0], perm[cs + 2] = perm[cs + 2], perm[cs + 0]
-        perm[cs + 1], perm[cs + 3] = perm[cs + 3], perm[cs + 1]
+        if cs + 3 < num_planes:
+            perm[cs + 0], perm[cs + 2] = perm[cs + 2], perm[cs + 0]
+            perm[cs + 1], perm[cs + 3] = perm[cs + 3], perm[cs + 1]
         return perm
 
     @staticmethod
-    def apply(states: list[np.ndarray], policies: list[np.ndarray], which: str) -> tuple[list[np.ndarray], list[np.ndarray], bool]:
+    def apply(
+        states: list[np.ndarray],
+        policies: list[np.ndarray],
+        which: str
+    ) -> tuple[list[np.ndarray], list[np.ndarray], bool]:
         if not states:
             return states, policies, False
         st = np.stack(states, axis=0)
@@ -147,7 +147,8 @@ class Augment:
             st = st[:, perm]
             idx = Augment._plane_indices()
             tp = idx["turn_plane"]
-            st[:, tp] = 1.0 - st[:, tp]
+            if tp < st.shape[1]:
+                st[:, tp] = 1.0 - st[:, tp]
             pol = pol[:, Augment._policy_index_map("vflip_cs")]
             swapped = True
         else:
@@ -188,14 +189,17 @@ class SelfPlayEngine:
     def _temp_select(self, moves: list[Any], visits: list[int], move_number: int) -> Any:
         temperature = TEMP_HIGH if move_number < TEMP_MOVES else TEMP_LOW
         if temperature > TEMP_DETERMINISTIC_THRESHOLD:
-            probs = np.maximum(np.array(visits, dtype=np.float64), 0)
+            probs = np.maximum(np.array(visits, dtype=np.float64), 0.0)
             s = probs.sum()
             if not np.isfinite(s) or s <= 0:
                 idx = int(np.argmax(visits))
             else:
                 probs = probs ** (1.0 / temperature)
                 s = probs.sum()
-                idx = int(np.argmax(visits)) if (not np.isfinite(s) or s <= 0) else int(np.random.choice(len(moves), p=probs / s))
+                if not np.isfinite(s) or s <= 0:
+                    idx = int(np.argmax(visits))
+                else:
+                    idx = int(np.random.choice(len(moves), p=probs / s))
         else:
             idx = int(np.argmax(visits))
         return moves[idx]
@@ -255,15 +259,17 @@ class SelfPlayEngine:
             else:
                 mcts.set_dirichlet_params(DIRICHLET_ALPHA, 0.0)
 
-            visits = mcts.search_batched(position, self.evaluator.infer_positions, EVAL_MAX_BATCH)
-            if not visits:
-                break
             moves = position.legal_moves()
-            if moves:
-                local_mcts_batch_max = max(local_mcts_batch_max, len(moves))
+            if not moves:
+                break
+            visits = mcts.search_batched(position, self.evaluator.infer_positions, EVAL_MAX_BATCH)
+            if not visits or len(visits) != len(moves):
+                break
+
+            local_mcts_batch_max = max(local_mcts_batch_max, len(moves))
 
             counts = np.zeros(POLICY_OUTPUT, dtype=np.uint16)
-            for mv, vc in zip(moves, visits, strict=False):
+            for mv, vc in zip(moves, visits):
                 idx = ccore.encode_move_index(mv)
                 if (idx is not None) and (0 <= int(idx) < POLICY_OUTPUT):
                     c = min(int(vc), 65535)
@@ -334,7 +340,12 @@ class SelfPlayEngine:
         with self.buffer_lock:
             return list(self.buffer)
 
-    def sample_from_snapshot(self, snapshot: list[tuple[np.ndarray, np.ndarray, np.int8]], batch_size: int, recent_ratio: float = 0.6) -> tuple[list[np.ndarray], list[np.ndarray], list[float]] | None:
+    def sample_from_snapshot(
+        self,
+        snapshot: list[tuple[np.ndarray, np.ndarray, np.int8]],
+        batch_size: int,
+        recent_ratio: float = 0.6
+    ) -> tuple[list[np.ndarray], list[np.ndarray], list[float]] | None:
         N = len(snapshot)
         if batch_size > N:
             return None
@@ -344,7 +355,7 @@ class SelfPlayEngine:
         recent_idx = np.random.randint(max(0, N - recent_N), N, size=n_recent)
         old_idx = np.random.randint(0, max(1, N - recent_N), size=n_old)
         sel_idx = np.concatenate([recent_idx, old_idx])
-        states_u8, counts_u16, values_i8 = zip(*[snapshot[int(i)] for i in sel_idx], strict=False)
+        states_u8, counts_u16, values_i8 = zip(*[snapshot[int(i)] for i in sel_idx])
         states = [s.astype(np.float32) / 255.0 for s in states_u8]
         counts = [p.astype(np.float32) for p in counts_u16]
         policies: list[np.ndarray] = []
@@ -357,8 +368,8 @@ class SelfPlayEngine:
         values = [float(v) / 127.0 for v in values_i8]
         return states, policies, values
 
-    def play_games(self, num_games: int) -> dict[str, int | float]:
-        res: dict[str, int | float] = {"games": 0, "moves": 0, "white_wins": 0, "black_wins": 0, "draws": 0}
+    def play_games(self, num_games: int) -> dict[str, Any]:
+        res: dict[str, Any] = {"games": 0, "moves": 0, "white_wins": 0, "black_wins": 0, "draws": 0}
         with self.metrics_lock:
             sp_start = dict(self._metrics)
         with ThreadPoolExecutor(max_workers=max(1, SELFPLAY_WORKERS)) as ex:
@@ -376,9 +387,9 @@ class SelfPlayEngine:
         with self.metrics_lock:
             sp_end = dict(self._metrics)
         res["sp_metrics"] = sp_end
-        sp_delta: dict[str, int | float] = {}
+        sp_delta: dict[str, float] = {}
         for k, v in sp_end.items():
-            if k in sp_start and isinstance(v, int | float):
+            if k in sp_start and isinstance(v, (int, float)):
                 sp_delta[k] = float(v) - float(sp_start.get(k, 0.0))
         res["sp_metrics_iter"] = sp_delta
         return res
