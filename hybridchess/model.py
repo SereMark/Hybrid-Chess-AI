@@ -21,7 +21,7 @@ CHANNELS = 192
 VALUE_CONV_CHANNELS = 8
 VALUE_HIDDEN_DIM = 512
 
-EVAL_CACHE_SIZE = 150_000
+EVAL_CACHE_SIZE = 20_000
 EVAL_MAX_BATCH = 1024
 EVAL_BATCH_TIMEOUT_MS = 4
 
@@ -161,19 +161,41 @@ class BatchedEvaluator:
     def _encode_batch(self, positions: list[Any]) -> torch.Tensor:
         import chesscore as ccore
         x_np = np.zeros((0, INPUT_PLANES, 8, 8), dtype=np.float32) if not positions else ccore.encode_batch(positions)
-        x = torch.from_numpy(x_np).pin_memory().to(self.device, non_blocking=True)
-        return x.contiguous(memory_format=torch.channels_last)
+        x = torch.from_numpy(x_np)
+        if self.device.type == "cuda":
+            x = x.pin_memory().to(self.device, non_blocking=True)
+        else:
+            x = x.to(self.device)
+        return x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
 
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        with (
-            self.model_lock,
-            torch.inference_mode(),
-            torch.autocast(device_type="cuda", enabled=(self.device.type == "cuda")),
-        ):
-            x = x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
+        with self.model_lock, torch.inference_mode():
             if self.device.type == "cuda":
                 x = x.to(dtype=torch.float16)
+            x = x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
             return self.eval_model(x)
+
+    def _position_key(self, pos: Any) -> int | None:
+        try:
+            h_attr = getattr(pos, "hash", None)
+            if callable(h_attr):
+                h_val = h_attr()
+            else:
+                h_val = h_attr
+            if h_val is None:
+                return None
+            if isinstance(h_val, np.generic):
+                h_val = h_val.item()
+            if isinstance(h_val, (int, np.integer)):
+                return int(h_val)
+            if isinstance(h_val, str):
+                try:
+                    return int(h_val)
+                except Exception:
+                    return None
+            return None
+        except Exception:
+            return None
 
     def infer_positions(self, positions: list[Any]) -> tuple[np.ndarray, np.ndarray]:
         if not positions:
@@ -183,23 +205,35 @@ class BatchedEvaluator:
         cached_p: list[np.ndarray | None] = [None] * len(positions)
         cached_v: list[float] = [0.0] * len(positions)
         reqs: list[tuple[int, _EvalRequest]] = []
-        uniq: dict[int, int] = {}
+        uniq_by_key: dict[int, int] = {}
+        uniq_by_obj: dict[int, int] = {}
+        misses = 0
         with self.cache_lock:
             for i, pos in enumerate(positions):
-                h = int(getattr(pos, "hash", 0))
-                if h and h in self.cache:
-                    pol, val = self.cache[h]
+                key = self._position_key(pos)
+                if key is not None and key in self.cache:
+                    pol, val = self.cache[key]
                     cached_p[i] = pol
                     cached_v[i] = float(val)
                     with self._metrics_lock:
                         self._metrics["cache_hits_total"] += 1
                 else:
-                    if h and h in uniq:
-                        reqs.append((i, reqs[uniq[h]][1]))
+                    if key is not None:
+                        if key in uniq_by_key:
+                            reqs.append((i, reqs[uniq_by_key[key]][1]))
+                        else:
+                            r = _EvalRequest(pos)
+                            uniq_by_key[key] = len(reqs)
+                            reqs.append((i, r))
+                            misses += 1
                     else:
-                        r = _EvalRequest(pos)
-                        uniq[h] = len(reqs)
-                        reqs.append((i, r))
+                        obj_id = id(pos)
+                        if obj_id in uniq_by_obj:
+                            reqs.append((i, reqs[uniq_by_obj[obj_id]][1]))
+                        else:
+                            r = _EvalRequest(pos)
+                            uniq_by_obj[obj_id] = len(reqs)
+                            reqs.append((i, r))
         unique_reqs: list[_EvalRequest] = []
         seen: set[int] = set()
         for _, r in reqs:
@@ -207,7 +241,7 @@ class BatchedEvaluator:
                 unique_reqs.append(r)
                 seen.add(id(r))
         with self._metrics_lock:
-            self._metrics["cache_misses_total"] += len(unique_reqs)
+            self._metrics["cache_misses_total"] += misses
             self._metrics["queued_unique_total"] += len(unique_reqs)
         for r in unique_reqs:
             with self._pending_lock:
@@ -221,17 +255,19 @@ class BatchedEvaluator:
         if reqs:
             with self.cache_lock:
                 for idx, _ in reqs:
-                    h = int(getattr(positions[idx], "hash", 0))
-                    if h and h not in self.cache:
+                    key = self._position_key(positions[idx])
+                    if key is not None and key not in self.cache:
                         pol_opt = cached_p[idx]
                         val = cached_v[idx]
                         if pol_opt is not None:
-                            self.cache[h] = (pol_opt.astype(np.float16), np.float16(val))
-                            self.cache_order.append(h)
+                            self.cache[key] = (pol_opt.astype(np.float16), np.float16(val))
+                            self.cache_order.append(key)
                 while len(self.cache_order) > self.cache_cap:
                     k = self.cache_order.popleft()
                     self.cache.pop(k, None)
-        pol_np = np.stack([(p if p is not None else np.zeros((POLICY_OUTPUT,), dtype=np.float32)) for p in cached_p]).astype(np.float32)
+        pol_np = np.stack(
+            [(p if p is not None else np.zeros((POLICY_OUTPUT,), dtype=np.float32)) for p in cached_p]
+        ).astype(np.float32)
         val_np = np.asarray(cached_v, dtype=np.float32)
         return pol_np, val_np
 
@@ -260,29 +296,35 @@ class BatchedEvaluator:
                         batch.append(self._pending.popleft())
             if self._shutdown.is_set():
                 break
-            t_enc0 = time.time()
-            x = self._encode_batch([r.position for r in batch])
-            t_enc1 = time.time()
-            p_t, v_t = self._forward(x)
-            t_fwd1 = time.time()
-            pol = torch.softmax(p_t, dim=1).detach().to(dtype=torch.float16).cpu().numpy()
-            val = v_t.detach().to(dtype=torch.float16).cpu().numpy()
-            now = time.time()
-            accum_wait = 0.0
-            for i, r in enumerate(batch):
-                r.policy = pol[i]
-                r.value = float(val[i])
-                if hasattr(r, "t_submit"):
-                    accum_wait += max(0.0, now - float(getattr(r, "t_submit", now)))
-                r.event.set()
-            with self._metrics_lock:
-                self._metrics["batches_total"] += 1
-                self._metrics["eval_positions_total"] += len(batch)
-                if len(batch) > int(self._metrics["batch_size_max"]):
-                    self._metrics["batch_size_max"] = float(len(batch))
-                self._metrics["encode_time_s_total"] += max(0.0, t_enc1 - t_enc0)
-                self._metrics["forward_time_s_total"] += max(0.0, t_fwd1 - t_enc1)
-                self._metrics["wait_time_s_total"] += float(accum_wait)
+            try:
+                t_enc0 = time.time()
+                x = self._encode_batch([r.position for r in batch])
+                t_enc1 = time.time()
+                p_t, v_t = self._forward(x)
+                t_fwd1 = time.time()
+                pol = F.softmax(p_t.float(), dim=1).detach().to(dtype=torch.float16).cpu().numpy()
+                val = v_t.detach().to(dtype=torch.float16).cpu().numpy()
+                now = time.time()
+                accum_wait = 0.0
+                for i, r in enumerate(batch):
+                    r.policy = pol[i]
+                    r.value = float(val[i])
+                    if hasattr(r, "t_submit"):
+                        accum_wait += max(0.0, now - float(getattr(r, "t_submit", now)))
+                    r.event.set()
+                with self._metrics_lock:
+                    self._metrics["batches_total"] += 1
+                    self._metrics["eval_positions_total"] += len(batch)
+                    if len(batch) > int(self._metrics["batch_size_max"]):
+                        self._metrics["batch_size_max"] = float(len(batch))
+                    self._metrics["encode_time_s_total"] += max(0.0, t_enc1 - t_enc0)
+                    self._metrics["forward_time_s_total"] += max(0.0, t_fwd1 - t_enc1)
+                    self._metrics["wait_time_s_total"] += float(accum_wait)
+            except Exception:
+                for r in batch:
+                    r.policy = np.zeros((POLICY_OUTPUT,), dtype=np.float16)
+                    r.value = 0.0
+                    r.event.set()
 
     def get_metrics(self) -> dict[str, float]:
         with self._metrics_lock:
