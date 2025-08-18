@@ -65,27 +65,30 @@ AUGMENT_MIRROR_PROB = 0.5
 AUGMENT_ROT180_PROB = 0.25
 AUGMENT_VFLIP_CS_PROB = 0.25
 
-SIMULATIONS_EVAL = 256
+SIMULATIONS_EVAL = 160
 ARENA_EVAL_EVERY = 10
 ARENA_EVAL_CACHE_CAP = 8192
 ARENA_GAMES = 400
 
-ARENA_TEMPERATURE = 0.10
-ARENA_TEMP_MOVES = 2
-ARENA_DIRICHLET_WEIGHT = 0.0
+ARENA_TEMPERATURE = 0.75
+ARENA_TEMP_MOVES = 8
+ARENA_DIRICHLET_WEIGHT = 0.10
 ARENA_OPENING_TEMPERATURE_EPS = 1e-6
 
 ARENA_DRAW_SCORE = 0.5
 ARENA_GATE_DRAW_WEIGHT = ARENA_DRAW_SCORE
 ARENA_GATE_BASELINE_P = 0.5
 
-ARENA_GATE_Z_EARLY = 1.64
+ARENA_GATE_Z_EARLY = 1.28
 ARENA_GATE_Z_LATE = 1.96
 ARENA_GATE_Z_SWITCH_ITER = 200
-ARENA_GATE_MIN_GAMES = 400
+ARENA_GATE_MIN_GAMES = 300
 
 ARENA_GATE_DECISIVE_SECONDARY = True
-ARENA_GATE_MIN_DECISIVES = 200
+ARENA_GATE_MIN_DECISIVES = 80
+
+ARENA_CANDIDATE_MAX_ITERS = 20
+ARENA_CANDIDATE_MAX_GAMES = 1200
 
 POLICY_LABEL_SMOOTH = 0.05
 ENTROPY_COEF_INIT = 5.0e-4
@@ -196,7 +199,7 @@ class Trainer:
                         continue
                     if self.shadow[k].dtype != v.dtype:
                         self.shadow[k] = self.shadow[k].to(dtype=v.dtype)
-                    self.shadow[k].mul_(self.decay).add_((v.detach()), alpha=1.0 - self.decay)
+                    self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1.0 - self.decay)
 
             def copy_to(self, model: torch.nn.Module):
                 base = getattr(model, "_orig_mod", model)
@@ -231,6 +234,7 @@ class Trainer:
         )
         self._gate_active = False
         self._pending_challenger: torch.nn.Module | None = None
+        self._gate_started_iter = 0
 
     @staticmethod
     def _format_time(s: float) -> str:
@@ -340,7 +344,7 @@ class Trainer:
         return policy_loss.detach(), value_loss.detach(), float(grad_total_norm_t.detach().cpu()), float(entropy.detach().cpu())
 
     def training_iteration(self) -> dict[str, int | float]:
-        if self.iteration >= 100 and self.selfplay_engine.resign_consecutive < 2:
+        if self.selfplay_engine.resign_consecutive < 2:
             self.selfplay_engine.resign_consecutive = 2
         if self.iteration == ARENA_GATE_Z_SWITCH_ITER:
             self._gate.z = float(ARENA_GATE_Z_LATE)
@@ -459,7 +463,7 @@ class Trainer:
         grad_norm_running: float = 0.0
         ent_running: float = 0.0
         for _i_step in range(steps):
-            batch = self.selfplay_engine.sample_from_snapshot(snap, BATCH_SIZE, recent_ratio=0.6)
+            batch = self.selfplay_engine.sample_from_snapshot(snap, BATCH_SIZE, recent_ratio=0.8)
             if not batch:
                 continue
             s, p, v = batch
@@ -517,7 +521,7 @@ class Trainer:
         )
 
         tr_plan_line = (
-            f"plan {steps} | target {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | actual {ratio:>4.1f}x | mix recent 60%, old 40%"
+            f"plan {steps} | target {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | actual {ratio:>4.1f}x | mix recent 80%, old 20%"
             if steps > 0
             else "plan 0 skip (buffer underfilled)"
         )
@@ -642,10 +646,15 @@ class Trainer:
             do_eval = (iteration % ARENA_EVAL_EVERY) == 0 if ARENA_EVAL_EVERY > 0 else False
             arena_elapsed = 0.0
             if do_eval:
-                if not self._gate_active:
+                if (not self._gate_active) \
+                   or ((iteration - self._gate_started_iter) >= ARENA_CANDIDATE_MAX_ITERS) \
+                   or ((self._gate.w + self._gate.d + self._gate.l) >= ARENA_CANDIDATE_MAX_GAMES):
+                    if self._gate_active:
+                        print("AR   reset: timeboxing stuck challenger")
                     self._pending_challenger = self._clone_from_ema()
                     self._gate.reset()
                     self._gate_active = True
+                    self._gate_started_iter = iteration
                 t_ar = time.time()
                 score, aw, ad, al = self._arena_match(self._pending_challenger, self.best_model)
                 arena_elapsed = time.time() - t_ar
@@ -656,7 +665,7 @@ class Trainer:
                     "AR   "
                     f"n {int(m.get('n',0))} | p {100.0*m.get('p',0):>5.1f}% | "
                     f"elo {m.get('elo',0):>6.1f} ±{m.get('se_elo',0):.1f} | decision {decision.upper()} | "
-                    f"W/D/L {aw}/{ad}/{al} | time {self._format_time(arena_elapsed)}"
+                    f"W/D/L {aw}/{ad}/{al} | time {self._format_time(arena_elapsed)} | age {iteration - self._gate_started_iter}"
                 )
 
                 if decision == "accept":

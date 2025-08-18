@@ -22,8 +22,8 @@ VALUE_CONV_CHANNELS = 8
 VALUE_HIDDEN_DIM = 512
 
 EVAL_CACHE_SIZE = 20_000
-EVAL_MAX_BATCH = 1024
-EVAL_BATCH_TIMEOUT_MS = 4
+EVAL_MAX_BATCH = 2048
+EVAL_BATCH_TIMEOUT_MS = 2
 
 class ResBlock(nn.Module):
     def __init__(self, channels: int) -> None:
