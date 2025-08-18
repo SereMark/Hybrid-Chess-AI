@@ -54,10 +54,11 @@ VALUE_WEIGHT_SWITCH_ITER = 60
 
 ITERATIONS = 600
 GAMES_PER_ITER = 220
-LR_SCHED_STEPS_PER_ITER_EST = 100
+
+LR_SCHED_STEPS_PER_ITER_EST = 32
 
 RATIO_TARGET_TRAIN_PER_NEW = 6.0
-RATIO_UPDATE_STEPS_MIN = 32
+RATIO_UPDATE_STEPS_MIN = 24
 RATIO_UPDATE_STEPS_MAX = 320
 
 AUGMENT_MIRROR_PROB = 0.5
@@ -68,15 +69,23 @@ SIMULATIONS_EVAL = 256
 ARENA_EVAL_EVERY = 10
 ARENA_EVAL_CACHE_CAP = 8192
 ARENA_GAMES = 400
-ARENA_TEMPERATURE = 0.0
-ARENA_TEMP_MOVES = 0
+
+ARENA_TEMPERATURE = 0.10
+ARENA_TEMP_MOVES = 2
 ARENA_DIRICHLET_WEIGHT = 0.0
 ARENA_OPENING_TEMPERATURE_EPS = 1e-6
+
 ARENA_DRAW_SCORE = 0.5
-ARENA_GATE_Z = 1.96
-ARENA_GATE_MIN_GAMES = 400
 ARENA_GATE_DRAW_WEIGHT = ARENA_DRAW_SCORE
 ARENA_GATE_BASELINE_P = 0.5
+
+ARENA_GATE_Z_EARLY = 1.64
+ARENA_GATE_Z_LATE = 1.96
+ARENA_GATE_Z_SWITCH_ITER = 200
+ARENA_GATE_MIN_GAMES = 400
+
+ARENA_GATE_DECISIVE_SECONDARY = True
+ARENA_GATE_MIN_DECISIVES = 200
 
 POLICY_LABEL_SMOOTH = 0.05
 ENTROPY_COEF_INIT = 5.0e-4
@@ -213,10 +222,12 @@ class Trainer:
             raise RuntimeError("No arena openings found.")
 
         self._gate = EloGater(
-            z=ARENA_GATE_Z,
+            z=ARENA_GATE_Z_EARLY,
             min_games=ARENA_GATE_MIN_GAMES,
             draw_w=ARENA_GATE_DRAW_WEIGHT,
             baseline_p=ARENA_GATE_BASELINE_P,
+            decisive_secondary=ARENA_GATE_DECISIVE_SECONDARY,
+            min_decisive=ARENA_GATE_MIN_DECISIVES,
         )
         self._gate_active = False
         self._pending_challenger: torch.nn.Module | None = None
@@ -329,9 +340,10 @@ class Trainer:
         return policy_loss.detach(), value_loss.detach(), float(grad_total_norm_t.detach().cpu()), float(entropy.detach().cpu())
 
     def training_iteration(self) -> dict[str, int | float]:
-        if self.iteration >= 200 and self.selfplay_engine.resign_consecutive < 2:
+        if self.iteration >= 100 and self.selfplay_engine.resign_consecutive < 2:
             self.selfplay_engine.resign_consecutive = 2
-
+        if self.iteration == ARENA_GATE_Z_SWITCH_ITER:
+            self._gate.z = float(ARENA_GATE_Z_LATE)
         stats: dict[str, int | float] = {}
         torch.cuda.reset_peak_memory_stats(self.device)
         header_lr = float(self.scheduler.peek_next_lr())
@@ -482,7 +494,7 @@ class Trainer:
         if LR_SCHED_STEPS_PER_ITER_EST > 0:
             drift_pct = 100.0 * (actual_steps - LR_SCHED_STEPS_PER_ITER_EST) / LR_SCHED_STEPS_PER_ITER_EST if actual_steps > 0 else 0.0
         at_edge = steps in (RATIO_UPDATE_STEPS_MIN, RATIO_UPDATE_STEPS_MAX)
-        if self.iteration == 1 and actual_steps > 0 and abs(drift_pct) > 20.0 and not at_edge:
+        if self.iteration == 1 and actual_steps > 0 and abs(drift_pct) > 20.0:
             remaining_iters = max(0, ITERATIONS - self.iteration)
             new_total = int(self.scheduler.t + remaining_iters * actual_steps)
             new_total = max(self.scheduler.t + 1, new_total)
@@ -565,7 +577,7 @@ class Trainer:
                     moves = pos.legal_moves()
                     if t < ARENA_TEMP_MOVES:
                         temp = float(ARENA_TEMPERATURE)
-                        if temp <= 0.0:
+                        if temp <= 0.0 + ARENA_OPENING_TEMPERATURE_EPS:
                             idx = int(_np.argmax(v))
                         else:
                             v_pos = _np.maximum(v, 0.0)
@@ -617,7 +629,7 @@ class Trainer:
             f"Augment: mirror {AUGMENT_MIRROR_PROB:.2f} | rot180 {AUGMENT_ROT180_PROB:.2f} | vflip_cs {AUGMENT_VFLIP_CS_PROB:.2f} | policy_smooth {POLICY_LABEL_SMOOTH:.2f}",
             f"EMA: {'on' if EMA_ENABLED else 'off'} decay {EMA_DECAY if EMA_ENABLED else 0}",
             f"Eval: batch {EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | cache {EVAL_CACHE_SIZE}",
-            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | rule LB>{100.0*ARENA_GATE_BASELINE_P:.0f}% @Z={ARENA_GATE_Z}",
+            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | rule LB>{100.0*ARENA_GATE_BASELINE_P:.0f}% @Z {ARENA_GATE_Z_EARLY}->{ARENA_GATE_Z_LATE} (switch @{ARENA_GATE_Z_SWITCH_ITER})",
             f"Arena openings: {len(self._arena_openings):,} positions loaded",
             f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games | output {OUTPUT_DIR}",
         ]
@@ -710,11 +722,15 @@ class EloGater:
         min_games: int = 400,
         draw_w: float = 0.5,
         baseline_p: float = 0.5,
+        decisive_secondary: bool = False,
+        min_decisive: int = 200,
     ):
         self.z = float(z)
         self.min_games = int(min_games)
         self.draw_w = float(draw_w)
         self.baseline_p = float(baseline_p)
+        self.decisive_secondary = bool(decisive_secondary)
+        self.min_decisive = int(min_decisive)
         self.reset()
 
     def reset(self):
@@ -728,12 +744,15 @@ class EloGater:
         self.l += int(l)
 
     def decision(self) -> tuple[str, dict[str, float]]:
+        import math
         n = self.w + self.d + self.l
         if n < self.min_games:
             return "undecided", {"n": float(n)}
         p = (self.w + self.draw_w * self.d) / max(1, n)
-        import math
-        se = math.sqrt(max(1e-9, p * (1.0 - p) / max(1, n)))
+        w_frac = self.w / n
+        d_frac = self.d / n
+        var = max(1e-9, w_frac + (self.draw_w ** 2) * d_frac - (p * p))
+        se = math.sqrt(var / n)
         lb = p - self.z * se
         ub = p + self.z * se
         eps = 1e-9
@@ -745,6 +764,17 @@ class EloGater:
             return "accept", {"n": float(n), "p": p, "lb": lb, "elo": elo, "se_elo": se_elo}
         if ub < self.baseline_p:
             return "reject", {"n": float(n), "p": p, "ub": ub, "elo": elo, "se_elo": se_elo}
+        decisives = self.w + self.l
+        if self.decisive_secondary and decisives >= self.min_decisive:
+            p_dec = self.w / max(1, decisives)
+            se_dec = math.sqrt(max(1e-9, p_dec * (1.0 - p_dec) / max(1, decisives)))
+            lb_dec = p_dec - self.z * se_dec
+            if lb_dec > 0.5:
+                pc_dec = min(1.0 - eps, max(eps, p_dec))
+                elo_dec = 400.0 * math.log10(pc_dec / (1.0 - pc_dec))
+                denom_dec = max(eps, pc_dec * (1.0 - pc_dec))
+                se_elo_dec = (400.0 / math.log(10.0)) * se_dec / denom_dec
+                return "accept", {"n": float(n), "p": p, "lb": lb, "elo": elo_dec, "se_elo": se_elo_dec}
         return "undecided", {"n": float(n), "p": p, "lb": lb, "ub": ub, "elo": elo, "se_elo": se_elo}
 
 
