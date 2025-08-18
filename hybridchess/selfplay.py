@@ -8,32 +8,52 @@ from typing import TYPE_CHECKING, Any
 import chesscore as ccore
 import numpy as np
 
-from .model import EVAL_MAX_BATCH, HISTORY_LENGTH, PLANES_PER_POSITION, POLICY_OUTPUT
-
-BUFFER_SIZE = 200_000
-
-SELFPLAY_WORKERS = 8
-
-MAX_GAME_MOVES = 512
-
-RESIGN_THRESHOLD = -0.9
-RESIGN_CONSECUTIVE = 0
-RESIGN_PLAYTHROUGH_FRAC = 0.15
-
-TEMP_MOVES = 20
-TEMP_HIGH = 1.0
-TEMP_LOW = 0.01
-TEMP_DETERMINISTIC_THRESHOLD = 0.01
-
-SIMULATIONS_TRAIN = 512
-MCTS_MIN_SIMS = 160
-SIMULATIONS_DECAY_INTERVAL = 75
-
-C_PUCT = 1.25
-C_PUCT_BASE = 19652.0
-C_PUCT_INIT = 1.25
-DIRICHLET_ALPHA = 0.3
-DIRICHLET_WEIGHT = 0.25
+from .config import (
+    BOARD_SIZE,
+    BUFFER_SIZE,
+    C_PUCT,
+    C_PUCT_BASE,
+    C_PUCT_INIT,
+    DIR_MAP_MIRROR,
+    DIR_MAP_ROT180,
+    DIR_MAP_VFLIP_CS,
+    DIR_MAX_DIST,
+    DIRICHLET_ALPHA,
+    DIRICHLET_WEIGHT,
+    EVAL_MAX_BATCH,
+    FPU_REDUCTION,
+    HISTORY_LENGTH,
+    KMAP_MIRROR,
+    KMAP_ROT180,
+    KMAP_VFLIP_CS,
+    KNIGHT_PLANES_BASE,
+    MAX_GAME_MOVES,
+    MCTS_MIN_SIMS,
+    NSQUARES,
+    NUM_DIRECTIONS,
+    NUM_KNIGHT_DIRS,
+    OPENING_RANDOM_PLIES_MAX,
+    PLANES_PER_POSITION,
+    PMAP_PROMOS,
+    POLICY_OUTPUT,
+    PROMO_CHOICES,
+    PROMO_STRIDE,
+    RESIGN_CONSECUTIVE,
+    RESIGN_PLAYTHROUGH_FRAC,
+    RESIGN_THRESHOLD,
+    SELFPLAY_WORKERS,
+    SIMULATIONS_DECAY_INTERVAL,
+    SIMULATIONS_TRAIN,
+    SNAPSHOT_RECENT_RATIO_DEFAULT,
+    SNAPSHOT_RECENT_WINDOW_FRAC,
+    TEMP_DETERMINISTIC_THRESHOLD,
+    TEMP_HIGH,
+    TEMP_LOW,
+    TEMP_MOVES,
+    U8_SCALE,
+    VALUE_I8_SCALE,
+    VISIT_COUNT_CLAMP,
+)
 
 if TYPE_CHECKING:
     from .model import BatchedEvaluator
@@ -46,58 +66,68 @@ class Augment:
     def _policy_index_map(which: str) -> np.ndarray:
         if which in Augment._policy_map_cache:
             return Augment._policy_map_cache[which]
-        assert POLICY_OUTPUT % 64 == 0, "POLICY_OUTPUT must be divisible by 64"
-        planes = POLICY_OUTPUT // 64
-        base = np.arange(POLICY_OUTPUT, dtype=np.int32).reshape(planes, 8, 8)
+        assert POLICY_OUTPUT % NSQUARES == 0, "POLICY_OUTPUT must be divisible by NSQUARES"
+        planes = POLICY_OUTPUT // NSQUARES
+        req = max(
+            KNIGHT_PLANES_BASE + NUM_KNIGHT_DIRS,
+            NSQUARES + PROMO_STRIDE * PROMO_CHOICES,
+        )
+        base = np.arange(POLICY_OUTPUT, dtype=np.int32).reshape(planes, BOARD_SIZE, BOARD_SIZE)
         if which == "mirror":
             arr = base[:, :, ::-1]
             out = arr.copy()
-            if planes >= 73:
-                dir_map = [2, 1, 0, 4, 3, 7, 6, 5]
-                for d in range(8):
-                    for r in range(7):
-                        out[dir_map[d] * 7 + r] = arr[d * 7 + r]
-                kmap = [1, 0, 3, 2, 5, 4, 7, 6]
-                for i in range(8):
-                    out[56 + kmap[i]] = arr[56 + i]
-                pmap = [0, 2, 1]
-                for p in range(3):
-                    b = 64 + p * 3
+            if planes >= req:
+                dir_map = DIR_MAP_MIRROR
+                for d in range(NUM_DIRECTIONS):
+                    for r in range(DIR_MAX_DIST):
+                        out[dir_map[d] * DIR_MAX_DIST + r] = arr[d * DIR_MAX_DIST + r]
+                kmap = KMAP_MIRROR
+                for i in range(NUM_KNIGHT_DIRS):
+                    out[KNIGHT_PLANES_BASE + kmap[i]] = arr[KNIGHT_PLANES_BASE + i]
+                pmap = PMAP_PROMOS
+                for p in range(PROMO_CHOICES):
+                    b = NSQUARES + p * PROMO_STRIDE
                     out[b + pmap[0]] = arr[b + 0]
                     out[b + pmap[1]] = arr[b + 1]
                     out[b + pmap[2]] = arr[b + 2]
+            else:
+                Augment._policy_map_cache[which] = np.arange(POLICY_OUTPUT, dtype=np.int32)
+                return Augment._policy_map_cache[which]
         elif which == "rot180":
             arr = base[:, ::-1, ::-1]
             out = arr.copy()
-            if planes >= 73:
-                dir_map = [7, 6, 5, 4, 3, 2, 1, 0]
-                for d in range(8):
-                    for r in range(7):
-                        out[dir_map[d] * 7 + r] = arr[d * 7 + r]
-                kmap = [7, 6, 5, 4, 3, 2, 1, 0]
-                for i in range(8):
-                    out[56 + kmap[i]] = arr[56 + i]
-                pmap = [0, 2, 1]
-                for p in range(3):
-                    b = 64 + p * 3
+            if planes >= req:
+                dir_map = DIR_MAP_ROT180
+                for d in range(NUM_DIRECTIONS):
+                    for r in range(DIR_MAX_DIST):
+                        out[dir_map[d] * DIR_MAX_DIST + r] = arr[d * DIR_MAX_DIST + r]
+                kmap = KMAP_ROT180
+                for i in range(NUM_KNIGHT_DIRS):
+                    out[KNIGHT_PLANES_BASE + kmap[i]] = arr[KNIGHT_PLANES_BASE + i]
+                pmap = PMAP_PROMOS
+                for p in range(PROMO_CHOICES):
+                    b = NSQUARES + p * PROMO_STRIDE
                     out[b + pmap[0]] = arr[b + 0]
                     out[b + pmap[1]] = arr[b + 1]
                     out[b + pmap[2]] = arr[b + 2]
+            else:
+                Augment._policy_map_cache[which] = np.arange(POLICY_OUTPUT, dtype=np.int32)
+                return Augment._policy_map_cache[which]
 
         elif which == "vflip_cs":
             arr = base[:, ::-1, :]
             out = arr.copy()
-            if planes >= 73:
-                dir_map = [5, 6, 7, 3, 4, 0, 1, 2]
-                for d in range(8):
-                    for r in range(7):
-                        out[dir_map[d] * 7 + r] = arr[d * 7 + r]
-                kmap = [6, 7, 4, 5, 2, 3, 0, 1]
-                for i in range(8):
-                    out[56 + kmap[i]] = arr[56 + i]
-        else:
-            Augment._policy_map_cache[which] = np.arange(POLICY_OUTPUT, dtype=np.int32)
-            return Augment._policy_map_cache[which]
+            if planes >= req:
+                dir_map = DIR_MAP_VFLIP_CS
+                for d in range(NUM_DIRECTIONS):
+                    for r in range(DIR_MAX_DIST):
+                        out[dir_map[d] * DIR_MAX_DIST + r] = arr[d * DIR_MAX_DIST + r]
+                kmap = KMAP_VFLIP_CS
+                for i in range(NUM_KNIGHT_DIRS):
+                    out[KNIGHT_PLANES_BASE + kmap[i]] = arr[KNIGHT_PLANES_BASE + i]
+            else:
+                Augment._policy_map_cache[which] = np.arange(POLICY_OUTPUT, dtype=np.int32)
+                return Augment._policy_map_cache[which]
         Augment._policy_map_cache[which] = out.reshape(-1)
         return Augment._policy_map_cache[which]
 
@@ -131,11 +161,7 @@ class Augment:
         return perm
 
     @staticmethod
-    def apply(
-        states: list[np.ndarray],
-        policies: list[np.ndarray],
-        which: str
-    ) -> tuple[list[np.ndarray], list[np.ndarray], bool]:
+    def apply(states: list[np.ndarray], policies: list[np.ndarray], which: str) -> tuple[list[np.ndarray], list[np.ndarray], bool]:
         if not states:
             return states, policies, False
         st = np.stack(states, axis=0)
@@ -185,12 +211,12 @@ class SelfPlayEngine:
 
     @staticmethod
     def _to_u8_plane(enc: np.ndarray) -> np.ndarray:
-        x = np.clip(enc, 0.0, 1.0) * 255.0
+        x = np.clip(enc, 0.0, 1.0) * U8_SCALE
         return np.rint(x).astype(np.uint8, copy=False)
 
     @staticmethod
     def _value_to_i8(v: float) -> np.int8:
-        return np.int8(np.clip(np.rint(v * 127.0), -127, 127))
+        return np.int8(np.clip(np.rint(v * VALUE_I8_SCALE), -int(VALUE_I8_SCALE), int(VALUE_I8_SCALE)))
 
     def _temp_select(self, moves: list[Any], visits: list[int], move_number: int) -> Any:
         temperature = TEMP_HIGH if move_number < TEMP_MOVES else TEMP_LOW
@@ -210,7 +236,12 @@ class SelfPlayEngine:
             idx = int(np.argmax(visits))
         return moves[idx]
 
-    def _process_result(self, data: list[tuple[np.ndarray, np.ndarray]], result: int, first_to_move_is_white: bool) -> None:
+    def _process_result(
+        self,
+        data: list[tuple[np.ndarray, np.ndarray]],
+        result: int,
+        first_to_move_is_white: bool,
+    ) -> None:
         if result == ccore.WHITE_WIN:
             base = 1.0
         elif result == ccore.BLACK_WIN:
@@ -229,7 +260,7 @@ class SelfPlayEngine:
         forced_result: int | None = None
         mcts = ccore.MCTS(SIMULATIONS_TRAIN, C_PUCT, DIRICHLET_ALPHA, DIRICHLET_WEIGHT)
         mcts.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
-        mcts.set_fpu_reduction(0.10)
+        mcts.set_fpu_reduction(FPU_REDUCTION)
 
         data: list[tuple[np.ndarray, np.ndarray]] = []
         history: list[Any] = []
@@ -242,7 +273,7 @@ class SelfPlayEngine:
         local_resigns = 0
         local_forced_results = 0
 
-        open_plies = int(np.random.randint(0, 7))
+        open_plies = int(np.random.randint(0, OPENING_RANDOM_PLIES_MAX))
         for _ in range(open_plies):
             if position.result() != ccore.ONGOING:
                 break
@@ -255,7 +286,10 @@ class SelfPlayEngine:
         while position.result() == ccore.ONGOING and move_count < MAX_GAME_MOVES:
             pos_copy = ccore.Position(position)
 
-            sims = max(MCTS_MIN_SIMS, SIMULATIONS_TRAIN // (1 + move_count // SIMULATIONS_DECAY_INTERVAL))
+            sims = max(
+                MCTS_MIN_SIMS,
+                SIMULATIONS_TRAIN // (1 + move_count // SIMULATIONS_DECAY_INTERVAL),
+            )
             mcts.set_simulations(sims)
             local_mcts_sims_total += int(sims)
             local_mcts_calls_total += 1
@@ -275,10 +309,10 @@ class SelfPlayEngine:
             local_mcts_batch_max = max(local_mcts_batch_max, len(moves))
 
             counts = np.zeros(POLICY_OUTPUT, dtype=np.uint16)
-            for mv, vc in zip(moves, visits):
+            for mv, vc in zip(moves, visits, strict=False):
                 idx = ccore.encode_move_index(mv)
                 if (idx is not None) and (0 <= int(idx) < POLICY_OUTPUT):
-                    c = min(int(vc), 65535)
+                    c = min(int(vc), VISIT_COUNT_CLAMP)
                     counts[int(idx)] = np.uint16(c)
 
             if history:
@@ -291,7 +325,7 @@ class SelfPlayEngine:
             data.append((encoded_u8, counts_u16))
 
             if first_stm_white is None:
-                first_stm_white = (pos_copy.turn == ccore.WHITE)
+                first_stm_white = pos_copy.turn == ccore.WHITE
 
             if self.resign_consecutive > 0:
                 _, val_arr = self.evaluator.infer_positions([pos_copy])
@@ -350,19 +384,19 @@ class SelfPlayEngine:
         self,
         snapshot: list[tuple[np.ndarray, np.ndarray, np.int8]],
         batch_size: int,
-        recent_ratio: float = 0.6
+        recent_ratio: float = SNAPSHOT_RECENT_RATIO_DEFAULT,
     ) -> tuple[list[np.ndarray], list[np.ndarray], list[float]] | None:
         N = len(snapshot)
         if batch_size > N:
             return None
-        recent_N = max(1, int(N * 0.2))
+        recent_N = max(1, int(N * SNAPSHOT_RECENT_WINDOW_FRAC))
         n_recent = int(round(batch_size * recent_ratio))
         n_old = batch_size - n_recent
         recent_idx = np.random.randint(max(0, N - recent_N), N, size=n_recent)
         old_idx = np.random.randint(0, max(1, N - recent_N), size=n_old)
         sel_idx = np.concatenate([recent_idx, old_idx])
-        states_u8, counts_u16, values_i8 = zip(*[snapshot[int(i)] for i in sel_idx])
-        states = [s.astype(np.float32) / 255.0 for s in states_u8]
+        states_u8, counts_u16, values_i8 = zip(*[snapshot[int(i)] for i in sel_idx], strict=False)
+        states = [s.astype(np.float32) / U8_SCALE for s in states_u8]
         counts = [p.astype(np.float32) for p in counts_u16]
         policies: list[np.ndarray] = []
         for c in counts:
@@ -371,11 +405,17 @@ class SelfPlayEngine:
                 policies.append(c / s)
             else:
                 policies.append(np.full_like(c, 1.0 / max(1, c.size), dtype=np.float32))
-        values = [float(v) / 127.0 for v in values_i8]
+        values = [float(v) / VALUE_I8_SCALE for v in values_i8]
         return states, policies, values
 
     def play_games(self, num_games: int) -> dict[str, Any]:
-        res: dict[str, Any] = {"games": 0, "moves": 0, "white_wins": 0, "black_wins": 0, "draws": 0}
+        res: dict[str, Any] = {
+            "games": 0,
+            "moves": 0,
+            "white_wins": 0,
+            "black_wins": 0,
+            "draws": 0,
+        }
         with self.metrics_lock:
             sp_start = dict(self._metrics)
         with ThreadPoolExecutor(max_workers=max(1, SELFPLAY_WORKERS)) as ex:

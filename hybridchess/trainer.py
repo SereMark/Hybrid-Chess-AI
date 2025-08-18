@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import time
-import csv
 from typing import Any
 
 import numpy as np
@@ -10,108 +9,125 @@ import psutil
 import torch
 import torch.nn.functional as F
 
-from .model import (
+from .config import (
+    AMP_ENABLED,
+    ARENA_CANDIDATE_MAX_GAMES,
+    ARENA_CANDIDATE_MAX_ITERS,
+    ARENA_DIRICHLET_WEIGHT,
+    ARENA_DRAW_SCORE,
+    ARENA_EVAL_CACHE_CAP,
+    ARENA_EVAL_EVERY,
+    ARENA_GAMES,
+    ARENA_GATE_BASELINE_P,
+    ARENA_GATE_DECISIVE_SECONDARY,
+    ARENA_GATE_DRAW_WEIGHT,
+    ARENA_GATE_MIN_DECISIVES,
+    ARENA_GATE_MIN_GAMES,
+    ARENA_GATE_Z_EARLY,
+    ARENA_GATE_Z_LATE,
+    ARENA_GATE_Z_SWITCH_ITER,
+    ARENA_OPENING_TEMPERATURE_EPS,
+    ARENA_PAIRING_FACTOR,
+    ARENA_TEMP_MOVES,
+    ARENA_TEMPERATURE,
+    AUGMENT_MIRROR_PROB,
+    AUGMENT_ROT180_PROB,
+    AUGMENT_VFLIP_CS_PROB,
+    BATCH_SIZE,
     BLOCKS,
-    CHANNELS,
-    EVAL_BATCH_TIMEOUT_MS,
-    EVAL_CACHE_SIZE,
-    EVAL_MAX_BATCH,
-    BatchedEvaluator,
-    ChessNet,
-)
-from .selfplay import (
     BUFFER_SIZE,
     C_PUCT,
     C_PUCT_BASE,
     C_PUCT_INIT,
+    CHANNELS,
+    CHANNELS_LAST,
+    CHECKPOINT_EVERY,
+    CUDNN_BENCHMARK,
     DIRICHLET_ALPHA,
     DIRICHLET_WEIGHT,
+    EMA_DECAY,
+    EMA_ENABLED,
+    ENTROPY_ANNEAL_ITERS,
+    ENTROPY_COEF_INIT,
+    EVAL_BATCH_TIMEOUT_MS,
+    EVAL_CACHE_SIZE,
+    EVAL_MAX_BATCH,
+    FPU_REDUCTION,
+    GAMES_PER_ITER,
+    GATE_EPS,
+    GRAD_CLIP,
+    ITERATIONS,
+    LR_FINAL,
+    LR_INIT,
+    LR_SCHED_DRIFT_ADJUST_THRESHOLD,
+    LR_SCHED_STEPS_PER_ITER_EST,
+    LR_WARMUP_STEPS,
     MAX_GAME_MOVES,
     MCTS_MIN_SIMS,
+    MOMENTUM,
+    OPENINGS_FILE,
+    OUTPUT_DIR,
+    POLICY_LABEL_SMOOTH,
+    POLICY_WEIGHT,
+    RATIO_TARGET_TRAIN_PER_NEW,
+    RATIO_UPDATE_STEPS_MAX,
+    RATIO_UPDATE_STEPS_MIN,
     RESIGN_CONSECUTIVE,
+    RESIGN_CONSECUTIVE_MIN,
     RESIGN_THRESHOLD,
+    SEED,
     SELFPLAY_WORKERS,
+    SIMULATIONS_EVAL,
     SIMULATIONS_TRAIN,
     TEMP_HIGH,
     TEMP_LOW,
     TEMP_MOVES,
+    TF32_ENABLE,
+    TORCH_COMPILE,
+    TORCH_COMPILE_DYNAMIC,
+    TORCH_COMPILE_FULLGRAPH,
+    TORCH_COMPILE_MODE,
+    TORCH_THREADS_INTER,
+    TORCH_THREADS_INTRA,
+    TRAIN_RECENT_RATIO,
+    VALUE_WEIGHT,
+    VALUE_WEIGHT_LATE,
+    VALUE_WEIGHT_SWITCH_ITER,
+    WEIGHT_DECAY,
+)
+from .model import (
+    BatchedEvaluator,
+    ChessNet,
+)
+from .selfplay import (
     Augment,
     SelfPlayEngine,
 )
 
-BATCH_SIZE = 3072
-LR_INIT = 1.0e-2
-LR_WARMUP_STEPS = 3_000
-LR_FINAL = 3.0e-4
-WEIGHT_DECAY = 1e-4
-MOMENTUM = 0.9
-GRAD_CLIP = 1.0
-
-POLICY_WEIGHT = 1.0
-VALUE_WEIGHT = 0.5
-VALUE_WEIGHT_LATE = 1.0
-VALUE_WEIGHT_SWITCH_ITER = 60
-
-ITERATIONS = 600
-GAMES_PER_ITER = 220
-
-LR_SCHED_STEPS_PER_ITER_EST = 32
-
-RATIO_TARGET_TRAIN_PER_NEW = 6.0
-RATIO_UPDATE_STEPS_MIN = 24
-RATIO_UPDATE_STEPS_MAX = 320
-
-AUGMENT_MIRROR_PROB = 0.5
-AUGMENT_ROT180_PROB = 0.25
-AUGMENT_VFLIP_CS_PROB = 0.25
-
-SIMULATIONS_EVAL = 160
-ARENA_EVAL_EVERY = 10
-ARENA_EVAL_CACHE_CAP = 8192
-ARENA_GAMES = 400
-
-ARENA_TEMPERATURE = 0.75
-ARENA_TEMP_MOVES = 8
-ARENA_DIRICHLET_WEIGHT = 0.10
-ARENA_OPENING_TEMPERATURE_EPS = 1e-6
-
-ARENA_DRAW_SCORE = 0.5
-ARENA_GATE_DRAW_WEIGHT = ARENA_DRAW_SCORE
-ARENA_GATE_BASELINE_P = 0.5
-
-ARENA_GATE_Z_EARLY = 1.28
-ARENA_GATE_Z_LATE = 1.96
-ARENA_GATE_Z_SWITCH_ITER = 200
-ARENA_GATE_MIN_GAMES = 300
-
-ARENA_GATE_DECISIVE_SECONDARY = True
-ARENA_GATE_MIN_DECISIVES = 80
-
-ARENA_CANDIDATE_MAX_ITERS = 20
-ARENA_CANDIDATE_MAX_GAMES = 1200
-
-POLICY_LABEL_SMOOTH = 0.05
-ENTROPY_COEF_INIT = 5.0e-4
-ENTROPY_ANNEAL_ITERS = 60
-
-EMA_ENABLED = True
-EMA_DECAY = 0.9995
-OUTPUT_DIR = "out"
-
 
 class Trainer:
-    def __init__(self, device: str | torch.device | None = None) -> None:
-        device = torch.device(device or "cuda")
-        if device.type != "cuda" or not torch.cuda.is_available():
+    def __init__(self, device: str | None = None) -> None:
+        dev = torch.device(device or "cuda")
+        if getattr(dev, "type", None) != "cuda" or not torch.cuda.is_available():
             raise RuntimeError("CUDA device required (accepts 'cuda' or 'cuda:N')")
-        self.device = device
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
+        self.device = dev
+        torch.backends.cuda.matmul.allow_tf32 = TF32_ENABLE
+        torch.backends.cudnn.allow_tf32 = TF32_ENABLE
         m_any: Any = ChessNet().to(self.device)
-        self.model = m_any.to(memory_format=torch.channels_last)
-        self._compiled = True
+        if CHANNELS_LAST:
+            self.model = m_any.to(memory_format=torch.channels_last)
+        else:
+            self.model = m_any
+        self._compiled = False
         try:
-            self.model = torch.compile(self.model, mode="reduce-overhead", fullgraph=True, dynamic=False)
+            if TORCH_COMPILE:
+                self.model = torch.compile(
+                    self.model,
+                    mode=TORCH_COMPILE_MODE,
+                    fullgraph=TORCH_COMPILE_FULLGRAPH,
+                    dynamic=TORCH_COMPILE_DYNAMIC,
+                )
+                self._compiled = True
         except Exception as e:
             self._compiled = False
             print(f"Warning: torch.compile failed or unavailable: {e}")
@@ -137,7 +153,14 @@ class Trainer:
         WARMUP_STEPS_CLAMPED = int(max(1, min(LR_WARMUP_STEPS, max(1, TOTAL_EXPECTED_TRAIN_STEPS - 1))))
 
         class WarmupCosine:
-            def __init__(self, optimizer, base_lr: float, warmup_steps: int, final_lr: float, total_steps: int):
+            def __init__(
+                self,
+                optimizer: Any,
+                base_lr: float,
+                warmup_steps: int,
+                final_lr: float,
+                total_steps: int,
+            ) -> None:
                 self.opt = optimizer
                 self.base = base_lr
                 self.warm = max(1, int(warmup_steps))
@@ -145,34 +168,42 @@ class Trainer:
                 self.total = max(1, int(total_steps))
                 self.t = 0
 
-            def step(self):
+            def step(self) -> None:
                 self.t += 1
                 if self.t <= self.warm:
                     lr = self.base * (self.t / self.warm)
                 else:
                     import math
+
                     progress = min(1.0, (self.t - self.warm) / max(1, self.total - self.warm))
                     lr = self.final + (self.base - self.final) * 0.5 * (1.0 + math.cos(math.pi * progress))
                 for pg in self.opt.param_groups:
                     pg["lr"] = lr
 
-            def peek_next_lr(self):
+            def peek_next_lr(self) -> float:
                 t_next = self.t + 1
                 if t_next <= self.warm:
                     lr = self.base * (t_next / self.warm)
                 else:
                     import math
+
                     progress = min(1.0, (t_next - self.warm) / max(1, self.total - self.warm))
                     lr = self.final + (self.base - self.final) * 0.5 * (1.0 + math.cos(math.pi * progress))
                 return lr
 
-            def set_total_steps(self, total_steps: int):
+            def set_total_steps(self, total_steps: int) -> None:
                 self.total = max(self.t + 1, int(total_steps))
                 if self.warm >= self.total:
                     self.warm = max(1, self.total - 1)
 
-        self.scheduler = WarmupCosine(self.optimizer, LR_INIT, WARMUP_STEPS_CLAMPED, LR_FINAL, TOTAL_EXPECTED_TRAIN_STEPS)
-        self.scaler = torch.amp.GradScaler("cuda", enabled=True)
+        self.scheduler = WarmupCosine(
+            self.optimizer,
+            LR_INIT,
+            WARMUP_STEPS_CLAMPED,
+            LR_FINAL,
+            TOTAL_EXPECTED_TRAIN_STEPS,
+        )
+        self.scaler = torch.amp.GradScaler("cuda", enabled=AMP_ENABLED)
 
         self.evaluator = BatchedEvaluator(self.device)
 
@@ -181,7 +212,7 @@ class Trainer:
         self._proc.cpu_percent(0.0)
 
         class EMA:
-            def __init__(self, model: torch.nn.Module, decay: float = 0.999):
+            def __init__(self, model: torch.nn.Module, decay: float = EMA_DECAY) -> None:
                 self.decay = decay
                 base = getattr(model, "_orig_mod", model)
                 if hasattr(base, "module"):
@@ -189,7 +220,7 @@ class Trainer:
                 self.shadow = {k: v.detach().clone() for k, v in base.state_dict().items()}
 
             @torch.no_grad()
-            def update(self, model: torch.nn.Module):
+            def update(self, model: torch.nn.Module) -> None:
                 base = getattr(model, "_orig_mod", model)
                 if hasattr(base, "module"):
                     base = base.module
@@ -201,7 +232,7 @@ class Trainer:
                         self.shadow[k] = self.shadow[k].to(dtype=v.dtype)
                     self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1.0 - self.decay)
 
-            def copy_to(self, model: torch.nn.Module):
+            def copy_to(self, model: torch.nn.Module) -> None:
                 base = getattr(model, "_orig_mod", model)
                 if hasattr(base, "module"):
                     base = base.module
@@ -238,7 +269,7 @@ class Trainer:
 
     @staticmethod
     def _format_time(s: float) -> str:
-        return f"{s:.1f}s" if s < 60 else (f"{s/60:.1f}m" if s < 3600 else f"{s/3600:.1f}h")
+        return f"{s:.1f}s" if s < 60 else (f"{s / 60:.1f}m" if s < 3600 else f"{s / 3600:.1f}h")
 
     def _get_mem_info(self) -> dict[str, float]:
         p = self._proc
@@ -296,10 +327,10 @@ class Trainer:
                 return
             seen.add(fen6)
 
-        if not os.path.isfile("openings.txt"):
+        if not os.path.isfile(OPENINGS_FILE):
             return []
 
-        with open("openings.txt", "r", encoding="utf-8") as f:
+        with open(OPENINGS_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 _add_fenish(line)
 
@@ -307,12 +338,7 @@ class Trainer:
 
     def train_step(self, batch_data: tuple[list[Any], list[np.ndarray], list[float]]) -> tuple[torch.Tensor, torch.Tensor, float, float]:
         states, policies, values = batch_data
-        x = (
-            torch.from_numpy(np.stack(states).astype(np.float32, copy=False))
-            .pin_memory()
-            .to(self.device, non_blocking=True)
-            .contiguous(memory_format=torch.channels_last)
-        )
+        x = torch.from_numpy(np.stack(states).astype(np.float32, copy=False)).pin_memory().to(self.device, non_blocking=True).contiguous(memory_format=torch.channels_last)
         pi_target = torch.from_numpy(np.stack(policies).astype(np.float32)).pin_memory().to(self.device, non_blocking=True)
         v_target = torch.tensor(values, dtype=torch.float32).pin_memory().to(self.device, non_blocking=True)
         self.model.train()
@@ -341,11 +367,16 @@ class Trainer:
         self.scheduler.step()
         if self.ema is not None:
             self.ema.update(self.model)
-        return policy_loss.detach(), value_loss.detach(), float(grad_total_norm_t.detach().cpu()), float(entropy.detach().cpu())
+        return (
+            policy_loss.detach(),
+            value_loss.detach(),
+            float(grad_total_norm_t.detach().cpu()),
+            float(entropy.detach().cpu()),
+        )
 
     def training_iteration(self) -> dict[str, int | float]:
-        if self.selfplay_engine.resign_consecutive < 2:
-            self.selfplay_engine.resign_consecutive = 2
+        if self.selfplay_engine.resign_consecutive < RESIGN_CONSECUTIVE_MIN:
+            self.selfplay_engine.resign_consecutive = RESIGN_CONSECUTIVE_MIN
         if self.iteration == ARENA_GATE_Z_SWITCH_ITER:
             self._gate.z = float(ARENA_GATE_Z_LATE)
         stats: dict[str, int | float] = {}
@@ -354,7 +385,8 @@ class Trainer:
         mem = self._get_mem_info()
         sysi = self._get_sys_info()
         buf_len = len(self.selfplay_engine.buffer)
-        buf_pct = (buf_len / self.selfplay_engine.buffer.maxlen) * 100
+        buf_cap = int(self.selfplay_engine.buffer.maxlen or 1)
+        buf_pct = (buf_len / buf_cap) * 100
         total_elapsed = time.time() - self.start_time
         pct_done = 100.0 * (self.iteration - 1) / max(1, ITERATIONS)
         print(
@@ -411,7 +443,7 @@ class Trainer:
         sp_line = (
             f"games {gc:,} | avg_len {avg_len:>5.1f} | "
             f"W/D/B {ww}/{dd}/{bb} ({wpct:>3.0f}%/{dpct:>3.0f}%/{bpct:>3.0f}%) | "
-            f"gpm {gpm:>6.1f} | mps {mps/1000:>5.1f}K | "
+            f"gpm {gpm:>6.1f} | mps {mps / 1000:>5.1f}K | "
             f"time {self._format_time(sp_elapsed)} | new {int(game_stats.get('moves', 0)):,}"
         )
         sp_plus_line = (
@@ -463,7 +495,7 @@ class Trainer:
         grad_norm_running: float = 0.0
         ent_running: float = 0.0
         for _i_step in range(steps):
-            batch = self.selfplay_engine.sample_from_snapshot(snap, BATCH_SIZE, recent_ratio=0.8)
+            batch = self.selfplay_engine.sample_from_snapshot(snap, BATCH_SIZE, recent_ratio=TRAIN_RECENT_RATIO)
             if not batch:
                 continue
             s, p, v = batch
@@ -485,7 +517,8 @@ class Trainer:
         pol_loss = float(torch.stack([pair[0] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
         val_loss = float(torch.stack([pair[1] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
         buf_sz = len(self.selfplay_engine.buffer)
-        buf_pct2 = (buf_sz / self.selfplay_engine.buffer.maxlen) * 100
+        buf_cap2 = int(self.selfplay_engine.buffer.maxlen or 1)
+        buf_pct2 = (buf_sz / buf_cap2) * 100
         bps = (len(losses) / max(1e-9, tr_elapsed)) if losses else 0.0
         sps = ((len(losses) * BATCH_SIZE) / max(1e-9, tr_elapsed)) if losses else 0.0
         current_lr = self.optimizer.param_groups[0]["lr"]
@@ -497,8 +530,7 @@ class Trainer:
         drift_pct = 0.0
         if LR_SCHED_STEPS_PER_ITER_EST > 0:
             drift_pct = 100.0 * (actual_steps - LR_SCHED_STEPS_PER_ITER_EST) / LR_SCHED_STEPS_PER_ITER_EST if actual_steps > 0 else 0.0
-        at_edge = steps in (RATIO_UPDATE_STEPS_MIN, RATIO_UPDATE_STEPS_MAX)
-        if self.iteration == 1 and actual_steps > 0 and abs(drift_pct) > 20.0:
+        if self.iteration == 1 and actual_steps > 0 and abs(drift_pct) > LR_SCHED_DRIFT_ADJUST_THRESHOLD:
             remaining_iters = max(0, ITERATIONS - self.iteration)
             new_total = int(self.scheduler.t + remaining_iters * actual_steps)
             new_total = max(self.scheduler.t + 1, new_total)
@@ -520,11 +552,7 @@ class Trainer:
             }
         )
 
-        tr_plan_line = (
-            f"plan {steps} | target {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | actual {ratio:>4.1f}x | mix recent 80%, old 20%"
-            if steps > 0
-            else "plan 0 skip (buffer underfilled)"
-        )
+        tr_plan_line = f"plan {steps} | target {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | actual {ratio:>4.1f}x | mix recent 80%, old 20%" if steps > 0 else "plan 0 skip (buffer underfilled)"
         tr_line = (
             f"steps {len(losses):>3} | batch/s {bps:>5.1f} | samp/s {int(sps):>6,} | time {self._format_time(tr_elapsed)} | "
             f"P {pol_loss:>7.4f} | V {val_loss:>7.4f} | LR {current_lr:.2e} | grad {avg_grad_norm:>6.3f} | entropy {avg_entropy:>6.3f} | "
@@ -548,6 +576,7 @@ class Trainer:
     def _arena_match(self, challenger: torch.nn.Module, incumbent: torch.nn.Module) -> tuple[float, int, int, int]:
         import chesscore as _ccore
         import numpy as _np
+
         from .model import BatchedEvaluator as _BatchedEval
 
         wins = draws = losses = 0
@@ -564,12 +593,22 @@ class Trainer:
             def play(e1: _BatchedEval, e2: _BatchedEval, start_fen: str) -> int:
                 pos = _ccore.Position()
                 pos.from_fen(start_fen)
-                m1 = _ccore.MCTS(SIMULATIONS_EVAL, C_PUCT, DIRICHLET_ALPHA, float(ARENA_DIRICHLET_WEIGHT))
+                m1 = _ccore.MCTS(
+                    SIMULATIONS_EVAL,
+                    C_PUCT,
+                    DIRICHLET_ALPHA,
+                    float(ARENA_DIRICHLET_WEIGHT),
+                )
                 m1.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
-                m1.set_fpu_reduction(0.10)
-                m2 = _ccore.MCTS(SIMULATIONS_EVAL, C_PUCT, DIRICHLET_ALPHA, float(ARENA_DIRICHLET_WEIGHT))
+                m1.set_fpu_reduction(FPU_REDUCTION)
+                m2 = _ccore.MCTS(
+                    SIMULATIONS_EVAL,
+                    C_PUCT,
+                    DIRICHLET_ALPHA,
+                    float(ARENA_DIRICHLET_WEIGHT),
+                )
                 m2.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
-                m2.set_fpu_reduction(0.10)
+                m2.set_fpu_reduction(FPU_REDUCTION)
                 t = 0
                 while pos.result() == _ccore.ONGOING and t < MAX_GAME_MOVES:
                     visits = m1.search_batched(pos, e1.infer_positions, EVAL_MAX_BATCH) if t % 2 == 0 else m2.search_batched(pos, e2.infer_positions, EVAL_MAX_BATCH)
@@ -599,7 +638,7 @@ class Trainer:
                 r = pos.result()
                 return 1 if r == _ccore.WHITE_WIN else (-1 if r == _ccore.BLACK_WIN else 0)
 
-            pairs = max(1, ARENA_GAMES // 2)
+            pairs = max(1, ARENA_GAMES // ARENA_PAIRING_FACTOR)
             for _ in range(pairs):
                 start_fen = openings[_np.random.randint(0, len(openings))]
                 r1 = play(ce, ie, start_fen)
@@ -622,10 +661,10 @@ class Trainer:
             "",
             "Starting training...",
             "",
-            f"Device: {self.device} ({self.device_name}) | GPU {self.device_total_gb:.1f} GB | AMP on | compiled {self._compiled}",
+            f"Device: {self.device} ({self.device_name}) | GPU {self.device_total_gb:.1f} GB | AMP {'on' if AMP_ENABLED else 'off'} | compiled {self._compiled}",
             f"Torch: {torch.__version__} | CUDA {torch.version.cuda} | cuDNN {torch.backends.cudnn.version()} | TF32 matmul {torch.backends.cuda.matmul.allow_tf32} | cuDNN TF32 {torch.backends.cudnn.allow_tf32}",
             f"Threads: torch intra {torch.get_num_threads()} | inter {torch.get_num_interop_threads()} | CPU cores {os.cpu_count()} | selfplay workers {SELFPLAY_WORKERS}",
-            f"Model: {total_params:.1f}M parameters | {BLOCKS} blocks x {CHANNELS} channels | channels_last True",
+            f"Model: {total_params:.1f}M parameters | {BLOCKS} blocks x {CHANNELS} channels | channels_last {CHANNELS_LAST}",
             f"Buffer: size {BUFFER_SIZE:,}",
             f"Selfplay: sims {SIMULATIONS_TRAIN}→≥{MCTS_MIN_SIMS} | temp {TEMP_HIGH}->{TEMP_LOW}@{TEMP_MOVES} | resign {RESIGN_THRESHOLD} x{RESIGN_CONSECUTIVE} | dirichlet α {DIRICHLET_ALPHA} w {DIRICHLET_WEIGHT}",
             f"Training: {ITERATIONS} iterations | {GAMES_PER_ITER} games/iter | sched_est {LR_SCHED_STEPS_PER_ITER_EST} | batch {BATCH_SIZE}",
@@ -633,7 +672,7 @@ class Trainer:
             f"Augment: mirror {AUGMENT_MIRROR_PROB:.2f} | rot180 {AUGMENT_ROT180_PROB:.2f} | vflip_cs {AUGMENT_VFLIP_CS_PROB:.2f} | policy_smooth {POLICY_LABEL_SMOOTH:.2f}",
             f"EMA: {'on' if EMA_ENABLED else 'off'} decay {EMA_DECAY if EMA_ENABLED else 0}",
             f"Eval: batch {EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | cache {EVAL_CACHE_SIZE}",
-            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | rule LB>{100.0*ARENA_GATE_BASELINE_P:.0f}% @Z {ARENA_GATE_Z_EARLY}->{ARENA_GATE_Z_LATE} (switch @{ARENA_GATE_Z_SWITCH_ITER})",
+            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | rule LB>{100.0 * ARENA_GATE_BASELINE_P:.0f}% @Z {ARENA_GATE_Z_EARLY}->{ARENA_GATE_Z_LATE} (switch @{ARENA_GATE_Z_SWITCH_ITER})",
             f"Arena openings: {len(self._arena_openings):,} positions loaded",
             f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games | output {OUTPUT_DIR}",
         ]
@@ -646,9 +685,7 @@ class Trainer:
             do_eval = (iteration % ARENA_EVAL_EVERY) == 0 if ARENA_EVAL_EVERY > 0 else False
             arena_elapsed = 0.0
             if do_eval:
-                if (not self._gate_active) \
-                   or ((iteration - self._gate_started_iter) >= ARENA_CANDIDATE_MAX_ITERS) \
-                   or ((self._gate.w + self._gate.d + self._gate.l) >= ARENA_CANDIDATE_MAX_GAMES):
+                if (not self._gate_active) or ((iteration - self._gate_started_iter) >= ARENA_CANDIDATE_MAX_ITERS) or ((self._gate.w + self._gate.d + self._gate.losses) >= ARENA_CANDIDATE_MAX_GAMES):
                     if self._gate_active:
                         print("AR   reset: timeboxing stuck challenger")
                     self._pending_challenger = self._clone_from_ema()
@@ -656,19 +693,21 @@ class Trainer:
                     self._gate_active = True
                     self._gate_started_iter = iteration
                 t_ar = time.time()
-                score, aw, ad, al = self._arena_match(self._pending_challenger, self.best_model)
+                assert self._pending_challenger is not None
+                _, aw, ad, al = self._arena_match(self._pending_challenger, self.best_model)
                 arena_elapsed = time.time() - t_ar
 
                 self._gate.update(aw, ad, al)
                 decision, m = self._gate.decision()
                 print(
                     "AR   "
-                    f"n {int(m.get('n',0))} | p {100.0*m.get('p',0):>5.1f}% | "
-                    f"elo {m.get('elo',0):>6.1f} ±{m.get('se_elo',0):.1f} | decision {decision.upper()} | "
+                    f"n {int(m.get('n', 0))} | p {100.0 * m.get('p', 0):>5.1f}% | "
+                    f"elo {m.get('elo', 0):>6.1f} ±{m.get('se_elo', 0):.1f} | decision {decision.upper()} | "
                     f"W/D/L {aw}/{ad}/{al} | time {self._format_time(arena_elapsed)} | age {iteration - self._gate_started_iter}"
                 )
 
                 if decision == "accept":
+                    assert self._pending_challenger is not None
                     self.best_model.load_state_dict(self._pending_challenger.state_dict(), strict=True)
                     self.best_model.eval()
                     self.evaluator.refresh_from(self.best_model)
@@ -705,7 +744,7 @@ class Trainer:
                 f"elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB | RSS {mem2['rss_gb']:.1f} GB"
             )
 
-            if (iteration % 50) == 0:
+            if (iteration % CHECKPOINT_EVERY) == 0:
                 try:
                     os.makedirs(OUTPUT_DIR, exist_ok=True)
                     torch.save(
@@ -727,12 +766,12 @@ class Trainer:
 class EloGater:
     def __init__(
         self,
-        z: float = 1.96,
-        min_games: int = 400,
-        draw_w: float = 0.5,
-        baseline_p: float = 0.5,
-        decisive_secondary: bool = False,
-        min_decisive: int = 200,
+        z: float = ARENA_GATE_Z_LATE,
+        min_games: int = ARENA_GATE_MIN_GAMES,
+        draw_w: float = ARENA_GATE_DRAW_WEIGHT,
+        baseline_p: float = ARENA_GATE_BASELINE_P,
+        decisive_secondary: bool = ARENA_GATE_DECISIVE_SECONDARY,
+        min_decisive: int = ARENA_GATE_MIN_DECISIVES,
     ):
         self.z = float(z)
         self.min_games = int(min_games)
@@ -742,38 +781,51 @@ class EloGater:
         self.min_decisive = int(min_decisive)
         self.reset()
 
-    def reset(self):
+    def reset(self) -> None:
         self.w = 0
         self.d = 0
-        self.l = 0
+        self.losses = 0
 
-    def update(self, w: int, d: int, l: int):
+    def update(self, w: int, d: int, losses: int) -> None:
         self.w += int(w)
         self.d += int(d)
-        self.l += int(l)
+        self.losses += int(losses)
 
     def decision(self) -> tuple[str, dict[str, float]]:
         import math
-        n = self.w + self.d + self.l
+
+        n = self.w + self.d + self.losses
         if n < self.min_games:
             return "undecided", {"n": float(n)}
         p = (self.w + self.draw_w * self.d) / max(1, n)
         w_frac = self.w / n
         d_frac = self.d / n
-        var = max(1e-9, w_frac + (self.draw_w ** 2) * d_frac - (p * p))
+        var = max(1e-9, w_frac + (self.draw_w**2) * d_frac - (p * p))
         se = math.sqrt(var / n)
         lb = p - self.z * se
         ub = p + self.z * se
-        eps = 1e-9
+        eps = GATE_EPS
         pc = min(1.0 - eps, max(eps, p))
         elo = 400.0 * math.log10(pc / (1.0 - pc))
         denom = max(eps, pc * (1.0 - pc))
         se_elo = (400.0 / math.log(10.0)) * se / denom
         if lb > self.baseline_p:
-            return "accept", {"n": float(n), "p": p, "lb": lb, "elo": elo, "se_elo": se_elo}
+            return "accept", {
+                "n": float(n),
+                "p": p,
+                "lb": lb,
+                "elo": elo,
+                "se_elo": se_elo,
+            }
         if ub < self.baseline_p:
-            return "reject", {"n": float(n), "p": p, "ub": ub, "elo": elo, "se_elo": se_elo}
-        decisives = self.w + self.l
+            return "reject", {
+                "n": float(n),
+                "p": p,
+                "ub": ub,
+                "elo": elo,
+                "se_elo": se_elo,
+            }
+        decisives = self.w + self.losses
         if self.decisive_secondary and decisives >= self.min_decisive:
             p_dec = self.w / max(1, decisives)
             se_dec = math.sqrt(max(1e-9, p_dec * (1.0 - p_dec) / max(1, decisives)))
@@ -783,12 +835,32 @@ class EloGater:
                 elo_dec = 400.0 * math.log10(pc_dec / (1.0 - pc_dec))
                 denom_dec = max(eps, pc_dec * (1.0 - pc_dec))
                 se_elo_dec = (400.0 / math.log(10.0)) * se_dec / denom_dec
-                return "accept", {"n": float(n), "p": p, "lb": lb, "elo": elo_dec, "se_elo": se_elo_dec}
-        return "undecided", {"n": float(n), "p": p, "lb": lb, "ub": ub, "elo": elo, "se_elo": se_elo}
+                return "accept", {
+                    "n": float(n),
+                    "p": p,
+                    "lb": lb,
+                    "elo": elo_dec,
+                    "se_elo": se_elo_dec,
+                }
+        return "undecided", {
+            "n": float(n),
+            "p": p,
+            "lb": lb,
+            "ub": ub,
+            "elo": elo,
+            "se_elo": se_elo,
+        }
 
 
 if __name__ == "__main__":
-    torch.backends.cudnn.benchmark = True
-    torch.set_num_threads(1)
-    torch.set_num_interop_threads(1)
+    torch.backends.cudnn.benchmark = CUDNN_BENCHMARK
+    torch.set_num_threads(TORCH_THREADS_INTRA)
+    torch.set_num_interop_threads(TORCH_THREADS_INTER)
+    import random as _py_random
+
+    _py_random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(SEED)
     Trainer().train()

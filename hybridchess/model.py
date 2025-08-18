@@ -3,27 +3,29 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-INPUT_PLANES = 119
-PLANES_PER_POSITION = 14
-HISTORY_LENGTH = 8
-POLICY_OUTPUT = 73 * 64
+from .config import (
+    BLOCKS,
+    BOARD_SIZE,
+    CHANNELS,
+    EVAL_BATCH_TIMEOUT_MS,
+    EVAL_CACHE_SIZE,
+    EVAL_CHANNELS_LAST,
+    EVAL_CLOSE_JOIN_TIMEOUT_S,
+    EVAL_MAX_BATCH,
+    INPUT_PLANES,
+    NSQUARES,
+    POLICY_OUTPUT,
+    VALUE_CONV_CHANNELS,
+    VALUE_HIDDEN_DIM,
+)
 
-BLOCKS = 10
-CHANNELS = 192
-
-VALUE_CONV_CHANNELS = 8
-VALUE_HIDDEN_DIM = 512
-
-EVAL_CACHE_SIZE = 20_000
-EVAL_MAX_BATCH = 2048
-EVAL_BATCH_TIMEOUT_MS = 2
 
 class ResBlock(nn.Module):
     def __init__(self, channels: int) -> None:
@@ -45,16 +47,16 @@ class ChessNet(nn.Module):
         super().__init__()
         blocks = blocks or BLOCKS
         channels = channels or CHANNELS
-        policy_planes = POLICY_OUTPUT // 64
+        policy_planes = POLICY_OUTPUT // NSQUARES
         self.conv_in = nn.Conv2d(INPUT_PLANES, channels, 3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(channels)
         self.blocks = nn.Sequential(*[ResBlock(channels) for _ in range(blocks)])
         self.policy_conv = nn.Conv2d(channels, policy_planes, 1, bias=False)
         self.policy_bn = nn.BatchNorm2d(policy_planes)
-        self.policy_fc = nn.Linear(policy_planes * 64, POLICY_OUTPUT)
+        self.policy_fc = nn.Linear(policy_planes * NSQUARES, POLICY_OUTPUT)
         self.value_conv = nn.Conv2d(channels, VALUE_CONV_CHANNELS, 1, bias=False)
         self.value_bn = nn.BatchNorm2d(VALUE_CONV_CHANNELS)
-        self.value_fc1 = nn.Linear(VALUE_CONV_CHANNELS * 64, VALUE_HIDDEN_DIM)
+        self.value_fc1 = nn.Linear(VALUE_CONV_CHANNELS * NSQUARES, VALUE_HIDDEN_DIM)
         self.value_fc2 = nn.Linear(VALUE_HIDDEN_DIM, 1)
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -85,7 +87,13 @@ class BatchedEvaluator:
         self.device = device
         self.model_lock = threading.Lock()
         any_mod: Any = ChessNet().to(self.device)
-        self.eval_model: nn.Module = any_mod.to(memory_format=torch.channels_last).eval()
+        self.eval_model: nn.Module = any_mod
+        if EVAL_CHANNELS_LAST:
+            self.eval_model = cast(
+                nn.Module,
+                getattr(self.eval_model, "to")(memory_format=torch.channels_last),
+            )
+        self.eval_model = self.eval_model.eval()
         if self.device.type == "cuda":
             self.eval_model.half()
         for p in self.eval_model.parameters():
@@ -124,7 +132,7 @@ class BatchedEvaluator:
             self._pending.clear()
             self._pending_lock.notify_all()
         try:
-            self._thread.join(timeout=1.0)
+            self._thread.join(timeout=EVAL_CLOSE_JOIN_TIMEOUT_S)
         except Exception:
             pass
         with self.cache_lock:
@@ -160,7 +168,8 @@ class BatchedEvaluator:
 
     def _encode_batch(self, positions: list[Any]) -> torch.Tensor:
         import chesscore as ccore
-        x_np = np.zeros((0, INPUT_PLANES, 8, 8), dtype=np.float32) if not positions else ccore.encode_batch(positions)
+
+        x_np = np.zeros((0, INPUT_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=np.float32) if not positions else ccore.encode_batch(positions)
         x = torch.from_numpy(x_np)
         if self.device.type == "cuda":
             x = x.pin_memory().to(self.device, non_blocking=True)
@@ -173,7 +182,7 @@ class BatchedEvaluator:
             if self.device.type == "cuda":
                 x = x.to(dtype=torch.float16)
             x = x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
-            return self.eval_model(x)
+            return cast(tuple[torch.Tensor, torch.Tensor], self.eval_model(x))
 
     def _position_key(self, pos: Any) -> int | None:
         try:
@@ -260,14 +269,15 @@ class BatchedEvaluator:
                         pol_opt = cached_p[idx]
                         val = cached_v[idx]
                         if pol_opt is not None:
-                            self.cache[key] = (pol_opt.astype(np.float16), np.float16(val))
+                            self.cache[key] = (
+                                pol_opt.astype(np.float16),
+                                np.float16(val),
+                            )
                             self.cache_order.append(key)
                 while len(self.cache_order) > self.cache_cap:
                     k = self.cache_order.popleft()
                     self.cache.pop(k, None)
-        pol_np = np.stack(
-            [(p if p is not None else np.zeros((POLICY_OUTPUT,), dtype=np.float32)) for p in cached_p]
-        ).astype(np.float32)
+        pol_np = np.stack([(p if p is not None else np.zeros((POLICY_OUTPUT,), dtype=np.float32)) for p in cached_p]).astype(np.float32)
         val_np = np.asarray(cached_v, dtype=np.float32)
         return pol_np, val_np
 
