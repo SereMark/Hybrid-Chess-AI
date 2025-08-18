@@ -569,8 +569,18 @@ void Position::execute_move_core(const Move &move, MoveInfo *undo) {
       hash ^= zobrist_ep[old_ep];
   }
   ep_square = INVALID_SQUARE;
-  if (pt == PAWN && std::abs(to - from) == PAWN_DOUBLE_MOVE_DISTANCE)
+  if (pt == PAWN && std::abs(to - from) == PAWN_DOUBLE_MOVE_DISTANCE) {
     ep_square = (from + to) / 2;
+    if (ep_square != INVALID_SQUARE) {
+      const Color stm_next = Color(1 - turn);
+      const Color opp = turn;
+      const Square cs = ep_square + ((stm_next == WHITE) ? -BOARD_SIZE : BOARD_SIZE);
+      const bool oppPawnBehind = (cs >= 0 && cs < NSQUARES) && (pieces[PAWN][opp] & bit(cs));
+      const bool stmCanCapture = (get_pawn_attacks(ep_square, opp) & pieces[PAWN][stm_next]) != 0;
+      if (!oppPawnBehind || !stmCanCapture)
+        ep_square = INVALID_SQUARE;
+    }
+  }
   if (ep_square != INVALID_SQUARE)
     hash ^= zobrist_ep[ep_square];
   turn = Color(1 - turn);
@@ -696,33 +706,32 @@ int Position::count_repetitions() const {
   return c;
 }
 bool Position::is_insufficient_material() const {
-  int wp = popcount(pieces[PAWN][WHITE]), wn = popcount(pieces[KNIGHT][WHITE]),
-      wb = popcount(pieces[BISHOP][WHITE]), wr = popcount(pieces[ROOK][WHITE]),
-      wq = popcount(pieces[QUEEN][WHITE]);
-  int bp = popcount(pieces[PAWN][BLACK]), bn = popcount(pieces[KNIGHT][BLACK]),
-      bb = popcount(pieces[BISHOP][BLACK]), br = popcount(pieces[ROOK][BLACK]),
-      bq = popcount(pieces[QUEEN][BLACK]);
+  const int wp = popcount(pieces[PAWN][WHITE]);
+  const int bp = popcount(pieces[PAWN][BLACK]);
+  const int wr = popcount(pieces[ROOK][WHITE]);
+  const int br = popcount(pieces[ROOK][BLACK]);
+  const int wq = popcount(pieces[QUEEN][WHITE]);
+  const int bq = popcount(pieces[QUEEN][BLACK]);
+  const int wn = popcount(pieces[KNIGHT][WHITE]);
+  const int bn = popcount(pieces[KNIGHT][BLACK]);
+  const int wb = popcount(pieces[BISHOP][WHITE]);
+  const int bb = popcount(pieces[BISHOP][BLACK]);
+
   if (wp || bp || wr || br || wq || bq)
     return false;
-  if (wn == 0 && wb == 0 && bn == 0 && bb == 0)
-    return true;
-  if ((wn == 1 && wb == 0 && bn == 0 && bb == 0) ||
-      (bn == 1 && bb == 0 && wn == 0 && wb == 0))
-    return true;
-  if ((wb == 1 && wn == 0 && bn == 0 && bb == 0) ||
-      (bb == 1 && bn == 0 && wn == 0 && wb == 0))
-    return true;
-  if (wn == 0 && bn == 0 && wb == 1 && bb == 1)
+
+  const int wMinors = wn + wb;
+  const int bMinors = bn + bb;
+
+  if (wMinors == 0 && bMinors == 0)
     return true;
 
-  if (wb == 0 && bb == 0 && wn == 2 && bn == 0)
-    return true;
-  if (wb == 0 && bb == 0 && bn == 2 && wn == 0)
-    return true;
-  if (wb == 0 && bb == 0 && wn == 1 && bn == 1)
+  if ((wMinors == 1 && bMinors == 0 && (wn == 1 || wb == 1)) ||
+      (bMinors == 1 && wMinors == 0 && (bn == 1 || bb == 1)))
     return true;
 
-  if ((wn + wb) == 1 && (bn + bb) == 1)
+  if ((wMinors == 2 && wn == 2 && bMinors == 0) ||
+      (bMinors == 2 && bn == 2 && wMinors == 0))
     return true;
   return false;
 }
