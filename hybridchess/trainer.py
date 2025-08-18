@@ -130,7 +130,7 @@ class Trainer:
                 self._compiled = True
         except Exception as e:
             self._compiled = False
-            print(f"Warning: torch.compile failed or unavailable: {e}")
+            print(f"[WARN] torch.compile unavailable; running uncompiled ({e})")
 
         decay: list[torch.nn.Parameter] = []
         nodecay: list[torch.nn.Parameter] = []
@@ -390,10 +390,12 @@ class Trainer:
         total_elapsed = time.time() - self.start_time
         pct_done = 100.0 * (self.iteration - 1) / max(1, ITERATIONS)
         print(
-            f"\n[Iter {self.iteration:>3}/{ITERATIONS} | {pct_done:>4.1f}%] LRnext {header_lr:.2e} | elapsed {self._format_time(total_elapsed)} | "
+            f"\n[ITR {self.iteration:>3}/{ITERATIONS} | {pct_done:>4.1f}%] "
+            f"LRnext {header_lr:.2e} | elapsed {self._format_time(total_elapsed)} | "
+            f"buf {buf_len:,}/{self.selfplay_engine.buffer.maxlen:,} ({int(buf_pct):>3}%) | "
             f"GPU {mem['allocated_gb']:.1f}/{mem['reserved_gb']:.1f}/{mem['total_gb']:.1f} GB | RSS {mem['rss_gb']:.1f} GB | "
-            f"CPU {sysi['cpu_sys_pct']:>4.0f}%/{sysi['cpu_proc_pct']:>4.0f}% | RAM {sysi['ram_used_gb']:.1f}/{sysi['ram_total_gb']:.1f} GB ({sysi['ram_pct']:>3.0f}%) | "
-            f"load {sysi['load1']:.2f} | buf {buf_len:,}/{self.selfplay_engine.buffer.maxlen:,} ({int(buf_pct):>3}%)"
+            f"CPU {sysi['cpu_sys_pct']:>3.0f}%/{sysi['cpu_proc_pct']:>3.0f}% | RAM {sysi['ram_used_gb']:.1f}/{sysi['ram_total_gb']:.1f} GB ({sysi['ram_pct']:>3.0f}%) | "
+            f"load {sysi['load1']:.2f}"
         )
 
         t0 = time.time()
@@ -441,9 +443,8 @@ class Trainer:
         pos_per_s = d_evalN / max(1e-9, sp_elapsed)
 
         sp_line = (
-            f"games {gc:,} | avg_len {avg_len:>5.1f} | "
-            f"W/D/B {ww}/{dd}/{bb} ({wpct:>3.0f}%/{dpct:>3.0f}%/{bpct:>3.0f}%) | "
-            f"gpm {gpm:>6.1f} | mps {mps / 1000:>5.1f}K | "
+            f"games {gc:,} | W/D/B {ww}/{dd}/{bb} ({wpct:>3.0f}%/{dpct:>3.0f}%/{bpct:>3.0f}%) | "
+            f"avg_len {avg_len:>5.1f} | gpm {gpm:>6.1f} | mps {mps / 1000:>5.1f}K | "
             f"time {self._format_time(sp_elapsed)} | new {int(game_stats.get('moves', 0)):,}"
         )
         sp_plus_line = (
@@ -535,7 +536,10 @@ class Trainer:
             new_total = int(self.scheduler.t + remaining_iters * actual_steps)
             new_total = max(self.scheduler.t + 1, new_total)
             self.scheduler.set_total_steps(new_total)
-            print(f"LR   adjusted total_steps -> {self.scheduler.total} (iter1 measured {actual_steps} vs est {LR_SCHED_STEPS_PER_ITER_EST}, drift {drift_pct:+.1f}%)")
+            print(
+                f"[LR ] adjust total_steps -> {self.scheduler.total} "
+                f"(iter1 measured {actual_steps} vs est {LR_SCHED_STEPS_PER_ITER_EST}, drift {drift_pct:+.1f}%)"
+            )
 
         stats.update(
             {
@@ -560,9 +564,9 @@ class Trainer:
         )
         lr_sched_fragment = f"sched est/iter {LR_SCHED_STEPS_PER_ITER_EST} | actual {actual_steps} | drift {drift_pct:+.1f}% | pos {self.scheduler.t}/{self.scheduler.total}"
 
-        print("SP " + sp_line + (" | " + sp_plus_line if sp_plus_line else ""))
-        print("EV " + ev_line)
-        print("TR " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment)
+        print("[SP] " + sp_line + (" | " + sp_plus_line if sp_plus_line else ""))
+        print("[EV] " + ev_line)
+        print("[TR] " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment)
         self._prev_eval_m = eval_m
 
         return stats
@@ -657,10 +661,7 @@ class Trainer:
 
     def train(self) -> None:
         total_params = sum(p.numel() for p in self.model.parameters()) / 1e6
-        header = [
-            "",
-            "Starting training...",
-            "",
+        header_lines = [
             f"Device: {self.device} ({self.device_name}) | GPU {self.device_total_gb:.1f} GB | AMP {'on' if AMP_ENABLED else 'off'} | compiled {self._compiled}",
             f"Torch: {torch.__version__} | CUDA {torch.version.cuda} | cuDNN {torch.backends.cudnn.version()} | TF32 matmul {torch.backends.cuda.matmul.allow_tf32} | cuDNN TF32 {torch.backends.cudnn.allow_tf32}",
             f"Threads: torch intra {torch.get_num_threads()} | inter {torch.get_num_interop_threads()} | CPU cores {os.cpu_count()} | selfplay workers {SELFPLAY_WORKERS}",
@@ -676,7 +677,9 @@ class Trainer:
             f"Arena openings: {len(self._arena_openings):,} positions loaded",
             f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games | output {OUTPUT_DIR}",
         ]
-        print("\n".join(header))
+        title = "Hybrid Chess AI Training"
+        bar = "=" * max(60, len(title))
+        print("\n" + bar + f"\n{title}\n" + bar + "\n" + "\n".join(header_lines) + "\n" + bar)
 
         for iteration in range(1, ITERATIONS + 1):
             self.iteration = iteration
@@ -687,7 +690,7 @@ class Trainer:
             if do_eval:
                 if (not self._gate_active) or ((iteration - self._gate_started_iter) >= ARENA_CANDIDATE_MAX_ITERS) or ((self._gate.w + self._gate.d + self._gate.losses) >= ARENA_CANDIDATE_MAX_GAMES):
                     if self._gate_active:
-                        print("AR   reset: timeboxing stuck challenger")
+                        print("[AR ] reset: timeboxing stuck challenger")
                     self._pending_challenger = self._clone_from_ema()
                     self._gate.reset()
                     self._gate_active = True
@@ -700,10 +703,10 @@ class Trainer:
                 self._gate.update(aw, ad, al)
                 decision, m = self._gate.decision()
                 print(
-                    "AR   "
-                    f"n {int(m.get('n', 0))} | p {100.0 * m.get('p', 0):>5.1f}% | "
+                    "[AR ] "
+                    f"W/D/L {aw}/{ad}/{al} | n {int(m.get('n', 0))} | p {100.0 * m.get('p', 0):>5.1f}% | "
                     f"elo {m.get('elo', 0):>6.1f} ±{m.get('se_elo', 0):.1f} | decision {decision.upper()} | "
-                    f"W/D/L {aw}/{ad}/{al} | time {self._format_time(arena_elapsed)} | age {iteration - self._gate_started_iter}"
+                    f"time {self._format_time(arena_elapsed)} | age {iteration - self._gate_started_iter}"
                 )
 
                 if decision == "accept":
@@ -717,16 +720,16 @@ class Trainer:
                         dst = os.path.join(OUTPUT_DIR, "best_model.pt")
                         torch.save(self.best_model.state_dict(), tmp)
                         os.replace(tmp, dst)
-                        print(f"Saved best model to {dst}")
+                        print(f"[SAVE] best model -> {dst}")
                     except Exception as e:
-                        print(f"Warning: failed to save best model: {e}")
+                        print(f"[WARN] failed to save best model: {e}")
                     self._gate_active = False
                     self._pending_challenger = None
                 elif decision == "reject":
                     self._gate_active = False
                     self._pending_challenger = None
             else:
-                print(f"AR   skipped | games 0 | time {self._format_time(arena_elapsed)}")
+                print(f"[AR ] skipped | games 0 | time {self._format_time(arena_elapsed)}")
 
             sp_time = float(iter_stats.get("selfplay_time", 0.0))
             tr_time = float(iter_stats.get("training_time", 0.0))
@@ -740,8 +743,9 @@ class Trainer:
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
             mem2 = self._get_mem_info()
             print(
-                f"SUM  iter {self._format_time(full_iter_time)} | sp {self._format_time(sp_time)} | tr {self._format_time(tr_time)} | ar {self._format_time(arena_elapsed)} | "
-                f"elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB | RSS {mem2['rss_gb']:.1f} GB"
+                f"[SUM] iter {self._format_time(full_iter_time)} | sp {self._format_time(sp_time)} | tr {self._format_time(tr_time)} | ar {self._format_time(arena_elapsed)} | "
+                f"elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | "
+                f"peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB | RSS {mem2['rss_gb']:.1f} GB"
             )
 
             if (iteration % CHECKPOINT_EVERY) == 0:
@@ -756,9 +760,9 @@ class Trainer:
                         },
                         os.path.join(OUTPUT_DIR, f"ckpt_{self.iteration:04d}.pt"),
                     )
-                    print("Saved checkpoint")
+                    print("[CKPT] saved checkpoint")
                 except Exception as e:
-                    print(f"Warning: failed to save checkpoint: {e}")
+                    print(f"[WARN] failed to save checkpoint: {e}")
 
             self._prev_eval_m = self.evaluator.get_metrics()
 
