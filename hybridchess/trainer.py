@@ -480,6 +480,12 @@ class Trainer:
         stats["moves_per_sec"] = mps
 
         t1 = time.time()
+        if torch.cuda.is_available():
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+
         losses: list[tuple[torch.Tensor, torch.Tensor]] = []
         snap = self.selfplay_engine.snapshot()
         min_samples = max(1, BATCH_SIZE // 2)
