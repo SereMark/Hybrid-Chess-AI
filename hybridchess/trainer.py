@@ -84,7 +84,6 @@ from .config import (
     TEMP_HIGH,
     TEMP_LOW,
     TEMP_MOVES,
-    TF32_ENABLE,
     TORCH_COMPILE,
     TORCH_COMPILE_DYNAMIC,
     TORCH_COMPILE_FULLGRAPH,
@@ -113,8 +112,6 @@ class Trainer:
         if getattr(dev, "type", None) != "cuda" or not torch.cuda.is_available():
             raise RuntimeError("CUDA device required (accepts 'cuda' or 'cuda:N')")
         self.device = dev
-        torch.backends.cuda.matmul.allow_tf32 = TF32_ENABLE
-        torch.backends.cudnn.allow_tf32 = TF32_ENABLE
         m_any: Any = ChessNet().to(self.device)
         if CHANNELS_LAST:
             self.model = m_any.to(memory_format=torch.channels_last)
@@ -345,7 +342,7 @@ class Trainer:
         pi_target = torch.from_numpy(np.stack(policies).astype(np.float32)).pin_memory().to(self.device, non_blocking=True)
         v_target = torch.tensor(values, dtype=torch.float32).pin_memory().to(self.device, non_blocking=True)
         self.model.train()
-        with torch.autocast(device_type="cuda", enabled=True):
+        with torch.autocast(device_type="cuda", enabled=AMP_ENABLED):
             pi_pred, v_pred = self.model(x)
             v_pred = v_pred.squeeze(-1)
             if POLICY_LABEL_SMOOTH > 0.0:
@@ -680,7 +677,7 @@ class Trainer:
         total_params = sum(p.numel() for p in self.model.parameters()) / 1e6
         header_lines = [
             f"Device: {self.device} ({self.device_name}) | GPU {self.device_total_gb:.1f} GB | AMP {'on' if AMP_ENABLED else 'off'} | compiled {self._compiled}",
-            f"Torch: {torch.__version__} | CUDA {torch.version.cuda} | cuDNN {torch.backends.cudnn.version()} | TF32 matmul {torch.backends.cuda.matmul.allow_tf32} | cuDNN TF32 {torch.backends.cudnn.allow_tf32}",
+            f"Torch: {torch.__version__} | CUDA {torch.version.cuda} | cuDNN {torch.backends.cudnn.version()}",
             f"Threads: torch intra {torch.get_num_threads()} | inter {torch.get_num_interop_threads()} | CPU cores {os.cpu_count()} | selfplay workers {SELFPLAY_WORKERS}",
             f"Model: {total_params:.1f}M parameters | {BLOCKS} blocks x {CHANNELS} channels | channels_last {CHANNELS_LAST}",
             f"Buffer: size {BUFFER_SIZE:,}",
