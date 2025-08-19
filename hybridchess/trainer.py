@@ -12,8 +12,9 @@ import torch.nn.functional as F
 from .config import (
     AMP_ENABLED,
     ARENA_CANDIDATE_MAX_GAMES,
-    ARENA_CANDIDATE_MAX_ITERS,
+    ARENA_CANDIDATE_MAX_ROUNDS,
     ARENA_DIRICHLET_WEIGHT,
+    ARENA_DETERMINISTIC,
     ARENA_DRAW_SCORE,
     ARENA_EVAL_CACHE_CAP,
     ARENA_EVAL_EVERY,
@@ -27,6 +28,7 @@ from .config import (
     ARENA_GATE_Z_LATE,
     ARENA_GATE_Z_SWITCH_ITER,
     ARENA_OPENING_TEMPERATURE_EPS,
+    ARENA_STRATIFY_OPENINGS,
     ARENA_PAIRING_FACTOR,
     ARENA_TEMP_MOVES,
     ARENA_TEMPERATURE,
@@ -266,6 +268,7 @@ class Trainer:
         self._gate_active = False
         self._pending_challenger: torch.nn.Module | None = None
         self._gate_started_iter = 0
+        self._gate_rounds = 0
 
     @staticmethod
     def _format_time(s: float) -> str:
@@ -601,7 +604,7 @@ class Trainer:
                     SIMULATIONS_EVAL,
                     C_PUCT,
                     DIRICHLET_ALPHA,
-                    float(ARENA_DIRICHLET_WEIGHT),
+                    0.0 if ARENA_DETERMINISTIC else float(ARENA_DIRICHLET_WEIGHT),
                 )
                 m1.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
                 m1.set_fpu_reduction(FPU_REDUCTION)
@@ -609,7 +612,7 @@ class Trainer:
                     SIMULATIONS_EVAL,
                     C_PUCT,
                     DIRICHLET_ALPHA,
-                    float(ARENA_DIRICHLET_WEIGHT),
+                    0.0 if ARENA_DETERMINISTIC else float(ARENA_DIRICHLET_WEIGHT),
                 )
                 m2.set_c_puct_params(C_PUCT_BASE, C_PUCT_INIT)
                 m2.set_fpu_reduction(FPU_REDUCTION)
@@ -622,29 +625,43 @@ class Trainer:
                     if v.size == 0:
                         break
                     moves = pos.legal_moves()
-                    if t < ARENA_TEMP_MOVES:
-                        temp = float(ARENA_TEMPERATURE)
-                        if temp <= 0.0 + ARENA_OPENING_TEMPERATURE_EPS:
-                            idx = int(_np.argmax(v))
-                        else:
-                            v_pos = _np.maximum(v, 0.0)
-                            s0 = v_pos.sum()
-                            if s0 <= 0:
+                    if ARENA_DETERMINISTIC:
+                        idx = int(_np.argmax(v))
+                    else:
+                        if t < ARENA_TEMP_MOVES:
+                            temp = float(ARENA_TEMPERATURE)
+                            if temp <= 0.0 + ARENA_OPENING_TEMPERATURE_EPS:
                                 idx = int(_np.argmax(v))
                             else:
-                                probs = v_pos ** (1.0 / temp)
-                                s = probs.sum()
-                                idx = int(_np.argmax(v)) if s <= 0 else int(_np.random.choice(len(moves), p=probs / s))
-                    else:
-                        idx = int(_np.argmax(v))
+                                v_pos = _np.maximum(v, 0.0)
+                                s0 = v_pos.sum()
+                                if s0 <= 0:
+                                    idx = int(_np.argmax(v))
+                                else:
+                                    probs = v_pos ** (1.0 / temp)
+                                    s = probs.sum()
+                                    idx = int(_np.argmax(v)) if s <= 0 else int(_np.random.choice(len(moves), p=probs / s))
+                        else:
+                            idx = int(_np.argmax(v))
                     pos.make_move(moves[idx])
                     t += 1
                 r = pos.result()
                 return 1 if r == _ccore.WHITE_WIN else (-1 if r == _ccore.BLACK_WIN else 0)
 
             pairs = max(1, ARENA_GAMES // ARENA_PAIRING_FACTOR)
-            for _ in range(pairs):
-                start_fen = openings[_np.random.randint(0, len(openings))]
+            if ARENA_STRATIFY_OPENINGS:
+                n_open = len(openings)
+                if n_open == 0:
+                    raise RuntimeError("Arena openings not loaded.")
+                if pairs <= n_open:
+                    idxs = _np.random.permutation(n_open)[:pairs]
+                else:
+                    reps = int(_np.ceil(pairs / n_open))
+                    idxs = _np.tile(_np.random.permutation(n_open), reps)[:pairs]
+            else:
+                idxs = _np.random.randint(0, len(openings), size=pairs)
+            for i in idxs:
+                start_fen = openings[int(i)]
                 r1 = play(ce, ie, start_fen)
                 r2 = -play(ie, ce, start_fen)
                 for r in (r1, r2):
@@ -673,7 +690,7 @@ class Trainer:
             f"Augment: mirror {AUGMENT_MIRROR_PROB:.2f} | rot180 {AUGMENT_ROT180_PROB:.2f} | vflip_cs {AUGMENT_VFLIP_CS_PROB:.2f} | policy_smooth {POLICY_LABEL_SMOOTH:.2f}",
             f"EMA: {'on' if EMA_ENABLED else 'off'} decay {EMA_DECAY if EMA_ENABLED else 0}",
             f"Eval: batch {EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | cache {EVAL_CACHE_SIZE}",
-            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | rule LB>{100.0 * ARENA_GATE_BASELINE_P:.0f}% @Z {ARENA_GATE_Z_EARLY}->{ARENA_GATE_Z_LATE} (switch @{ARENA_GATE_Z_SWITCH_ITER})",
+            f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | rule LB>{100.0 * ARENA_GATE_BASELINE_P:.0f}% @Z {ARENA_GATE_Z_EARLY}->{ARENA_GATE_Z_LATE} (switch @{ARENA_GATE_Z_SWITCH_ITER}) | det {'on' if ARENA_DETERMINISTIC else 'off'} | dir_w {0.0 if ARENA_DETERMINISTIC else ARENA_DIRICHLET_WEIGHT} | temp {(ARENA_TEMPERATURE if not ARENA_DETERMINISTIC else 0.0)}->0.0 @{ARENA_TEMP_MOVES}",
             f"Arena openings: {len(self._arena_openings):,} positions loaded",
             f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games | output {OUTPUT_DIR}",
         ]
@@ -688,25 +705,27 @@ class Trainer:
             do_eval = (iteration % ARENA_EVAL_EVERY) == 0 if ARENA_EVAL_EVERY > 0 else False
             arena_elapsed = 0.0
             if do_eval:
-                if (not self._gate_active) or ((iteration - self._gate_started_iter) >= ARENA_CANDIDATE_MAX_ITERS) or ((self._gate.w + self._gate.d + self._gate.losses) >= ARENA_CANDIDATE_MAX_GAMES):
+                if (not self._gate_active) or (self._gate_rounds >= ARENA_CANDIDATE_MAX_ROUNDS) or ((self._gate.w + self._gate.d + self._gate.losses) >= ARENA_CANDIDATE_MAX_GAMES):
                     if self._gate_active:
                         print("[AR ] reset: timeboxing stuck challenger")
                     self._pending_challenger = self._clone_from_ema()
                     self._gate.reset()
                     self._gate_active = True
                     self._gate_started_iter = iteration
+                    self._gate_rounds = 0
                 t_ar = time.time()
                 assert self._pending_challenger is not None
                 _, aw, ad, al = self._arena_match(self._pending_challenger, self.best_model)
                 arena_elapsed = time.time() - t_ar
 
                 self._gate.update(aw, ad, al)
+                self._gate_rounds += 1
                 decision, m = self._gate.decision()
                 print(
                     "[AR ] "
                     f"W/D/L {aw}/{ad}/{al} | n {int(m.get('n', 0))} | p {100.0 * m.get('p', 0):>5.1f}% | "
                     f"elo {m.get('elo', 0):>6.1f} ±{m.get('se_elo', 0):.1f} | decision {decision.upper()} | "
-                    f"time {self._format_time(arena_elapsed)} | age {iteration - self._gate_started_iter}"
+                    f"time {self._format_time(arena_elapsed)} | age_iter {iteration - self._gate_started_iter} | rounds {self._gate_rounds}"
                 )
 
                 if decision == "accept":
@@ -725,9 +744,11 @@ class Trainer:
                         print(f"[WARN] failed to save best model: {e}")
                     self._gate_active = False
                     self._pending_challenger = None
+                    self._gate_rounds = 0
                 elif decision == "reject":
                     self._gate_active = False
                     self._pending_challenger = None
+                    self._gate_rounds = 0
             else:
                 print(f"[AR ] skipped | games 0 | time {self._format_time(arena_elapsed)}")
 
