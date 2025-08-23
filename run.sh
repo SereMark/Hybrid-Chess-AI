@@ -12,4 +12,4 @@ cmake --build build -j"$(nproc)"
 export PYTHONPATH="${PWD}:${PWD}/build"
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
-exec venv/bin/python -m hybridchess.trainer
+exec venv/bin/python -m hybridchess.trainer "$@"

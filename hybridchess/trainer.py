@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import logging
 import time
+import random
 from typing import Any
 
 import numpy as np
@@ -43,7 +45,6 @@ from .config import (
     C_PUCT_INIT,
     CHANNELS,
     CHANNELS_LAST,
-    CHECKPOINT_EVERY,
     CUDNN_BENCHMARK,
     DIRICHLET_ALPHA,
     DIRICHLET_WEIGHT,
@@ -51,6 +52,7 @@ from .config import (
     EMA_ENABLED,
     ENTROPY_ANNEAL_ITERS,
     ENTROPY_COEF_INIT,
+    ENTROPY_COEF_MIN,
     EVAL_BATCH_TIMEOUT_MS,
     EVAL_CACHE_SIZE,
     EVAL_MAX_BATCH,
@@ -68,7 +70,6 @@ from .config import (
     MCTS_MIN_SIMS,
     MOMENTUM,
     OPENINGS_FILE,
-    OUTPUT_DIR,
     POLICY_LABEL_SMOOTH,
     POLICY_WEIGHT,
     RATIO_TARGET_TRAIN_PER_NEW,
@@ -107,7 +108,8 @@ from .selfplay import (
 
 
 class Trainer:
-    def __init__(self, device: str | None = None) -> None:
+    def __init__(self, device: str | None = None, resume: bool = False) -> None:
+        self.log = logging.getLogger("hybridchess.trainer")
         dev = torch.device(device or "cuda")
         if getattr(dev, "type", None) != "cuda" or not torch.cuda.is_available():
             raise RuntimeError("CUDA device required (accepts 'cuda' or 'cuda:N')")
@@ -129,7 +131,7 @@ class Trainer:
                 self._compiled = True
         except Exception as e:
             self._compiled = False
-            print(f"[WARN] torch.compile unavailable; running uncompiled ({e})")
+            self.log.warning(f"torch.compile unavailable; running uncompiled ({e})")
 
         decay: list[torch.nn.Parameter] = []
         nodecay: list[torch.nn.Parameter] = []
@@ -267,9 +269,38 @@ class Trainer:
         self._gate_started_iter = 0
         self._gate_rounds = 0
 
+        if resume:
+            self._try_resume()
+
     @staticmethod
     def _format_time(s: float) -> str:
         return f"{s:.1f}s" if s < 60 else (f"{s / 60:.1f}m" if s < 3600 else f"{s / 3600:.1f}h")
+
+    @staticmethod
+    def _format_si(n: int | float, digits: int = 1) -> str:
+        try:
+            x = float(n)
+        except Exception:
+            return str(n)
+        sign = "-" if x < 0 else ""
+        x = abs(x)
+        if x >= 1_000_000_000:
+            return f"{sign}{x/1_000_000_000:.{digits}f}B"
+        if x >= 1_000_000:
+            return f"{sign}{x/1_000_000:.{digits}f}M"
+        if x >= 1_000:
+            return f"{sign}{x/1_000:.{digits}f}k"
+        if digits <= 0:
+            return f"{sign}{int(x)}"
+        return f"{sign}{x:.{digits}f}"
+
+    @staticmethod
+    def _format_gb(x: float, digits: int = 1) -> str:
+        try:
+            v = float(x)
+        except Exception:
+            return str(x)
+        return f"{v:.{digits}f}G"
 
     def _get_mem_info(self) -> dict[str, float]:
         p = self._proc
@@ -309,6 +340,126 @@ class Trainer:
         clone.load_state_dict(src.state_dict(), strict=True)
         clone.eval()
         return clone
+
+    def _save_checkpoint(self) -> None:
+        try:
+            base = getattr(self.model, "_orig_mod", self.model)
+            ckpt = {
+                "iter": int(self.iteration),
+                "total_games": int(self.total_games),
+                "elapsed_s": float(max(0.0, time.time() - self.start_time)),
+                "model": base.state_dict(),
+                "best_model": self.best_model.state_dict(),
+                "optimizer": self.optimizer.state_dict(),
+                "scheduler": {
+                    "t": int(self.scheduler.t),
+                    "total": int(self.scheduler.total),
+                },
+                "scaler": self.scaler.state_dict(),
+                "ema": (self.ema.shadow if self.ema is not None else None),
+                "gate": {
+                    "active": bool(self._gate_active),
+                    "w": int(self._gate.w),
+                    "d": int(self._gate.d),
+                    "losses": int(self._gate.losses),
+                    "z": float(self._gate.z),
+                    "started_iter": int(self._gate_started_iter),
+                    "rounds": int(self._gate_rounds),
+                },
+                "pending_challenger": (
+                    None
+                    if (not self._gate_active or self._pending_challenger is None)
+                    else getattr(self._pending_challenger, "state_dict")()
+                ),
+                "rng": {
+                    "py": random.getstate(),
+                    "np": np.random.get_state(),
+                    "torch_cpu": torch.get_rng_state(),
+                    "torch_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+                },
+            }
+            torch.save(ckpt, "checkpoint.pt.tmp")
+            os.replace("checkpoint.pt.tmp", "checkpoint.pt")
+            self.log.info("[CKPT] saved checkpoint")
+        except Exception as e:
+            self.log.warning(f"Failed to save checkpoint: {e}")
+
+    def _try_resume(self) -> None:
+        path = "checkpoint.pt"
+        if not os.path.isfile(path):
+            self.log.info("[CKPT] no checkpoint found; starting fresh")
+            return
+        try:
+            ckpt = torch.load(path, map_location="cpu")
+            base = getattr(self.model, "_orig_mod", self.model)
+            base.load_state_dict(ckpt.get("model", {}), strict=True)
+            if self.ema is not None and ckpt.get("ema") is not None:
+                self.ema.shadow = ckpt["ema"]
+            if "best_model" in ckpt:
+                self.best_model.load_state_dict(ckpt["best_model"], strict=True)
+                self.best_model.eval()
+                self.evaluator.refresh_from(self.best_model)
+            if "optimizer" in ckpt:
+                self.optimizer.load_state_dict(ckpt["optimizer"]) 
+            if "scheduler" in ckpt:
+                sd = ckpt["scheduler"]
+                try:
+                    self.scheduler.set_total_steps(int(sd.get("total", self.scheduler.total)))
+                except Exception:
+                    pass
+                try:
+                    self.scheduler.t = int(sd.get("t", self.scheduler.t))
+                except Exception:
+                    pass
+            if "scaler" in ckpt and isinstance(self.scaler, torch.amp.GradScaler):
+                try:
+                    self.scaler.load_state_dict(ckpt["scaler"]) 
+                except Exception:
+                    pass
+            self.iteration = int(ckpt.get("iter", 0))
+            self.total_games = int(ckpt.get("total_games", 0))
+            elapsed_s = float(ckpt.get("elapsed_s", 0.0))
+            if elapsed_s > 0.0:
+                self.start_time = time.time() - elapsed_s
+            g = ckpt.get("gate", None)
+            if isinstance(g, dict):
+                try:
+                    self._gate.w = int(g.get("w", 0))
+                    self._gate.d = int(g.get("d", 0))
+                    self._gate.losses = int(g.get("losses", 0))
+                    self._gate.z = float(g.get("z", self._gate.z))
+                    self._gate_started_iter = int(g.get("started_iter", 0))
+                    self._gate_rounds = int(g.get("rounds", 0))
+                    self._gate_active = bool(g.get("active", False))
+                except Exception:
+                    self._gate_active = False
+            pc = ckpt.get("pending_challenger", None)
+            if self._gate_active and pc is not None:
+                try:
+                    self._pending_challenger = self._clone_model()
+                    self._pending_challenger.load_state_dict(pc, strict=True)
+                    self._pending_challenger.eval()
+                except Exception:
+                    self._pending_challenger = None
+            rng = ckpt.get("rng", {})
+            try:
+                if "py" in rng:
+                    random.setstate(rng["py"]) 
+                if "np" in rng:
+                    np.random.set_state(rng["np"]) 
+                if "torch_cpu" in rng:
+                    torch.set_rng_state(rng["torch_cpu"]) 
+                if torch.cuda.is_available() and ("torch_cuda" in rng) and (rng["torch_cuda"] is not None):
+                    torch.cuda.set_rng_state_all(rng["torch_cuda"]) 
+            except Exception:
+                pass
+            try:
+                self._prev_eval_m = self.evaluator.get_metrics()
+            except Exception:
+                self._prev_eval_m = {}
+            self.log.info(f"[CKPT] resumed from {path} @ iter {self.iteration}")
+        except Exception as e:
+            self.log.warning(f"[CKPT] failed to resume: {e}")
 
     def _load_openings(self) -> list[str]:
         seen: set[str] = set()
@@ -355,6 +506,8 @@ class Trainer:
             ent_coef = 0.0
             if ENTROPY_COEF_INIT > 0 and self.iteration <= ENTROPY_ANNEAL_ITERS:
                 ent_coef = ENTROPY_COEF_INIT * (1.0 - (self.iteration - 1) / max(1, ENTROPY_ANNEAL_ITERS))
+            if ENTROPY_COEF_MIN > 0:
+                ent_coef = max(float(ent_coef), float(ENTROPY_COEF_MIN))
             entropy = (-(F.softmax(pi_pred, dim=1) * F.log_softmax(pi_pred, dim=1)).sum(dim=1)).mean()
             value_weight_now = VALUE_WEIGHT_LATE if self.iteration >= VALUE_WEIGHT_SWITCH_ITER else VALUE_WEIGHT
             total_loss = POLICY_WEIGHT * policy_loss + value_weight_now * value_loss - ent_coef * entropy
@@ -389,12 +542,13 @@ class Trainer:
         buf_pct = (buf_len / buf_cap) * 100
         total_elapsed = time.time() - self.start_time
         pct_done = 100.0 * (self.iteration - 1) / max(1, ITERATIONS)
-        print(
-            f"\n[ITR {self.iteration:>3}/{ITERATIONS} | {pct_done:>4.1f}%] "
-            f"LRnext {header_lr:.2e} | elapsed {self._format_time(total_elapsed)} | "
-            f"buf {buf_len:,}/{self.selfplay_engine.buffer.maxlen:,} ({int(buf_pct):>3}%) | "
-            f"GPU {mem['allocated_gb']:.1f}/{mem['reserved_gb']:.1f}/{mem['total_gb']:.1f} GB | RSS {mem['rss_gb']:.1f} GB | "
-            f"CPU {sysi['cpu_sys_pct']:>3.0f}%/{sysi['cpu_proc_pct']:>3.0f}% | RAM {sysi['ram_used_gb']:.1f}/{sysi['ram_total_gb']:.1f} GB ({sysi['ram_pct']:>3.0f}%) | "
+        self.log.info(
+            f"[\nITR {self.iteration:>3}/{ITERATIONS} {pct_done:>4.1f}%] "
+            f"LRnext {header_lr:.2e} | t {self._format_time(total_elapsed)} | "
+            f"buf {self._format_si(buf_len)}/{self._format_si(self.selfplay_engine.buffer.maxlen or 0)} ({int(buf_pct)}%) | "
+            f"GPU {self._format_gb(mem['allocated_gb'])}/{self._format_gb(mem['reserved_gb'])}/{self._format_gb(mem['total_gb'])} | "
+            f"RSS {self._format_gb(mem['rss_gb'])} | CPU {sysi['cpu_sys_pct']:.0f}/{sysi['cpu_proc_pct']:.0f}% | "
+            f"RAM {self._format_gb(sysi['ram_used_gb'])}/{self._format_gb(sysi['ram_total_gb'])} ({sysi['ram_pct']:.0f}%) | "
             f"load {sysi['load1']:.2f}"
         )
 
@@ -413,67 +567,28 @@ class Trainer:
         dpct = 100.0 * dd / max(1, gc)
         bpct = 100.0 * bb / max(1, gc)
         avg_len = game_stats["moves"] / max(1, gc)
-        spm = game_stats.get("sp_metrics", {}) if isinstance(game_stats, dict) else {}
-        spi = game_stats.get("sp_metrics_iter", {}) if isinstance(game_stats, dict) else {}
 
         eval_m = self.evaluator.get_metrics()
         eval_req = int(eval_m.get("requests_total", 0))
         eval_hit = int(eval_m.get("cache_hits_total", 0))
-        eval_miss = int(eval_m.get("cache_misses_total", 0))
         eval_batches = int(eval_m.get("batches_total", 0))
         eval_evalN = int(eval_m.get("eval_positions_total", 0))
         eval_bmax = int(eval_m.get("batch_size_max", 0))
-        eval_qmax = int(eval_m.get("pending_queue_max", 0))
-        eval_uniq = int(eval_m.get("queued_unique_total", 0))
-        enc_s = float(eval_m.get("encode_time_s_total", 0.0))
-        fwd_s = float(eval_m.get("forward_time_s_total", 0.0))
-        wait_s = float(eval_m.get("wait_time_s_total", 0.0))
         prev = getattr(self, "_prev_eval_m", {}) or {}
         d_req = int(eval_req - int(prev.get("requests_total", 0)))
         d_hit = int(eval_hit - int(prev.get("cache_hits_total", 0)))
-        d_miss = int(eval_miss - int(prev.get("cache_misses_total", 0)))
         d_batches = int(eval_batches - int(prev.get("batches_total", 0)))
         d_evalN = int(eval_evalN - int(prev.get("eval_positions_total", 0)))
         hit_rate = (100.0 * eval_hit / max(1, eval_req)) if eval_req else 0.0
         hit_rate_d = (100.0 * d_hit / max(1, d_req)) if d_req > 0 else 0.0
-        enc_ms_per = (1000.0 * enc_s / max(1, eval_evalN)) if eval_evalN else 0.0
-        fwd_ms_per = (1000.0 * fwd_s / max(1, eval_evalN)) if eval_evalN else 0.0
-        wait_ms_per = (1000.0 * wait_s / max(1, eval_evalN)) if eval_evalN else 0.0
-        req_per_s = d_req / max(1e-9, sp_elapsed)
-        pos_per_s = d_evalN / max(1e-9, sp_elapsed)
+        
 
         sp_line = (
-            f"games {gc:,} | W/D/B {ww}/{dd}/{bb} ({wpct:>3.0f}%/{dpct:>3.0f}%/{bpct:>3.0f}%) | "
-            f"avg_len {avg_len:>5.1f} | gpm {gpm:>6.1f} | mps {mps / 1000:>5.1f}K | "
-            f"time {self._format_time(sp_elapsed)} | new {int(game_stats.get('moves', 0)):,}"
+            f"games {gc:,} | W/D/B {ww}/{dd}/{bb} ({wpct:.0f}%/{dpct:.0f}%/{bpct:.0f}%) | "
+            f"len {avg_len:>4.1f} | gpm {gpm:>5.1f} | mps {mps/1000:>4.1f}k | "
+            f"t {self._format_time(sp_elapsed)} | new {self._format_si(int(game_stats.get('moves', 0)))}"
         )
-        sp_plus_line = (
-            (
-                f"sims/calls {int(spm.get('mcts_sims_total', 0)):,}"
-                f"(+{int(spi.get('mcts_sims_total', 0)):,})/"
-                f"{int(spm.get('mcts_calls_total', 0)):,}"
-                f"(+{int(spi.get('mcts_calls_total', 0)):,}) | "
-                f"temp H/L {int(spm.get('temp_moves_high_total', 0)):,}"
-                f"(+{int(spi.get('temp_moves_high_total', 0)):,})/"
-                f"{int(spm.get('temp_moves_low_total', 0)):,}"
-                f"(+{int(spi.get('temp_moves_low_total', 0)):,}) | "
-                f"mcts_batch_max {int(spm.get('mcts_batch_max', 0))} | "
-                f"resigns {int(spm.get('resigns_total', 0)):,}"
-                f"(+{int(spi.get('resigns_total', 0)):,}) | "
-                f"forced {int(spm.get('forced_results_total', 0)):,}"
-                f"(+{int(spi.get('forced_results_total', 0)):,})"
-            )
-            if spm
-            else ""
-        )
-        ev_line = (
-            f"req {eval_req:,}(+{d_req:,}) | uniq {eval_uniq:,} | "
-            f"hits {eval_hit:,} ({hit_rate:>4.1f}%) (+{d_hit:,} {hit_rate_d:>4.1f}%) | "
-            f"miss {eval_miss:,}(+{d_miss:,}) | batches {eval_batches:,}(+{d_batches:,}) | "
-            f"evalN {eval_evalN:,}(+{d_evalN:,}) | r/s {req_per_s:>6.1f} | n/s {int(pos_per_s):,} | "
-            f"bmax {eval_bmax} | qmax {eval_qmax} | enc {enc_s:.2f}s ({enc_ms_per:.2f} ms/pos) | "
-            f"fwd {fwd_s:.2f}s ({fwd_ms_per:.2f} ms/pos) | wait {wait_s:.2f}s ({wait_ms_per:.2f} ms/pos)"
-        )
+        
         stats.update(game_stats)
         stats["selfplay_time"] = sp_elapsed
         stats["games_per_min"] = gpm
@@ -534,6 +649,8 @@ class Trainer:
         ent_coef_current = 0.0
         if ENTROPY_COEF_INIT > 0 and self.iteration <= ENTROPY_ANNEAL_ITERS:
             ent_coef_current = ENTROPY_COEF_INIT * (1.0 - (self.iteration - 1) / max(1, ENTROPY_ANNEAL_ITERS))
+        if ENTROPY_COEF_MIN > 0:
+            ent_coef_current = max(float(ent_coef_current), float(ENTROPY_COEF_MIN))
         drift_pct = 0.0
         if LR_SCHED_STEPS_PER_ITER_EST > 0:
             drift_pct = 100.0 * (actual_steps - LR_SCHED_STEPS_PER_ITER_EST) / LR_SCHED_STEPS_PER_ITER_EST if actual_steps > 0 else 0.0
@@ -542,7 +659,7 @@ class Trainer:
             new_total = int(self.scheduler.t + remaining_iters * actual_steps)
             new_total = max(self.scheduler.t + 1, new_total)
             self.scheduler.set_total_steps(new_total)
-            print(
+            self.log.info(
                 f"[LR ] adjust total_steps -> {self.scheduler.total} "
                 f"(iter1 measured {actual_steps} vs est {LR_SCHED_STEPS_PER_ITER_EST}, drift {drift_pct:+.1f}%)"
             )
@@ -562,17 +679,31 @@ class Trainer:
             }
         )
 
-        tr_plan_line = f"plan {steps} | target {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | actual {ratio:>4.1f}x | mix recent 80%, old 20%" if steps > 0 else "plan 0 skip (buffer underfilled)"
-        tr_line = (
-            f"steps {len(losses):>3} | batch/s {bps:>5.1f} | samp/s {int(sps):>6,} | time {self._format_time(tr_elapsed)} | "
-            f"P {pol_loss:>7.4f} | V {val_loss:>7.4f} | LR {current_lr:.2e} | grad {avg_grad_norm:>6.3f} | entropy {avg_entropy:>6.3f} | "
-            f"ent_coef {ent_coef_current:.2e} | clip {GRAD_CLIP:.1f} | buf {int(buf_pct2):>3}% ({buf_sz:,})"
+        recent_pct = int(round(100.0 * TRAIN_RECENT_RATIO))
+        old_pct = max(0, 100 - recent_pct)
+        tr_plan_line = (
+            f"plan {steps} | tgt {RATIO_TARGET_TRAIN_PER_NEW:.1f}x | act {ratio:>3.1f}x | mix {recent_pct}/{old_pct}%"
+            if steps > 0
+            else "plan 0 skip (buffer underfilled)"
         )
-        lr_sched_fragment = f"sched est/iter {LR_SCHED_STEPS_PER_ITER_EST} | actual {actual_steps} | drift {drift_pct:+.1f}% | pos {self.scheduler.t}/{self.scheduler.total}"
+        tr_line = (
+            f"steps {len(losses):>3} | b/s {bps:>4.1f} | sps {self._format_si(sps, digits=1)} | t {self._format_time(tr_elapsed)} | "
+            f"P {pol_loss:>6.4f} | V {val_loss:>6.4f} | LR {current_lr:.2e} | grad {avg_grad_norm:>5.3f} | ent {avg_entropy:>5.3f} | "
+            f"entc {ent_coef_current:.2e} | clip {GRAD_CLIP:.1f} | buf {int(buf_pct2):>3}% ({self._format_si(buf_sz)})"
+        )
+        lr_sched_fragment = (
+            f"sched {LR_SCHED_STEPS_PER_ITER_EST}->{actual_steps} | drift {drift_pct:+.0f}% | "
+            f"pos {self.scheduler.t}/{self._format_si(self.scheduler.total)}"
+        )
 
-        print("[SP] " + sp_line + (" | " + sp_plus_line if sp_plus_line else ""))
-        print("[EV] " + ev_line)
-        print("[TR] " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment)
+        ev_short = (
+            f"req {self._format_si(eval_req)}(+{self._format_si(d_req)}) | "
+            f"hit {hit_rate:>4.1f}% (+{hit_rate_d:>4.1f}%) | "
+            f"batches {self._format_si(eval_batches)}(+{self._format_si(d_batches)}) | "
+            f"evalN {self._format_si(eval_evalN)}(+{self._format_si(d_evalN)}) | bmax {eval_bmax}"
+        )
+        self.log.info("[SP] " + sp_line + " | [EV] " + ev_short)
+        self.log.info("[TR] " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment)
         self._prev_eval_m = eval_m
 
         return stats
@@ -695,13 +826,13 @@ class Trainer:
             f"Eval: batch {EVAL_MAX_BATCH}@{EVAL_BATCH_TIMEOUT_MS}ms | cache {EVAL_CACHE_SIZE}",
             f"Arena: games {ARENA_GAMES}/every {ARENA_EVAL_EVERY} | rule LB>{100.0 * ARENA_GATE_BASELINE_P:.0f}% @Z {ARENA_GATE_Z_EARLY}->{ARENA_GATE_Z_LATE} (switch @{ARENA_GATE_Z_SWITCH_ITER}) | det {'on' if ARENA_DETERMINISTIC else 'off'} | dir_w {0.0 if ARENA_DETERMINISTIC else ARENA_DIRICHLET_WEIGHT} | temp {(ARENA_TEMPERATURE if not ARENA_DETERMINISTIC else 0.0)}->0.0 @{ARENA_TEMP_MOVES}",
             f"Arena openings: {len(self._arena_openings):,} positions loaded",
-            f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games | output {OUTPUT_DIR}",
+            f"Expected: {ITERATIONS * GAMES_PER_ITER:,} total games",
         ]
         title = "Hybrid Chess AI Training"
         bar = "=" * max(60, len(title))
-        print("\n" + bar + f"\n{title}\n" + bar + "\n" + "\n".join(header_lines) + "\n" + bar)
+        self.log.info("\n" + bar + f"\n{title}\n" + bar + "\n" + "\n".join(header_lines) + "\n" + bar)
 
-        for iteration in range(1, ITERATIONS + 1):
+        for iteration in range(self.iteration + 1, ITERATIONS + 1):
             self.iteration = iteration
             iter_stats = self.training_iteration()
 
@@ -710,7 +841,7 @@ class Trainer:
             if do_eval:
                 if (not self._gate_active) or (self._gate_rounds >= ARENA_CANDIDATE_MAX_ROUNDS) or ((self._gate.w + self._gate.d + self._gate.losses) >= ARENA_CANDIDATE_MAX_GAMES):
                     if self._gate_active:
-                        print("[AR ] reset: timeboxing stuck challenger")
+                        self.log.info("[AR ] reset: timeboxing stuck challenger")
                     self._pending_challenger = self._clone_from_ema()
                     self._gate.reset()
                     self._gate_active = True
@@ -724,7 +855,7 @@ class Trainer:
                 self._gate.update(aw, ad, al)
                 self._gate_rounds += 1
                 decision, m = self._gate.decision()
-                print(
+                self.log.info(
                     "[AR ] "
                     f"W/D/L {aw}/{ad}/{al} | n {int(m.get('n', 0))} | p {100.0 * m.get('p', 0):>5.1f}% | "
                     f"elo {m.get('elo', 0):>6.1f} ±{m.get('se_elo', 0):.1f} | decision {decision.upper()} | "
@@ -736,15 +867,7 @@ class Trainer:
                     self.best_model.load_state_dict(self._pending_challenger.state_dict(), strict=True)
                     self.best_model.eval()
                     self.evaluator.refresh_from(self.best_model)
-                    try:
-                        os.makedirs(OUTPUT_DIR, exist_ok=True)
-                        tmp = os.path.join(OUTPUT_DIR, "best_model.pt.tmp")
-                        dst = os.path.join(OUTPUT_DIR, "best_model.pt")
-                        torch.save(self.best_model.state_dict(), tmp)
-                        os.replace(tmp, dst)
-                        print(f"[SAVE] best model -> {dst}")
-                    except Exception as e:
-                        print(f"[WARN] failed to save best model: {e}")
+                    self._save_checkpoint()
                     self._gate_active = False
                     self._pending_challenger = None
                     self._gate_rounds = 0
@@ -753,7 +876,7 @@ class Trainer:
                     self._pending_challenger = None
                     self._gate_rounds = 0
             else:
-                print(f"[AR ] skipped | games 0 | time {self._format_time(arena_elapsed)}")
+                self.log.info(f"[AR ] skipped | games 0 | time {self._format_time(arena_elapsed)}")
 
             sp_time = float(iter_stats.get("selfplay_time", 0.0))
             tr_time = float(iter_stats.get("training_time", 0.0))
@@ -766,27 +889,11 @@ class Trainer:
             peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
             mem2 = self._get_mem_info()
-            print(
+            self.log.info(
                 f"[SUM] iter {self._format_time(full_iter_time)} | sp {self._format_time(sp_time)} | tr {self._format_time(tr_time)} | ar {self._format_time(arena_elapsed)} | "
                 f"elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | "
-                f"peak GPU {peak_alloc:.1f}/{peak_res:.1f} GB | RSS {mem2['rss_gb']:.1f} GB"
+                f"peak GPU {self._format_gb(peak_alloc)}/{self._format_gb(peak_res)} | RSS {self._format_gb(mem2['rss_gb'])}"
             )
-
-            if (iteration % CHECKPOINT_EVERY) == 0:
-                try:
-                    os.makedirs(OUTPUT_DIR, exist_ok=True)
-                    torch.save(
-                        {
-                            "model": getattr(self.model, "_orig_mod", self.model).state_dict(),
-                            "optimizer": self.optimizer.state_dict(),
-                            "sched_t": self.scheduler.t,
-                            "iter": self.iteration,
-                        },
-                        os.path.join(OUTPUT_DIR, f"ckpt_{self.iteration:04d}.pt"),
-                    )
-                    print("[CKPT] saved checkpoint")
-                except Exception as e:
-                    print(f"[WARN] failed to save checkpoint: {e}")
 
             self._prev_eval_m = self.evaluator.get_metrics()
 
@@ -881,6 +988,22 @@ class EloGater:
 
 
 if __name__ == "__main__":
+    import sys
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    for h in list(root.handlers):
+        root.removeHandler(h)
+    ch = logging.StreamHandler(stream=sys.stdout)
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(logging.Formatter(fmt="%(asctime)s %(message)s", datefmt="%H:%M:%S"))
+    root.addHandler(ch)
+    try:
+        fh = logging.FileHandler("log.txt", mode="w", encoding="utf-8")
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(logging.Formatter(fmt="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+        root.addHandler(fh)
+    except Exception:
+        pass
     torch.backends.cudnn.benchmark = CUDNN_BENCHMARK
     torch.set_num_threads(TORCH_THREADS_INTRA)
     torch.set_num_interop_threads(TORCH_THREADS_INTER)
@@ -891,4 +1014,5 @@ if __name__ == "__main__":
     torch.manual_seed(SEED)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(SEED)
-    Trainer().train()
+    resume_flag = any(a in ("--resume", "resume") for a in sys.argv[1:])
+    Trainer(resume=resume_flag).train()

@@ -107,14 +107,9 @@ class BatchedEvaluator:
             "requests_total": 0,
             "cache_hits_total": 0,
             "cache_misses_total": 0,
-            "queued_unique_total": 0,
             "batches_total": 0,
             "eval_positions_total": 0,
             "batch_size_max": 0,
-            "pending_queue_max": 0,
-            "encode_time_s_total": 0.0,
-            "forward_time_s_total": 0.0,
-            "wait_time_s_total": 0.0,
         }
         self._pending_lock = threading.Condition()
         self._pending: deque[_EvalRequest] = deque()
@@ -251,10 +246,8 @@ class BatchedEvaluator:
                 seen.add(id(r))
         with self._metrics_lock:
             self._metrics["cache_misses_total"] += misses
-            self._metrics["queued_unique_total"] += len(unique_reqs)
         for r in unique_reqs:
             with self._pending_lock:
-                r.t_submit = time.time()
                 self._pending.append(r)
                 self._pending_lock.notify()
         for idx, r in reqs:
@@ -289,9 +282,6 @@ class BatchedEvaluator:
                     self._pending_lock.wait()
                 if self._shutdown.is_set():
                     break
-                with self._metrics_lock:
-                    if len(self._pending) > int(self._metrics["pending_queue_max"]):
-                        self._metrics["pending_queue_max"] = float(len(self._pending))
                 batch: list[_EvalRequest] = [self._pending.popleft()]
                 start = time.time()
                 while len(batch) < EVAL_MAX_BATCH and not self._shutdown.is_set():
@@ -307,29 +297,19 @@ class BatchedEvaluator:
             if self._shutdown.is_set():
                 break
             try:
-                t_enc0 = time.time()
                 x = self._encode_batch([r.position for r in batch])
-                t_enc1 = time.time()
                 p_t, v_t = self._forward(x)
-                t_fwd1 = time.time()
                 pol = F.softmax(p_t.float(), dim=1).detach().to(dtype=torch.float16).cpu().numpy()
                 val = v_t.detach().to(dtype=torch.float16).cpu().numpy()
-                now = time.time()
-                accum_wait = 0.0
                 for i, r in enumerate(batch):
                     r.policy = pol[i]
                     r.value = float(val[i])
-                    if hasattr(r, "t_submit"):
-                        accum_wait += max(0.0, now - float(getattr(r, "t_submit", now)))
                     r.event.set()
                 with self._metrics_lock:
                     self._metrics["batches_total"] += 1
                     self._metrics["eval_positions_total"] += len(batch)
                     if len(batch) > int(self._metrics["batch_size_max"]):
                         self._metrics["batch_size_max"] = float(len(batch))
-                    self._metrics["encode_time_s_total"] += max(0.0, t_enc1 - t_enc0)
-                    self._metrics["forward_time_s_total"] += max(0.0, t_fwd1 - t_enc1)
-                    self._metrics["wait_time_s_total"] += float(accum_wait)
             except Exception:
                 for r in batch:
                     r.policy = np.zeros((POLICY_OUTPUT,), dtype=np.float16)
@@ -347,4 +327,3 @@ class _EvalRequest:
         self.event = threading.Event()
         self.policy: np.ndarray | None = None
         self.value: float = 0.0
-        self.t_submit: float = 0.0
