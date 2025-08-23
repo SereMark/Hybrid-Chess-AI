@@ -543,7 +543,7 @@ class Trainer:
         total_elapsed = time.time() - self.start_time
         pct_done = 100.0 * (self.iteration - 1) / max(1, ITERATIONS)
         self.log.info(
-            f"\n[ITR {self.iteration:>3}/{ITERATIONS} {pct_done:>4.1f}%] "
+            f"[ITR {self.iteration:>3}/{ITERATIONS} {pct_done:>4.1f}%] "
             f"LRnext {header_lr:.2e} | t {self._format_time(total_elapsed)} | "
             f"buf {self._format_si(buf_len)}/{self._format_si(self.selfplay_engine.buffer.maxlen or 0)} ({int(buf_pct)}%) | "
             f"GPU {self._format_gb(mem['allocated_gb'])}/{self._format_gb(mem['reserved_gb'])}/{self._format_gb(mem['total_gb'])} | "
