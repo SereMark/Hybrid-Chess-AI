@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
-from collections import deque
+from collections import deque, OrderedDict
 from typing import Any, cast
 
 import numpy as np
@@ -99,8 +99,7 @@ class BatchedEvaluator:
         for p in self.eval_model.parameters():
             p.requires_grad_(False)
         self.cache_lock = threading.Lock()
-        self.cache: dict[int, tuple[np.ndarray, float | np.floating[Any]]] = {}
-        self.cache_order: deque[int] = deque()
+        self.cache: OrderedDict[int, tuple[np.ndarray, float | np.floating[Any]]] = OrderedDict()
         self.cache_cap = EVAL_CACHE_SIZE
         self._metrics_lock = threading.Lock()
         self._metrics: dict[str, float] = {
@@ -132,7 +131,6 @@ class BatchedEvaluator:
             pass
         with self.cache_lock:
             self.cache.clear()
-            self.cache_order.clear()
 
     def __enter__(self):
         return self
@@ -159,7 +157,6 @@ class BatchedEvaluator:
                 p.requires_grad_(False)
         with self.cache_lock:
             self.cache.clear()
-            self.cache_order.clear()
 
     def _encode_batch(self, positions: list[Any]) -> torch.Tensor:
         import chesscore as ccore
@@ -176,7 +173,6 @@ class BatchedEvaluator:
         with self.model_lock, torch.inference_mode():
             if self.device.type == "cuda":
                 x = x.to(dtype=torch.float16)
-            x = x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
             return cast(tuple[torch.Tensor, torch.Tensor], self.eval_model(x))
 
     def _position_key(self, pos: Any) -> int | None:
@@ -216,7 +212,8 @@ class BatchedEvaluator:
             for i, pos in enumerate(positions):
                 key = self._position_key(pos)
                 if key is not None and key in self.cache:
-                    pol, val = self.cache[key]
+                    pol, val = self.cache.pop(key)
+                    self.cache[key] = (pol, val)
                     cached_p[i] = pol
                     cached_v[i] = float(val)
                     with self._metrics_lock:
@@ -256,20 +253,18 @@ class BatchedEvaluator:
             cached_v[idx] = r.value
         if reqs:
             with self.cache_lock:
-                for idx, _ in reqs:
+                for idx, r in reqs:
                     key = self._position_key(positions[idx])
                     if key is not None and key not in self.cache:
                         pol_opt = cached_p[idx]
                         val = cached_v[idx]
-                        if pol_opt is not None:
+                        if pol_opt is not None and not getattr(r, "error", False):
                             self.cache[key] = (
                                 pol_opt.astype(np.float16),
                                 np.float16(val),
                             )
-                            self.cache_order.append(key)
-                while len(self.cache_order) > self.cache_cap:
-                    k = self.cache_order.popleft()
-                    self.cache.pop(k, None)
+                while len(self.cache) > self.cache_cap:
+                    self.cache.popitem(last=False)
         pol_np = np.stack([(p if p is not None else np.zeros((POLICY_OUTPUT,), dtype=np.float32)) for p in cached_p]).astype(np.float32)
         val_np = np.asarray(cached_v, dtype=np.float32)
         return pol_np, val_np
@@ -299,11 +294,14 @@ class BatchedEvaluator:
             try:
                 x = self._encode_batch([r.position for r in batch])
                 p_t, v_t = self._forward(x)
-                pol = F.softmax(p_t.float(), dim=1).detach().to(dtype=torch.float16).cpu().numpy()
+                p_logits = p_t.float()
+                p_logits = p_logits - p_logits.amax(dim=1, keepdim=True)
+                pol = F.softmax(p_logits, dim=1).detach().to(dtype=torch.float16).cpu().numpy()
                 val = v_t.detach().to(dtype=torch.float16).cpu().numpy()
                 for i, r in enumerate(batch):
                     r.policy = pol[i]
                     r.value = float(val[i])
+                    r.error = False
                     r.event.set()
                 with self._metrics_lock:
                     self._metrics["batches_total"] += 1
@@ -314,6 +312,7 @@ class BatchedEvaluator:
                 for r in batch:
                     r.policy = np.zeros((POLICY_OUTPUT,), dtype=np.float16)
                     r.value = 0.0
+                    r.error = True
                     r.event.set()
 
     def get_metrics(self) -> dict[str, float]:
@@ -327,3 +326,4 @@ class _EvalRequest:
         self.event = threading.Event()
         self.policy: np.ndarray | None = None
         self.value: float = 0.0
+        self.error: bool = False
