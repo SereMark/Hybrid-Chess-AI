@@ -595,7 +595,7 @@ class Trainer:
         stats["moves_per_sec"] = mps
 
         t1 = time.time()
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and (self.iteration % 10 == 0):
             try:
                 torch.cuda.empty_cache()
             except Exception:
