@@ -20,7 +20,8 @@ try:
     subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "torch"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 except Exception:
     pass
-pip("--upgrade", "--index-url", "https://download.pytorch.org/whl/cu121", "torch")
+pip("--upgrade", "--index-url", "https://download.pytorch.org/whl/cu126", "torch==2.8.0")
+pip("--upgrade", "--index-url", "https://download.pytorch.org/whl/cu126", "torchvision==0.23.0", "torchaudio==2.8.0")
 PY
 
   PYBIN=python
@@ -49,6 +50,6 @@ cmake --build build -j"$(nproc)"
 export PYTHONPATH="${PWD}:${PWD}/build"
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
-export PYTORCH_CUDA_ALLOC_CONF="max_split_size_mb:128,expandable_segments:true"
+export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True,max_split_size_mb:128"
 
 exec ${PYBIN} -m hybridchess.trainer "$@"
