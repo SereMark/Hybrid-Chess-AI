@@ -23,12 +23,4 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export PYTORCH_CUDA_ALLOC_CONF="max_split_size_mb:128,expandable_segments:true"
 
-python - <<'PY'
-try:
-    import torch
-    torch.set_float32_matmul_precision("high")
-except Exception:
-    pass
-PY
-
 exec python -m hybridchess.trainer "$@"

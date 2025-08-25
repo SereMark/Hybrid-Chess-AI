@@ -13,6 +13,7 @@ import torch.nn.functional as F
 
 from .config import (
     AMP_ENABLED,
+    FLOAT32_MATMUL_PRECISION,
     ARENA_CANDIDATE_MAX_GAMES,
     ARENA_CANDIDATE_MAX_ROUNDS,
     ARENA_DIRICHLET_WEIGHT,
@@ -1004,6 +1005,8 @@ if __name__ == "__main__":
         root.addHandler(fh)
     except Exception:
         pass
+    if hasattr(torch, "set_float32_matmul_precision"):
+        torch.set_float32_matmul_precision(FLOAT32_MATMUL_PRECISION)
     torch.backends.cudnn.benchmark = CUDNN_BENCHMARK
     torch.set_num_threads(TORCH_THREADS_INTRA)
     torch.set_num_interop_threads(TORCH_THREADS_INTER)
