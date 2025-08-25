@@ -16,7 +16,11 @@ import subprocess, sys
 def pip(*args): subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", *args])
 pip("--upgrade", "pip", "wheel")
 pip("numpy", "pybind11>=2.10", "psutil")
-pip("--index-url", "https://download.pytorch.org/whl/cu121", "torch")
+try:
+    subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "torch"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+except Exception:
+    pass
+pip("--upgrade", "--index-url", "https://download.pytorch.org/whl/cu121", "torch")
 PY
 
   PYBIN=python
@@ -26,7 +30,7 @@ else
   fi
   venv/bin/python -m pip install -q --upgrade pip wheel
   venv/bin/python -m pip install -q numpy pybind11 psutil
-  venv/bin/python -m pip install -q --index-url https://download.pytorch.org/whl/cu121 torch
+  venv/bin/python -m pip install -q --upgrade --index-url https://download.pytorch.org/whl/cu121 torch
 
   PYBIN=venv/bin/python
 fi
