@@ -21,7 +21,6 @@ try:
 except Exception:
     pass
 pip("--upgrade", "--index-url", "https://download.pytorch.org/whl/cu126", "torch==2.8.0")
-pip("--upgrade", "--index-url", "https://download.pytorch.org/whl/cu126", "torchvision==0.23.0", "torchaudio==2.8.0")
 PY
 
   PYBIN=python

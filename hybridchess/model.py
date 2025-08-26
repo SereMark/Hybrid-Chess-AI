@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import numbers
 import threading
 import time
-from collections import deque, OrderedDict
+from collections import OrderedDict, deque
 from typing import Any, cast
 
 import numpy as np
@@ -11,19 +12,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .config import (
-    BLOCKS,
+    AMP_PREFER_BFLOAT16,
     BOARD_SIZE,
-    CHANNELS,
-    EVAL_BATCH_TIMEOUT_MS,
-    EVAL_CACHE_SIZE,
-    EVAL_CHANNELS_LAST,
-    EVAL_CLOSE_JOIN_TIMEOUT_S,
-    EVAL_MAX_BATCH,
+    EVAL_BATCH_COALESCE_MS,
+    EVAL_BATCH_SIZE_MAX,
+    EVAL_CACHE_CAPACITY,
+    EVAL_CACHE_USE_FP16,
+    EVAL_MODEL_CHANNELS_LAST,
+    EVAL_PIN_MEMORY,
+    EVAL_WORKER_JOIN_TIMEOUT_S,
     INPUT_PLANES,
+    MODEL_BLOCKS,
+    MODEL_CHANNELS,
+    MODEL_VALUE_CONV_CHANNELS,
+    MODEL_VALUE_HIDDEN_DIM,
     NSQUARES,
     POLICY_OUTPUT,
-    VALUE_CONV_CHANNELS,
-    VALUE_HIDDEN_DIM,
 )
 
 
@@ -45,8 +49,8 @@ class ResBlock(nn.Module):
 class ChessNet(nn.Module):
     def __init__(self, blocks: int | None = None, channels: int | None = None) -> None:
         super().__init__()
-        blocks = blocks or BLOCKS
-        channels = channels or CHANNELS
+        blocks = blocks or MODEL_BLOCKS
+        channels = channels or MODEL_CHANNELS
         policy_planes = POLICY_OUTPUT // NSQUARES
         self.conv_in = nn.Conv2d(INPUT_PLANES, channels, 3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(channels)
@@ -54,10 +58,10 @@ class ChessNet(nn.Module):
         self.policy_conv = nn.Conv2d(channels, policy_planes, 1, bias=False)
         self.policy_bn = nn.BatchNorm2d(policy_planes)
         self.policy_fc = nn.Linear(policy_planes * NSQUARES, POLICY_OUTPUT)
-        self.value_conv = nn.Conv2d(channels, VALUE_CONV_CHANNELS, 1, bias=False)
-        self.value_bn = nn.BatchNorm2d(VALUE_CONV_CHANNELS)
-        self.value_fc1 = nn.Linear(VALUE_CONV_CHANNELS * NSQUARES, VALUE_HIDDEN_DIM)
-        self.value_fc2 = nn.Linear(VALUE_HIDDEN_DIM, 1)
+        self.value_conv = nn.Conv2d(channels, MODEL_VALUE_CONV_CHANNELS, 1, bias=False)
+        self.value_bn = nn.BatchNorm2d(MODEL_VALUE_CONV_CHANNELS)
+        self.value_fc1 = nn.Linear(MODEL_VALUE_CONV_CHANNELS * NSQUARES, MODEL_VALUE_HIDDEN_DIM)
+        self.value_fc2 = nn.Linear(MODEL_VALUE_HIDDEN_DIM, 1)
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
@@ -88,19 +92,23 @@ class BatchedEvaluator:
         self.model_lock = threading.Lock()
         any_mod: Any = ChessNet().to(self.device)
         self.eval_model: nn.Module = any_mod
-        if EVAL_CHANNELS_LAST:
+        if EVAL_MODEL_CHANNELS_LAST:
             self.eval_model = cast(
                 nn.Module,
                 getattr(self.eval_model, "to")(memory_format=torch.channels_last),
             )
         self.eval_model = self.eval_model.eval()
         if self.device.type == "cuda":
-            self.eval_model.half()
+            use_bf16 = AMP_PREFER_BFLOAT16
+            self.eval_model = cast(
+                nn.Module,
+                getattr(self.eval_model, "to")(dtype=(torch.bfloat16 if use_bf16 else torch.float16)),
+            )
         for p in self.eval_model.parameters():
             p.requires_grad_(False)
         self.cache_lock = threading.Lock()
         self.cache: OrderedDict[int, tuple[np.ndarray, float | np.floating[Any]]] = OrderedDict()
-        self.cache_cap = EVAL_CACHE_SIZE
+        self.cache_cap = EVAL_CACHE_CAPACITY
         self._metrics_lock = threading.Lock()
         self._metrics: dict[str, float] = {
             "requests_total": 0,
@@ -120,13 +128,13 @@ class BatchedEvaluator:
         self._shutdown.set()
         with self._pending_lock:
             for r in list(self._pending):
-                r.policy = np.zeros((POLICY_OUTPUT,), dtype=np.float16)
+                r.policy = np.zeros((POLICY_OUTPUT,), dtype=(np.float16 if EVAL_CACHE_USE_FP16 else np.float32))
                 r.value = 0.0
                 r.event.set()
             self._pending.clear()
             self._pending_lock.notify_all()
         try:
-            self._thread.join(timeout=EVAL_CLOSE_JOIN_TIMEOUT_S)
+            self._thread.join(timeout=EVAL_WORKER_JOIN_TIMEOUT_S)
         except Exception:
             pass
         with self.cache_lock:
@@ -151,7 +159,11 @@ class BatchedEvaluator:
                 base = base.module
             self.eval_model.load_state_dict(base.state_dict(), strict=True)
             if self.device.type == "cuda":
-                self.eval_model.half()
+                use_bf16 = AMP_PREFER_BFLOAT16
+                self.eval_model = cast(
+                    nn.Module,
+                    getattr(self.eval_model, "to")(dtype=(torch.bfloat16 if use_bf16 else torch.float16)),
+                )
             self.eval_model.eval()
             for p in self.eval_model.parameters():
                 p.requires_grad_(False)
@@ -164,7 +176,9 @@ class BatchedEvaluator:
         x_np = np.zeros((0, INPUT_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=np.float32) if not positions else ccore.encode_batch(positions)
         x = torch.from_numpy(x_np)
         if self.device.type == "cuda":
-            x = x.pin_memory().to(self.device, non_blocking=True)
+            if EVAL_PIN_MEMORY:
+                x = x.pin_memory()
+            x = x.to(self.device, non_blocking=True)
         else:
             x = x.to(self.device)
         return x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
@@ -172,7 +186,7 @@ class BatchedEvaluator:
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         with self.model_lock, torch.inference_mode():
             if self.device.type == "cuda":
-                x = x.to(dtype=torch.float16)
+                x = x.to(dtype=(torch.bfloat16 if (AMP_PREFER_BFLOAT16) else torch.float16))
             return cast(tuple[torch.Tensor, torch.Tensor], self.eval_model(x))
 
     def _position_key(self, pos: Any) -> int | None:
@@ -185,8 +199,8 @@ class BatchedEvaluator:
             if h_val is None:
                 return None
             if isinstance(h_val, np.generic):
-                h_val = h_val.item()
-            if isinstance(h_val, (int, np.integer)):
+                h_val = cast(np.generic, h_val).item()
+            if isinstance(h_val, numbers.Integral):
                 return int(h_val)
             if isinstance(h_val, str):
                 try:
@@ -259,10 +273,16 @@ class BatchedEvaluator:
                         pol_opt = cached_p[idx]
                         val = cached_v[idx]
                         if pol_opt is not None and not getattr(r, "error", False):
-                            self.cache[key] = (
-                                pol_opt.astype(np.float16),
-                                np.float16(val),
-                            )
+                            if EVAL_CACHE_USE_FP16:
+                                self.cache[key] = (
+                                    pol_opt.astype(np.float16),
+                                    np.float16(val),
+                                )
+                            else:
+                                self.cache[key] = (
+                                    pol_opt.astype(np.float32),
+                                    np.float32(val),
+                                )
                 while len(self.cache) > self.cache_cap:
                     self.cache.popitem(last=False)
         pol_np = np.stack([(p if p is not None else np.zeros((POLICY_OUTPUT,), dtype=np.float32)) for p in cached_p]).astype(np.float32)
@@ -270,7 +290,7 @@ class BatchedEvaluator:
         return pol_np, val_np
 
     def _batch_worker(self) -> None:
-        timeout_s = max(0.0, float(EVAL_BATCH_TIMEOUT_MS) / 1000.0)
+        timeout_s = max(0.0, float(EVAL_BATCH_COALESCE_MS) / 1000.0)
         while not self._shutdown.is_set():
             with self._pending_lock:
                 while not self._pending and not self._shutdown.is_set():
@@ -279,7 +299,7 @@ class BatchedEvaluator:
                     break
                 batch: list[_EvalRequest] = [self._pending.popleft()]
                 start = time.time()
-                while len(batch) < EVAL_MAX_BATCH and not self._shutdown.is_set():
+                while len(batch) < EVAL_BATCH_SIZE_MAX and not self._shutdown.is_set():
                     rem = timeout_s - (time.time() - start)
                     if rem <= 0.0:
                         break
@@ -287,7 +307,7 @@ class BatchedEvaluator:
                         self._pending_lock.wait(timeout=rem)
                         if not self._pending:
                             break
-                    while self._pending and len(batch) < EVAL_MAX_BATCH:
+                    while self._pending and len(batch) < EVAL_BATCH_SIZE_MAX:
                         batch.append(self._pending.popleft())
             if self._shutdown.is_set():
                 break
@@ -296,8 +316,9 @@ class BatchedEvaluator:
                 p_t, v_t = self._forward(x)
                 p_logits = p_t.float()
                 p_logits = p_logits - p_logits.amax(dim=1, keepdim=True)
-                pol = F.softmax(p_logits, dim=1).detach().to(dtype=torch.float16).cpu().numpy()
-                val = v_t.detach().to(dtype=torch.float16).cpu().numpy()
+                out_dtype_t = torch.float16 if EVAL_CACHE_USE_FP16 else torch.float32
+                pol = F.softmax(p_logits, dim=1).detach().to(dtype=out_dtype_t).cpu().numpy()
+                val = v_t.detach().to(dtype=out_dtype_t).cpu().numpy()
                 for i, r in enumerate(batch):
                     r.policy = pol[i]
                     r.value = float(val[i])
@@ -310,7 +331,7 @@ class BatchedEvaluator:
                         self._metrics["batch_size_max"] = float(len(batch))
             except Exception:
                 for r in batch:
-                    r.policy = np.zeros((POLICY_OUTPUT,), dtype=np.float16)
+                    r.policy = np.zeros((POLICY_OUTPUT,), dtype=(np.float16 if EVAL_CACHE_USE_FP16 else np.float32))
                     r.value = 0.0
                     r.error = True
                     r.event.set()
