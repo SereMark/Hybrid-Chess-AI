@@ -633,6 +633,9 @@ class Trainer:
 
         sp_line = f"games {gc:,} | W/D/B {ww}/{dd}/{bb} ({wpct:.0f}%/{dpct:.0f}%/{bpct:.0f}%) | len {avg_len:>4.1f} | gpm {gpm:>5.1f} | mps {mps / 1000:>4.1f}k | t {self._format_time(sp_elapsed)} | new {self._format_si(int(game_stats.get('moves', 0)))}"
 
+        ev_short = f"req {self._format_si(eval_req)}(+{self._format_si(d_req)}) | hit {hit_rate:>4.1f}% (+{hit_rate_d:>4.1f}%) | batches {self._format_si(eval_batches)}(+{self._format_si(d_batches)}) | evalN {self._format_si(eval_evalN)}(+{self._format_si(d_evalN)}) | bmax {eval_bmax}"
+        self.log.info("[SP] " + sp_line + " | [EV] " + ev_short)
+
         stats.update(game_stats)
         stats["selfplay_time"] = sp_elapsed
         stats["games_per_min"] = gpm
@@ -725,8 +728,6 @@ class Trainer:
         )
         lr_sched_fragment = f"sched {TRAIN_LR_SCHED_STEPS_PER_ITER_EST}->{actual_steps} | drift {drift_pct:+.0f}% | pos {self.scheduler.t}/{self._format_si(self.scheduler.total)}"
 
-        ev_short = f"req {self._format_si(eval_req)}(+{self._format_si(d_req)}) | hit {hit_rate:>4.1f}% (+{hit_rate_d:>4.1f}%) | batches {self._format_si(eval_batches)}(+{self._format_si(d_batches)}) | evalN {self._format_si(eval_evalN)}(+{self._format_si(d_evalN)}) | bmax {eval_bmax}"
-        self.log.info("[SP] " + sp_line + " | [EV] " + ev_short)
         self.log.info("[TR] " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment)
         self._prev_eval_m = eval_m
 
