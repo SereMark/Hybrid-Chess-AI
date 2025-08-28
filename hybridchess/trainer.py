@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import random
@@ -119,15 +120,17 @@ from .selfplay import (
 
 
 class Trainer:
+    """Coordinates self-play generation, training updates, and model gating."""
+
     def __init__(self, device: str | None = None, resume: bool = False) -> None:
         self.log = logging.getLogger("hybridchess.trainer")
-        dev = torch.device(device or "cuda")
-        self.device = dev
-        m_any: Any = ChessNet().to(self.device)
+        device_obj = torch.device(device or "cuda")
+        self.device = device_obj
+        net_any: Any = ChessNet().to(self.device)
         if MODEL_CHANNELS_LAST:
-            self.model = m_any.to(memory_format=torch.channels_last)
+            self.model = net_any.to(memory_format=torch.channels_last)
         else:
-            self.model = m_any
+            self.model = net_any
         self._compiled = False
         try:
             if TORCH_COMPILE:
@@ -159,8 +162,8 @@ class Trainer:
             nesterov=True,
         )
 
-        TOTAL_EXPECTED_TRAIN_STEPS = int(TRAIN_TOTAL_ITERATIONS * TRAIN_LR_SCHED_STEPS_PER_ITER_EST)
-        WARMUP_STEPS_CLAMPED = int(max(1, min(TRAIN_LR_WARMUP_STEPS, max(1, TOTAL_EXPECTED_TRAIN_STEPS - 1))))
+        total_expected_train_steps = int(TRAIN_TOTAL_ITERATIONS * TRAIN_LR_SCHED_STEPS_PER_ITER_EST)
+        warmup_steps_clamped = int(max(1, min(TRAIN_LR_WARMUP_STEPS, max(1, total_expected_train_steps - 1))))
 
         class WarmupCosine:
             def __init__(
@@ -209,9 +212,9 @@ class Trainer:
         self.scheduler = WarmupCosine(
             self.optimizer,
             TRAIN_LR_INIT,
-            WARMUP_STEPS_CLAMPED,
+            warmup_steps_clamped,
             TRAIN_LR_FINAL,
-            TOTAL_EXPECTED_TRAIN_STEPS,
+            total_expected_train_steps,
         )
         use_bf16 = AMP_PREFER_BFLOAT16
         self.scaler = torch.amp.GradScaler("cuda", enabled=(AMP_ENABLED and not use_bf16))
@@ -223,6 +226,8 @@ class Trainer:
         self._proc.cpu_percent(0.0)
 
         class EMA:
+            """Lightweight EMA of model parameters for evaluation and gating."""
+
             def __init__(self, model: torch.nn.Module, decay: float = EMA_DECAY) -> None:
                 self.decay = decay
                 base = getattr(model, "_orig_mod", model)
@@ -313,33 +318,33 @@ class Trainer:
         return f"{v:.{digits}f}G"
 
     def _get_mem_info(self) -> dict[str, float]:
-        p = self._proc
+        proc = self._proc
         return {
             "allocated_gb": torch.cuda.memory_allocated(self.device) / 1024**3,
             "reserved_gb": torch.cuda.memory_reserved(self.device) / 1024**3,
             "total_gb": self.device_total_gb,
-            "rss_gb": p.memory_info().rss / 1024**3,
+            "rss_gb": proc.memory_info().rss / 1024**3,
         }
 
     def _get_sys_info(self) -> dict[str, float]:
-        vm = psutil.virtual_memory()
-        sm = psutil.swap_memory()
+        vmem = psutil.virtual_memory()
+        swap = psutil.swap_memory()
         try:
-            la1, la5, la15 = os.getloadavg()
+            load1, load5, load15 = os.getloadavg()
         except Exception:
-            la1 = la5 = la15 = 0.0
+            load1 = load5 = load15 = 0.0
         return {
             "cpu_sys_pct": float(psutil.cpu_percent(0.0)),
             "cpu_proc_pct": float(self._proc.cpu_percent(0.0)),
-            "ram_used_gb": float(vm.used) / 1024**3,
-            "ram_total_gb": float(vm.total) / 1024**3,
-            "ram_pct": float(vm.percent),
-            "swap_used_gb": float(sm.used) / 1024**3,
-            "swap_total_gb": float(sm.total) / 1024**3,
-            "swap_pct": float(sm.percent),
-            "load1": float(la1),
-            "load5": float(la5),
-            "load15": float(la15),
+            "ram_used_gb": float(vmem.used) / 1024**3,
+            "ram_total_gb": float(vmem.total) / 1024**3,
+            "ram_pct": float(vmem.percent),
+            "swap_used_gb": float(swap.used) / 1024**3,
+            "swap_total_gb": float(swap.total) / 1024**3,
+            "swap_pct": float(swap.percent),
+            "load1": float(load1),
+            "load5": float(load5),
+            "load15": float(load15),
         }
 
     def _clone_model(self) -> torch.nn.Module:
@@ -376,7 +381,7 @@ class Trainer:
                     "started_iter": int(self._gate_started_iter),
                     "rounds": int(self._gate_rounds),
                 },
-                "pending_challenger": (None if (not self._gate_active or self._pending_challenger is None) else getattr(self._pending_challenger, "state_dict")()),
+                "pending_challenger": (None if (not self._gate_active or self._pending_challenger is None) else self._pending_challenger.state_dict()),
                 "rng": {
                     "py": random.getstate(),
                     "np": np.random.get_state(),
@@ -384,7 +389,7 @@ class Trainer:
                     "torch_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
                 },
             }
-            tmp_path = f"{CHECKPOINT_FILE_PATH}.tmp"
+            tmp_path = f"{CHECKPOINT_FILE_PATH}.tmp"  # atomic replace
             torch.save(ckpt, tmp_path)
             os.replace(tmp_path, CHECKPOINT_FILE_PATH)
             self.log.info("[CKPT] saved checkpoint")
@@ -393,13 +398,13 @@ class Trainer:
 
     def _save_best_model(self) -> None:
         try:
-            sd = self.best_model.state_dict()
+            state_dict = self.best_model.state_dict()
             payload = {
                 "iter": int(self.iteration),
                 "total_games": int(self.total_games),
-                "model": sd,
+                "model": state_dict,
             }
-            tmp_path = f"{BEST_MODEL_FILE_PATH}.tmp"
+            tmp_path = f"{BEST_MODEL_FILE_PATH}.tmp"  # atomic replace
             torch.save(payload, tmp_path)
             os.replace(tmp_path, BEST_MODEL_FILE_PATH)
             self.log.info("[BEST] saved best model")
@@ -418,38 +423,28 @@ class Trainer:
             if self.ema is not None and ckpt.get("ema") is not None:
                 self.ema.shadow = ckpt["ema"]
             if os.path.isfile(BEST_MODEL_FILE_PATH):
-                try:
+                with contextlib.suppress(Exception):
                     best_ckpt = torch.load(BEST_MODEL_FILE_PATH, map_location="cpu")
-                    sd = best_ckpt.get("model", best_ckpt)
-                    self.best_model.load_state_dict(sd, strict=True)
+                    state_dict = best_ckpt.get("model", best_ckpt)
+                    self.best_model.load_state_dict(state_dict, strict=True)
                     self.best_model.eval()
                     self.evaluator.refresh_from(self.best_model)
-                except Exception:
-                    pass
             elif "best_model" in ckpt:
-                try:
+                with contextlib.suppress(Exception):
                     self.best_model.load_state_dict(ckpt["best_model"], strict=True)
                     self.best_model.eval()
                     self.evaluator.refresh_from(self.best_model)
-                except Exception:
-                    pass
             if "optimizer" in ckpt:
                 self.optimizer.load_state_dict(ckpt["optimizer"])
             if "scheduler" in ckpt:
                 sd = ckpt["scheduler"]
-                try:
+                with contextlib.suppress(Exception):
                     self.scheduler.set_total_steps(int(sd.get("total", self.scheduler.total)))
-                except Exception:
-                    pass
-                try:
+                with contextlib.suppress(Exception):
                     self.scheduler.t = int(sd.get("t", self.scheduler.t))
-                except Exception:
-                    pass
             if "scaler" in ckpt and isinstance(self.scaler, torch.amp.GradScaler):
-                try:
+                with contextlib.suppress(Exception):
                     self.scaler.load_state_dict(ckpt["scaler"])
-                except Exception:
-                    pass
             self.iteration = int(ckpt.get("iter", 0))
             self.total_games = int(ckpt.get("total_games", 0))
             elapsed_s = float(ckpt.get("elapsed_s", 0.0))
@@ -477,7 +472,7 @@ class Trainer:
                 except Exception:
                     self._pending_challenger = None
             rng = ckpt.get("rng", {})
-            try:
+            with contextlib.suppress(Exception):
                 if "py" in rng:
                     random.setstate(rng["py"])
                 if "np" in rng:
@@ -486,11 +481,9 @@ class Trainer:
                     torch.set_rng_state(rng["torch_cpu"])
                 if ("torch_cuda" in rng) and (rng["torch_cuda"] is not None):
                     torch.cuda.set_rng_state_all(rng["torch_cuda"])
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 self._prev_eval_m = self.evaluator.get_metrics()
-            except Exception:
+            if not getattr(self, "_prev_eval_m", None):
                 self._prev_eval_m = {}
             self.log.info(f"[CKPT] resumed from {path} @ iter {self.iteration}")
         except Exception as e:
@@ -499,16 +492,16 @@ class Trainer:
     def _load_openings(self) -> list[str]:
         seen: set[str] = set()
 
-        def _add_fenish(s: str) -> None:
-            s = s.strip()
-            if not s or s.startswith("#") or s.startswith(";"):
+        def _add_fenish(line: str) -> None:
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith(";"):
                 return
-            s = s.split(";", 1)[0].strip()
-            toks = s.split()
-            if len(toks) >= 6:
-                fen6 = " ".join(toks[:6])
-            elif len(toks) >= 4:
-                fen6 = " ".join(toks[:4] + ["0", "1"])
+            line = line.split(";", 1)[0].strip()
+            tokens = line.split()
+            if len(tokens) >= 6:
+                fen6 = " ".join(tokens[:6])
+            elif len(tokens) >= 4:
+                fen6 = " ".join(tokens[:4] + ["0", "1"])
             else:
                 return
             seen.add(fen6)
@@ -516,7 +509,7 @@ class Trainer:
         if not os.path.isfile(OPENINGS_FILE_PATH):
             return []
 
-        with open(OPENINGS_FILE_PATH, "r", encoding="utf-8") as f:
+        with open(OPENINGS_FILE_PATH, encoding="utf-8") as f:
             for line in f:
                 _add_fenish(line)
 
@@ -543,27 +536,27 @@ class Trainer:
             dtype=(torch.bfloat16 if AMP_PREFER_BFLOAT16 else torch.float16),
             enabled=AMP_ENABLED,
         ):
-            pi_pred, v_pred = self.model(x)
-            v_pred = v_pred.squeeze(-1)
+            policy_logits, value_pred = self.model(x)
+            value_pred = value_pred.squeeze(-1)
             if LOSS_POLICY_LABEL_SMOOTH > 0.0:
-                A = pi_target.shape[1]
-                pi_smooth = (1.0 - LOSS_POLICY_LABEL_SMOOTH) * pi_target + (LOSS_POLICY_LABEL_SMOOTH / A)
+                num_actions = pi_target.shape[1]
+                pi_smooth = (1.0 - LOSS_POLICY_LABEL_SMOOTH) * pi_target + (LOSS_POLICY_LABEL_SMOOTH / num_actions)
             else:
                 pi_smooth = pi_target
-            policy_loss = F.kl_div(F.log_softmax(pi_pred, dim=1), pi_smooth, reduction="batchmean")
-            value_loss = F.mse_loss(v_pred, v_target)
-            ent_coef = 0.0
+            policy_loss = F.kl_div(F.log_softmax(policy_logits, dim=1), pi_smooth, reduction="batchmean")
+            value_loss = F.mse_loss(value_pred, v_target)
+            entropy_coef = 0.0
             if LOSS_ENTROPY_COEF_INIT > 0 and self.iteration <= LOSS_ENTROPY_ANNEAL_ITERS:
-                ent_coef = LOSS_ENTROPY_COEF_INIT * (1.0 - (self.iteration - 1) / max(1, LOSS_ENTROPY_ANNEAL_ITERS))
+                entropy_coef = LOSS_ENTROPY_COEF_INIT * (1.0 - (self.iteration - 1) / max(1, LOSS_ENTROPY_ANNEAL_ITERS))
             if LOSS_ENTROPY_COEF_MIN > 0:
-                ent_coef = max(float(ent_coef), float(LOSS_ENTROPY_COEF_MIN))
-            entropy = (-(F.softmax(pi_pred, dim=1) * F.log_softmax(pi_pred, dim=1)).sum(dim=1)).mean()
-            value_weight_now = LOSS_VALUE_WEIGHT_LATE if self.iteration >= LOSS_VALUE_WEIGHT_SWITCH_ITER else LOSS_VALUE_WEIGHT
-            total_loss = LOSS_POLICY_WEIGHT * policy_loss + value_weight_now * value_loss - ent_coef * entropy
+                entropy_coef = max(float(entropy_coef), float(LOSS_ENTROPY_COEF_MIN))
+            entropy = (-(F.softmax(policy_logits, dim=1) * F.log_softmax(policy_logits, dim=1)).sum(dim=1)).mean()
+            value_loss_weight = LOSS_VALUE_WEIGHT_LATE if self.iteration >= LOSS_VALUE_WEIGHT_SWITCH_ITER else LOSS_VALUE_WEIGHT
+            total_loss = LOSS_POLICY_WEIGHT * policy_loss + value_loss_weight * value_loss - entropy_coef * entropy
         self.optimizer.zero_grad(set_to_none=True)
         self.scaler.scale(total_loss).backward()
         self.scaler.unscale_(self.optimizer)
-        grad_total_norm_t = torch.nn.utils.clip_grad_norm_(self.model.parameters(), TRAIN_GRAD_CLIP_NORM)
+        grad_total_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), TRAIN_GRAD_CLIP_NORM)
         self.scaler.step(self.optimizer)
         self.scaler.update()
         self.scheduler.step()
@@ -572,7 +565,7 @@ class Trainer:
         return (
             policy_loss.detach(),
             value_loss.detach(),
-            float(grad_total_norm_t.detach().cpu()),
+            float(grad_total_norm.detach().cpu()),
             float(entropy.detach().cpu()),
         )
 
@@ -584,21 +577,21 @@ class Trainer:
         stats: dict[str, int | float] = {}
         torch.cuda.reset_peak_memory_stats(self.device)
         header_lr = float(self.scheduler.peek_next_lr())
-        mem = self._get_mem_info()
-        sysi = self._get_sys_info()
-        buf_len = len(self.selfplay_engine.buffer)
-        buf_cap = int(self.selfplay_engine.buffer.maxlen or 1)
-        buf_pct = (buf_len / buf_cap) * 100
+        mem_info = self._get_mem_info()
+        sys_info = self._get_sys_info()
+        buffer_len = len(self.selfplay_engine.buffer)
+        buffer_cap = int(self.selfplay_engine.buffer.maxlen or 1)
+        buffer_pct = (buffer_len / buffer_cap) * 100
         total_elapsed = time.time() - self.start_time
         pct_done = 100.0 * (self.iteration - 1) / max(1, TRAIN_TOTAL_ITERATIONS)
         self.log.info(
             f"[ITR {self.iteration:>3}/{TRAIN_TOTAL_ITERATIONS} {pct_done:>4.1f}%] "
             f"LRnext {header_lr:.2e} | t {self._format_time(total_elapsed)} | "
-            f"buf {self._format_si(buf_len)}/{self._format_si(self.selfplay_engine.buffer.maxlen or 0)} ({int(buf_pct)}%) | "
-            f"GPU {self._format_gb(mem['allocated_gb'])}/{self._format_gb(mem['reserved_gb'])}/{self._format_gb(mem['total_gb'])} | "
-            f"RSS {self._format_gb(mem['rss_gb'])} | CPU {sysi['cpu_sys_pct']:.0f}/{sysi['cpu_proc_pct']:.0f}% | "
-            f"RAM {self._format_gb(sysi['ram_used_gb'])}/{self._format_gb(sysi['ram_total_gb'])} ({sysi['ram_pct']:.0f}%) | "
-            f"load {sysi['load1']:.2f}"
+            f"buf {self._format_si(buffer_len)}/{self._format_si(self.selfplay_engine.buffer.maxlen or 0)} ({int(buffer_pct)}%) | "
+            f"GPU {self._format_gb(mem_info['allocated_gb'])}/{self._format_gb(mem_info['reserved_gb'])}/{self._format_gb(mem_info['total_gb'])} | "
+            f"RSS {self._format_gb(mem_info['rss_gb'])} | CPU {sys_info['cpu_sys_pct']:.0f}/{sys_info['cpu_proc_pct']:.0f}% | "
+            f"RAM {self._format_gb(sys_info['ram_used_gb'])}/{self._format_gb(sys_info['ram_total_gb'])} ({sys_info['ram_pct']:.0f}%) | "
+            f"load {sys_info['load1']:.2f}"
         )
 
         t0 = time.time()
@@ -606,140 +599,152 @@ class Trainer:
         self.total_games += int(game_stats["games"])
         sp_elapsed = time.time() - t0
 
-        gpm = game_stats["games"] / max(1e-9, sp_elapsed / 60)
-        mps = game_stats["moves"] / max(1e-9, sp_elapsed)
-        gc = int(game_stats["games"])
-        ww = int(game_stats["white_wins"])
-        bb = int(game_stats["black_wins"])
-        dd = int(game_stats["draws"])
-        wpct = 100.0 * ww / max(1, gc)
-        dpct = 100.0 * dd / max(1, gc)
-        bpct = 100.0 * bb / max(1, gc)
-        avg_len = game_stats["moves"] / max(1, gc)
+        games_per_min = game_stats["games"] / max(1e-9, sp_elapsed / 60)
+        moves_per_sec = game_stats["moves"] / max(1e-9, sp_elapsed)
+        games_count = int(game_stats["games"])
+        white_wins = int(game_stats["white_wins"])
+        black_wins = int(game_stats["black_wins"])
+        draws_count = int(game_stats["draws"])
+        white_win_pct = 100.0 * white_wins / max(1, games_count)
+        draw_pct = 100.0 * draws_count / max(1, games_count)
+        black_win_pct = 100.0 * black_wins / max(1, games_count)
+        avg_game_length = game_stats["moves"] / max(1, games_count)
 
-        eval_m = self.evaluator.get_metrics()
-        eval_req = int(eval_m.get("requests_total", 0))
-        eval_hit = int(eval_m.get("cache_hits_total", 0))
-        eval_batches = int(eval_m.get("batches_total", 0))
-        eval_evalN = int(eval_m.get("eval_positions_total", 0))
-        eval_bmax = int(eval_m.get("batch_size_max", 0))
-        prev = getattr(self, "_prev_eval_m", {}) or {}
-        d_req = int(eval_req - int(prev.get("requests_total", 0)))
-        d_hit = int(eval_hit - int(prev.get("cache_hits_total", 0)))
-        d_batches = int(eval_batches - int(prev.get("batches_total", 0)))
-        d_evalN = int(eval_evalN - int(prev.get("eval_positions_total", 0)))
-        hit_rate = (100.0 * eval_hit / max(1, eval_req)) if eval_req else 0.0
-        hit_rate_d = (100.0 * d_hit / max(1, d_req)) if d_req > 0 else 0.0
+        eval_metrics = self.evaluator.get_metrics()
+        requests_total = int(eval_metrics.get("requests_total", 0))
+        cache_hits_total = int(eval_metrics.get("cache_hits_total", 0))
+        batches_total = int(eval_metrics.get("batches_total", 0))
+        eval_positions_total = int(eval_metrics.get("eval_positions_total", 0))
+        max_batch_size = int(eval_metrics.get("batch_size_max", 0))
+        prev_metrics = getattr(self, "_prev_eval_m", {}) or {}
+        delta_requests = int(requests_total - int(prev_metrics.get("requests_total", 0)))
+        delta_hits = int(cache_hits_total - int(prev_metrics.get("cache_hits_total", 0)))
+        delta_batches = int(batches_total - int(prev_metrics.get("batches_total", 0)))
+        delta_eval_positions = int(eval_positions_total - int(prev_metrics.get("eval_positions_total", 0)))
+        hit_rate = (100.0 * cache_hits_total / max(1, requests_total)) if requests_total else 0.0
+        hit_rate_d = (100.0 * delta_hits / max(1, delta_requests)) if delta_requests > 0 else 0.0
 
-        sp_line = f"games {gc:,} | W/D/B {ww}/{dd}/{bb} ({wpct:.0f}%/{dpct:.0f}%/{bpct:.0f}%) | len {avg_len:>4.1f} | gpm {gpm:>5.1f} | mps {mps / 1000:>4.1f}k | t {self._format_time(sp_elapsed)} | new {self._format_si(int(game_stats.get('moves', 0)))}"
+        sp_line = (
+            f"games {games_count:,} | W/D/B {white_wins}/{draws_count}/{black_wins} "
+            f"({white_win_pct:.0f}%/{draw_pct:.0f}%/{black_win_pct:.0f}%) | len {avg_game_length:>4.1f} | "
+            f"gpm {games_per_min:>5.1f} | mps {moves_per_sec / 1000:>4.1f}k | t {self._format_time(sp_elapsed)} | "
+            f"new {self._format_si(int(game_stats.get('moves', 0)))}"
+        )
 
-        ev_short = f"req {self._format_si(eval_req)}(+{self._format_si(d_req)}) | hit {hit_rate:>4.1f}% (+{hit_rate_d:>4.1f}%) | batches {self._format_si(eval_batches)}(+{self._format_si(d_batches)}) | evalN {self._format_si(eval_evalN)}(+{self._format_si(d_evalN)}) | bmax {eval_bmax}"
+        ev_short = (
+            f"req {self._format_si(requests_total)}(+{self._format_si(delta_requests)}) | hit {hit_rate:>4.1f}% (+{hit_rate_d:>4.1f}%) | "
+            f"batches {self._format_si(batches_total)}(+{self._format_si(delta_batches)}) | "
+            f"evalN {self._format_si(eval_positions_total)}(+{self._format_si(delta_eval_positions)}) | bmax {max_batch_size}"
+        )
         self.log.info("[SP] " + sp_line + " | [EV] " + ev_short)
 
         stats.update(game_stats)
         stats["selfplay_time"] = sp_elapsed
-        stats["games_per_min"] = gpm
-        stats["moves_per_sec"] = mps
+        stats["games_per_min"] = games_per_min
+        stats["moves_per_sec"] = moves_per_sec
 
         t1 = time.time()
         if (CUDA_EMPTY_CACHE_EVERY_ITERS > 0) and (self.iteration % CUDA_EMPTY_CACHE_EVERY_ITERS == 0):
             torch.cuda.empty_cache()
 
         losses: list[tuple[torch.Tensor, torch.Tensor]] = []
-        snap = self.selfplay_engine.snapshot()
-        min_samples = max(1, TRAIN_BATCH_SIZE // 2)
+        snapshot = self.selfplay_engine.snapshot()
+        min_batch_samples = max(1, TRAIN_BATCH_SIZE // 2)
         new_examples = int(game_stats.get("moves", 0))
-        desired_train_samples = int(TRAIN_TARGET_TRAIN_SAMPLES_PER_NEW * max(1, new_examples))
-        steps = int(np.ceil(desired_train_samples / TRAIN_BATCH_SIZE))
-        steps = max(TRAIN_UPDATE_STEPS_MIN, min(TRAIN_UPDATE_STEPS_MAX, steps))
-        ratio = 0.0
-        if len(snap) < min_samples:
-            steps = 0
+        target_train_samples = int(TRAIN_TARGET_TRAIN_SAMPLES_PER_NEW * max(1, new_examples))
+        num_steps = int(np.ceil(target_train_samples / TRAIN_BATCH_SIZE))
+        num_steps = max(TRAIN_UPDATE_STEPS_MIN, min(TRAIN_UPDATE_STEPS_MAX, num_steps))
+        samples_ratio = 0.0
+        if len(snapshot) < min_batch_samples:
+            num_steps = 0
         else:
-            ratio = (steps * TRAIN_BATCH_SIZE) / max(1, new_examples)
+            samples_ratio = (num_steps * TRAIN_BATCH_SIZE) / max(1, new_examples)
 
-        grad_norm_running: float = 0.0
-        ent_running: float = 0.0
-        for _i_step in range(steps):
-            batch = self.selfplay_engine.sample_from_snapshot(snap, TRAIN_BATCH_SIZE, recent_ratio=TRAIN_RECENT_SAMPLE_RATIO)
+        grad_norm_sum: float = 0.0
+        entropy_sum: float = 0.0
+        for _step in range(num_steps):
+            batch = self.selfplay_engine.sample_from_snapshot(snapshot, TRAIN_BATCH_SIZE, recent_ratio=TRAIN_RECENT_SAMPLE_RATIO)
             if not batch:
                 continue
-            s, p, v = batch
+            states, policies, values = batch
             if np.random.rand() < AUGMENT_MIRROR_PROB:
-                s, p, _ = Augment.apply(s, p, "mirror")
+                states, policies, _ = Augment.apply(states, policies, "mirror")
             if np.random.rand() < AUGMENT_ROT180_PROB:
-                s, p, _ = Augment.apply(s, p, "rot180")
+                states, policies, _ = Augment.apply(states, policies, "rot180")
             if np.random.rand() < AUGMENT_VFLIP_CS_PROB:
-                s, p, cs = Augment.apply(s, p, "vflip_cs")
-                if cs:
-                    v = [-val for val in v]
-            pol_loss_t, val_loss_t, grad_norm_val, pred_entropy = self.train_step((s, p, v))
-            grad_norm_running += float(grad_norm_val)
-            ent_running += float(pred_entropy)
-            losses.append((pol_loss_t, val_loss_t))
+                states, policies, stm_swapped = Augment.apply(states, policies, "vflip_cs")
+                if stm_swapped:
+                    values = [-val for val in values]
+            policy_loss_t, value_loss_t, grad_norm_val, pred_entropy = self.train_step((states, policies, values))
+            grad_norm_sum += float(grad_norm_val)
+            entropy_sum += float(pred_entropy)
+            losses.append((policy_loss_t, value_loss_t))
 
-        tr_elapsed = time.time() - t1
-        actual_steps = len(losses)
-        pol_loss = float(torch.stack([pair[0] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
-        val_loss = float(torch.stack([pair[1] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
-        buf_sz = len(self.selfplay_engine.buffer)
-        buf_cap2 = int(self.selfplay_engine.buffer.maxlen or 1)
-        buf_pct2 = (buf_sz / buf_cap2) * 100
-        bps = (len(losses) / max(1e-9, tr_elapsed)) if losses else 0.0
-        sps = ((len(losses) * TRAIN_BATCH_SIZE) / max(1e-9, tr_elapsed)) if losses else 0.0
-        current_lr = self.optimizer.param_groups[0]["lr"]
-        avg_grad_norm = (grad_norm_running / max(1, len(losses))) if losses else 0.0
-        avg_entropy = (ent_running / max(1, len(losses))) if losses else 0.0
-        ent_coef_current = 0.0
+        train_elapsed_s = time.time() - t1
+        actual_update_steps = len(losses)
+        avg_policy_loss = float(torch.stack([pair[0] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
+        avg_value_loss = float(torch.stack([pair[1] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
+        buffer_size = len(self.selfplay_engine.buffer)
+        buffer_capacity2 = int(self.selfplay_engine.buffer.maxlen or 1)
+        buffer_pct2 = (buffer_size / buffer_capacity2) * 100
+        batches_per_sec = (len(losses) / max(1e-9, train_elapsed_s)) if losses else 0.0
+        samples_per_sec = ((len(losses) * TRAIN_BATCH_SIZE) / max(1e-9, train_elapsed_s)) if losses else 0.0
+        learning_rate = self.optimizer.param_groups[0]["lr"]
+        avg_grad_norm = (grad_norm_sum / max(1, len(losses))) if losses else 0.0
+        avg_entropy = (entropy_sum / max(1, len(losses))) if losses else 0.0
+        entropy_coef = 0.0
         if LOSS_ENTROPY_COEF_INIT > 0 and self.iteration <= LOSS_ENTROPY_ANNEAL_ITERS:
-            ent_coef_current = LOSS_ENTROPY_COEF_INIT * (1.0 - (self.iteration - 1) / max(1, LOSS_ENTROPY_ANNEAL_ITERS))
+            entropy_coef = LOSS_ENTROPY_COEF_INIT * (1.0 - (self.iteration - 1) / max(1, LOSS_ENTROPY_ANNEAL_ITERS))
         if LOSS_ENTROPY_COEF_MIN > 0:
-            ent_coef_current = max(float(ent_coef_current), float(LOSS_ENTROPY_COEF_MIN))
-        drift_pct = 0.0
+            entropy_coef = max(float(entropy_coef), float(LOSS_ENTROPY_COEF_MIN))
+        sched_drift_pct = 0.0
         if TRAIN_LR_SCHED_STEPS_PER_ITER_EST > 0:
-            drift_pct = 100.0 * (actual_steps - TRAIN_LR_SCHED_STEPS_PER_ITER_EST) / TRAIN_LR_SCHED_STEPS_PER_ITER_EST if actual_steps > 0 else 0.0
-        if self.iteration == 1 and actual_steps > 0 and abs(drift_pct) > TRAIN_LR_SCHED_DRIFT_ADJUST_THRESHOLD:
+            sched_drift_pct = 100.0 * (actual_update_steps - TRAIN_LR_SCHED_STEPS_PER_ITER_EST) / TRAIN_LR_SCHED_STEPS_PER_ITER_EST if actual_update_steps > 0 else 0.0
+        if self.iteration == 1 and actual_update_steps > 0 and abs(sched_drift_pct) > TRAIN_LR_SCHED_DRIFT_ADJUST_THRESHOLD:
             remaining_iters = max(0, TRAIN_TOTAL_ITERATIONS - self.iteration)
-            new_total = int(self.scheduler.t + remaining_iters * actual_steps)
+            new_total = int(self.scheduler.t + remaining_iters * actual_update_steps)
             new_total = max(self.scheduler.t + 1, new_total)
             self.scheduler.set_total_steps(new_total)
-            self.log.info(f"[LR ] adjust total_steps -> {self.scheduler.total} (iter1 measured {actual_steps} vs est {TRAIN_LR_SCHED_STEPS_PER_ITER_EST}, drift {drift_pct:+.1f}%)")
+            self.log.info(f"[LR ] adjust total_steps -> {self.scheduler.total} (iter1 measured {actual_update_steps} vs est {TRAIN_LR_SCHED_STEPS_PER_ITER_EST}, drift {sched_drift_pct:+.1f}%)")
 
-        stats.update({
-            "policy_loss": pol_loss,
-            "value_loss": val_loss,
-            "learning_rate": float(current_lr),
-            "buffer_size": buf_sz,
-            "buffer_percent": buf_pct2,
-            "training_time": tr_elapsed,
-            "batches_per_sec": bps,
-            "optimizer_steps": actual_steps,
-            "lr_sched_t": self.scheduler.t,
-            "lr_sched_total": self.scheduler.total,
-        })
+        stats.update(
+            {
+                "policy_loss": avg_policy_loss,
+                "value_loss": avg_value_loss,
+                "learning_rate": float(learning_rate),
+                "buffer_size": buffer_size,
+                "buffer_percent": buffer_pct2,
+                "training_time": train_elapsed_s,
+                "batches_per_sec": batches_per_sec,
+                "optimizer_steps": actual_update_steps,
+                "lr_sched_t": self.scheduler.t,
+                "lr_sched_total": self.scheduler.total,
+            }
+        )
 
         recent_pct = int(round(100.0 * TRAIN_RECENT_SAMPLE_RATIO))
         old_pct = max(0, 100 - recent_pct)
-        tr_plan_line = f"plan {steps} | tgt {TRAIN_TARGET_TRAIN_SAMPLES_PER_NEW:.1f}x | act {ratio:>3.1f}x | mix {recent_pct}/{old_pct}%" if steps > 0 else "plan 0 skip (buffer underfilled)"
+        tr_plan_line = f"plan {num_steps} | tgt {TRAIN_TARGET_TRAIN_SAMPLES_PER_NEW:.1f}x | act {samples_ratio:>3.1f}x | mix {recent_pct}/{old_pct}%" if num_steps > 0 else "plan 0 skip (buffer underfilled)"
         tr_line = (
-            f"steps {len(losses):>3} | b/s {bps:>4.1f} | sps {self._format_si(sps, digits=1)} | t {self._format_time(tr_elapsed)} | "
-            f"P {pol_loss:>6.4f} | V {val_loss:>6.4f} | LR {current_lr:.2e} | grad {avg_grad_norm:>5.3f} | ent {avg_entropy:>5.3f} | "
-            f"entc {ent_coef_current:.2e} | clip {TRAIN_GRAD_CLIP_NORM:.1f} | buf {int(buf_pct2):>3}% ({self._format_si(buf_sz)})"
+            f"steps {len(losses):>3} | b/s {batches_per_sec:>4.1f} | sps {self._format_si(samples_per_sec, digits=1)} | t {self._format_time(train_elapsed_s)} | "
+            f"P {avg_policy_loss:>6.4f} | V {avg_value_loss:>6.4f} | LR {learning_rate:.2e} | grad {avg_grad_norm:>5.3f} | ent {avg_entropy:>5.3f} | "
+            f"entc {entropy_coef:.2e} | clip {TRAIN_GRAD_CLIP_NORM:.1f} | buf {int(buffer_pct2):>3}% ({self._format_si(buffer_size)})"
         )
-        lr_sched_fragment = f"sched {TRAIN_LR_SCHED_STEPS_PER_ITER_EST}->{actual_steps} | drift {drift_pct:+.0f}% | pos {self.scheduler.t}/{self._format_si(self.scheduler.total)}"
+        lr_sched_fragment = f"sched {TRAIN_LR_SCHED_STEPS_PER_ITER_EST}->{actual_update_steps} | drift {sched_drift_pct:+.0f}% | pos {self.scheduler.t}/{self._format_si(self.scheduler.total)}"
 
         self.log.info("[TR] " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment)
-        self._prev_eval_m = eval_m
+        self._prev_eval_m = eval_metrics
 
         return stats
 
     def _clone_from_ema(self) -> torch.nn.Module:
-        m = self._clone_model()
+        model_clone = self._clone_model()
         if self.ema is not None:
-            self.ema.copy_to(m)
-        return m
+            self.ema.copy_to(model_clone)
+        return model_clone
 
     def _arena_match(self, challenger: torch.nn.Module, incumbent: torch.nn.Module) -> tuple[float, int, int, int]:
+        """Play a stratified arena between challenger and incumbent; returns (score, W, D, L)."""
         import chesscore as _ccore
         import numpy as _np
 
@@ -750,83 +755,86 @@ class Trainer:
         if not openings:
             raise RuntimeError("Arena openings not loaded.")
 
-        with _BatchedEval(self.device) as ce, _BatchedEval(self.device) as ie:
-            ce.refresh_from(challenger)
-            ie.refresh_from(incumbent)
-            ce.cache_cap = ARENA_EVAL_CACHE_CAPACITY
-            ie.cache_cap = ARENA_EVAL_CACHE_CAPACITY
+        with (
+            _BatchedEval(self.device) as challenger_eval,
+            _BatchedEval(self.device) as incumbent_eval,
+        ):
+            challenger_eval.refresh_from(challenger)
+            incumbent_eval.refresh_from(incumbent)
+            challenger_eval.cache_capacity = ARENA_EVAL_CACHE_CAPACITY
+            incumbent_eval.cache_capacity = ARENA_EVAL_CACHE_CAPACITY
 
-            def play(e1: _BatchedEval, e2: _BatchedEval, start_fen: str) -> int:
-                pos = _ccore.Position()
-                pos.from_fen(start_fen)
-                m1 = _ccore.MCTS(
+            def play(evaluator_white: _BatchedEval, evaluator_black: _BatchedEval, start_fen: str) -> int:
+                position = _ccore.Position()
+                position.from_fen(start_fen)
+                mcts_white = _ccore.MCTS(
                     MCTS_EVAL_SIMULATIONS,
                     MCTS_C_PUCT,
                     MCTS_DIRICHLET_ALPHA,
                     0.0 if ARENA_DETERMINISTIC else float(ARENA_DIRICHLET_WEIGHT),
                 )
-                m1.set_c_puct_params(MCTS_C_PUCT_BASE, MCTS_C_PUCT_INIT)
-                m1.set_fpu_reduction(MCTS_FPU_REDUCTION)
-                m2 = _ccore.MCTS(
+                mcts_white.set_c_puct_params(MCTS_C_PUCT_BASE, MCTS_C_PUCT_INIT)
+                mcts_white.set_fpu_reduction(MCTS_FPU_REDUCTION)
+                mcts_black = _ccore.MCTS(
                     MCTS_EVAL_SIMULATIONS,
                     MCTS_C_PUCT,
                     MCTS_DIRICHLET_ALPHA,
                     0.0 if ARENA_DETERMINISTIC else float(ARENA_DIRICHLET_WEIGHT),
                 )
-                m2.set_c_puct_params(MCTS_C_PUCT_BASE, MCTS_C_PUCT_INIT)
-                m2.set_fpu_reduction(MCTS_FPU_REDUCTION)
-                t = 0
-                while pos.result() == _ccore.ONGOING and t < GAME_MAX_PLIES:
-                    visits = m1.search_batched(pos, e1.infer_positions, EVAL_BATCH_SIZE_MAX) if t % 2 == 0 else m2.search_batched(pos, e2.infer_positions, EVAL_BATCH_SIZE_MAX)
+                mcts_black.set_c_puct_params(MCTS_C_PUCT_BASE, MCTS_C_PUCT_INIT)
+                mcts_black.set_fpu_reduction(MCTS_FPU_REDUCTION)
+                ply = 0
+                while position.result() == _ccore.ONGOING and ply < GAME_MAX_PLIES:
+                    visits = mcts_white.search_batched(position, evaluator_white.infer_positions, EVAL_BATCH_SIZE_MAX) if ply % 2 == 0 else mcts_black.search_batched(position, evaluator_black.infer_positions, EVAL_BATCH_SIZE_MAX)
                     if visits is None:
                         break
-                    v = _np.asarray(visits, dtype=_np.float64)
-                    if v.size == 0:
+                    visit_counts = _np.asarray(visits, dtype=_np.float64)
+                    if visit_counts.size == 0:
                         break
-                    moves = pos.legal_moves()
+                    legal_moves = position.legal_moves()
                     if ARENA_DETERMINISTIC:
-                        idx = int(_np.argmax(v))
+                        idx = int(_np.argmax(visit_counts))
                     else:
-                        if t < ARENA_TEMP_MOVES:
+                        if ply < ARENA_TEMP_MOVES:
                             temp = float(ARENA_TEMPERATURE)
                             if temp <= 0.0 + ARENA_OPENING_TEMPERATURE_EPS:
-                                idx = int(_np.argmax(v))
+                                idx = int(_np.argmax(visit_counts))
                             else:
-                                v_pos = _np.maximum(v, 0.0)
+                                v_pos = _np.maximum(visit_counts, 0.0)
                                 s0 = v_pos.sum()
                                 if s0 <= 0:
-                                    idx = int(_np.argmax(v))
+                                    idx = int(_np.argmax(visit_counts))
                                 else:
                                     probs = v_pos ** (1.0 / temp)
                                     s = probs.sum()
-                                    idx = int(_np.argmax(v)) if s <= 0 else int(_np.random.choice(len(moves), p=probs / s))
+                                    idx = int(_np.argmax(visit_counts)) if s <= 0 else int(_np.random.choice(len(legal_moves), p=probs / s))
                         else:
-                            idx = int(_np.argmax(v))
-                    pos.make_move(moves[idx])
-                    t += 1
-                r = pos.result()
+                            idx = int(_np.argmax(visit_counts))
+                    position.make_move(legal_moves[idx])
+                    ply += 1
+                r = position.result()
                 return 1 if r == _ccore.WHITE_WIN else (-1 if r == _ccore.BLACK_WIN else 0)
 
-            pairs = max(1, ARENA_GAMES_PER_EVAL // ARENA_PAIRING_FACTOR)
+            pair_count = max(1, ARENA_GAMES_PER_EVAL // ARENA_PAIRING_FACTOR)
             if ARENA_STRATIFY_OPENINGS:
-                n_open = len(openings)
-                if n_open == 0:
+                num_openings = len(openings)
+                if num_openings == 0:
                     raise RuntimeError("Arena openings not loaded.")
-                if pairs <= n_open:
-                    idxs = _np.random.permutation(n_open)[:pairs]
+                if pair_count <= num_openings:
+                    opening_indices = _np.random.permutation(num_openings)[:pair_count]
                 else:
-                    reps = int(_np.ceil(pairs / n_open))
-                    idxs = _np.tile(_np.random.permutation(n_open), reps)[:pairs]
+                    reps = int(_np.ceil(pair_count / num_openings))
+                    opening_indices = _np.tile(_np.random.permutation(num_openings), reps)[:pair_count]
             else:
-                idxs = _np.random.randint(0, len(openings), size=pairs)
-            for i in idxs:
-                start_fen = openings[int(i)]
-                r1 = play(ce, ie, start_fen)
-                r2 = -play(ie, ce, start_fen)
-                for r in (r1, r2):
-                    if r > 0:
+                opening_indices = _np.random.randint(0, len(openings), size=pair_count)
+            for idx in opening_indices:
+                start_fen = openings[int(idx)]
+                r1 = play(challenger_eval, incumbent_eval, start_fen)
+                r2 = -play(incumbent_eval, challenger_eval, start_fen)
+                for outcome in (r1, r2):
+                    if outcome > 0:
                         wins += 1
-                    elif r < 0:
+                    elif outcome < 0:
                         losses += 1
                     else:
                         draws += 1
@@ -882,10 +890,7 @@ class Trainer:
                 self._gate_rounds += 1
                 decision, m = self._gate.decision()
                 self.log.info(
-                    "[AR ] "
-                    f"W/D/L {aw}/{ad}/{al} | n {int(m.get('n', 0))} | p {100.0 * m.get('p', 0):>5.1f}% | "
-                    f"elo {m.get('elo', 0):>6.1f} ±{m.get('se_elo', 0):.1f} | decision {decision.upper()} | "
-                    f"time {self._format_time(arena_elapsed)} | age_iter {iteration - self._gate_started_iter} | rounds {self._gate_rounds}"
+                    f"[AR ] W/D/L {aw}/{ad}/{al} | n {int(m.get('n', 0))} | p {100.0 * m.get('p', 0):>5.1f}% | elo {m.get('elo', 0):>6.1f} ±{m.get('se_elo', 0):.1f} | decision {decision.upper()} | time {self._format_time(arena_elapsed)} | age_iter {iteration - self._gate_started_iter} | rounds {self._gate_rounds}"
                 )
 
                 if decision == "accept":
@@ -918,17 +923,19 @@ class Trainer:
                 next_ar = (k - r) if r != 0 else k
             peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
-            mem2 = self._get_mem_info()
+            mem_info_summary = self._get_mem_info()
             self.log.info(
                 f"[SUM] iter {self._format_time(full_iter_time)} | sp {self._format_time(sp_time)} | tr {self._format_time(tr_time)} | ar {self._format_time(arena_elapsed)} | "
                 f"elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | "
-                f"peak GPU {self._format_gb(peak_alloc)}/{self._format_gb(peak_res)} | RSS {self._format_gb(mem2['rss_gb'])}"
+                f"peak GPU {self._format_gb(peak_alloc)}/{self._format_gb(peak_res)} | RSS {self._format_gb(mem_info_summary['rss_gb'])}"
             )
 
             self._prev_eval_m = self.evaluator.get_metrics()
 
 
 class EloGater:
+    """Statistical gate to accept/reject new models based on match score."""
+
     def __init__(
         self,
         z: float = ARENA_GATE_Z_LATE,
@@ -1021,19 +1028,19 @@ if __name__ == "__main__":
     import sys
 
     root = logging.getLogger()
-    lvl = getattr(logging, str(LOG_LEVEL).upper(), logging.INFO)
-    root.setLevel(lvl)
-    for h in list(root.handlers):
-        root.removeHandler(h)
-    ch = logging.StreamHandler(stream=sys.stdout)
-    ch.setLevel(lvl)
-    ch.setFormatter(logging.Formatter(fmt="%(asctime)s %(message)s", datefmt="%H:%M:%S"))
-    root.addHandler(ch)
+    log_level = getattr(logging, str(LOG_LEVEL).upper(), logging.INFO)
+    root.setLevel(log_level)
+    for handler in list(root.handlers):
+        root.removeHandler(handler)
+    stdout_handler = logging.StreamHandler(stream=sys.stdout)
+    stdout_handler.setLevel(log_level)
+    stdout_handler.setFormatter(logging.Formatter(fmt="%(asctime)s %(message)s", datefmt="%H:%M:%S"))
+    root.addHandler(stdout_handler)
     if LOG_TO_FILE:
-        fh = logging.FileHandler(LOG_FILE_PATH, mode="w", encoding="utf-8")
-        fh.setLevel(lvl)
-        fh.setFormatter(logging.Formatter(fmt="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
-        root.addHandler(fh)
+        file_handler = logging.FileHandler(LOG_FILE_PATH, mode="w", encoding="utf-8")
+        file_handler.setLevel(log_level)
+        file_handler.setFormatter(logging.Formatter(fmt="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+        root.addHandler(file_handler)
     torch.set_float32_matmul_precision(TORCH_MATMUL_FLOAT32_PRECISION)
     torch.backends.cuda.matmul.allow_tf32 = bool(TORCH_ALLOW_TF32)
     torch.backends.cudnn.allow_tf32 = bool(TORCH_ALLOW_TF32)

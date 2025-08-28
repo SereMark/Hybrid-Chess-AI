@@ -60,80 +60,82 @@ if TYPE_CHECKING:
 
 
 class Augment:
+    """State/policy augmentations and their plane/index remappings."""
+
     _policy_map_cache: dict[str, np.ndarray] = {}
 
     @staticmethod
-    def _policy_index_map(which: str) -> np.ndarray:
-        if which in Augment._policy_map_cache:
-            return Augment._policy_map_cache[which]
+    def _policy_index_permutation(transform: str) -> np.ndarray:
+        if transform in Augment._policy_map_cache:
+            return Augment._policy_map_cache[transform]
         assert POLICY_OUTPUT % NSQUARES == 0, "POLICY_OUTPUT must be divisible by NSQUARES"
         planes = POLICY_OUTPUT // NSQUARES
-        req = max(
+        required_planes = max(
             KNIGHT_PLANES_BASE + NUM_KNIGHT_DIRS,
             NSQUARES + PROMO_STRIDE * PROMO_CHOICES,
         )
         base = np.arange(POLICY_OUTPUT, dtype=np.int32).reshape(planes, BOARD_SIZE, BOARD_SIZE)
         out = base
-        if which == "mirror":
+        if transform == "mirror":
             arr = base[:, :, ::-1]
             out = arr.copy()
-            if planes >= req:
+            if planes >= required_planes:
                 dir_map = DIR_MAP_MIRROR
                 for d in range(NUM_DIRECTIONS):
-                    for r in range(DIR_MAX_DIST):
-                        out[dir_map[d] * DIR_MAX_DIST + r] = arr[d * DIR_MAX_DIST + r]
-                kmap = KMAP_MIRROR
-                for i in range(NUM_KNIGHT_DIRS):
-                    out[KNIGHT_PLANES_BASE + kmap[i]] = arr[KNIGHT_PLANES_BASE + i]
-                pmap = PMAP_PROMOS
-                for p in range(PROMO_CHOICES):
-                    b = NSQUARES + p * PROMO_STRIDE
-                    out[b + pmap[0]] = arr[b + 0]
-                    out[b + pmap[1]] = arr[b + 1]
-                    out[b + pmap[2]] = arr[b + 2]
+                    for dist in range(DIR_MAX_DIST):
+                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[d * DIR_MAX_DIST + dist]
+                knight_map = KMAP_MIRROR
+                for k in range(NUM_KNIGHT_DIRS):
+                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[KNIGHT_PLANES_BASE + k]
+                promo_map = PMAP_PROMOS
+                for promo in range(PROMO_CHOICES):
+                    b = NSQUARES + promo * PROMO_STRIDE
+                    out[b + promo_map[0]] = arr[b + 0]
+                    out[b + promo_map[1]] = arr[b + 1]
+                    out[b + promo_map[2]] = arr[b + 2]
             else:
-                Augment._policy_map_cache[which] = np.arange(POLICY_OUTPUT, dtype=np.int32)
-                return Augment._policy_map_cache[which]
-        elif which == "rot180":
+                Augment._policy_map_cache[transform] = np.arange(POLICY_OUTPUT, dtype=np.int32)
+                return Augment._policy_map_cache[transform]
+        elif transform == "rot180":
             arr = base[:, ::-1, ::-1]
             out = arr.copy()
-            if planes >= req:
+            if planes >= required_planes:
                 dir_map = DIR_MAP_ROT180
                 for d in range(NUM_DIRECTIONS):
-                    for r in range(DIR_MAX_DIST):
-                        out[dir_map[d] * DIR_MAX_DIST + r] = arr[d * DIR_MAX_DIST + r]
-                kmap = KMAP_ROT180
-                for i in range(NUM_KNIGHT_DIRS):
-                    out[KNIGHT_PLANES_BASE + kmap[i]] = arr[KNIGHT_PLANES_BASE + i]
-                pmap = PMAP_PROMOS
-                for p in range(PROMO_CHOICES):
-                    b = NSQUARES + p * PROMO_STRIDE
-                    out[b + pmap[0]] = arr[b + 0]
-                    out[b + pmap[1]] = arr[b + 1]
-                    out[b + pmap[2]] = arr[b + 2]
+                    for dist in range(DIR_MAX_DIST):
+                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[d * DIR_MAX_DIST + dist]
+                knight_map = KMAP_ROT180
+                for k in range(NUM_KNIGHT_DIRS):
+                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[KNIGHT_PLANES_BASE + k]
+                promo_map = PMAP_PROMOS
+                for promo in range(PROMO_CHOICES):
+                    b = NSQUARES + promo * PROMO_STRIDE
+                    out[b + promo_map[0]] = arr[b + 0]
+                    out[b + promo_map[1]] = arr[b + 1]
+                    out[b + promo_map[2]] = arr[b + 2]
             else:
-                Augment._policy_map_cache[which] = np.arange(POLICY_OUTPUT, dtype=np.int32)
-                return Augment._policy_map_cache[which]
+                Augment._policy_map_cache[transform] = np.arange(POLICY_OUTPUT, dtype=np.int32)
+                return Augment._policy_map_cache[transform]
 
-        elif which == "vflip_cs":
+        elif transform == "vflip_cs":
             arr = base[:, ::-1, :]
             out = arr.copy()
-            if planes >= req:
+            if planes >= required_planes:
                 dir_map = DIR_MAP_VFLIP_CS
                 for d in range(NUM_DIRECTIONS):
-                    for r in range(DIR_MAX_DIST):
-                        out[dir_map[d] * DIR_MAX_DIST + r] = arr[d * DIR_MAX_DIST + r]
-                kmap = KMAP_VFLIP_CS
-                for i in range(NUM_KNIGHT_DIRS):
-                    out[KNIGHT_PLANES_BASE + kmap[i]] = arr[KNIGHT_PLANES_BASE + i]
+                    for dist in range(DIR_MAX_DIST):
+                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[d * DIR_MAX_DIST + dist]
+                knight_map = KMAP_VFLIP_CS
+                for k in range(NUM_KNIGHT_DIRS):
+                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[KNIGHT_PLANES_BASE + k]
             else:
-                Augment._policy_map_cache[which] = np.arange(POLICY_OUTPUT, dtype=np.int32)
-                return Augment._policy_map_cache[which]
-        Augment._policy_map_cache[which] = out.reshape(-1)
-        return Augment._policy_map_cache[which]
+                Augment._policy_map_cache[transform] = np.arange(POLICY_OUTPUT, dtype=np.int32)
+                return Augment._policy_map_cache[transform]
+        Augment._policy_map_cache[transform] = out.reshape(-1)
+        return Augment._policy_map_cache[transform]
 
     @staticmethod
-    def _plane_indices() -> dict[str, int]:
+    def _feature_plane_indices() -> dict[str, int]:
         turn_plane = HISTORY_LENGTH * PLANES_PER_POSITION
         fullmove_plane = turn_plane + 1
         castling_base = turn_plane + 2
@@ -146,52 +148,62 @@ class Augment:
         }
 
     @staticmethod
-    def _vflip_cs_plane_perm(num_planes: int) -> np.ndarray:
-        idx = Augment._plane_indices()
+    def _vflip_cs_plane_permutation(num_planes: int) -> np.ndarray:
+        meta = Augment._feature_plane_indices()
         perm = np.arange(num_planes, dtype=np.int32)
-        for t in range(idx["hist_len"]):
-            base = t * idx["planes_per_pos"]
+        for t in range(meta["hist_len"]):
+            base = t * meta["planes_per_pos"]
             for piece in range(6):
-                a = base + piece * 2 + 0
-                b = base + piece * 2 + 1
-                perm[a], perm[b] = perm[b], perm[a]
-        cs = idx["castling_base"]
-        if cs + 3 < num_planes:
-            perm[cs + 0], perm[cs + 2] = perm[cs + 2], perm[cs + 0]
-            perm[cs + 1], perm[cs + 3] = perm[cs + 3], perm[cs + 1]
+                plane_a = base + piece * 2 + 0
+                plane_b = base + piece * 2 + 1
+                perm[plane_a], perm[plane_b] = perm[plane_b], perm[plane_a]
+        castling_plane_base = meta["castling_base"]
+        if castling_plane_base + 3 < num_planes:
+            perm[castling_plane_base + 0], perm[castling_plane_base + 2] = (
+                perm[castling_plane_base + 2],
+                perm[castling_plane_base + 0],
+            )
+            perm[castling_plane_base + 1], perm[castling_plane_base + 3] = (
+                perm[castling_plane_base + 3],
+                perm[castling_plane_base + 1],
+            )
         return perm
 
     @staticmethod
-    def apply(states: list[np.ndarray], policies: list[np.ndarray], which: str) -> tuple[list[np.ndarray], list[np.ndarray], bool]:
+    def apply(states: list[np.ndarray], policies: list[np.ndarray], transform: str) -> tuple[list[np.ndarray], list[np.ndarray], bool]:
+        """Apply augmentation and remap policy indices; returns (states, policies, stm_swapped)."""
         if not states:
             return states, policies, False
-        st = np.stack(states, axis=0)
-        pol = np.stack(policies, axis=0)
-        swapped = False
-        if which == "mirror":
-            st = st[..., ::-1].copy()
-            pol = pol[:, Augment._policy_index_map("mirror")]
-        elif which == "rot180":
-            st = st[..., ::-1, ::-1].copy()
-            pol = pol[:, Augment._policy_index_map("rot180")]
-        elif which == "vflip_cs":
-            st = st[..., ::-1, :].copy()
-            perm = Augment._vflip_cs_plane_perm(st.shape[1])
-            st = st[:, perm]
-            idx = Augment._plane_indices()
+        state_batch = np.stack(states, axis=0)
+        policy_batch = np.stack(policies, axis=0)
+        stm_swapped = False
+        if transform == "mirror":
+            state_batch = state_batch[..., ::-1].copy()
+            policy_batch = policy_batch[:, Augment._policy_index_permutation("mirror")]
+        elif transform == "rot180":
+            state_batch = state_batch[..., ::-1, ::-1].copy()
+            policy_batch = policy_batch[:, Augment._policy_index_permutation("rot180")]
+        elif transform == "vflip_cs":
+            # Vertical flip + castling-side swap; side-to-move flips.
+            state_batch = state_batch[..., ::-1, :].copy()
+            perm = Augment._vflip_cs_plane_permutation(state_batch.shape[1])
+            state_batch = state_batch[:, perm]
+            idx = Augment._feature_plane_indices()
             tp = idx["turn_plane"]
-            if tp < st.shape[1]:
-                st[:, tp] = 1.0 - st[:, tp]
-            pol = pol[:, Augment._policy_index_map("vflip_cs")]
-            swapped = True
+            if tp < state_batch.shape[1]:
+                state_batch[:, tp] = 1.0 - state_batch[:, tp]
+            policy_batch = policy_batch[:, Augment._policy_index_permutation("vflip_cs")]
+            stm_swapped = True
         else:
             return states, policies, False
-        out_states = [st[i].copy() for i in range(st.shape[0])]
-        out_pols = [pol[i].copy() for i in range(pol.shape[0])]
-        return out_states, out_pols, swapped
+        out_states = [state_batch[i].copy() for i in range(state_batch.shape[0])]
+        out_pols = [policy_batch[i].copy() for i in range(policy_batch.shape[0])]
+        return out_states, out_pols, stm_swapped
 
 
 class SelfPlayEngine:
+    """Generates self-play games, builds replay buffer, and samples batches."""
+
     def __init__(self, evaluator: BatchedEvaluator) -> None:
         self.resign_consecutive = RESIGN_CONSECUTIVE_PLIES
         self.evaluator = evaluator
@@ -199,35 +211,34 @@ class SelfPlayEngine:
         self.buffer_lock = threading.Lock()
 
     @staticmethod
-    def _to_u8_plane(enc: np.ndarray) -> np.ndarray:
+    def encode_u8(enc: np.ndarray) -> np.ndarray:
+        """Quantize [0,1] float planes to uint8."""
         x = np.clip(enc, 0.0, 1.0) * U8_SCALE
         return np.rint(x).astype(np.uint8, copy=False)
 
     @staticmethod
-    def _value_to_i8(v: float) -> np.int8:
+    def encode_value_i8(v: float) -> np.int8:
+        """Scale value target to int8."""
         return np.int8(np.clip(np.rint(v * VALUE_I8_SCALE), -int(VALUE_I8_SCALE), int(VALUE_I8_SCALE)))
 
-    def _temp_select(self, moves: list[Any], visits: list[int], move_number: int) -> Any:
+    def _select_move_by_temperature(self, moves: list[Any], visit_counts: list[int], move_number: int) -> Any:
         temperature = SELFPLAY_TEMP_HIGH if move_number < SELFPLAY_TEMP_MOVES else SELFPLAY_TEMP_LOW
         if temperature > SELFPLAY_DETERMINISTIC_TEMP_EPS:
-            probs = np.maximum(np.array(visits, dtype=np.float64), 0.0)
+            probs = np.maximum(np.array(visit_counts, dtype=np.float64), 0.0)
             s = probs.sum()
             if not np.isfinite(s) or s <= 0:
-                idx = int(np.argmax(visits))
+                idx = int(np.argmax(visit_counts))
             else:
                 probs = probs ** (1.0 / temperature)
                 s = probs.sum()
-                if not np.isfinite(s) or s <= 0:
-                    idx = int(np.argmax(visits))
-                else:
-                    idx = int(np.random.choice(len(moves), p=probs / s))
+                idx = int(np.argmax(visit_counts)) if (not np.isfinite(s) or s <= 0) else int(np.random.choice(len(moves), p=probs / s))
         else:
-            idx = int(np.argmax(visits))
+            idx = int(np.argmax(visit_counts))
         return moves[idx]
 
     def _process_result(
         self,
-        data: list[tuple[np.ndarray, np.ndarray]],
+        examples: list[tuple[np.ndarray, np.ndarray]],
         result: int,
         first_to_move_is_white: bool,
     ) -> None:
@@ -238,10 +249,10 @@ class SelfPlayEngine:
         else:
             base = 0.0
         with self.buffer_lock:
-            for i, (position_u8, counts_u16) in enumerate(data):
-                stm_is_white = ((i % 2) == 0) == bool(first_to_move_is_white)
-                v = base if stm_is_white else -base
-                self.buffer.append((position_u8, counts_u16, SelfPlayEngine._value_to_i8(v)))
+            for ply_index, (position_u8, counts_u16) in enumerate(examples):
+                stm_is_white = ((ply_index % 2) == 0) == bool(first_to_move_is_white)
+                target_value = base if stm_is_white else -base
+                self.buffer.append((position_u8, counts_u16, SelfPlayEngine.encode_value_i8(target_value)))
 
     def play_single_game(self) -> tuple[int, int]:
         position = ccore.Position()
@@ -251,12 +262,12 @@ class SelfPlayEngine:
         mcts.set_c_puct_params(MCTS_C_PUCT_BASE, MCTS_C_PUCT_INIT)
         mcts.set_fpu_reduction(MCTS_FPU_REDUCTION)
 
-        data: list[tuple[np.ndarray, np.ndarray]] = []
-        history: list[Any] = []
+        examples: list[tuple[np.ndarray, np.ndarray]] = []
+        position_history: list[Any] = []
         move_count = 0
 
-        open_plies = int(np.random.randint(0, SELFPLAY_OPENING_RANDOM_PLIES_MAX))
-        for _ in range(open_plies):
+        random_opening_plies = int(np.random.randint(0, SELFPLAY_OPENING_RANDOM_PLIES_MAX))
+        for _ in range(random_opening_plies):
             if position.result() != ccore.ONGOING:
                 break
             moves = position.legal_moves()
@@ -264,9 +275,9 @@ class SelfPlayEngine:
                 break
             position.make_move(moves[int(np.random.randint(0, len(moves)))])
 
-        first_stm_white: bool | None = None
+        first_to_move_is_white: bool | None = None
         while position.result() == ccore.ONGOING and move_count < GAME_MAX_PLIES:
-            pos_copy = ccore.Position(position)
+            pos_snapshot = ccore.Position(position)
 
             sims = max(
                 MCTS_TRAIN_SIMULATIONS_MIN,
@@ -282,57 +293,57 @@ class SelfPlayEngine:
             moves = position.legal_moves()
             if not moves:
                 break
-            visits = mcts.search_batched(position, self.evaluator.infer_positions, EVAL_BATCH_SIZE_MAX)
-            if not visits or len(visits) != len(moves):
+            visit_counts = mcts.search_batched(position, self.evaluator.infer_positions, EVAL_BATCH_SIZE_MAX)
+            if not visit_counts or len(visit_counts) != len(moves):
                 break
 
-            counts = np.zeros(POLICY_OUTPUT, dtype=np.uint16)
-            for mv, vc in zip(moves, visits, strict=False):
-                idx = ccore.encode_move_index(mv)
-                if (idx is not None) and (0 <= int(idx) < POLICY_OUTPUT):
+            policy_counts = np.zeros(POLICY_OUTPUT, dtype=np.uint16)
+            for mv, vc in zip(moves, visit_counts, strict=False):
+                move_index = ccore.encode_move_index(mv)
+                if (move_index is not None) and (0 <= int(move_index) < POLICY_OUTPUT):
                     c = min(int(vc), MCTS_VISIT_COUNT_CLAMP)
-                    counts[int(idx)] = np.uint16(c)
+                    policy_counts[int(move_index)] = np.uint16(c)
 
-            if history:
-                histories = history[-HISTORY_LENGTH:] + [pos_copy]
-                encoded = ccore.encode_batch([histories])[0]
+            if position_history:
+                history_window = position_history[-HISTORY_LENGTH:] + [pos_snapshot]
+                encoded = ccore.encode_batch([history_window])[0]
             else:
-                encoded = ccore.encode_position(pos_copy)
-            encoded_u8 = SelfPlayEngine._to_u8_plane(encoded)
-            counts_u16 = counts
-            data.append((encoded_u8, counts_u16))
+                encoded = ccore.encode_position(pos_snapshot)
+            encoded_u8 = SelfPlayEngine.encode_u8(encoded)
+            policy_counts_u16 = policy_counts
+            examples.append((encoded_u8, policy_counts_u16))
 
-            if first_stm_white is None:
-                first_stm_white = pos_copy.turn == ccore.WHITE
+            if first_to_move_is_white is None:
+                first_to_move_is_white = pos_snapshot.turn == ccore.WHITE
 
             if self.resign_consecutive > 0:
-                _, val_arr = self.evaluator.infer_positions([pos_copy])
-                v = float(val_arr[0])
-                if v <= RESIGN_VALUE_THRESHOLD:
+                _, val_arr = self.evaluator.infer_positions([pos_snapshot])
+                value_estimate = float(val_arr[0])
+                if value_estimate <= RESIGN_VALUE_THRESHOLD:
                     resign_count += 1
                     if resign_count >= self.resign_consecutive:
                         if np.random.rand() < RESIGN_PLAYTHROUGH_FRACTION:
                             resign_count = 0
                         else:
-                            stm_white = position.turn == ccore.WHITE
-                            forced_result = ccore.BLACK_WIN if stm_white else ccore.WHITE_WIN
+                            side_to_move_is_white = position.turn == ccore.WHITE
+                            forced_result = ccore.BLACK_WIN if side_to_move_is_white else ccore.WHITE_WIN
                             break
                 else:
                     resign_count = 0
 
-            move = self._temp_select(moves, visits, move_count)
+            move = self._select_move_by_temperature(moves, visit_counts, move_count)
             position.make_move(move)
-            history.append(pos_copy)
-            if len(history) > HISTORY_LENGTH:
-                history.pop(0)
+            position_history.append(pos_snapshot)
+            if len(position_history) > HISTORY_LENGTH:
+                position_history.pop(0)
             move_count += 1
 
         final_result = forced_result if forced_result is not None else position.result()
 
         self._process_result(
-            data,
+            examples,
             final_result,
-            True if first_stm_white is None else bool(first_stm_white),
+            True if first_to_move_is_white is None else bool(first_to_move_is_white),
         )
 
         return move_count, final_result
@@ -347,18 +358,18 @@ class SelfPlayEngine:
         batch_size: int,
         recent_ratio: float = REPLAY_SNAPSHOT_RECENT_RATIO_DEFAULT,
     ) -> tuple[list[np.ndarray], list[np.ndarray], list[float]] | None:
-        N = len(snapshot)
-        if batch_size > N:
+        sample_count = len(snapshot)
+        if batch_size > sample_count:
             return None
-        recent_N = max(1, int(N * REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC))
+        recent_window_count = max(1, int(sample_count * REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC))
         n_recent = int(round(batch_size * recent_ratio))
         n_old = batch_size - n_recent
-        recent_idx = np.random.randint(max(0, N - recent_N), N, size=n_recent)
-        old_idx = np.random.randint(0, max(1, N - recent_N), size=n_old)
-        sel_idx = np.concatenate([recent_idx, old_idx])
-        states_u8, counts_u16, values_i8 = zip(*[snapshot[int(i)] for i in sel_idx], strict=False)
-        states = [s.astype(np.float32) / U8_SCALE for s in states_u8]
-        counts = [p.astype(np.float32) for p in counts_u16]
+        recent_indices = np.random.randint(max(0, sample_count - recent_window_count), sample_count, size=n_recent)
+        old_indices = np.random.randint(0, max(1, sample_count - recent_window_count), size=n_old)
+        indices = np.concatenate([recent_indices, old_indices])
+        states_u8_list, counts_u16_list, values_i8_list = zip(*[snapshot[int(i)] for i in indices], strict=False)
+        states = [s.astype(np.float32) / U8_SCALE for s in states_u8_list]
+        counts = [p.astype(np.float32) for p in counts_u16_list]
         policies: list[np.ndarray] = []
         for c in counts:
             s = float(c.sum())
@@ -366,11 +377,11 @@ class SelfPlayEngine:
                 policies.append(c / s)
             else:
                 policies.append(np.full_like(c, 1.0 / max(1, c.size), dtype=np.float32))
-        values = [float(v) / VALUE_I8_SCALE for v in values_i8]
+        values = [float(v) / VALUE_I8_SCALE for v in values_i8_list]
         return states, policies, values
 
     def play_games(self, num_games: int) -> dict[str, Any]:
-        res: dict[str, Any] = {
+        stats: dict[str, Any] = {
             "games": 0,
             "moves": 0,
             "white_wins": 0,
@@ -381,12 +392,12 @@ class SelfPlayEngine:
             futures = [ex.submit(self.play_single_game) for _ in range(num_games)]
             for fut in as_completed(futures):
                 moves, result = fut.result()
-                res["games"] += 1
-                res["moves"] += moves
+                stats["games"] += 1
+                stats["moves"] += moves
                 if result == ccore.WHITE_WIN:
-                    res["white_wins"] += 1
+                    stats["white_wins"] += 1
                 elif result == ccore.BLACK_WIN:
-                    res["black_wins"] += 1
+                    stats["black_wins"] += 1
                 else:
-                    res["draws"] += 1
-        return res
+                    stats["draws"] += 1
+        return stats

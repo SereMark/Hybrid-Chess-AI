@@ -9,9 +9,10 @@
 
 namespace mcts {
 
-[[gnu::hot, gnu::always_inline]] inline float Node::ucb(float c, float s, float parent_q, float fpu) const {
+[[gnu::hot, gnu::always_inline]] inline float Node::ucb(float c_puct, float sqrt_visits,
+                                                        float parent_q, float fpu) const {
     const float q = (visits > 0) ? (val_sum / visits) : (parent_q - fpu);
-    const float u = c * prior * s / (1.0f + visits);
+    const float u = c_puct * prior * sqrt_visits / (1.0f + visits);
     return q + u;
 }
 
@@ -21,41 +22,41 @@ namespace mcts {
 }
 
 NodePool::NodePool() {
-    nodes.reserve(DEFAULT_CAPACITY);
-    nodes.resize(DEFAULT_CAPACITY);
+    nodes_.reserve(kDefaultCapacity);
+    nodes_.resize(kDefaultCapacity);
 }
 
 void NodePool::reset() {
-    if (nodes.empty())
-        nodes.resize(DEFAULT_CAPACITY);
-    used = 1;
-    nodes[0] = Node{};
+    if (nodes_.empty())
+        nodes_.resize(kDefaultCapacity);
+    used_     = 1;
+    nodes_[0] = Node{};
 }
 
 Node *NodePool::get_root() {
-    return &nodes[0];
+    return &nodes_[0];
 }
 
 Node *NodePool::allocate(size_t count) {
-    if (used + count > nodes.size()) {
-        size_t ns = nodes.size() * 2;
-        if (ns < used + count)
-            ns = used + count;
-        nodes.resize(ns);
+    if (used_ + count > nodes_.size()) {
+        size_t new_size = nodes_.size() * 2;
+        if (new_size < used_ + count)
+            new_size = used_ + count;
+        nodes_.resize(new_size);
     }
-    Node *ptr = &nodes[used];
-    used += count;
+    Node *ptr = &nodes_[used_];
+    used_ += count;
     for (size_t i = 0; i < count; ++i)
         ptr[i] = Node{};
     return ptr;
 }
 
 Node *NodePool::get_node(uint32_t i) {
-    return &nodes[i];
+    return &nodes_[i];
 }
 
 uint32_t NodePool::get_index(Node *n) {
-    return static_cast<uint32_t>(n - nodes.data());
+    return static_cast<uint32_t>(n - nodes_.data());
 }
 
 static int encode_move_73x64(const chess::Move &move) {
@@ -75,16 +76,16 @@ static int encode_move_73x64(const chess::Move &move) {
             return -1;
         return plane * 64 + from;
     }
-    static constexpr int KN[8][2] = {{-2, -1}, {-2, 1}, {-1, -2}, {-1, 2}, {1, -2}, {1, 2}, {2, -1}, {2, 1}};
+    static constexpr int KNIGHT_OFFSETS[8][2] = {{-2, -1}, {-2, 1}, {-1, -2}, {-1, 2}, {1, -2}, {1, 2}, {2, -1}, {2, 1}};
     for (int i = 0; i < 8; ++i)
-        if (dr == KN[i][0] && dc == KN[i][1])
+        if (dr == KNIGHT_OFFSETS[i][0] && dc == KNIGHT_OFFSETS[i][1])
             return (56 + i) * 64 + from;
-    static constexpr int DIR[8][2] = {{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}};
+    static constexpr int DIR8[8][2] = {{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}};
     if (dr || dc) {
         const int dist = std::max(std::abs(dr), std::abs(dc));
         if (dist >= 1 && dist <= 7) {
             for (int d = 0; d < 8; ++d)
-                if (dr == DIR[d][0] * dist && dc == DIR[d][1] * dist)
+                if (dr == DIR8[d][0] * dist && dc == DIR8[d][1] * dist)
                     return (d * 7 + (dist - 1)) * 64 + from;
         }
     }
@@ -96,34 +97,35 @@ int encode_move_index(const chess::Move &m) {
 }
 
 [[gnu::hot]] Node *MCTS::select_child(Node *parent) {
-    Node *ch = node_pool_.get_node(parent->child_idx);
-    const float s = sqrtf(1.0f + static_cast<float>(parent->visits));
-    float c = c_puct_;
+    Node *children          = node_pool_.get_node(parent->first_child_index);
+    const float sqrt_visits = sqrtf(1.0f + static_cast<float>(parent->visits));
+    float c                 = c_puct_;
     if (parent->visits > 0)
         c = c_puct_ * (logf((parent->visits + c_puct_base_ + 1.0f) / c_puct_base_) + c_puct_init_);
     const float parent_q = (parent->visits > 0) ? (parent->val_sum / parent->visits) : 0.0f;
 
-    Node *best = &ch[0];
-    float best_score = best->ucb(c, s, parent_q, fpu_reduction_);
-    for (uint16_t i = 1; i < parent->nchildren; ++i) {
-        float sc = ch[i].ucb(c, s, parent_q, fpu_reduction_);
+    Node *best       = &children[0];
+    float best_score = best->ucb(c, sqrt_visits, parent_q, fpu_reduction_);
+    for (uint16_t i = 1; i < parent->child_count; ++i) {
+        float sc = children[i].ucb(c, sqrt_visits, parent_q, fpu_reduction_);
         if (sc > best_score) {
             best_score = sc;
-            best = &ch[i];
+            best       = &children[i];
         }
     }
     return best;
 }
 
-[[gnu::hot]] void MCTS::expand_node(Node *node, const chess::MoveList &moves, const std::vector<float> &policy) {
+[[gnu::hot]] void MCTS::expand_node(Node *node, const chess::MoveList &moves,
+                                    const std::vector<float> &policy) {
     const size_t n = moves.size();
     if (!n)
         return;
-    Node *ch = node_pool_.allocate(n);
-    node->child_idx = node_pool_.get_index(ch);
-    node->nchildren = static_cast<uint16_t>(n);
+    Node *children          = node_pool_.allocate(n);
+    node->first_child_index = node_pool_.get_index(children);
+    node->child_count       = static_cast<uint16_t>(n);
 
-    std::vector<float> pri(n, 0.0f);
+    std::vector<float> pri(n, 0.0f); // normalized child priors
     float sum = 0.0f;
     for (size_t i = 0; i < n; ++i) {
         pri[i] = get_policy_value(moves[i], policy);
@@ -139,16 +141,16 @@ int encode_move_index(const chess::Move &m) {
             pri[i] = u;
     }
     for (size_t i = 0; i < n; ++i) {
-        ch[i].move = moves[i];
-        ch[i].prior = pri[i];
+        children[i].move  = moves[i];
+        children[i].prior = pri[i];
     }
 }
 
 [[gnu::hot]] void MCTS::add_dirichlet_noise(Node *node) {
-    if (node->nchildren == 0)
+    if (node->child_count == 0)
         return;
-    Node *ch = node_pool_.get_node(node->child_idx);
-    const size_t n = node->nchildren;
+    Node *children = node_pool_.get_node(node->first_child_index);
+    const size_t n = node->child_count;
 
     thread_local std::mt19937 rng(std::random_device{}());
     std::gamma_distribution<float> g(dirichlet_alpha_, 1.0f);
@@ -164,23 +166,24 @@ int encode_move_index(const chess::Move &m) {
     if (sum > DIRICHLET_EPSILON) {
         const float inv = 1.0f / sum, w = dirichlet_weight_, omw = 1.0f - w;
         for (size_t i = 0; i < n; ++i) {
-            const float nrm = noise[i] * inv;
-            ch[i].prior = omw * ch[i].prior + w * nrm;
+            const float nrm   = noise[i] * inv;
+            children[i].prior = omw * children[i].prior + w * nrm;
         }
     }
 }
 
-std::vector<int> MCTS::search_batched(const chess::Position &position, EvalBatchFn eval_fn, int max_batch) {
+std::vector<int> MCTS::search_batched(const chess::Position &position, EvalBatchFn eval_fn,
+                                      int max_batch) {
     if (max_batch < 1)
         max_batch = 1;
     node_pool_.reset();
     {
-        Node *root = node_pool_.get_root();
-        root->child_idx = 0;
-        root->nchildren = 0;
-        root->val_sum = 0.0f;
-        root->prior = 0.0f;
-        root->visits = 0;
+        Node *root              = node_pool_.get_root();
+        root->first_child_index = 0;
+        root->child_count       = 0;
+        root->val_sum           = 0.0f;
+        root->prior             = 0.0f;
+        root->visits            = 0;
     }
 
     working_pos_ = position;
@@ -205,22 +208,22 @@ std::vector<int> MCTS::search_batched(const chess::Position &position, EvalBatch
         if (to_eval.empty())
             return;
         for (uint32_t idx : pending_nodes) {
-            Node *n = node_pool_.get_node(idx);
-            if (n->visits > 0)
-                n->visits -= 1;
+            Node *node_ptr = node_pool_.get_node(idx);
+            if (node_ptr->visits > 0)
+                node_ptr->visits -= 1;
         }
         pending_nodes.clear();
 
-        std::vector<std::vector<float>> pol(to_eval.size());
-        std::vector<float> val(to_eval.size(), 0.0f);
-        eval_fn(to_eval, pol, val);
+        std::vector<std::vector<float>> policy_batch(to_eval.size());
+        std::vector<float> value_batch(to_eval.size(), 0.0f);
+        eval_fn(to_eval, policy_batch, value_batch);
 
-        if (pol.size() != to_eval.size() || val.size() != to_eval.size()) {
+        if (policy_batch.size() != to_eval.size() || value_batch.size() != to_eval.size()) {
             throw std::runtime_error("MCTS evaluator returned mismatched batch size");
         }
         for (size_t i = 0; i < to_eval.size(); ++i) {
             const uint32_t idx = eval_path_offsets[i];
-            Node *node = node_pool_.get_node(idx);
+            Node *node         = node_pool_.get_node(idx);
 
             chess::MoveList child_moves;
             {
@@ -228,10 +231,10 @@ std::vector<int> MCTS::search_batched(const chess::Position &position, EvalBatch
                 working_pos_.legal_moves(child_moves);
             }
             if (!child_moves.empty())
-                expand_node(node, child_moves, pol[i]);
+                expand_node(node, child_moves, policy_batch[i]);
 
             node->val_sum += VIRTUAL_LOSS;
-            float v = val[i];
+            float v          = value_batch[i];
             const auto &path = eval_paths[i];
             for (auto it = path.rbegin(); it != path.rend(); ++it) {
                 node_pool_.get_node(*it)->update(-v);
@@ -247,29 +250,29 @@ std::vector<int> MCTS::search_batched(const chess::Position &position, EvalBatch
 
     {
         std::vector<chess::Position> root_vec{position};
-        std::vector<std::vector<float>> pol(1);
-        std::vector<float> val(1, 0.0f);
-        eval_fn(root_vec, pol, val);
-        if (pol.size() != 1 || val.size() != 1) {
+        std::vector<std::vector<float>> policy_batch(1);
+        std::vector<float> value_batch(1, 0.0f);
+        eval_fn(root_vec, policy_batch, value_batch);
+        if (policy_batch.size() != 1 || value_batch.size() != 1) {
             throw std::runtime_error("MCTS root evaluator returned wrong batch size");
         }
-        Node *root = node_pool_.get_root();
-        root_policy = pol[0];
+        Node *root  = node_pool_.get_root();
+        root_policy = policy_batch[0];
         expand_node(root, root_moves, root_policy);
         root = node_pool_.get_root();
         add_dirichlet_noise(root);
     }
 
     for (int sim = 0; sim < simulations_; ++sim) {
-        Node *node = node_pool_.get_node(0);
-        int depth = 0;
-        working_pos_ = position;
+        Node *node          = node_pool_.get_node(0);
+        int depth           = 0;
+        working_pos_        = position;
         const int max_depth = static_cast<int>(std::min(undo_stack_.size(), path_buffer_.size()));
 
-        while (node->nchildren > 0) {
+        while (node->child_count > 0) {
             if (depth >= max_depth)
                 break;
-            node = select_child(node);
+            node                = select_child(node);
             path_buffer_[depth] = node_pool_.get_index(node);
             working_pos_.make_move_fast(node->move, undo_stack_[depth]);
             ++depth;
@@ -308,7 +311,8 @@ std::vector<int> MCTS::search_batched(const chess::Position &position, EvalBatch
         }
 
         for (int i = depth - 1; i >= 0; --i)
-            working_pos_.unmake_move_fast(node_pool_.get_node(path_buffer_[i])->move, undo_stack_[i]);
+            working_pos_.unmake_move_fast(node_pool_.get_node(path_buffer_[i])->move,
+                                          undo_stack_[i]);
     }
 
     flush_and_expand();
@@ -316,17 +320,17 @@ std::vector<int> MCTS::search_batched(const chess::Position &position, EvalBatch
     std::vector<int> visits;
     {
         Node *root = node_pool_.get_node(0);
-        visits.reserve(root->nchildren);
-        Node *ch = node_pool_.get_node(root->child_idx);
-        for (uint16_t i = 0; i < root->nchildren; ++i)
-            visits.push_back(ch[i].visits);
+        visits.reserve(root->child_count);
+        Node *children = node_pool_.get_node(root->first_child_index);
+        for (uint16_t i = 0; i < root->child_count; ++i)
+            visits.push_back(children[i].visits);
     }
     return visits;
 }
 
 MCTS::MCTS(int sims, float c, float alpha, float w)
-    : simulations_(sims), c_puct_(c), c_puct_base_(19652.0f), c_puct_init_(1.25f), dirichlet_alpha_(alpha),
-      dirichlet_weight_(w) {
+    : simulations_(sims), c_puct_(c), c_puct_base_(19652.0f), c_puct_init_(1.25f),
+      dirichlet_alpha_(alpha), dirichlet_weight_(w) {
     node_pool_.reset();
 }
 
