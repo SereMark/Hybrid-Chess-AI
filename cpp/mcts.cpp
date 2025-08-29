@@ -152,12 +152,11 @@ int encode_move_index(const chess::Move &m) {
     Node *children = node_pool_.get_node(node->first_child_index);
     const size_t n = node->child_count;
 
-    thread_local std::mt19937 rng(std::random_device{}());
     std::gamma_distribution<float> g(dirichlet_alpha_, 1.0f);
     std::vector<float> noise(n);
     float sum = 0.0f;
     for (size_t i = 0; i < n; ++i) {
-        float x = g(rng);
+        float x = g(rng_);
         if (x < 0.0f)
             x = 0.0f;
         noise[i] = x;
@@ -332,6 +331,7 @@ MCTS::MCTS(int sims, float c, float alpha, float w)
     : simulations_(sims), c_puct_(c), c_puct_base_(19652.0f), c_puct_init_(1.25f),
       dirichlet_alpha_(alpha), dirichlet_weight_(w) {
     node_pool_.reset();
+    rng_.seed(1337u);
 }
 
 void MCTS::set_c_puct_params(float base, float init) {

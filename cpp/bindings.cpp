@@ -155,6 +155,7 @@ PYBIND11_MODULE(chesscore, m) {
         .def(py::init<int, float, float, float>(), py::arg("simulations") = 800,
              py::arg("c_puct") = 1.0f, py::arg("dirichlet_alpha") = 0.3f,
              py::arg("dirichlet_weight") = 0.25f)
+        .def("seed", &mcts::MCTS::seed, py::arg("seed"))
         .def(
             "search_batched",
             [](mcts::MCTS &engine, const chess::Position &pos, py::object evaluator,
