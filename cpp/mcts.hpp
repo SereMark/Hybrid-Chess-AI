@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <vector>
+#include <random>
 
 namespace mcts {
 // Small numerical epsilons and fixed policy size (73 planes x 64 squares)
