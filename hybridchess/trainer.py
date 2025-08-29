@@ -112,6 +112,8 @@ from .config import (
     TRAIN_UPDATE_STEPS_MAX,
     TRAIN_UPDATE_STEPS_MIN,
     TRAIN_WEIGHT_DECAY,
+    U8_SCALE,
+    VALUE_I8_SCALE,
 )
 from .model import (
     BatchedEvaluator,
@@ -586,21 +588,26 @@ class Trainer:
 
         return sorted(seen)
 
-    def train_step(self, batch_data: tuple[list[Any], list[np.ndarray], list[float]]) -> tuple[torch.Tensor, torch.Tensor, float, float]:
-        states, policies, values = batch_data
-        x_np = np.stack(states).astype(np.float32, copy=False)
-        x_t = torch.from_numpy(x_np)
-        if TRAIN_PIN_MEMORY:
-            x_t = x_t.pin_memory()
-        x = x_t.to(self.device, non_blocking=True).contiguous(memory_format=torch.channels_last)
-        pi_t = torch.from_numpy(np.stack(policies).astype(np.float32))
-        if TRAIN_PIN_MEMORY:
-            pi_t = pi_t.pin_memory()
-        pi_target = pi_t.to(self.device, non_blocking=True)
-        v_t = torch.tensor(values, dtype=torch.float32)
-        if TRAIN_PIN_MEMORY:
-            v_t = v_t.pin_memory()
-        v_target = v_t.to(self.device, non_blocking=True)
+    def train_step(self, batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray]]) -> tuple[torch.Tensor, torch.Tensor, float, float]:
+        states_u8_list, counts_u16_list, values_i8_list = batch_data
+        x_u8_np = np.stack(states_u8_list).astype(np.uint8, copy=False)
+        x_u8_t = torch.from_numpy(x_u8_np)  # CPU uint8 [B,C,H,W]
+        x = x_u8_t.to(self.device, non_blocking=True)
+        pi_u16_np = np.stack(counts_u16_list).astype(np.uint16, copy=False)
+        pi_u16_t = torch.from_numpy(pi_u16_np)  # CPU uint16 [B,P]
+        pi_counts = pi_u16_t.to(self.device, non_blocking=True).to(dtype=torch.float32)
+        denom = pi_counts.sum(dim=1, keepdim=True)
+        num_actions = int(pi_counts.shape[1])
+        pi_target = torch.where(
+            denom > 0.0,
+            pi_counts / denom.clamp_min(1.0),
+            torch.full_like(pi_counts, 1.0 / max(1, num_actions)),
+        )
+        v_i8_np = np.asarray(values_i8_list, dtype=np.int8)
+        v_i8_t = torch.from_numpy(v_i8_np)
+        v_target = v_i8_t.to(self.device, non_blocking=True).to(dtype=torch.float32) / float(VALUE_I8_SCALE)
+        x = x.to(dtype=torch.float32) / float(U8_SCALE)
+        x = x.contiguous(memory_format=torch.channels_last)
         self.model.train()
         with torch.autocast(
             device_type="cuda",

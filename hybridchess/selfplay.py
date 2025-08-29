@@ -192,7 +192,12 @@ class Augment:
             idx = Augment._feature_plane_indices()
             tp = idx["turn_plane"]
             if tp < state_batch.shape[1]:
-                state_batch[:, tp] = 1.0 - state_batch[:, tp]
+                # Handle both float [0,1] and quantized uint8 [0..U8_SCALE]
+                if np.issubdtype(state_batch.dtype, np.floating):
+                    one_val = 1.0
+                else:
+                    one_val = np.array(U8_SCALE, dtype=state_batch.dtype)
+                state_batch[:, tp] = one_val - state_batch[:, tp]
             policy_batch = policy_batch[:, Augment._policy_index_permutation("vflip_cs")]
             stm_swapped = True
         else:
@@ -367,7 +372,7 @@ class SelfPlayEngine:
         snapshot: list[tuple[np.ndarray, np.ndarray, np.int8]],
         batch_size: int,
         recent_ratio: float = REPLAY_SNAPSHOT_RECENT_RATIO_DEFAULT,
-    ) -> tuple[list[np.ndarray], list[np.ndarray], list[float]] | None:
+    ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]] | None:
         sample_count = len(snapshot)
         if batch_size > sample_count:
             return None
@@ -378,17 +383,10 @@ class SelfPlayEngine:
         old_indices = np.random.randint(0, max(1, sample_count - recent_window_count), size=n_old)
         indices = np.concatenate([recent_indices, old_indices])
         states_u8_list, counts_u16_list, values_i8_list = zip(*[snapshot[int(i)] for i in indices], strict=False)
-        states = [s.astype(np.float32) / U8_SCALE for s in states_u8_list]
-        counts = [p.astype(np.float32) for p in counts_u16_list]
-        policies: list[np.ndarray] = []
-        for c in counts:
-            s = float(c.sum())
-            if s > 0.0 and np.isfinite(s):
-                policies.append(c / s)
-            else:
-                policies.append(np.full_like(c, 1.0 / max(1, c.size), dtype=np.float32))
-        values = [float(v) / VALUE_I8_SCALE for v in values_i8_list]
-        return states, policies, values
+        states = [s for s in states_u8_list]
+        counts = [p for p in counts_u16_list]
+        values = [v for v in values_i8_list]
+        return states, counts, values
 
     def play_games(self, num_games: int) -> dict[str, Any]:
         stats: dict[str, Any] = {
