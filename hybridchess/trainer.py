@@ -960,7 +960,7 @@ class Trainer:
             else:
                 self.log.info(f"[AR ] skipped | games 0 | time {self._format_time(arena_elapsed)}")
 
-            if (ARENA_EVAL_EVERY_ITERS == 0) and (self.iteration % CHECKPOINT_SAVE_EVERY_ITERS == 0):
+            if (self.iteration % CHECKPOINT_SAVE_EVERY_ITERS == 0):
                 self._save_checkpoint()
 
             sp_time = float(iter_stats.get("selfplay_time", 0.0))
