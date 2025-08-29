@@ -68,6 +68,9 @@ class MCTS {
     void set_fpu_reduction(float f) {
         fpu_reduction_ = f;
     }
+    void seed(uint64_t s) {
+        rng_.seed(static_cast<unsigned long long>(s));
+    }
 
   private:
     int simulations_;
@@ -83,6 +86,7 @@ class MCTS {
     mutable std::array<chess::Position::MoveInfo, 1024> undo_stack_;
     std::array<uint32_t, 1024> path_buffer_;
     static constexpr float VIRTUAL_LOSS = 1.0f;
+    std::mt19937 rng_;
 
     [[gnu::hot]] Node *select_child(Node *parent);
     [[gnu::hot]] void expand_node(Node *node, const chess::MoveList &moves,

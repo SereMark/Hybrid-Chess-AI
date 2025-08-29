@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import logging
 import os
 import random
@@ -501,28 +500,23 @@ class Trainer:
             if self.ema is not None and ckpt.get("ema") is not None:
                 self.ema.shadow = ckpt["ema"]
             if os.path.isfile(BEST_MODEL_FILE_PATH):
-                with contextlib.suppress(Exception):
-                    best_ckpt = torch.load(BEST_MODEL_FILE_PATH, map_location="cpu")
-                    state_dict = best_ckpt.get("model", best_ckpt)
-                    self.best_model.load_state_dict(state_dict, strict=True)
-                    self.best_model.eval()
-                    self.evaluator.refresh_from(self.best_model)
+                best_ckpt = torch.load(BEST_MODEL_FILE_PATH, map_location="cpu")
+                state_dict = best_ckpt.get("model", best_ckpt)
+                self.best_model.load_state_dict(state_dict, strict=True)
+                self.best_model.eval()
+                self.evaluator.refresh_from(self.best_model)
             elif "best_model" in ckpt:
-                with contextlib.suppress(Exception):
-                    self.best_model.load_state_dict(ckpt["best_model"], strict=True)
-                    self.best_model.eval()
-                    self.evaluator.refresh_from(self.best_model)
+                self.best_model.load_state_dict(ckpt["best_model"], strict=True)
+                self.best_model.eval()
+                self.evaluator.refresh_from(self.best_model)
             if "optimizer" in ckpt:
                 self.optimizer.load_state_dict(ckpt["optimizer"])
             if "scheduler" in ckpt:
                 sd = ckpt["scheduler"]
-                with contextlib.suppress(Exception):
-                    self.scheduler.set_total_steps(int(sd.get("total", self.scheduler.total)))
-                with contextlib.suppress(Exception):
-                    self.scheduler.t = int(sd.get("t", self.scheduler.t))
+                self.scheduler.set_total_steps(int(sd.get("total", self.scheduler.total)))
+                self.scheduler.t = int(sd.get("t", self.scheduler.t))
             if "scaler" in ckpt and isinstance(self.scaler, torch.amp.GradScaler):
-                with contextlib.suppress(Exception):
-                    self.scaler.load_state_dict(ckpt["scaler"])
+                self.scaler.load_state_dict(ckpt["scaler"])
             self.iteration = int(ckpt.get("iter", 0))
             self.total_games = int(ckpt.get("total_games", 0))
             elapsed_s = float(ckpt.get("elapsed_s", 0.0))
@@ -550,17 +544,15 @@ class Trainer:
                 except Exception:
                     self._pending_challenger = None
             rng = ckpt.get("rng", {})
-            with contextlib.suppress(Exception):
-                if "py" in rng:
-                    random.setstate(rng["py"])
-                if "np" in rng:
-                    np.random.set_state(rng["np"])
-                if "torch_cpu" in rng:
-                    torch.set_rng_state(rng["torch_cpu"])
-                if ("torch_cuda" in rng) and (rng["torch_cuda"] is not None):
-                    torch.cuda.set_rng_state_all(rng["torch_cuda"])
-            with contextlib.suppress(Exception):
-                self._prev_eval_m = self.evaluator.get_metrics()
+            if "py" in rng:
+                random.setstate(rng["py"])
+            if "np" in rng:
+                np.random.set_state(rng["np"])
+            if "torch_cpu" in rng:
+                torch.set_rng_state(rng["torch_cpu"])
+            if ("torch_cuda" in rng) and (rng["torch_cuda"] is not None):
+                torch.cuda.set_rng_state_all(rng["torch_cuda"])
+            self._prev_eval_m = self.evaluator.get_metrics()
             if not getattr(self, "_prev_eval_m", None):
                 self._prev_eval_m = {}
             self.log.info(f"[CKPT] resumed from {path} @ iter {self.iteration}")
@@ -1087,6 +1079,8 @@ if __name__ == "__main__":
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True,max_split_size_mb:256")
     os.environ.setdefault("CUDA_MODULE_LOADING", "LAZY")
     os.environ.setdefault("CUDA_CACHE_MAXSIZE", str(2 * 1024 * 1024 * 1024))  # 2 GiB
+    if SEED != 0:
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     os.environ.setdefault("MKL_NUM_THREADS", "1")
     os.environ.setdefault("NVIDIA_TF32_OVERRIDE", "1")
@@ -1106,17 +1100,20 @@ if __name__ == "__main__":
         file_handler.setFormatter(logging.Formatter(fmt="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
         root.addHandler(file_handler)
     torch.set_float32_matmul_precision(TORCH_MATMUL_FLOAT32_PRECISION)
-    torch.backends.cuda.matmul.allow_tf32 = bool(TORCH_ALLOW_TF32)
-    torch.backends.cudnn.allow_tf32 = bool(TORCH_ALLOW_TF32)
+    torch.backends.cuda.matmul.allow_tf32 = bool(TORCH_ALLOW_TF32 and (SEED == 0))
+    torch.backends.cudnn.allow_tf32 = bool(TORCH_ALLOW_TF32 and (SEED == 0))
     torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
-    torch.backends.cudnn.benchmark = TORCH_CUDNN_BENCHMARK
+    torch.backends.cudnn.benchmark = bool(TORCH_CUDNN_BENCHMARK and (SEED == 0))
+    if SEED != 0:
+        torch.use_deterministic_algorithms(True)
     torch.set_num_threads(TORCH_THREADS_INTRA)
     torch.set_num_interop_threads(TORCH_THREADS_INTER)
     import random as _py_random
 
-    _py_random.seed(SEED)
-    np.random.seed(SEED)
-    torch.manual_seed(SEED)
-    torch.cuda.manual_seed_all(SEED)
+    if SEED != 0:
+        _py_random.seed(SEED)
+        np.random.seed(SEED)
+        torch.manual_seed(SEED)
+        torch.cuda.manual_seed_all(SEED)
     resume_flag = any(a in ("--resume", "resume") for a in sys.argv[1:])
     Trainer(resume=resume_flag).train()

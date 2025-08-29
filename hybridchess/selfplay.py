@@ -221,7 +221,7 @@ class SelfPlayEngine:
         """Scale value target to int8."""
         return np.int8(np.clip(np.rint(v * VALUE_I8_SCALE), -int(VALUE_I8_SCALE), int(VALUE_I8_SCALE)))
 
-    def _select_move_by_temperature(self, moves: list[Any], visit_counts: list[int], move_number: int) -> Any:
+    def _select_move_by_temperature(self, moves: list[Any], visit_counts: list[int], move_number: int, rng: np.random.Generator | None = None) -> Any:
         temperature = SELFPLAY_TEMP_HIGH if move_number < SELFPLAY_TEMP_MOVES else SELFPLAY_TEMP_LOW
         if temperature > SELFPLAY_DETERMINISTIC_TEMP_EPS:
             probs = np.maximum(np.array(visit_counts, dtype=np.float64), 0.0)
@@ -231,7 +231,13 @@ class SelfPlayEngine:
             else:
                 probs = probs ** (1.0 / temperature)
                 s = probs.sum()
-                idx = int(np.argmax(visit_counts)) if (not np.isfinite(s) or s <= 0) else int(np.random.choice(len(moves), p=probs / s))
+                if (not np.isfinite(s)) or (s <= 0):
+                    idx = int(np.argmax(visit_counts))
+                else:
+                    if rng is None:
+                        idx = int(np.random.choice(len(moves), p=probs / s))
+                    else:
+                        idx = int(rng.choice(len(moves), p=(probs / s)))
         else:
             idx = int(np.argmax(visit_counts))
         return moves[idx]
@@ -254,26 +260,30 @@ class SelfPlayEngine:
                 target_value = base if stm_is_white else -base
                 self.buffer.append((position_u8, counts_u16, SelfPlayEngine.encode_value_i8(target_value)))
 
-    def play_single_game(self) -> tuple[int, int]:
+    def play_single_game(self, seed: int | None = None) -> tuple[int, int, list[tuple[np.ndarray, np.ndarray]], bool]:
         position = ccore.Position()
         resign_count = 0
         forced_result: int | None = None
         mcts = ccore.MCTS(MCTS_TRAIN_SIMULATIONS_BASE, MCTS_C_PUCT, MCTS_DIRICHLET_ALPHA, MCTS_DIRICHLET_WEIGHT)
         mcts.set_c_puct_params(MCTS_C_PUCT_BASE, MCTS_C_PUCT_INIT)
         mcts.set_fpu_reduction(MCTS_FPU_REDUCTION)
+        rng = np.random.default_rng(int(seed) if seed is not None else None)
+        import math as _math
+        _ = _math.e  # no-op
+        mcts.seed(int(rng.integers(2**63 - 1)))
 
         examples: list[tuple[np.ndarray, np.ndarray]] = []
         position_history: list[Any] = []
         move_count = 0
 
-        random_opening_plies = int(np.random.randint(0, SELFPLAY_OPENING_RANDOM_PLIES_MAX))
+        random_opening_plies = int(rng.integers(0, max(1, SELFPLAY_OPENING_RANDOM_PLIES_MAX)))
         for _ in range(random_opening_plies):
             if position.result() != ccore.ONGOING:
                 break
             moves = position.legal_moves()
             if not moves:
                 break
-            position.make_move(moves[int(np.random.randint(0, len(moves)))])
+            position.make_move(moves[int(rng.integers(0, len(moves)))])
 
         first_to_move_is_white: bool | None = None
         while position.result() == ccore.ONGOING and move_count < GAME_MAX_PLIES:
@@ -322,7 +332,7 @@ class SelfPlayEngine:
                 if value_estimate <= RESIGN_VALUE_THRESHOLD:
                     resign_count += 1
                     if resign_count >= self.resign_consecutive:
-                        if np.random.rand() < RESIGN_PLAYTHROUGH_FRACTION:
+                        if float(rng.random()) < RESIGN_PLAYTHROUGH_FRACTION:
                             resign_count = 0
                         else:
                             side_to_move_is_white = position.turn == ccore.WHITE
@@ -331,7 +341,7 @@ class SelfPlayEngine:
                 else:
                     resign_count = 0
 
-            move = self._select_move_by_temperature(moves, visit_counts, move_count)
+            move = self._select_move_by_temperature(moves, visit_counts, move_count, rng=rng)
             position.make_move(move)
             position_history.append(pos_snapshot)
             if len(position_history) > HISTORY_LENGTH:
@@ -340,13 +350,12 @@ class SelfPlayEngine:
 
         final_result = forced_result if forced_result is not None else position.result()
 
-        self._process_result(
-            examples,
+        return (
+            move_count,
             final_result,
+            examples,
             True if first_to_move_is_white is None else bool(first_to_move_is_white),
         )
-
-        return move_count, final_result
 
     def snapshot(self) -> list[tuple[np.ndarray, np.ndarray, np.int8]]:
         with self.buffer_lock:
@@ -388,16 +397,22 @@ class SelfPlayEngine:
             "black_wins": 0,
             "draws": 0,
         }
+        seeds = [int(np.random.randint(0, 2**63 - 1)) for _ in range(num_games)]
+        results: dict[int, tuple[int, int, list[tuple[np.ndarray, np.ndarray]], bool]] = {}
         with ThreadPoolExecutor(max_workers=max(1, SELFPLAY_NUM_WORKERS)) as ex:
-            futures = [ex.submit(self.play_single_game) for _ in range(num_games)]
+            futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
             for fut in as_completed(futures):
-                moves, result = fut.result()
-                stats["games"] += 1
-                stats["moves"] += moves
-                if result == ccore.WHITE_WIN:
-                    stats["white_wins"] += 1
-                elif result == ccore.BLACK_WIN:
-                    stats["black_wins"] += 1
-                else:
-                    stats["draws"] += 1
+                i = futures[fut]
+                results[i] = fut.result()
+        for i in range(num_games):
+            moves, result, examples, first_to_move_is_white = results[i]
+            self._process_result(examples, result, bool(first_to_move_is_white))
+            stats["games"] += 1
+            stats["moves"] += moves
+            if result == ccore.WHITE_WIN:
+                stats["white_wins"] += 1
+            elif result == ccore.BLACK_WIN:
+                stats["black_wins"] += 1
+            else:
+                stats["draws"] += 1
         return stats

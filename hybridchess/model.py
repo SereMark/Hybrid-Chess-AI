@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import numbers
 import threading
 import time
@@ -158,8 +157,7 @@ class BatchedEvaluator:
                 r.event.set()
             self._pending.clear()
             self._pending_lock.notify_all()
-        with contextlib.suppress(Exception):
-            self._thread.join(timeout=EVAL_WORKER_JOIN_TIMEOUT_S)
+        self._thread.join(timeout=EVAL_WORKER_JOIN_TIMEOUT_S)
         with self.cache_lock:
             self.cache.clear()
 
@@ -170,8 +168,7 @@ class BatchedEvaluator:
         self.close()
 
     def __del__(self):
-        with contextlib.suppress(Exception):
-            self.close()
+        self.close()
 
     def refresh_from(self, src_model: torch.nn.Module) -> None:
         with self.model_lock:

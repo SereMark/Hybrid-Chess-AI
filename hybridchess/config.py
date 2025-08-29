@@ -1,5 +1,6 @@
 ## Reproducibility
-SEED = 1337
+# Set SEED = 0 to disable strict reproducibility and allow fastest settings.
+SEED = 0
 
 ## Torch / AMP / performance
 AMP_ENABLED = True
