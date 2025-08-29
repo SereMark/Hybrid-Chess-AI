@@ -123,12 +123,11 @@ class BatchedEvaluator:
                 self.eval_model.to(memory_format=torch.channels_last),
             )
         self.eval_model = self.eval_model.eval()
-        if self.device.type == "cuda":
-            use_bf16 = AMP_PREFER_BFLOAT16
-            self.eval_model = cast(
-                nn.Module,
-                self.eval_model.to(dtype=(torch.bfloat16 if use_bf16 else torch.float16)),
-            )
+        use_bf16 = AMP_PREFER_BFLOAT16
+        self.eval_model = cast(
+            nn.Module,
+            self.eval_model.to(dtype=(torch.bfloat16 if use_bf16 else torch.float16)),
+        )
         for p in self.eval_model.parameters():
             p.requires_grad_(False)
         # Simple LRU cache
@@ -180,12 +179,11 @@ class BatchedEvaluator:
             if hasattr(base, "module"):
                 base = base.module
             self.eval_model.load_state_dict(base.state_dict(), strict=True)
-            if self.device.type == "cuda":
-                use_bf16 = AMP_PREFER_BFLOAT16
-                self.eval_model = cast(
-                    nn.Module,
-                    self.eval_model.to(dtype=(torch.bfloat16 if use_bf16 else torch.float16)),
-                )
+            use_bf16 = AMP_PREFER_BFLOAT16
+            self.eval_model = cast(
+                nn.Module,
+                self.eval_model.to(dtype=(torch.bfloat16 if use_bf16 else torch.float16)),
+            )
             self.eval_model.eval()
             for p in self.eval_model.parameters():
                 p.requires_grad_(False)
@@ -198,19 +196,15 @@ class BatchedEvaluator:
         # Encode batch of positions to NCHW float32
         x_np = np.zeros((0, INPUT_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=np.float32) if not positions else ccore.encode_batch(positions)
         x = torch.from_numpy(x_np)
-        if self.device.type == "cuda":
-            if EVAL_PIN_MEMORY:
-                x = x.pin_memory()
-            x = x.to(self.device, non_blocking=True)
-        else:
-            x = x.to(self.device)
+        if EVAL_PIN_MEMORY:
+            x = x.pin_memory()
+        x = x.to(self.device, non_blocking=True)
         return x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
 
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # Single forward pass (thread-safe, inference-only)
         with self.model_lock, torch.inference_mode():
-            if self.device.type == "cuda":
-                x = x.to(dtype=(torch.bfloat16 if (AMP_PREFER_BFLOAT16) else torch.float16))
+            x = x.to(dtype=(torch.bfloat16 if (AMP_PREFER_BFLOAT16) else torch.float16))
             return cast(tuple[torch.Tensor, torch.Tensor], self.eval_model(x))
 
     def _position_key(self, pos: Any) -> int | None:

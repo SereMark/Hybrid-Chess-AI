@@ -49,6 +49,9 @@ from .config import (
     EVAL_BATCH_COALESCE_MS,
     EVAL_BATCH_SIZE_MAX,
     EVAL_CACHE_CAPACITY,
+    EVAL_CACHE_USE_FP16,
+    EVAL_MODEL_CHANNELS_LAST,
+    EVAL_PIN_MEMORY,
     GAME_MAX_PLIES,
     LOG_FILE_PATH,
     LOG_LEVEL,
@@ -287,6 +290,79 @@ class Trainer:
         if resume:
             self._try_resume()
 
+    def _startup_summary(self) -> str:
+        props = torch.cuda.get_device_properties(self.device)
+        sm = f"{props.major}.{props.minor}"
+        mp = int(getattr(props, "multi_processor_count", 0))
+        bf16_supported = bool(getattr(torch.cuda, "is_bf16_supported", lambda: False)())
+        autocast_mode = (
+            "bf16" if (AMP_ENABLED and AMP_PREFER_BFLOAT16 and bf16_supported) else ("fp16" if AMP_ENABLED else "off")
+        )
+        tf32_effective = bool(torch.backends.cuda.matmul.allow_tf32 and torch.backends.cudnn.allow_tf32)
+        total_params_m = sum(p.numel() for p in self.model.parameters()) / 1e6
+        env_alloc = os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "default")
+        env_modload = os.environ.get("CUDA_MODULE_LOADING", "default")
+        env_cache = os.environ.get("CUDA_CACHE_MAXSIZE", "default")
+
+        sections: list[str] = []
+        sections.append(
+            f"[GPU     ] {self.device_name} (device {self.device}) | SM {sm} | VRAM {self.device_total_gb:.1f}G | MPs {mp}"
+        )
+        sections.append(
+            f"[PyTorch ] {torch.__version__} | CUDA {torch.version.cuda} | cuDNN {torch.backends.cudnn.version()} | compile={'on' if self._compiled else 'off'}(mode={TORCH_COMPILE_MODE}, full={TORCH_COMPILE_FULLGRAPH}, dyn={TORCH_COMPILE_DYNAMIC})"
+        )
+        sections.append(
+            f"[Precision] autocast={autocast_mode} | TF32={'on' if tf32_effective else 'off'} | matmul={torch.get_float32_matmul_precision()} | GradScaler={'on' if (AMP_ENABLED and not AMP_PREFER_BFLOAT16) else 'off'}"
+        )
+        sections.append(
+            f"[Memory  ] channels_last train={MODEL_CHANNELS_LAST} eval={EVAL_MODEL_CHANNELS_LAST} | pin_memory train={TRAIN_PIN_MEMORY} eval={EVAL_PIN_MEMORY}"
+        )
+        sections.append(
+            f"[Allocator] {env_alloc} | cuda_module_loading={env_modload} | cuda_cache_max={env_cache}"
+        )
+        sections.append(
+            f"[Threads ] torch intra={torch.get_num_threads()} inter={torch.get_num_interop_threads()} | CPU cores={os.cpu_count()} | selfplay workers={SELFPLAY_NUM_WORKERS}"
+        )
+        sections.append(
+            f"[Model   ] params={total_params_m:.1f}M | blocks={MODEL_BLOCKS} | channels={MODEL_CHANNELS} | value_head=({MODEL_VALUE_CONV_CHANNELS}->{MODEL_VALUE_HIDDEN_DIM})"
+        )
+        sections.append(
+            f"[Replay  ] capacity={REPLAY_BUFFER_CAPACITY:,}"
+        )
+        sections.append(
+            f"[SelfPlay] sims {MCTS_TRAIN_SIMULATIONS_BASE}→≥{MCTS_TRAIN_SIMULATIONS_MIN} | temp {SELFPLAY_TEMP_HIGH}->{SELFPLAY_TEMP_LOW}@{SELFPLAY_TEMP_MOVES} | resign {RESIGN_VALUE_THRESHOLD} x{RESIGN_CONSECUTIVE_PLIES} | dirichlet α={MCTS_DIRICHLET_ALPHA} w={MCTS_DIRICHLET_WEIGHT}"
+        )
+        sections.append(
+            f"[Train   ] iters={TRAIN_TOTAL_ITERATIONS} | games/iter={SELFPLAY_GAMES_PER_ITER} | batch={TRAIN_BATCH_SIZE} | sched_est={TRAIN_LR_SCHED_STEPS_PER_ITER_EST}"
+        )
+        sections.append(
+            f"[LR      ] init={TRAIN_LR_INIT:.2e} | warmup={self.scheduler.warm} | final={TRAIN_LR_FINAL:.2e} | weight_decay={TRAIN_WEIGHT_DECAY} | momentum={TRAIN_MOMENTUM}"
+        )
+        sections.append(
+            f"[Loss    ] policy={LOSS_POLICY_WEIGHT} | value={LOSS_VALUE_WEIGHT}->{LOSS_VALUE_WEIGHT_LATE}@{LOSS_VALUE_WEIGHT_SWITCH_ITER} | smooth={LOSS_POLICY_LABEL_SMOOTH:.2f} | entropy={LOSS_ENTROPY_COEF_INIT:.2e}→{LOSS_ENTROPY_COEF_MIN:.2e}@{LOSS_ENTROPY_ANNEAL_ITERS}"
+        )
+        sections.append(
+            f"[Augment ] mirror={AUGMENT_MIRROR_PROB:.2f} | rot180={AUGMENT_ROT180_PROB:.2f} | vflip_cs={AUGMENT_VFLIP_CS_PROB:.2f}"
+        )
+        sections.append(
+            f"[EMA     ] {'on' if EMA_ENABLED else 'off'} | decay={EMA_DECAY if EMA_ENABLED else 0}"
+        )
+        sections.append(
+            f"[Eval    ] batch_max={EVAL_BATCH_SIZE_MAX} @ {EVAL_BATCH_COALESCE_MS}ms | cache={EVAL_CACHE_CAPACITY:,} | dtype={'fp16' if EVAL_CACHE_USE_FP16 else 'fp32'}"
+        )
+        sections.append(
+            f"[Arena   ] every={ARENA_EVAL_EVERY_ITERS} | games={ARENA_GAMES_PER_EVAL} | baseline_p={100.0 * ARENA_GATE_BASELINE_P:.0f}% | Z {ARENA_GATE_Z_EARLY}->{ARENA_GATE_Z_LATE} (switch@{ARENA_GATE_Z_SWITCH_ITER}) | min_games={ARENA_GATE_MIN_GAMES} | det={'on' if ARENA_DETERMINISTIC else 'off'}"
+        )
+        sections.append(
+            f"[Openings] loaded={len(self._arena_openings):,} | file={OPENINGS_FILE_PATH}"
+        )
+        sections.append(
+            f"[Expect  ] total_games={TRAIN_TOTAL_ITERATIONS * SELFPLAY_GAMES_PER_ITER:,}"
+        )
+        title = "Hybrid Chess AI Training"
+        bar = "=" * max(72, len(title))
+        return "\n" + bar + f"\n{title}\n" + bar + "\n" + "\n".join(sections) + "\n" + bar
+
     @staticmethod
     def _format_time(s: float) -> str:
         return f"{s:.1f}s" if s < 60 else (f"{s / 60:.1f}m" if s < 3600 else f"{s / 3600:.1f}h")
@@ -386,7 +462,7 @@ class Trainer:
                     "py": random.getstate(),
                     "np": np.random.get_state(),
                     "torch_cpu": torch.get_rng_state(),
-                    "torch_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+                    "torch_cuda": torch.cuda.get_rng_state_all(),
                 },
             }
             tmp_path = f"{CHECKPOINT_FILE_PATH}.tmp"  # atomic replace
@@ -844,27 +920,7 @@ class Trainer:
         return score, wins, draws, losses
 
     def train(self) -> None:
-        total_params = sum(p.numel() for p in self.model.parameters()) / 1e6
-        header_lines = [
-            f"Device: {self.device} ({self.device_name}) | GPU {self.device_total_gb:.1f} GB | AMP {'on' if AMP_ENABLED else 'off'} | compiled {self._compiled}",
-            f"Torch: {torch.__version__} | CUDA {torch.version.cuda} | cuDNN {torch.backends.cudnn.version()}",
-            f"Threads: torch intra {torch.get_num_threads()} | inter {torch.get_num_interop_threads()} | CPU cores {os.cpu_count()} | selfplay workers {SELFPLAY_NUM_WORKERS}",
-            f"Model: {total_params:.1f}M parameters | {MODEL_BLOCKS} blocks x {MODEL_CHANNELS} channels | channels_last {MODEL_CHANNELS_LAST}",
-            f"Buffer: size {REPLAY_BUFFER_CAPACITY:,}",
-            f"Selfplay: sims {MCTS_TRAIN_SIMULATIONS_BASE}→≥{MCTS_TRAIN_SIMULATIONS_MIN} | temp {SELFPLAY_TEMP_HIGH}->{SELFPLAY_TEMP_LOW}@{SELFPLAY_TEMP_MOVES} | resign {RESIGN_VALUE_THRESHOLD} x{RESIGN_CONSECUTIVE_PLIES} | dirichlet α {MCTS_DIRICHLET_ALPHA} w {MCTS_DIRICHLET_WEIGHT}",
-            f"Training: {TRAIN_TOTAL_ITERATIONS} iterations | {SELFPLAY_GAMES_PER_ITER} games/iter | sched_est {TRAIN_LR_SCHED_STEPS_PER_ITER_EST} | batch {TRAIN_BATCH_SIZE}",
-            f"LR: init {TRAIN_LR_INIT:.2e} | warmup {self.scheduler.warm} | final {TRAIN_LR_FINAL:.2e} | wd {TRAIN_WEIGHT_DECAY} | mom {TRAIN_MOMENTUM}",
-            f"Augment: mirror {AUGMENT_MIRROR_PROB:.2f} | rot180 {AUGMENT_ROT180_PROB:.2f} | vflip_cs {AUGMENT_VFLIP_CS_PROB:.2f} | policy_smooth {LOSS_POLICY_LABEL_SMOOTH:.2f}",
-            f"EMA: {'on' if EMA_ENABLED else 'off'} decay {EMA_DECAY if EMA_ENABLED else 0}",
-            f"Eval: batch {EVAL_BATCH_SIZE_MAX}@{EVAL_BATCH_COALESCE_MS}ms | cache {EVAL_CACHE_CAPACITY}",
-            f"Arena: games {ARENA_GAMES_PER_EVAL}/every {ARENA_EVAL_EVERY_ITERS} | rule LB>{100.0 * ARENA_GATE_BASELINE_P:.0f}% @Z {ARENA_GATE_Z_EARLY}->{ARENA_GATE_Z_LATE} (switch @{ARENA_GATE_Z_SWITCH_ITER})",
-            f"Arena: det {'on' if ARENA_DETERMINISTIC else 'off'} | dir_w {0.0 if ARENA_DETERMINISTIC else ARENA_DIRICHLET_WEIGHT} | temp {(ARENA_TEMPERATURE if not ARENA_DETERMINISTIC else 0.0)}->0.0 @{ARENA_TEMP_MOVES}",
-            f"Arena openings: {len(self._arena_openings):,} positions loaded",
-            f"Expected: {TRAIN_TOTAL_ITERATIONS * SELFPLAY_GAMES_PER_ITER:,} total games",
-        ]
-        title = "Hybrid Chess AI Training"
-        bar = "=" * max(60, len(title))
-        self.log.info("\n" + bar + f"\n{title}\n" + bar + "\n" + "\n".join(header_lines) + "\n" + bar)
+        self.log.info(self._startup_summary())
 
         for iteration in range(self.iteration + 1, TRAIN_TOTAL_ITERATIONS + 1):
             self.iteration = iteration
@@ -1026,6 +1082,12 @@ class EloGater:
 
 if __name__ == "__main__":
     import sys
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True,max_split_size_mb:256")
+    os.environ.setdefault("CUDA_MODULE_LOADING", "LAZY")
+    os.environ.setdefault("CUDA_CACHE_MAXSIZE", str(2 * 1024 * 1024 * 1024))  # 2 GiB
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("NVIDIA_TF32_OVERRIDE", "1")
 
     root = logging.getLogger()
     log_level = getattr(logging, str(LOG_LEVEL).upper(), logging.INFO)
@@ -1044,6 +1106,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision(TORCH_MATMUL_FLOAT32_PRECISION)
     torch.backends.cuda.matmul.allow_tf32 = bool(TORCH_ALLOW_TF32)
     torch.backends.cudnn.allow_tf32 = bool(TORCH_ALLOW_TF32)
+    torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
     torch.backends.cudnn.benchmark = TORCH_CUDNN_BENCHMARK
     torch.set_num_threads(TORCH_THREADS_INTRA)
     torch.set_num_interop_threads(TORCH_THREADS_INTER)
