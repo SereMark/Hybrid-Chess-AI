@@ -53,6 +53,7 @@ from .config import (
     SELFPLAY_TEMP_MOVES,
     U8_SCALE,
     VALUE_I8_SCALE,
+    SEED,
 )
 
 if TYPE_CHECKING:
@@ -398,21 +399,38 @@ class SelfPlayEngine:
             "draws": 0,
         }
         seeds = [int(np.random.randint(0, 2**63 - 1)) for _ in range(num_games)]
-        results: dict[int, tuple[int, int, list[tuple[np.ndarray, np.ndarray]], bool]] = {}
-        with ThreadPoolExecutor(max_workers=max(1, SELFPLAY_NUM_WORKERS)) as ex:
-            futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
-            for fut in as_completed(futures):
-                i = futures[fut]
-                results[i] = fut.result()
-        for i in range(num_games):
-            moves, result, examples, first_to_move_is_white = results[i]
-            self._process_result(examples, result, bool(first_to_move_is_white))
-            stats["games"] += 1
-            stats["moves"] += moves
-            if result == ccore.WHITE_WIN:
-                stats["white_wins"] += 1
-            elif result == ccore.BLACK_WIN:
-                stats["black_wins"] += 1
-            else:
-                stats["draws"] += 1
+        # If strict reproducibility is requested (SEED != 0), preserve processing order.
+        if int(SEED) != 0:
+            results: dict[int, tuple[int, int, list[tuple[np.ndarray, np.ndarray]], bool]] = {}
+            with ThreadPoolExecutor(max_workers=max(1, SELFPLAY_NUM_WORKERS)) as ex:
+                futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
+                for fut in as_completed(futures):
+                    i = futures[fut]
+                    results[i] = fut.result()
+            for i in range(num_games):
+                moves, result, examples, first_to_move_is_white = results[i]
+                self._process_result(examples, result, bool(first_to_move_is_white))
+                stats["games"] += 1
+                stats["moves"] += moves
+                if result == ccore.WHITE_WIN:
+                    stats["white_wins"] += 1
+                elif result == ccore.BLACK_WIN:
+                    stats["black_wins"] += 1
+                else:
+                    stats["draws"] += 1
+        else:
+            # Streaming path minimizes peak RAM and keeps throughput high
+            with ThreadPoolExecutor(max_workers=max(1, SELFPLAY_NUM_WORKERS)) as ex:
+                futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
+                for fut in as_completed(futures):
+                    moves, result, examples, first_to_move_is_white = fut.result()
+                    self._process_result(examples, result, bool(first_to_move_is_white))
+                    stats["games"] += 1
+                    stats["moves"] += moves
+                    if result == ccore.WHITE_WIN:
+                        stats["white_wins"] += 1
+                    elif result == ccore.BLACK_WIN:
+                        stats["black_wins"] += 1
+                    else:
+                        stats["draws"] += 1
         return stats

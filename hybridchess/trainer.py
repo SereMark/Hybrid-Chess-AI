@@ -224,6 +224,7 @@ class Trainer:
         self.scaler = torch.amp.GradScaler("cuda", enabled=(AMP_ENABLED and not use_bf16))
 
         self.evaluator = BatchedEvaluator(self.device)
+        self.train_batch_size: int = int(TRAIN_BATCH_SIZE)
 
         self._proc = psutil.Process(os.getpid())
         psutil.cpu_percent(0.0)
@@ -334,7 +335,7 @@ class Trainer:
             f"[SelfPlay] sims {MCTS_TRAIN_SIMULATIONS_BASE}→≥{MCTS_TRAIN_SIMULATIONS_MIN} | temp {SELFPLAY_TEMP_HIGH}->{SELFPLAY_TEMP_LOW}@{SELFPLAY_TEMP_MOVES} | resign {RESIGN_VALUE_THRESHOLD} x{RESIGN_CONSECUTIVE_PLIES} | dirichlet α={MCTS_DIRICHLET_ALPHA} w={MCTS_DIRICHLET_WEIGHT}"
         )
         sections.append(
-            f"[Train   ] iters={TRAIN_TOTAL_ITERATIONS} | games/iter={SELFPLAY_GAMES_PER_ITER} | batch={TRAIN_BATCH_SIZE} | sched_est={TRAIN_LR_SCHED_STEPS_PER_ITER_EST}"
+            f"[Train   ] iters={TRAIN_TOTAL_ITERATIONS} | games/iter={SELFPLAY_GAMES_PER_ITER} | batch={self.train_batch_size} | sched_est={TRAIN_LR_SCHED_STEPS_PER_ITER_EST}"
         )
         sections.append(
             f"[LR      ] init={TRAIN_LR_INIT:.2e} | warmup={self.scheduler.warm} | final={TRAIN_LR_FINAL:.2e} | weight_decay={TRAIN_WEIGHT_DECAY} | momentum={TRAIN_MOMENTUM}"
@@ -719,21 +720,23 @@ class Trainer:
 
         losses: list[tuple[torch.Tensor, torch.Tensor]] = []
         snapshot = self.selfplay_engine.snapshot()
-        min_batch_samples = max(1, TRAIN_BATCH_SIZE // 2)
+        min_batch_samples = max(1, self.train_batch_size // 2)
         new_examples = int(game_stats.get("moves", 0))
         target_train_samples = int(TRAIN_TARGET_TRAIN_SAMPLES_PER_NEW * max(1, new_examples))
-        num_steps = int(np.ceil(target_train_samples / TRAIN_BATCH_SIZE))
+        num_steps = int(np.ceil(target_train_samples / max(1, self.train_batch_size)))
         num_steps = max(TRAIN_UPDATE_STEPS_MIN, min(TRAIN_UPDATE_STEPS_MAX, num_steps))
         samples_ratio = 0.0
         if len(snapshot) < min_batch_samples:
             num_steps = 0
         else:
-            samples_ratio = (num_steps * TRAIN_BATCH_SIZE) / max(1, new_examples)
+            samples_ratio = (num_steps * self.train_batch_size) / max(1, new_examples)
 
         grad_norm_sum: float = 0.0
         entropy_sum: float = 0.0
         for _step in range(num_steps):
-            batch = self.selfplay_engine.sample_from_snapshot(snapshot, TRAIN_BATCH_SIZE, recent_ratio=TRAIN_RECENT_SAMPLE_RATIO)
+            batch = self.selfplay_engine.sample_from_snapshot(
+                snapshot, self.train_batch_size, recent_ratio=TRAIN_RECENT_SAMPLE_RATIO
+            )
             if not batch:
                 continue
             states, policies, values = batch
@@ -758,7 +761,7 @@ class Trainer:
         buffer_capacity2 = int(self.selfplay_engine.buffer.maxlen or 1)
         buffer_pct2 = (buffer_size / buffer_capacity2) * 100
         batches_per_sec = (len(losses) / max(1e-9, train_elapsed_s)) if losses else 0.0
-        samples_per_sec = ((len(losses) * TRAIN_BATCH_SIZE) / max(1e-9, train_elapsed_s)) if losses else 0.0
+        samples_per_sec = ((len(losses) * self.train_batch_size) / max(1e-9, train_elapsed_s)) if losses else 0.0
         learning_rate = self.optimizer.param_groups[0]["lr"]
         avg_grad_norm = (grad_norm_sum / max(1, len(losses))) if losses else 0.0
         avg_entropy = (entropy_sum / max(1, len(losses))) if losses else 0.0
@@ -798,7 +801,7 @@ class Trainer:
         tr_line = (
             f"steps {len(losses):>3} | b/s {batches_per_sec:>4.1f} | sps {self._format_si(samples_per_sec, digits=1)} | t {self._format_time(train_elapsed_s)} | "
             f"P {avg_policy_loss:>6.4f} | V {avg_value_loss:>6.4f} | LR {learning_rate:.2e} | grad {avg_grad_norm:>5.3f} | ent {avg_entropy:>5.3f} | "
-            f"entc {entropy_coef:.2e} | clip {TRAIN_GRAD_CLIP_NORM:.1f} | buf {int(buffer_pct2):>3}% ({self._format_si(buffer_size)})"
+            f"entc {entropy_coef:.2e} | clip {TRAIN_GRAD_CLIP_NORM:.1f} | buf {int(buffer_pct2):>3}% ({self._format_si(buffer_size)}) | batch {self.train_batch_size}"
         )
         lr_sched_fragment = f"sched {TRAIN_LR_SCHED_STEPS_PER_ITER_EST}->{actual_update_steps} | drift {sched_drift_pct:+.0f}% | pos {self.scheduler.t}/{self._format_si(self.scheduler.total)}"
 
@@ -974,10 +977,23 @@ class Trainer:
             peak_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
             mem_info_summary = self._get_mem_info()
+            try:
+                target_hi = 0.92 * self.device_total_gb
+                target_lo = 0.70 * self.device_total_gb
+                prev_bs = int(self.train_batch_size)
+                if peak_res < target_lo and prev_bs < 15360:
+                    self.train_batch_size = int(min(15360, prev_bs + 1024))
+                elif peak_res > 0.97 * self.device_total_gb and prev_bs > 4096:
+                    self.train_batch_size = int(max(4096, prev_bs - 1024))
+                if self.train_batch_size != prev_bs:
+                    self.log.info(f"[AUTO] train_batch_size {prev_bs} -> {self.train_batch_size} (peak_res {self._format_gb(peak_res)})")
+            except Exception:
+                pass
+
             self.log.info(
                 f"[SUM] iter {self._format_time(full_iter_time)} | sp {self._format_time(sp_time)} | tr {self._format_time(tr_time)} | ar {self._format_time(arena_elapsed)} | "
                 f"elapsed {self._format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | "
-                f"peak GPU {self._format_gb(peak_alloc)}/{self._format_gb(peak_res)} | RSS {self._format_gb(mem_info_summary['rss_gb'])}"
+                f"peak GPU {self._format_gb(peak_alloc)}/{self._format_gb(peak_res)} | RSS {self._format_gb(mem_info_summary['rss_gb'])} | batch {self.train_batch_size}"
             )
 
             self._prev_eval_m = self.evaluator.get_metrics()
