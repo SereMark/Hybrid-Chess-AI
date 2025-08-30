@@ -128,13 +128,8 @@ from .config import (
     U8_SCALE,
     VALUE_I8_SCALE,
 )
-from .model import (
-    BatchedEvaluator,
-    ChessNet,
-)
-from .selfplay import (
-    SelfPlayEngine,
-)
+from .model import BatchedEvaluator, ChessNet
+from .selfplay import SelfPlayEngine
 
 
 class Trainer:
