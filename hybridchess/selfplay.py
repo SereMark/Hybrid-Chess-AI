@@ -217,6 +217,13 @@ class SelfPlayEngine:
             maxlen=REPLAY_BUFFER_CAPACITY
         )
         self.buffer_lock = threading.Lock()
+        self.num_workers: int = int(SELFPLAY_NUM_WORKERS)
+
+    def set_num_workers(self, n: int) -> None:
+        self.num_workers = int(max(1, n))
+
+    def get_num_workers(self) -> int:
+        return int(self.num_workers)
 
     @staticmethod
     def encode_u8(enc: np.ndarray) -> np.ndarray:
@@ -440,7 +447,7 @@ class SelfPlayEngine:
         seeds = [int(np.random.randint(0, 2**63 - 1)) for _ in range(num_games)]
         if int(SEED) != 0:
             results: dict[int, tuple[int, int, list[tuple[np.ndarray, np.ndarray]], bool]] = {}
-            with ThreadPoolExecutor(max_workers=max(1, SELFPLAY_NUM_WORKERS)) as ex:
+            with ThreadPoolExecutor(max_workers=max(1, self.num_workers)) as ex:
                 futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
                 for fut in as_completed(futures):
                     i = futures[fut]
@@ -457,7 +464,7 @@ class SelfPlayEngine:
                 else:
                     stats["draws"] += 1
         else:
-            with ThreadPoolExecutor(max_workers=max(1, SELFPLAY_NUM_WORKERS)) as ex:
+            with ThreadPoolExecutor(max_workers=max(1, self.num_workers)) as ex:
                 futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
                 for fut in as_completed(futures):
                     moves, result, examples, first_to_move_is_white = fut.result()

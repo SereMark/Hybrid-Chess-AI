@@ -144,10 +144,19 @@ class BatchedEvaluator:
         self._pending_lock = threading.Condition()
         self._pending: deque[_EvalRequest] = deque()
         self._shutdown = threading.Event()
+        self._batch_size_cap = int(EVAL_BATCH_SIZE_MAX)
+        self._coalesce_ms = int(EVAL_BATCH_COALESCE_MS)
         self._thread = threading.Thread(
             target=self._batch_worker, name="EvalBatchWorker", daemon=True
         )
         self._thread.start()
+
+    def set_batching_params(self, batch_size_max: int | None = None, coalesce_ms: int | None = None) -> None:
+        """Dynamically adjust evaluator batching limits."""
+        if batch_size_max is not None:
+            self._batch_size_cap = int(max(1, batch_size_max))
+        if coalesce_ms is not None:
+            self._coalesce_ms = int(max(0, coalesce_ms))
 
     def close(self) -> None:
         self._shutdown.set()
@@ -341,7 +350,6 @@ class BatchedEvaluator:
 
     def _batch_worker(self) -> None:
         """Coalesce pending requests into batches up to size/time limits."""
-        coalesce_timeout_s = max(0.0, float(EVAL_BATCH_COALESCE_MS) / 1000.0)
         while not self._shutdown.is_set():
             with self._pending_lock:
                 while not self._pending and not self._shutdown.is_set():
@@ -350,7 +358,8 @@ class BatchedEvaluator:
                     break
                 batch: list[_EvalRequest] = [self._pending.popleft()]
                 coalesce_start = time.time()
-                while len(batch) < EVAL_BATCH_SIZE_MAX and not self._shutdown.is_set():
+                coalesce_timeout_s = max(0.0, float(self._coalesce_ms) / 1000.0)
+                while len(batch) < self._batch_size_cap and not self._shutdown.is_set():
                     remaining = coalesce_timeout_s - (time.time() - coalesce_start)
                     if remaining <= 0.0:
                         break
@@ -358,7 +367,7 @@ class BatchedEvaluator:
                         self._pending_lock.wait(timeout=remaining)
                         if not self._pending:
                             break
-                    while self._pending and len(batch) < EVAL_BATCH_SIZE_MAX:
+                    while self._pending and len(batch) < self._batch_size_cap:
                         batch.append(self._pending.popleft())
             if self._shutdown.is_set():
                 break
