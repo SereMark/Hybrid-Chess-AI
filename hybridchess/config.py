@@ -1,22 +1,15 @@
+# Imports (internal use)
+import os as _os
+import psutil as _psutil
+import torch as _torch
+
 # Reproducibility
 SEED = 0  # 0 to disable strict reproducibility and allow fastest settings
 
-# Torch / AMP / performance
+# Torch / Performance (static)
 AMP_ENABLED = True
-AMP_PREFER_BFLOAT16 = True
-TORCH_ALLOW_TF32 = True
-TORCH_COMPILE = True
 TORCH_COMPILE_MODE = "max-autotune"
-TORCH_COMPILE_FULLGRAPH = True
-TORCH_COMPILE_DYNAMIC = False
-TORCH_CUDNN_BENCHMARK = True
-TORCH_THREADS_INTRA = 1
-TORCH_THREADS_INTER = 1
 TORCH_MATMUL_FLOAT32_PRECISION = "high"
-MODEL_CHANNELS_LAST = True
-EVAL_MODEL_CHANNELS_LAST = True
-TRAIN_PIN_MEMORY = False
-EVAL_PIN_MEMORY = False
 
 # Logging / IO
 LOG_TO_FILE = True
@@ -28,7 +21,7 @@ CHECKPOINT_SAVE_EVERY_ITERS = 30
 CHECKPOINT_FILE_PATH = "checkpoint.pt"
 BEST_MODEL_FILE_PATH = "best_model.pt"
 
-# Board encoding / shapes
+# Board Encoding / Shapes
 BOARD_SIZE = 8
 NSQUARES = BOARD_SIZE * BOARD_SIZE
 PLANES_PER_POSITION = 14
@@ -52,22 +45,18 @@ PMAP_PROMOS = [0, 2, 1]
 U8_SCALE = 255.0
 VALUE_I8_SCALE = 127.0
 
-# Model architecture
+# Model Architecture
 MODEL_BLOCKS = 12
 MODEL_CHANNELS = 224
 MODEL_VALUE_CONV_CHANNELS = 16
 MODEL_VALUE_HIDDEN_DIM = 1024
 
-# Evaluator (inference) batching/cache
-EVAL_BATCH_SIZE_MAX = 8192
+# Evaluator (inference)
 EVAL_BATCH_COALESCE_MS = 22
-EVAL_CACHE_CAPACITY = 40_000
 EVAL_WORKER_JOIN_TIMEOUT_S = 0.15
 EVAL_CACHE_USE_FP16 = True
 
-# Self-play / replay buffer
-REPLAY_BUFFER_CAPACITY = 150_000
-SELFPLAY_NUM_WORKERS = 32
+# Self-play / Replay Buffer
 GAME_MAX_PLIES = 320
 SELFPLAY_TEMP_MOVES = 45
 SELFPLAY_TEMP_HIGH = 0.90
@@ -75,7 +64,7 @@ SELFPLAY_TEMP_LOW = 0.07
 SELFPLAY_DETERMINISTIC_TEMP_EPS = 0.005
 SELFPLAY_OPENING_RANDOM_PLIES_MAX = 6
 
-# MCTS settings (training)
+# MCTS (training)
 MCTS_TRAIN_SIMULATIONS_BASE = 512
 MCTS_TRAIN_SIMULATIONS_MIN = 128
 MCTS_TRAIN_SIM_DECAY_MOVE_INTERVAL = 12
@@ -87,13 +76,13 @@ MCTS_DIRICHLET_WEIGHT = 0.25
 MCTS_FPU_REDUCTION = 0.12
 MCTS_VISIT_COUNT_CLAMP = 65535
 
-# Resignation rules
+# Resignation
 RESIGN_VALUE_THRESHOLD = -0.85
 RESIGN_CONSECUTIVE_PLIES = 3
 RESIGN_CONSECUTIVE_MIN = 3
 RESIGN_PLAYTHROUGH_FRACTION = 0.33
 
-# Sampling / augmentation
+# Sampling / Augmentation
 REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC = 0.15
 REPLAY_SNAPSHOT_RECENT_RATIO_DEFAULT = 0.6
 TRAIN_RECENT_SAMPLE_RATIO = 0.75
@@ -102,7 +91,6 @@ AUGMENT_ROT180_PROB = 0.25
 AUGMENT_VFLIP_CS_PROB = 0.25
 
 # Optimization
-TRAIN_BATCH_SIZE = 10240
 TRAIN_LR_INIT = 3.4e-3
 TRAIN_LR_WARMUP_STEPS = 800
 TRAIN_LR_FINAL = 6.5e-4
@@ -120,7 +108,7 @@ LOSS_ENTROPY_COEF_MIN = 4.0e-05
 EMA_ENABLED = True
 EMA_DECAY = 0.999
 
-# Schedule / iteration
+# Schedule / Iteration
 TRAIN_TOTAL_ITERATIONS = 168
 SELFPLAY_GAMES_PER_ITER = 360
 TRAIN_LR_SCHED_STEPS_PER_ITER_EST = 36
@@ -129,10 +117,9 @@ TRAIN_TARGET_TRAIN_SAMPLES_PER_NEW = 6.0
 TRAIN_UPDATE_STEPS_MIN = 32
 TRAIN_UPDATE_STEPS_MAX = 1024
 
-# Arena evaluation (gating)
+# Arena Evaluation (gating)
 MCTS_EVAL_SIMULATIONS = 384
 ARENA_EVAL_EVERY_ITERS = 8
-ARENA_EVAL_CACHE_CAPACITY = 32_768
 ARENA_GAMES_PER_EVAL = 120
 ARENA_TEMPERATURE = 0.05
 ARENA_TEMP_MOVES = 8
@@ -154,7 +141,7 @@ ARENA_CANDIDATE_MAX_GAMES = 600
 ARENA_PAIRING_FACTOR = 2
 ARENA_GATE_EPS = 1e-9
 
-# Dynamic RAM/cache/buffer tuning
+# Dynamic RAM/Cache/Buffer Tuning
 DYN_TUNE_RAM_ENABLED = True
 DYN_RAM_LOW_PCT = 55.0
 DYN_RAM_HIGH_PCT = 82.0
@@ -168,3 +155,60 @@ DYN_EVAL_STEP = 4_096
 DYN_ARENA_EVAL_MIN = 8_192
 DYN_ARENA_EVAL_MAX = 131_072
 DYN_ARENA_EVAL_STEP = 4_096
+
+# Dynamic Hardware-Based Defaults
+def _detect_hardware():
+    """Return (cpu_cores, ram_gb, vram_gb)."""
+    aff = getattr(_os, "sched_getaffinity", None)
+    cpu_cores = len(aff(0)) if callable(aff) else int(_psutil.cpu_count(logical=True) or 1)
+    vm = _psutil.virtual_memory()
+    ram_gb = float(vm.total) / (1024 ** 3)
+    if _torch.cuda.is_available() and _torch.cuda.device_count() > 0:
+        vram_gb = float(_torch.cuda.get_device_properties(0).total_memory) / (1024 ** 3)
+    else:
+        vram_gb = 0.0
+    return cpu_cores, ram_gb, vram_gb
+
+_CPU_CORES, _RAM_GB, _VRAM_GB = _detect_hardware()
+
+# Mixed precision and math modes
+AMP_PREFER_BFLOAT16 = True
+TORCH_ALLOW_TF32 = True
+
+# Memory format
+MODEL_CHANNELS_LAST = True
+EVAL_MODEL_CHANNELS_LAST = True
+
+# Torch threading
+TORCH_THREADS_INTRA = 1
+TORCH_THREADS_INTER = 1
+
+# Data loader pin-memory
+TRAIN_PIN_MEMORY = bool(_RAM_GB >= 16.0)
+EVAL_PIN_MEMORY = bool(_RAM_GB >= 16.0)
+
+# Self-play workers
+SELFPLAY_NUM_WORKERS = int(min(32, max(4, _CPU_CORES - 2)))
+
+# Batch sizes
+TRAIN_BATCH_SIZE = int(max(4096, min(15360, int(256 * max(1.0, _VRAM_GB)))))
+EVAL_BATCH_SIZE_MAX = int(max(1024, min(8192, int(2048 * (max(1.0, _VRAM_GB) / 16.0)))))
+
+# Cache capacities (scale to available RAM)
+_sample_bytes = int((INPUT_PLANES * 8 * 8) + (POLICY_OUTPUT * 2) + 1)
+_sample_bytes = int(_sample_bytes * 1.06)  # overhead fudge
+_replay_budget = int(min(4 * 1024 ** 3, 0.05 * _RAM_GB * (1024 ** 3)))  # <=4GB or 5% RAM
+REPLAY_BUFFER_CAPACITY = int(max(DYN_REPLAY_MIN, min(DYN_REPLAY_MAX, _replay_budget // max(1, _sample_bytes))))
+
+_cache_entry_bytes = int((POLICY_OUTPUT * 2) + 4)
+_eval_cache_budget = int(min(1_200_000_000, 0.015 * _RAM_GB * (1024 ** 3)))  # <=~1.2GB or 1.5% RAM
+EVAL_CACHE_CAPACITY = int(max(DYN_EVAL_MIN, min(DYN_EVAL_MAX, _eval_cache_budget // max(1, _cache_entry_bytes))))
+ARENA_EVAL_CACHE_CAPACITY = int(max(DYN_ARENA_EVAL_MIN, min(DYN_ARENA_EVAL_MAX, EVAL_CACHE_CAPACITY // 2)))
+
+# cuDNN benchmark toggles with reproducibility policy
+TORCH_CUDNN_BENCHMARK = bool(SEED == 0)
+
+# Torch compile settings (kept enabled)
+TORCH_COMPILE = True
+TORCH_COMPILE_FULLGRAPH = True
+TORCH_COMPILE_DYNAMIC = True

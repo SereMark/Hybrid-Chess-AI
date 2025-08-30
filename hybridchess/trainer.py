@@ -243,6 +243,12 @@ class Trainer:
         self.scaler = torch.amp.GradScaler("cuda", enabled=(AMP_ENABLED and not use_bf16))
 
         self.evaluator = BatchedEvaluator(self.device)
+        self._eval_batch_cap = int(EVAL_BATCH_SIZE_MAX)
+        self._eval_coalesce_ms = int(EVAL_BATCH_COALESCE_MS)
+        try:
+            self.evaluator.set_batching_params(self._eval_batch_cap, self._eval_coalesce_ms)
+        except Exception:
+            pass
         self.train_batch_size: int = int(TRAIN_BATCH_SIZE)
         self._tune_cooldown_counter: int = 0
         self._current_eval_cache_cap: int = int(EVAL_CACHE_CAPACITY)
@@ -363,8 +369,12 @@ class Trainer:
         sections.append(
             f"[Allocator] {env_alloc} | cuda_module_loading={env_modload} | cuda_cache_max={env_cache}"
         )
+        try:
+            sp_workers = int(self.selfplay_engine.get_num_workers())
+        except Exception:
+            sp_workers = int(SELFPLAY_NUM_WORKERS)
         sections.append(
-            f"[Threads ] torch intra={torch.get_num_threads()} inter={torch.get_num_interop_threads()} | CPU cores={os.cpu_count()} | selfplay workers={SELFPLAY_NUM_WORKERS}"
+            f"[Threads ] torch intra={torch.get_num_threads()} inter={torch.get_num_interop_threads()} | CPU cores={os.cpu_count()} | selfplay workers={sp_workers}"
         )
         sections.append(
             f"[Model   ] params={total_params_m:.1f}M | blocks={MODEL_BLOCKS} | channels={MODEL_CHANNELS} | value_head=({MODEL_VALUE_CONV_CHANNELS}->{MODEL_VALUE_HIDDEN_DIM})"
@@ -685,9 +695,19 @@ class Trainer:
         states_u8_list, counts_u16_list, values_i8_list = batch_data
         x_u8_np = np.stack(states_u8_list).astype(np.uint8, copy=False)
         x_u8_t = torch.from_numpy(x_u8_np)  # CPU uint8 [B,C,H,W]
+        if TRAIN_PIN_MEMORY:
+            try:
+                x_u8_t = x_u8_t.pin_memory()
+            except Exception:
+                pass
         x = x_u8_t.to(self.device, non_blocking=True)
         pi_u16_np = np.stack(counts_u16_list).astype(np.uint16, copy=False)
         pi_u16_t = torch.from_numpy(pi_u16_np)  # CPU uint16 [B,P]
+        if TRAIN_PIN_MEMORY:
+            try:
+                pi_u16_t = pi_u16_t.pin_memory()
+            except Exception:
+                pass
         pi_counts = pi_u16_t.to(self.device, non_blocking=True).to(dtype=torch.float32)
         denom = pi_counts.sum(dim=1, keepdim=True)
         num_actions = int(pi_counts.shape[1])
@@ -698,6 +718,11 @@ class Trainer:
         )
         v_i8_np = np.asarray(values_i8_list, dtype=np.int8)
         v_i8_t = torch.from_numpy(v_i8_np)
+        if TRAIN_PIN_MEMORY:
+            try:
+                v_i8_t = v_i8_t.pin_memory()
+            except Exception:
+                pass
         v_target = v_i8_t.to(self.device, non_blocking=True).to(dtype=torch.float32) / float(
             VALUE_I8_SCALE
         )
@@ -803,6 +828,28 @@ class Trainer:
         except Exception:
             buffer_cap = int(self.selfplay_engine.buffer.maxlen or 1)
         buffer_pct = (buffer_len / buffer_cap) * 100
+        try:
+            import psutil as _ps
+            max_workers_cap = int(min(32, max(4, (_ps.cpu_count(logical=True) or 8) - 2)))
+        except Exception:
+            max_workers_cap = 16
+        try:
+            cur_workers = int(self.selfplay_engine.get_num_workers())
+        except Exception:
+            cur_workers = None
+        if cur_workers is not None:
+            cpu_pct = float(sys_info.get("cpu_sys_pct", 0.0))
+            target_workers = int(cur_workers)
+            if (cpu_pct < 55.0 and buffer_pct < 60.0 and cur_workers < max_workers_cap):
+                target_workers = min(max_workers_cap, cur_workers + 2)
+            elif cpu_pct > 85.0 and cur_workers > 4:
+                target_workers = max(4, cur_workers - 2)
+            if target_workers != cur_workers:
+                try:
+                    self.selfplay_engine.set_num_workers(target_workers)
+                    self.log.info(f"[AUTO] selfplay_workers {cur_workers} -> {target_workers}")
+                except Exception:
+                    pass
         total_elapsed = time.time() - self.start_time
         pct_done = 100.0 * (self.iteration - 1) / max(1, TRAIN_TOTAL_ITERATIONS)
         self.log.info(
@@ -847,6 +894,36 @@ class Trainer:
         )
         hit_rate = (100.0 * cache_hits_total / max(1, requests_total)) if requests_total else 0.0
         hit_rate_d = (100.0 * delta_hits / max(1, delta_requests)) if delta_requests > 0 else 0.0
+
+        try:
+            if delta_batches > 0 and delta_eval_positions > 0:
+                avg_batch = delta_eval_positions / max(1, delta_batches)
+                cap = int(self._eval_batch_cap)
+                max_cap_allowed = int(min(8192, max(1024, int(2048 * (self.device_total_gb / 16.0)))))
+                mem_now = self._get_mem_info()
+                reserved_frac = float(mem_now["reserved_gb"]) / max(1e-9, float(mem_now["total_gb"]))
+                if avg_batch >= 0.90 * cap and cap < max_cap_allowed and reserved_frac < 0.90:
+                    new_cap = int(min(max_cap_allowed, cap + 512))
+                    if new_cap != cap:
+                        self._eval_batch_cap = new_cap
+                        self.evaluator.set_batching_params(batch_size_max=new_cap)
+                        self.log.info(f"[AUTO] eval_batch_size_max {cap} -> {new_cap}")
+                elif avg_batch <= 0.25 * cap and self._eval_coalesce_ms > 4:
+                    old_ms = int(self._eval_coalesce_ms)
+                    new_ms = int(max(4, int(old_ms * 0.8)))
+                    if new_ms != old_ms:
+                        self._eval_coalesce_ms = new_ms
+                        self.evaluator.set_batching_params(coalesce_ms=new_ms)
+                        self.log.info(f"[AUTO] eval_coalesce_ms {old_ms} -> {new_ms}")
+                elif avg_batch >= 0.80 * cap and self._eval_coalesce_ms < 50:
+                    old_ms = int(self._eval_coalesce_ms)
+                    new_ms = int(min(50, int(old_ms * 1.2 + 1)))
+                    if new_ms != old_ms:
+                        self._eval_coalesce_ms = new_ms
+                        self.evaluator.set_batching_params(coalesce_ms=new_ms)
+                        self.log.info(f"[AUTO] eval_coalesce_ms {old_ms} -> {new_ms}")
+        except Exception:
+            pass
 
         sp_line = (
             f"games {games_count:,} | W/D/B {white_wins}/{draws_count}/{black_wins} "
@@ -1194,14 +1271,17 @@ class Trainer:
             try:
                 target_lo = 0.70 * self.device_total_gb
                 prev_bs = int(self.train_batch_size)
-                if peak_res < target_lo and prev_bs < 15360:
-                    self.train_batch_size = int(min(15360, prev_bs + 1024))
-                elif peak_res > 0.97 * self.device_total_gb and prev_bs > 4096:
-                    self.train_batch_size = int(max(4096, prev_bs - 1024))
-                if self.train_batch_size != prev_bs:
-                    self.log.info(
-                        f"[AUTO] train_batch_size {prev_bs} -> {self.train_batch_size} (peak_res {self._format_gb(peak_res)})"
-                    )
+                if (not TORCH_COMPILE) or TORCH_COMPILE_DYNAMIC:
+                    if peak_res < target_lo and prev_bs < 15360:
+                        self.train_batch_size = int(min(15360, prev_bs + 1024))
+                    elif peak_res > 0.97 * self.device_total_gb and prev_bs > 4096:
+                        self.train_batch_size = int(max(4096, prev_bs - 1024))
+                    if self.train_batch_size != prev_bs:
+                        self.log.info(
+                            f"[AUTO] train_batch_size {prev_bs} -> {self.train_batch_size} (peak_res {self._format_gb(peak_res)})"
+                        )
+                else:
+                    pass
             except Exception:
                 pass
             try:
