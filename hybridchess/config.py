@@ -154,3 +154,24 @@ ARENA_CANDIDATE_MAX_ROUNDS = 4
 ARENA_CANDIDATE_MAX_GAMES = 600
 ARENA_PAIRING_FACTOR = 2
 ARENA_GATE_EPS = 1e-9
+
+## Dynamic RAM/cache/buffer tuning
+# Enable/disable automatic host RAM-aware tuning during training.
+DYN_TUNE_RAM_ENABLED = True
+# Trigger thresholds based on system RAM usage percentage.
+DYN_RAM_LOW_PCT = 55.0
+DYN_RAM_HIGH_PCT = 82.0
+# Cooldown in iterations between tuning adjustments.
+DYN_TUNE_COOLDOWN_ITERS = 2
+# Replay buffer dynamic bounds and step size.
+DYN_REPLAY_MIN = 80_000
+DYN_REPLAY_MAX = 300_000
+DYN_REPLAY_STEP = 10_000
+# Evaluator cache bounds and step size.
+DYN_EVAL_MIN = 8_192
+DYN_EVAL_MAX = 200_000
+DYN_EVAL_STEP = 4_096
+# Arena evaluator cache bounds/steps (separate from main evaluator).
+DYN_ARENA_EVAL_MIN = 8_192
+DYN_ARENA_EVAL_MAX = 131_072
+DYN_ARENA_EVAL_STEP = 4_096
