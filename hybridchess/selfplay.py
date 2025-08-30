@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import threading
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import chesscore as ccore
@@ -69,17 +69,13 @@ class Augment:
     def _policy_index_permutation(transform: str) -> np.ndarray:
         if transform in Augment._policy_map_cache:
             return Augment._policy_map_cache[transform]
-        assert (
-            POLICY_OUTPUT % NSQUARES == 0
-        ), "POLICY_OUTPUT must be divisible by NSQUARES"
+        assert POLICY_OUTPUT % NSQUARES == 0, "POLICY_OUTPUT must be divisible by NSQUARES"
         planes = POLICY_OUTPUT // NSQUARES
         required_planes = max(
             KNIGHT_PLANES_BASE + NUM_KNIGHT_DIRS,
             NSQUARES + PROMO_STRIDE * PROMO_CHOICES,
         )
-        base = np.arange(POLICY_OUTPUT, dtype=np.int32).reshape(
-            planes, BOARD_SIZE, BOARD_SIZE
-        )
+        base = np.arange(POLICY_OUTPUT, dtype=np.int32).reshape(planes, BOARD_SIZE, BOARD_SIZE)
         out = base
         if transform == "mirror":
             arr = base[:, :, ::-1]
@@ -88,14 +84,10 @@ class Augment:
                 dir_map = DIR_MAP_MIRROR
                 for d in range(NUM_DIRECTIONS):
                     for dist in range(DIR_MAX_DIST):
-                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[
-                            d * DIR_MAX_DIST + dist
-                        ]
+                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[d * DIR_MAX_DIST + dist]
                 knight_map = KMAP_MIRROR
                 for k in range(NUM_KNIGHT_DIRS):
-                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[
-                        KNIGHT_PLANES_BASE + k
-                    ]
+                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[KNIGHT_PLANES_BASE + k]
                 promo_map = PMAP_PROMOS
                 for promo in range(PROMO_CHOICES):
                     b = NSQUARES + promo * PROMO_STRIDE
@@ -103,9 +95,7 @@ class Augment:
                     out[b + promo_map[1]] = arr[b + 1]
                     out[b + promo_map[2]] = arr[b + 2]
             else:
-                Augment._policy_map_cache[transform] = np.arange(
-                    POLICY_OUTPUT, dtype=np.int32
-                )
+                Augment._policy_map_cache[transform] = np.arange(POLICY_OUTPUT, dtype=np.int32)
                 return Augment._policy_map_cache[transform]
         elif transform == "rot180":
             arr = base[:, ::-1, ::-1]
@@ -114,14 +104,10 @@ class Augment:
                 dir_map = DIR_MAP_ROT180
                 for d in range(NUM_DIRECTIONS):
                     for dist in range(DIR_MAX_DIST):
-                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[
-                            d * DIR_MAX_DIST + dist
-                        ]
+                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[d * DIR_MAX_DIST + dist]
                 knight_map = KMAP_ROT180
                 for k in range(NUM_KNIGHT_DIRS):
-                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[
-                        KNIGHT_PLANES_BASE + k
-                    ]
+                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[KNIGHT_PLANES_BASE + k]
                 promo_map = PMAP_PROMOS
                 for promo in range(PROMO_CHOICES):
                     b = NSQUARES + promo * PROMO_STRIDE
@@ -129,9 +115,7 @@ class Augment:
                     out[b + promo_map[1]] = arr[b + 1]
                     out[b + promo_map[2]] = arr[b + 2]
             else:
-                Augment._policy_map_cache[transform] = np.arange(
-                    POLICY_OUTPUT, dtype=np.int32
-                )
+                Augment._policy_map_cache[transform] = np.arange(POLICY_OUTPUT, dtype=np.int32)
                 return Augment._policy_map_cache[transform]
 
         elif transform == "vflip_cs":
@@ -141,18 +125,12 @@ class Augment:
                 dir_map = DIR_MAP_VFLIP_CS
                 for d in range(NUM_DIRECTIONS):
                     for dist in range(DIR_MAX_DIST):
-                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[
-                            d * DIR_MAX_DIST + dist
-                        ]
+                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[d * DIR_MAX_DIST + dist]
                 knight_map = KMAP_VFLIP_CS
                 for k in range(NUM_KNIGHT_DIRS):
-                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[
-                        KNIGHT_PLANES_BASE + k
-                    ]
+                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[KNIGHT_PLANES_BASE + k]
             else:
-                Augment._policy_map_cache[transform] = np.arange(
-                    POLICY_OUTPUT, dtype=np.int32
-                )
+                Augment._policy_map_cache[transform] = np.arange(POLICY_OUTPUT, dtype=np.int32)
                 return Augment._policy_map_cache[transform]
         Augment._policy_map_cache[transform] = out.reshape(-1)
         return Augment._policy_map_cache[transform]
@@ -209,22 +187,18 @@ class Augment:
             state_batch = state_batch[..., ::-1, ::-1].copy()
             policy_batch = policy_batch[:, Augment._policy_index_permutation("rot180")]
         elif transform == "vflip_cs":
-            # Vertical flip + castling-side swap; side-to-move flips.
             state_batch = state_batch[..., ::-1, :].copy()
             perm = Augment._vflip_cs_plane_permutation(state_batch.shape[1])
             state_batch = state_batch[:, perm]
             idx = Augment._feature_plane_indices()
             tp = idx["turn_plane"]
             if tp < state_batch.shape[1]:
-                # Handle both float [0,1] and quantized uint8 [0..U8_SCALE]
                 if np.issubdtype(state_batch.dtype, np.floating):
                     one_val = 1.0
                 else:
                     one_val = np.array(U8_SCALE, dtype=state_batch.dtype)
                 state_batch[:, tp] = one_val - state_batch[:, tp]
-            policy_batch = policy_batch[
-                :, Augment._policy_index_permutation("vflip_cs")
-            ]
+            policy_batch = policy_batch[:, Augment._policy_index_permutation("vflip_cs")]
             stm_swapped = True
         else:
             return states, policies, False
@@ -254,9 +228,7 @@ class SelfPlayEngine:
     def encode_value_i8(v: float) -> np.int8:
         """Scale value target to int8."""
         return np.int8(
-            np.clip(
-                np.rint(v * VALUE_I8_SCALE), -int(VALUE_I8_SCALE), int(VALUE_I8_SCALE)
-            )
+            np.clip(np.rint(v * VALUE_I8_SCALE), -int(VALUE_I8_SCALE), int(VALUE_I8_SCALE))
         )
 
     def _select_move_by_temperature(
@@ -266,11 +238,7 @@ class SelfPlayEngine:
         move_number: int,
         rng: np.random.Generator | None = None,
     ) -> Any:
-        temperature = (
-            SELFPLAY_TEMP_HIGH
-            if move_number < SELFPLAY_TEMP_MOVES
-            else SELFPLAY_TEMP_LOW
-        )
+        temperature = SELFPLAY_TEMP_HIGH if move_number < SELFPLAY_TEMP_MOVES else SELFPLAY_TEMP_LOW
         if temperature > SELFPLAY_DETERMINISTIC_TEMP_EPS:
             probs = np.maximum(np.array(visit_counts, dtype=np.float64), 0.0)
             s = probs.sum()
@@ -281,11 +249,10 @@ class SelfPlayEngine:
                 s = probs.sum()
                 if (not np.isfinite(s)) or (s <= 0):
                     idx = int(np.argmax(visit_counts))
+                elif rng is None:
+                    idx = int(np.random.choice(len(moves), p=probs / s))
                 else:
-                    if rng is None:
-                        idx = int(np.random.choice(len(moves), p=probs / s))
-                    else:
-                        idx = int(rng.choice(len(moves), p=(probs / s)))
+                    idx = int(rng.choice(len(moves), p=(probs / s)))
         else:
             idx = int(np.argmax(visit_counts))
         return moves[idx]
@@ -335,9 +302,7 @@ class SelfPlayEngine:
         position_history: list[Any] = []
         move_count = 0
 
-        random_opening_plies = int(
-            rng.integers(0, max(1, SELFPLAY_OPENING_RANDOM_PLIES_MAX))
-        )
+        random_opening_plies = int(rng.integers(0, max(1, SELFPLAY_OPENING_RANDOM_PLIES_MAX)))
         for _ in range(random_opening_plies):
             if position.result() != ccore.ONGOING:
                 break
@@ -401,17 +366,13 @@ class SelfPlayEngine:
                         else:
                             side_to_move_is_white = position.turn == ccore.WHITE
                             forced_result = (
-                                ccore.BLACK_WIN
-                                if side_to_move_is_white
-                                else ccore.WHITE_WIN
+                                ccore.BLACK_WIN if side_to_move_is_white else ccore.WHITE_WIN
                             )
                             break
                 else:
                     resign_count = 0
 
-            move = self._select_move_by_temperature(
-                moves, visit_counts, move_count, rng=rng
-            )
+            move = self._select_move_by_temperature(moves, visit_counts, move_count, rng=rng)
             position.make_move(move)
             position_history.append(pos_snapshot)
             if len(position_history) > HISTORY_LENGTH:
@@ -438,7 +399,6 @@ class SelfPlayEngine:
     def set_capacity(self, capacity: int) -> None:
         cap = int(max(1, capacity))
         with self.buffer_lock:
-            # Recreate deque with new maxlen, preserving most recent entries
             items = list(self.buffer)
             if len(items) > cap:
                 items = items[-cap:]
@@ -453,17 +413,13 @@ class SelfPlayEngine:
         sample_count = len(snapshot)
         if batch_size > sample_count:
             return None
-        recent_window_count = max(
-            1, int(sample_count * REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC)
-        )
+        recent_window_count = max(1, int(sample_count * REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC))
         n_recent = round(batch_size * recent_ratio)
         n_old = batch_size - n_recent
         recent_indices = np.random.randint(
             max(0, sample_count - recent_window_count), sample_count, size=n_recent
         )
-        old_indices = np.random.randint(
-            0, max(1, sample_count - recent_window_count), size=n_old
-        )
+        old_indices = np.random.randint(0, max(1, sample_count - recent_window_count), size=n_old)
         indices = np.concatenate([recent_indices, old_indices])
         states_u8_list, counts_u16_list, values_i8_list = zip(
             *[snapshot[int(i)] for i in indices], strict=False
@@ -482,16 +438,10 @@ class SelfPlayEngine:
             "draws": 0,
         }
         seeds = [int(np.random.randint(0, 2**63 - 1)) for _ in range(num_games)]
-        # If strict reproducibility is requested (SEED != 0), preserve processing order.
         if int(SEED) != 0:
-            results: dict[
-                int, tuple[int, int, list[tuple[np.ndarray, np.ndarray]], bool]
-            ] = {}
+            results: dict[int, tuple[int, int, list[tuple[np.ndarray, np.ndarray]], bool]] = {}
             with ThreadPoolExecutor(max_workers=max(1, SELFPLAY_NUM_WORKERS)) as ex:
-                futures = {
-                    ex.submit(self.play_single_game, seeds[i]): i
-                    for i in range(num_games)
-                }
+                futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
                 for fut in as_completed(futures):
                     i = futures[fut]
                     results[i] = fut.result()
@@ -507,12 +457,8 @@ class SelfPlayEngine:
                 else:
                     stats["draws"] += 1
         else:
-            # Streaming path minimizes peak RAM and keeps throughput high
             with ThreadPoolExecutor(max_workers=max(1, SELFPLAY_NUM_WORKERS)) as ex:
-                futures = {
-                    ex.submit(self.play_single_game, seeds[i]): i
-                    for i in range(num_games)
-                }
+                futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
                 for fut in as_completed(futures):
                     moves, result, examples, first_to_move_is_white = fut.result()
                     self._process_result(examples, result, bool(first_to_move_is_white))
