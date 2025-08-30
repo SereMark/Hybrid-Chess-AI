@@ -165,9 +165,7 @@ class Trainer:
                 continue
             (
                 nodecay
-                if (
-                    n.endswith(".bias") or "bn" in n.lower() or "batchnorm" in n.lower()
-                )
+                if (n.endswith(".bias") or "bn" in n.lower() or "batchnorm" in n.lower())
                 else decay
             ).append(p)
 
@@ -181,9 +179,7 @@ class Trainer:
             nesterov=True,
         )
 
-        total_expected_train_steps = int(
-            TRAIN_TOTAL_ITERATIONS * TRAIN_LR_SCHED_STEPS_PER_ITER_EST
-        )
+        total_expected_train_steps = int(TRAIN_TOTAL_ITERATIONS * TRAIN_LR_SCHED_STEPS_PER_ITER_EST)
         warmup_steps_clamped = int(
             max(1, min(TRAIN_LR_WARMUP_STEPS, max(1, total_expected_train_steps - 1)))
         )
@@ -211,9 +207,7 @@ class Trainer:
                 else:
                     import math
 
-                    progress = min(
-                        1.0, (self.t - self.warm) / max(1, self.total - self.warm)
-                    )
+                    progress = min(1.0, (self.t - self.warm) / max(1, self.total - self.warm))
                     lr = self.final + (self.base - self.final) * 0.5 * (
                         1.0 + math.cos(math.pi * progress)
                     )
@@ -227,9 +221,7 @@ class Trainer:
                 else:
                     import math
 
-                    progress = min(
-                        1.0, (t_next - self.warm) / max(1, self.total - self.warm)
-                    )
+                    progress = min(1.0, (t_next - self.warm) / max(1, self.total - self.warm))
                     lr = self.final + (self.base - self.final) * 0.5 * (
                         1.0 + math.cos(math.pi * progress)
                     )
@@ -248,13 +240,10 @@ class Trainer:
             total_expected_train_steps,
         )
         use_bf16 = AMP_PREFER_BFLOAT16
-        self.scaler = torch.amp.GradScaler(
-            "cuda", enabled=(AMP_ENABLED and not use_bf16)
-        )
+        self.scaler = torch.amp.GradScaler("cuda", enabled=(AMP_ENABLED and not use_bf16))
 
         self.evaluator = BatchedEvaluator(self.device)
         self.train_batch_size: int = int(TRAIN_BATCH_SIZE)
-        # Dynamic RAM tuning state (host memory)
         self._tune_cooldown_counter: int = 0
         self._current_eval_cache_cap: int = int(EVAL_CACHE_CAPACITY)
         self._current_replay_cap: int = int(REPLAY_BUFFER_CAPACITY)
@@ -267,16 +256,12 @@ class Trainer:
         class EMA:
             """Lightweight EMA of model parameters for evaluation and gating."""
 
-            def __init__(
-                self, model: torch.nn.Module, decay: float = EMA_DECAY
-            ) -> None:
+            def __init__(self, model: torch.nn.Module, decay: float = EMA_DECAY) -> None:
                 self.decay = decay
                 base = getattr(model, "_orig_mod", model)
                 if hasattr(base, "module"):
                     base = base.module
-                self.shadow = {
-                    k: v.detach().clone() for k, v in base.state_dict().items()
-                }
+                self.shadow = {k: v.detach().clone() for k, v in base.state_dict().items()}
 
             @torch.no_grad()
             def update(self, model: torch.nn.Module) -> None:
@@ -289,9 +274,7 @@ class Trainer:
                         continue
                     if self.shadow[k].dtype != v.dtype:
                         self.shadow[k] = self.shadow[k].to(dtype=v.dtype)
-                    self.shadow[k].mul_(self.decay).add_(
-                        v.detach(), alpha=1.0 - self.decay
-                    )
+                    self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1.0 - self.decay)
 
             def copy_to(self, model: torch.nn.Module) -> None:
                 base = getattr(model, "_orig_mod", model)
@@ -304,18 +287,13 @@ class Trainer:
         self.evaluator.refresh_from(self.best_model)
 
         self.selfplay_engine = SelfPlayEngine(self.evaluator)
-        # Start conservatively to avoid first-iter compile peaks; grow later.
         if DYN_TUNE_RAM_ENABLED:
             try:
-                new_eval_cap = max(
-                    0, min(self._current_eval_cache_cap, int(DYN_EVAL_MIN))
-                )
+                new_eval_cap = max(0, min(self._current_eval_cache_cap, int(DYN_EVAL_MIN)))
                 if new_eval_cap != self._current_eval_cache_cap:
                     self.evaluator.set_cache_capacity(new_eval_cap)
                     self._current_eval_cache_cap = new_eval_cap
-                new_replay_cap = max(
-                    1, min(self._current_replay_cap, int(DYN_REPLAY_MIN))
-                )
+                new_replay_cap = max(1, min(self._current_replay_cap, int(DYN_REPLAY_MIN)))
                 self.selfplay_engine.set_capacity(new_replay_cap)
                 self._current_replay_cap = new_replay_cap
                 self._arena_eval_cache_cap = max(
@@ -332,11 +310,7 @@ class Trainer:
         self._prev_eval_m: dict[str, float] = {}
 
         self._arena_openings = self._load_openings()
-        if (
-            ARENA_EVAL_EVERY_ITERS > 0
-            and ARENA_GAMES_PER_EVAL > 0
-            and not self._arena_openings
-        ):
+        if ARENA_EVAL_EVERY_ITERS > 0 and ARENA_GAMES_PER_EVAL > 0 and not self._arena_openings:
             raise RuntimeError("No arena openings found.")
 
         self._gate = EloGater(
@@ -428,17 +402,11 @@ class Trainer:
         )
         title = "Hybrid Chess AI Training"
         bar = "=" * max(72, len(title))
-        return (
-            "\n" + bar + f"\n{title}\n" + bar + "\n" + "\n".join(sections) + "\n" + bar
-        )
+        return "\n" + bar + f"\n{title}\n" + bar + "\n" + "\n".join(sections) + "\n" + bar
 
     @staticmethod
     def _format_time(s: float) -> str:
-        return (
-            f"{s:.1f}s"
-            if s < 60
-            else (f"{s / 60:.1f}m" if s < 3600 else f"{s / 3600:.1f}h")
-        )
+        return f"{s:.1f}s" if s < 60 else (f"{s / 60:.1f}m" if s < 3600 else f"{s / 3600:.1f}h")
 
     @staticmethod
     def _format_si(n: int | float, digits: int = 1) -> str:
@@ -515,15 +483,11 @@ class Trainer:
             if grow:
                 new_replay = min(int(DYN_REPLAY_MAX), new_replay + int(DYN_REPLAY_STEP))
                 new_eval = min(int(DYN_EVAL_MAX), new_eval + int(DYN_EVAL_STEP))
-                new_arena = min(
-                    int(DYN_ARENA_EVAL_MAX), new_arena + int(DYN_ARENA_EVAL_STEP)
-                )
+                new_arena = min(int(DYN_ARENA_EVAL_MAX), new_arena + int(DYN_ARENA_EVAL_STEP))
             else:
                 new_replay = max(int(DYN_REPLAY_MIN), new_replay - int(DYN_REPLAY_STEP))
                 new_eval = max(int(DYN_EVAL_MIN), new_eval - int(DYN_EVAL_STEP))
-                new_arena = max(
-                    int(DYN_ARENA_EVAL_MIN), new_arena - int(DYN_ARENA_EVAL_STEP)
-                )
+                new_arena = max(int(DYN_ARENA_EVAL_MIN), new_arena - int(DYN_ARENA_EVAL_STEP))
             changes: list[str] = []
             if new_replay != self._current_replay_cap:
                 try:
@@ -535,9 +499,7 @@ class Trainer:
             if new_eval != self._current_eval_cache_cap:
                 try:
                     self.evaluator.set_cache_capacity(new_eval)
-                    changes.append(
-                        f"eval_cache {self._current_eval_cache_cap}->{new_eval}"
-                    )
+                    changes.append(f"eval_cache {self._current_eval_cache_cap}->{new_eval}")
                     self._current_eval_cache_cap = new_eval
                 except Exception:
                     pass
@@ -547,9 +509,7 @@ class Trainer:
             if changes:
                 self._tune_cooldown_counter = int(max(0, int(DYN_TUNE_COOLDOWN_ITERS)))
                 self.log.info(
-                    "[AUTO] mem_tune | "
-                    + " | ".join(changes)
-                    + f" | RAM {used_pct:.0f}%"
+                    "[AUTO] mem_tune | " + " | ".join(changes) + f" | RAM {used_pct:.0f}%"
                 )
         except Exception:
             pass
@@ -647,9 +607,7 @@ class Trainer:
                 self.optimizer.load_state_dict(ckpt["optimizer"])
             if "scheduler" in ckpt:
                 sd = ckpt["scheduler"]
-                self.scheduler.set_total_steps(
-                    int(sd.get("total", self.scheduler.total))
-                )
+                self.scheduler.set_total_steps(int(sd.get("total", self.scheduler.total)))
                 self.scheduler.t = int(sd.get("t", self.scheduler.t))
             if "scaler" in ckpt and isinstance(self.scaler, torch.amp.GradScaler):
                 self.scaler.load_state_dict(ckpt["scaler"])
@@ -686,7 +644,7 @@ class Trainer:
                 np.random.set_state(rng["np"])
             if "torch_cpu" in rng:
                 torch.set_rng_state(rng["torch_cpu"])
-            if ("torch_cuda" in rng) and (rng["torch_cuda"] is not None):
+            if "torch_cuda" in rng:
                 torch.cuda.set_rng_state_all(rng["torch_cuda"])
             self._prev_eval_m = self.evaluator.get_metrics()
             if not getattr(self, "_prev_eval_m", None):
@@ -740,9 +698,9 @@ class Trainer:
         )
         v_i8_np = np.asarray(values_i8_list, dtype=np.int8)
         v_i8_t = torch.from_numpy(v_i8_np)
-        v_target = v_i8_t.to(self.device, non_blocking=True).to(
-            dtype=torch.float32
-        ) / float(VALUE_I8_SCALE)
+        v_target = v_i8_t.to(self.device, non_blocking=True).to(dtype=torch.float32) / float(
+            VALUE_I8_SCALE
+        )
         x = x.to(dtype=torch.float32) / float(U8_SCALE)
         x = x.contiguous(memory_format=torch.channels_last)
         if not hasattr(self, "_aug_mirror_idx"):
@@ -754,15 +712,9 @@ class Trainer:
             plane_perm = _Aug._vflip_cs_plane_permutation(x.shape[1])
             feat_idx = _Aug._feature_plane_indices()
             self._turn_plane_idx = int(feat_idx.get("turn_plane", x.shape[1]))
-            self._aug_mirror_idx = torch.tensor(
-                mirror_idx, dtype=torch.long, device=self.device
-            )
-            self._aug_rot180_idx = torch.tensor(
-                rot180_idx, dtype=torch.long, device=self.device
-            )
-            self._aug_vflip_idx = torch.tensor(
-                vflip_idx, dtype=torch.long, device=self.device
-            )
+            self._aug_mirror_idx = torch.tensor(mirror_idx, dtype=torch.long, device=self.device)
+            self._aug_rot180_idx = torch.tensor(rot180_idx, dtype=torch.long, device=self.device)
+            self._aug_vflip_idx = torch.tensor(vflip_idx, dtype=torch.long, device=self.device)
             self._aug_vflip_plane_perm = torch.tensor(
                 plane_perm, dtype=torch.long, device=self.device
             )
@@ -799,20 +751,14 @@ class Trainer:
             )
             value_loss = F.mse_loss(value_pred, v_target)
             entropy_coef = 0.0
-            if (
-                LOSS_ENTROPY_COEF_INIT > 0
-                and self.iteration <= LOSS_ENTROPY_ANNEAL_ITERS
-            ):
+            if LOSS_ENTROPY_COEF_INIT > 0 and self.iteration <= LOSS_ENTROPY_ANNEAL_ITERS:
                 entropy_coef = LOSS_ENTROPY_COEF_INIT * (
                     1.0 - (self.iteration - 1) / max(1, LOSS_ENTROPY_ANNEAL_ITERS)
                 )
             if LOSS_ENTROPY_COEF_MIN > 0:
                 entropy_coef = max(float(entropy_coef), float(LOSS_ENTROPY_COEF_MIN))
             entropy = (
-                -(
-                    F.softmax(policy_logits, dim=1)
-                    * F.log_softmax(policy_logits, dim=1)
-                ).sum(dim=1)
+                -(F.softmax(policy_logits, dim=1) * F.log_softmax(policy_logits, dim=1)).sum(dim=1)
             ).mean()
             value_loss_weight = (
                 LOSS_VALUE_WEIGHT_LATE
@@ -843,8 +789,7 @@ class Trainer:
         )
 
     def training_iteration(self) -> dict[str, int | float]:
-        if self.selfplay_engine.resign_consecutive < RESIGN_CONSECUTIVE_MIN:
-            self.selfplay_engine.resign_consecutive = RESIGN_CONSECUTIVE_MIN
+        self.selfplay_engine.resign_consecutive = max(self.selfplay_engine.resign_consecutive, RESIGN_CONSECUTIVE_MIN)
         if self.iteration == ARENA_GATE_Z_SWITCH_ITER:
             self._gate.z = float(ARENA_GATE_Z_LATE)
         stats: dict[str, int | float] = {}
@@ -869,7 +814,6 @@ class Trainer:
             f"RAM {self._format_gb(sys_info['ram_used_gb'])}/{self._format_gb(sys_info['ram_total_gb'])} ({sys_info['ram_pct']:.0f}%) | "
             f"load {sys_info['load1']:.2f}"
         )
-        # Tune RAM-sensitive capacities before heavy phases of the iteration.
         self._maybe_autotune_ram(sys_info)
 
         t0 = time.time()
@@ -895,24 +839,14 @@ class Trainer:
         eval_positions_total = int(eval_metrics.get("eval_positions_total", 0))
         max_batch_size = int(eval_metrics.get("batch_size_max", 0))
         prev_metrics = getattr(self, "_prev_eval_m", {}) or {}
-        delta_requests = int(
-            requests_total - int(prev_metrics.get("requests_total", 0))
-        )
-        delta_hits = int(
-            cache_hits_total - int(prev_metrics.get("cache_hits_total", 0))
-        )
+        delta_requests = int(requests_total - int(prev_metrics.get("requests_total", 0)))
+        delta_hits = int(cache_hits_total - int(prev_metrics.get("cache_hits_total", 0)))
         delta_batches = int(batches_total - int(prev_metrics.get("batches_total", 0)))
         delta_eval_positions = int(
             eval_positions_total - int(prev_metrics.get("eval_positions_total", 0))
         )
-        hit_rate = (
-            (100.0 * cache_hits_total / max(1, requests_total))
-            if requests_total
-            else 0.0
-        )
-        hit_rate_d = (
-            (100.0 * delta_hits / max(1, delta_requests)) if delta_requests > 0 else 0.0
-        )
+        hit_rate = (100.0 * cache_hits_total / max(1, requests_total)) if requests_total else 0.0
+        hit_rate_d = (100.0 * delta_hits / max(1, delta_requests)) if delta_requests > 0 else 0.0
 
         sp_line = (
             f"games {games_count:,} | W/D/B {white_wins}/{draws_count}/{black_wins} "
@@ -943,9 +877,7 @@ class Trainer:
         snapshot = self.selfplay_engine.snapshot()
         min_batch_samples = max(1, self.train_batch_size // 2)
         new_examples = int(game_stats.get("moves", 0))
-        target_train_samples = int(
-            TRAIN_TARGET_TRAIN_SAMPLES_PER_NEW * max(1, new_examples)
-        )
+        target_train_samples = int(TRAIN_TARGET_TRAIN_SAMPLES_PER_NEW * max(1, new_examples))
         num_steps = int(np.ceil(target_train_samples / max(1, self.train_batch_size)))
         num_steps = max(TRAIN_UPDATE_STEPS_MIN, min(TRAIN_UPDATE_STEPS_MAX, num_steps))
         samples_ratio = 0.0
@@ -990,9 +922,7 @@ class Trainer:
         buffer_pct2 = (buffer_size / buffer_capacity2) * 100
         batches_per_sec = (len(losses) / max(1e-9, train_elapsed_s)) if losses else 0.0
         samples_per_sec = (
-            ((len(losses) * self.train_batch_size) / max(1e-9, train_elapsed_s))
-            if losses
-            else 0.0
+            ((len(losses) * self.train_batch_size) / max(1e-9, train_elapsed_s)) if losses else 0.0
         )
         learning_rate = self.optimizer.param_groups[0]["lr"]
         avg_grad_norm = (grad_norm_sum / max(1, len(losses))) if losses else 0.0
@@ -1055,9 +985,7 @@ class Trainer:
         )
         lr_sched_fragment = f"sched {TRAIN_LR_SCHED_STEPS_PER_ITER_EST}->{actual_update_steps} | drift {sched_drift_pct:+.0f}% | pos {self.scheduler.t}/{self._format_si(self.scheduler.total)}"
 
-        self.log.info(
-            "[TR] " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment
-        )
+        self.log.info("[TR] " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment)
         self._prev_eval_m = eval_metrics
 
         return stats
@@ -1137,36 +1065,29 @@ class Trainer:
                     legal_moves = position.legal_moves()
                     if ARENA_DETERMINISTIC:
                         idx = int(_np.argmax(visit_counts))
-                    else:
-                        if ply < ARENA_TEMP_MOVES:
-                            temp = float(ARENA_TEMPERATURE)
-                            if temp <= 0.0 + ARENA_OPENING_TEMPERATURE_EPS:
+                    elif ply < ARENA_TEMP_MOVES:
+                        temp = float(ARENA_TEMPERATURE)
+                        if temp <= 0.0 + ARENA_OPENING_TEMPERATURE_EPS:
+                            idx = int(_np.argmax(visit_counts))
+                        else:
+                            v_pos = _np.maximum(visit_counts, 0.0)
+                            s0 = v_pos.sum()
+                            if s0 <= 0:
                                 idx = int(_np.argmax(visit_counts))
                             else:
-                                v_pos = _np.maximum(visit_counts, 0.0)
-                                s0 = v_pos.sum()
-                                if s0 <= 0:
-                                    idx = int(_np.argmax(visit_counts))
-                                else:
-                                    probs = v_pos ** (1.0 / temp)
-                                    s = probs.sum()
-                                    idx = (
-                                        int(_np.argmax(visit_counts))
-                                        if s <= 0
-                                        else int(
-                                            _np.random.choice(
-                                                len(legal_moves), p=probs / s
-                                            )
-                                        )
-                                    )
-                        else:
-                            idx = int(_np.argmax(visit_counts))
+                                probs = v_pos ** (1.0 / temp)
+                                s = probs.sum()
+                                idx = (
+                                    int(_np.argmax(visit_counts))
+                                    if s <= 0
+                                    else int(_np.random.choice(len(legal_moves), p=probs / s))
+                                )
+                    else:
+                        idx = int(_np.argmax(visit_counts))
                     position.make_move(legal_moves[idx])
                     ply += 1
                 r = position.result()
-                return (
-                    1 if r == _ccore.WHITE_WIN else (-1 if r == _ccore.BLACK_WIN else 0)
-                )
+                return 1 if r == _ccore.WHITE_WIN else (-1 if r == _ccore.BLACK_WIN else 0)
 
             pair_count = max(1, ARENA_GAMES_PER_EVAL // ARENA_PAIRING_FACTOR)
             if ARENA_STRATIFY_OPENINGS:
@@ -1177,9 +1098,9 @@ class Trainer:
                     opening_indices = _np.random.permutation(num_openings)[:pair_count]
                 else:
                     reps = int(_np.ceil(pair_count / num_openings))
-                    opening_indices = _np.tile(
-                        _np.random.permutation(num_openings), reps
-                    )[:pair_count]
+                    opening_indices = _np.tile(_np.random.permutation(num_openings), reps)[
+                        :pair_count
+                    ]
             else:
                 opening_indices = _np.random.randint(0, len(openings), size=pair_count)
             for idx in opening_indices:
@@ -1206,9 +1127,7 @@ class Trainer:
             iter_stats = self.training_iteration()
 
             do_eval = (
-                (iteration % ARENA_EVAL_EVERY_ITERS) == 0
-                if ARENA_EVAL_EVERY_ITERS > 0
-                else False
+                (iteration % ARENA_EVAL_EVERY_ITERS) == 0 if ARENA_EVAL_EVERY_ITERS > 0 else False
             )
             arena_elapsed = 0.0
             if do_eval:
@@ -1229,9 +1148,7 @@ class Trainer:
                     self._gate_rounds = 0
                 t_ar = time.time()
                 assert self._pending_challenger is not None
-                _, aw, ad, al = self._arena_match(
-                    self._pending_challenger, self.best_model
-                )
+                _, aw, ad, al = self._arena_match(self._pending_challenger, self.best_model)
                 arena_elapsed = time.time() - t_ar
 
                 self._gate.update(aw, ad, al)
@@ -1258,9 +1175,7 @@ class Trainer:
                     self._pending_challenger = None
                     self._gate_rounds = 0
             else:
-                self.log.info(
-                    f"[AR ] skipped | games 0 | time {self._format_time(arena_elapsed)}"
-                )
+                self.log.info(f"[AR ] skipped | games 0 | time {self._format_time(arena_elapsed)}")
 
             if self.iteration % CHECKPOINT_SAVE_EVERY_ITERS == 0:
                 self._save_checkpoint()
@@ -1427,11 +1342,12 @@ if __name__ == "__main__":
         file_handler = logging.FileHandler(LOG_FILE_PATH, mode="w", encoding="utf-8")
         file_handler.setLevel(log_level)
         file_handler.setFormatter(
-            logging.Formatter(
-                fmt="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-            )
+            logging.Formatter(fmt="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
         )
         root.addHandler(file_handler)
+
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is required to run this training pipeline (A100 expected).")
     torch.set_float32_matmul_precision(TORCH_MATMUL_FLOAT32_PRECISION)
     torch.backends.cuda.matmul.allow_tf32 = bool(TORCH_ALLOW_TF32 and (SEED == 0))
     torch.backends.cudnn.allow_tf32 = bool(TORCH_ALLOW_TF32 and (SEED == 0))

@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+from collections import OrderedDict, deque
+from dataclasses import dataclass, field
 import numbers
 import threading
 import time
-from collections import OrderedDict, deque
-from dataclasses import dataclass, field
 from typing import Any, cast
 
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
 
 from .config import (
@@ -52,9 +52,7 @@ class ResidualBlock(nn.Module):
 class ChessNet(nn.Module):
     """Policy + value network over encoded positions."""
 
-    def __init__(
-        self, num_blocks: int | None = None, channels: int | None = None
-    ) -> None:
+    def __init__(self, num_blocks: int | None = None, channels: int | None = None) -> None:
         super().__init__()
         num_blocks = num_blocks or MODEL_BLOCKS
         channels = channels or MODEL_CHANNELS
@@ -62,9 +60,7 @@ class ChessNet(nn.Module):
         # Trunk
         self.conv_in = nn.Conv2d(INPUT_PLANES, channels, 3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(channels)
-        self.residual_stack = nn.Sequential(
-            *[ResidualBlock(channels) for _ in range(num_blocks)]
-        )
+        self.residual_stack = nn.Sequential(*[ResidualBlock(channels) for _ in range(num_blocks)])
         # Policy head
         self.policy_conv = nn.Conv2d(channels, policy_planes, 1, bias=False)
         self.policy_bn = nn.BatchNorm2d(policy_planes)
@@ -72,9 +68,7 @@ class ChessNet(nn.Module):
         # Value head
         self.value_conv = nn.Conv2d(channels, MODEL_VALUE_CONV_CHANNELS, 1, bias=False)
         self.value_bn = nn.BatchNorm2d(MODEL_VALUE_CONV_CHANNELS)
-        self.value_fc1 = nn.Linear(
-            MODEL_VALUE_CONV_CHANNELS * NSQUARES, MODEL_VALUE_HIDDEN_DIM
-        )
+        self.value_fc1 = nn.Linear(MODEL_VALUE_CONV_CHANNELS * NSQUARES, MODEL_VALUE_HIDDEN_DIM)
         self.value_fc2 = nn.Linear(MODEL_VALUE_HIDDEN_DIM, 1)
         # Init weights
         for m in self.modules():
@@ -135,11 +129,8 @@ class BatchedEvaluator:
         )
         for p in self.eval_model.parameters():
             p.requires_grad_(False)
-        # Simple LRU cache
         self.cache_lock = threading.Lock()
-        self.cache: OrderedDict[int, tuple[np.ndarray, float | np.floating[Any]]] = (
-            OrderedDict()
-        )
+        self.cache: OrderedDict[int, tuple[np.ndarray, float | np.floating[Any]]] = OrderedDict()
         self._cache_capacity = int(EVAL_CACHE_CAPACITY)
         self._metrics_lock = threading.Lock()
         self._metrics: dict[str, float] = {
@@ -182,7 +173,6 @@ class BatchedEvaluator:
         cap = int(max(0, capacity))
         with self.cache_lock:
             self._cache_capacity = cap
-            # Trim oldest entries if over capacity
             while len(self.cache) > self._cache_capacity:
                 self.cache.popitem(last=False)
 
@@ -212,9 +202,7 @@ class BatchedEvaluator:
             use_bf16 = AMP_PREFER_BFLOAT16
             self.eval_model = cast(
                 nn.Module,
-                self.eval_model.to(
-                    dtype=(torch.bfloat16 if use_bf16 else torch.float16)
-                ),
+                self.eval_model.to(dtype=(torch.bfloat16 if use_bf16 else torch.float16)),
             )
             self.eval_model.eval()
             for p in self.eval_model.parameters():
@@ -225,7 +213,6 @@ class BatchedEvaluator:
     def _encode_batch(self, positions: list[Any]) -> torch.Tensor:
         import chesscore as ccore
 
-        # Encode batch of positions to NCHW float32
         x_np = (
             np.zeros((0, INPUT_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=np.float32)
             if not positions
@@ -235,14 +222,9 @@ class BatchedEvaluator:
         if EVAL_PIN_MEMORY:
             x = x.pin_memory()
         x = x.to(self.device, non_blocking=True)
-        return (
-            x.contiguous(memory_format=torch.channels_last)
-            if x.dim() == 4
-            else x.contiguous()
-        )
+        return x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
 
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # Single forward pass (thread-safe, inference-only)
         with self.model_lock, torch.inference_mode():
             x = x.to(dtype=(torch.bfloat16 if (AMP_PREFER_BFLOAT16) else torch.float16))
             return cast(tuple[torch.Tensor, torch.Tensor], self.eval_model(x))
@@ -270,16 +252,12 @@ class BatchedEvaluator:
     def infer_positions(self, positions: list[Any]) -> tuple[np.ndarray, np.ndarray]:
         """Return (policy, value) arrays with caching and de-duplication."""
         if not positions:
-            return np.zeros((0, POLICY_OUTPUT), dtype=np.float32), np.zeros(
-                (0,), dtype=np.float32
-            )
+            return np.zeros((0, POLICY_OUTPUT), dtype=np.float32), np.zeros((0,), dtype=np.float32)
         with self._metrics_lock:
             self._metrics["requests_total"] += len(positions)
         cached_policy: list[np.ndarray | None] = [None] * len(positions)
         cached_value: list[float] = [0.0] * len(positions)
-        index_request_pairs: list[tuple[int, _EvalRequest]] = (
-            []
-        )  # (original index, shared request)
+        index_request_pairs: list[tuple[int, _EvalRequest]] = []  # (original index, shared request)
         key_to_request_index: dict[int, int] = {}
         obj_to_request_index: dict[int, int] = {}
         cache_misses_count = 0
@@ -293,32 +271,29 @@ class BatchedEvaluator:
                     cached_value[i] = float(val)
                     with self._metrics_lock:
                         self._metrics["cache_hits_total"] += 1
-                else:
-                    if key is not None:
-                        if key in key_to_request_index:
-                            index_request_pairs.append(
-                                (i, index_request_pairs[key_to_request_index[key]][1])
-                            )
-                        else:
-                            r = _EvalRequest(pos)
-                            key_to_request_index[key] = len(index_request_pairs)
-                            index_request_pairs.append((i, r))
-                            cache_misses_count += 1
+                elif key is not None:
+                    if key in key_to_request_index:
+                        index_request_pairs.append(
+                            (i, index_request_pairs[key_to_request_index[key]][1])
+                        )
                     else:
-                        obj_id = id(pos)
-                        if obj_id in obj_to_request_index:
-                            index_request_pairs.append(
-                                (
-                                    i,
-                                    index_request_pairs[obj_to_request_index[obj_id]][
-                                        1
-                                    ],
-                                )
+                        r = _EvalRequest(pos)
+                        key_to_request_index[key] = len(index_request_pairs)
+                        index_request_pairs.append((i, r))
+                        cache_misses_count += 1
+                else:
+                    obj_id = id(pos)
+                    if obj_id in obj_to_request_index:
+                        index_request_pairs.append(
+                            (
+                                i,
+                                index_request_pairs[obj_to_request_index[obj_id]][1],
                             )
-                        else:
-                            r = _EvalRequest(pos)
-                            obj_to_request_index[obj_id] = len(index_request_pairs)
-                            index_request_pairs.append((i, r))
+                        )
+                    else:
+                        r = _EvalRequest(pos)
+                        obj_to_request_index[obj_id] = len(index_request_pairs)
+                        index_request_pairs.append((i, r))
         unique_requests: list[_EvalRequest] = []
         seen: set[int] = set()
         for _, r in index_request_pairs:
@@ -394,11 +369,7 @@ class BatchedEvaluator:
                 policy_logits = policy_logits - policy_logits.amax(dim=1, keepdim=True)
                 out_dtype = torch.float16 if EVAL_CACHE_USE_FP16 else torch.float32
                 policies_np = (
-                    F.softmax(policy_logits, dim=1)
-                    .detach()
-                    .to(dtype=out_dtype)
-                    .cpu()
-                    .numpy()
+                    F.softmax(policy_logits, dim=1).detach().to(dtype=out_dtype).cpu().numpy()
                 )
                 values_np = value_out_t.detach().to(dtype=out_dtype).cpu().numpy()
                 for i, r in enumerate(batch):

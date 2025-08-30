@@ -1,8 +1,7 @@
-## Reproducibility
-# Set SEED = 0 to disable strict reproducibility and allow fastest settings.
-SEED = 0
+# Reproducibility
+SEED = 0  # 0 to disable strict reproducibility and allow fastest settings
 
-## Torch / AMP / performance
+# Torch / AMP / performance
 AMP_ENABLED = True
 AMP_PREFER_BFLOAT16 = True
 TORCH_ALLOW_TF32 = True
@@ -19,7 +18,7 @@ EVAL_MODEL_CHANNELS_LAST = True
 TRAIN_PIN_MEMORY = False
 EVAL_PIN_MEMORY = False
 
-## Logging / IO
+# Logging / IO
 LOG_TO_FILE = True
 LOG_FILE_PATH = "log.txt"
 LOG_LEVEL = "INFO"
@@ -29,7 +28,7 @@ CHECKPOINT_SAVE_EVERY_ITERS = 30
 CHECKPOINT_FILE_PATH = "checkpoint.pt"
 BEST_MODEL_FILE_PATH = "best_model.pt"
 
-## Board encoding / shapes
+# Board encoding / shapes
 BOARD_SIZE = 8
 NSQUARES = BOARD_SIZE * BOARD_SIZE
 PLANES_PER_POSITION = 14
@@ -53,20 +52,20 @@ PMAP_PROMOS = [0, 2, 1]
 U8_SCALE = 255.0
 VALUE_I8_SCALE = 127.0
 
-## Model architecture
+# Model architecture
 MODEL_BLOCKS = 12
 MODEL_CHANNELS = 224
 MODEL_VALUE_CONV_CHANNELS = 16
 MODEL_VALUE_HIDDEN_DIM = 1024
 
-## Evaluator (inference) batching/cache
+# Evaluator (inference) batching/cache
 EVAL_BATCH_SIZE_MAX = 8192
 EVAL_BATCH_COALESCE_MS = 22
 EVAL_CACHE_CAPACITY = 40_000
 EVAL_WORKER_JOIN_TIMEOUT_S = 0.15
 EVAL_CACHE_USE_FP16 = True
 
-## Self-play / replay buffer
+# Self-play / replay buffer
 REPLAY_BUFFER_CAPACITY = 150_000
 SELFPLAY_NUM_WORKERS = 32
 GAME_MAX_PLIES = 320
@@ -76,7 +75,7 @@ SELFPLAY_TEMP_LOW = 0.07
 SELFPLAY_DETERMINISTIC_TEMP_EPS = 0.005
 SELFPLAY_OPENING_RANDOM_PLIES_MAX = 6
 
-## MCTS settings (training)
+# MCTS settings (training)
 MCTS_TRAIN_SIMULATIONS_BASE = 512
 MCTS_TRAIN_SIMULATIONS_MIN = 128
 MCTS_TRAIN_SIM_DECAY_MOVE_INTERVAL = 12
@@ -88,13 +87,13 @@ MCTS_DIRICHLET_WEIGHT = 0.25
 MCTS_FPU_REDUCTION = 0.12
 MCTS_VISIT_COUNT_CLAMP = 65535
 
-## Resignation rules
+# Resignation rules
 RESIGN_VALUE_THRESHOLD = -0.85
 RESIGN_CONSECUTIVE_PLIES = 3
 RESIGN_CONSECUTIVE_MIN = 3
 RESIGN_PLAYTHROUGH_FRACTION = 0.33
 
-## Sampling / augmentation
+# Sampling / augmentation
 REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC = 0.15
 REPLAY_SNAPSHOT_RECENT_RATIO_DEFAULT = 0.6
 TRAIN_RECENT_SAMPLE_RATIO = 0.75
@@ -102,7 +101,7 @@ AUGMENT_MIRROR_PROB = 0.5
 AUGMENT_ROT180_PROB = 0.25
 AUGMENT_VFLIP_CS_PROB = 0.25
 
-## Optimization
+# Optimization
 TRAIN_BATCH_SIZE = 10240
 TRAIN_LR_INIT = 3.4e-3
 TRAIN_LR_WARMUP_STEPS = 800
@@ -121,7 +120,7 @@ LOSS_ENTROPY_COEF_MIN = 4.0e-05
 EMA_ENABLED = True
 EMA_DECAY = 0.999
 
-## Schedule / iteration
+# Schedule / iteration
 TRAIN_TOTAL_ITERATIONS = 168
 SELFPLAY_GAMES_PER_ITER = 360
 TRAIN_LR_SCHED_STEPS_PER_ITER_EST = 36
@@ -130,7 +129,7 @@ TRAIN_TARGET_TRAIN_SAMPLES_PER_NEW = 6.0
 TRAIN_UPDATE_STEPS_MIN = 32
 TRAIN_UPDATE_STEPS_MAX = 1024
 
-## Arena evaluation (gating)
+# Arena evaluation (gating)
 MCTS_EVAL_SIMULATIONS = 384
 ARENA_EVAL_EVERY_ITERS = 8
 ARENA_EVAL_CACHE_CAPACITY = 32_768
@@ -155,23 +154,17 @@ ARENA_CANDIDATE_MAX_GAMES = 600
 ARENA_PAIRING_FACTOR = 2
 ARENA_GATE_EPS = 1e-9
 
-## Dynamic RAM/cache/buffer tuning
-# Enable/disable automatic host RAM-aware tuning during training.
+# Dynamic RAM/cache/buffer tuning
 DYN_TUNE_RAM_ENABLED = True
-# Trigger thresholds based on system RAM usage percentage.
 DYN_RAM_LOW_PCT = 55.0
 DYN_RAM_HIGH_PCT = 82.0
-# Cooldown in iterations between tuning adjustments.
 DYN_TUNE_COOLDOWN_ITERS = 2
-# Replay buffer dynamic bounds and step size.
 DYN_REPLAY_MIN = 80_000
 DYN_REPLAY_MAX = 300_000
 DYN_REPLAY_STEP = 10_000
-# Evaluator cache bounds and step size.
 DYN_EVAL_MIN = 8_192
 DYN_EVAL_MAX = 200_000
 DYN_EVAL_STEP = 4_096
-# Arena evaluator cache bounds/steps (separate from main evaluator).
 DYN_ARENA_EVAL_MIN = 8_192
 DYN_ARENA_EVAL_MAX = 131_072
 DYN_ARENA_EVAL_STEP = 4_096
