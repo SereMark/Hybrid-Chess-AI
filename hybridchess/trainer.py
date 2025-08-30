@@ -254,6 +254,7 @@ class Trainer:
         self._current_eval_cache_cap: int = int(EVAL_CACHE_CAPACITY)
         self._current_replay_cap: int = int(REPLAY_BUFFER_CAPACITY)
         self._arena_eval_cache_cap: int = int(ARENA_EVAL_CACHE_CAPACITY)
+        self._oom_cooldown_iters: int = 0
 
         self._proc = psutil.Process(os.getpid())
         psutil.cpu_percent(0.0)
@@ -972,12 +973,31 @@ class Trainer:
             if not batch:
                 continue
             states, policies, values = batch
-            policy_loss_t, value_loss_t, grad_norm_val, pred_entropy = self.train_step(
-                (states, policies, values)
-            )
-            grad_norm_sum += float(grad_norm_val)
-            entropy_sum += float(pred_entropy)
-            losses.append((policy_loss_t, value_loss_t))
+            try:
+                policy_loss_t, value_loss_t, grad_norm_val, pred_entropy = self.train_step(
+                    (states, policies, values)
+                )
+                grad_norm_sum += float(grad_norm_val)
+                entropy_sum += float(pred_entropy)
+                losses.append((policy_loss_t, value_loss_t))
+            except torch.OutOfMemoryError:
+                prev_bs_local = int(self.train_batch_size)
+                new_bs_local = int(max(4096, prev_bs_local - 1024))
+                if new_bs_local < prev_bs_local:
+                    self.train_batch_size = new_bs_local
+                    self.log.info(
+                        f"[AUTO] OOM encountered; reducing train_batch_size {prev_bs_local} -> {new_bs_local}"
+                    )
+                self._oom_cooldown_iters = max(int(self._oom_cooldown_iters), 3)
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
+                try:
+                    torch.cuda.reset_peak_memory_stats(self.device)
+                except Exception:
+                    pass
+                break
 
         train_elapsed_s = time.time() - t1
         actual_update_steps = len(losses)
@@ -1269,17 +1289,25 @@ class Trainer:
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
             mem_info_summary = self._get_mem_info()
             try:
-                target_lo = 0.70 * self.device_total_gb
+                target_lo = 0.60 * self.device_total_gb
                 prev_bs = int(self.train_batch_size)
                 if (not TORCH_COMPILE) or TORCH_COMPILE_DYNAMIC:
-                    if peak_res < target_lo and prev_bs < 15360:
-                        self.train_batch_size = int(min(15360, prev_bs + 1024))
-                    elif peak_res > 0.97 * self.device_total_gb and prev_bs > 4096:
+                    headroom_gb = max(0.0, float(self.device_total_gb) - float(peak_res))
+                    if (
+                        peak_res < target_lo
+                        and headroom_gb >= 8.0
+                        and prev_bs < 15360
+                        and int(self._oom_cooldown_iters) == 0
+                    ):
+                        self.train_batch_size = int(min(15360, prev_bs + 512))
+                    elif peak_res > 0.92 * self.device_total_gb and prev_bs > 4096:
                         self.train_batch_size = int(max(4096, prev_bs - 1024))
                     if self.train_batch_size != prev_bs:
                         self.log.info(
                             f"[AUTO] train_batch_size {prev_bs} -> {self.train_batch_size} (peak_res {self._format_gb(peak_res)})"
                         )
+                if int(self._oom_cooldown_iters) > 0:
+                    self._oom_cooldown_iters = int(self._oom_cooldown_iters) - 1
                 else:
                     pass
             except Exception:
