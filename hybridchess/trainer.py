@@ -608,6 +608,31 @@ class Trainer:
         v_target = v_i8_t.to(self.device, non_blocking=True).to(dtype=torch.float32) / float(VALUE_I8_SCALE)
         x = x.to(dtype=torch.float32) / float(U8_SCALE)
         x = x.contiguous(memory_format=torch.channels_last)
+        if not hasattr(self, "_aug_mirror_idx"):
+            from .selfplay import Augment as _Aug
+            mirror_idx = _Aug._policy_index_permutation("mirror")
+            rot180_idx = _Aug._policy_index_permutation("rot180")
+            vflip_idx = _Aug._policy_index_permutation("vflip_cs")
+            plane_perm = _Aug._vflip_cs_plane_permutation(x.shape[1])
+            feat_idx = _Aug._feature_plane_indices()
+            self._turn_plane_idx = int(feat_idx.get("turn_plane", x.shape[1]))
+            self._aug_mirror_idx = torch.tensor(mirror_idx, dtype=torch.long, device=self.device)
+            self._aug_rot180_idx = torch.tensor(rot180_idx, dtype=torch.long, device=self.device)
+            self._aug_vflip_idx = torch.tensor(vflip_idx, dtype=torch.long, device=self.device)
+            self._aug_vflip_plane_perm = torch.tensor(plane_perm, dtype=torch.long, device=self.device)
+        if np.random.rand() < AUGMENT_MIRROR_PROB:
+            x = torch.flip(x, dims=[-1])
+            pi_target = pi_target.index_select(1, self._aug_mirror_idx)
+        if np.random.rand() < AUGMENT_ROT180_PROB:
+            x = torch.flip(x, dims=[-1, -2])
+            pi_target = pi_target.index_select(1, self._aug_rot180_idx)
+        if np.random.rand() < AUGMENT_VFLIP_CS_PROB:
+            x = torch.flip(x, dims=[-2])
+            x = x.index_select(1, self._aug_vflip_plane_perm)
+            if 0 <= getattr(self, "_turn_plane_idx", x.shape[1]) < x.shape[1]:
+                x[:, self._turn_plane_idx] = 1.0 - x[:, self._turn_plane_idx]
+            pi_target = pi_target.index_select(1, self._aug_vflip_idx)
+            v_target = -v_target
         self.model.train()
         with torch.autocast(
             device_type="cuda",
@@ -747,14 +772,6 @@ class Trainer:
             if not batch:
                 continue
             states, policies, values = batch
-            if np.random.rand() < AUGMENT_MIRROR_PROB:
-                states, policies, _ = Augment.apply(states, policies, "mirror")
-            if np.random.rand() < AUGMENT_ROT180_PROB:
-                states, policies, _ = Augment.apply(states, policies, "rot180")
-            if np.random.rand() < AUGMENT_VFLIP_CS_PROB:
-                states, policies, stm_swapped = Augment.apply(states, policies, "vflip_cs")
-                if stm_swapped:
-                    values = [-val for val in values]
             policy_loss_t, value_loss_t, grad_norm_val, pred_entropy = self.train_step((states, policies, values))
             grad_norm_sum += float(grad_norm_val)
             entropy_sum += float(pred_entropy)
@@ -994,6 +1011,12 @@ class Trainer:
                     self.train_batch_size = int(max(4096, prev_bs - 1024))
                 if self.train_batch_size != prev_bs:
                     self.log.info(f"[AUTO] train_batch_size {prev_bs} -> {self.train_batch_size} (peak_res {self._format_gb(peak_res)})")
+            except Exception:
+                pass
+            try:
+                import gc, ctypes
+                gc.collect()
+                ctypes.CDLL("libc.so.6").malloc_trim(0)
             except Exception:
                 pass
 
