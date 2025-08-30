@@ -329,9 +329,6 @@ class SelfPlayEngine:
         mcts.set_c_puct_params(MCTS_C_PUCT_BASE, MCTS_C_PUCT_INIT)
         mcts.set_fpu_reduction(MCTS_FPU_REDUCTION)
         rng = np.random.default_rng(int(seed) if seed is not None else None)
-        import math as _math
-
-        _ = _math.e  # no-op
         mcts.seed(int(rng.integers(2**63 - 1)))
 
         examples: list[tuple[np.ndarray, np.ndarray]] = []
