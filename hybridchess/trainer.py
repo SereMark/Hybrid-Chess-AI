@@ -1280,7 +1280,7 @@ class Trainer:
                 import os as _os
                 import datetime as _dt
                 _os.makedirs(ARENA_SAVE_PGN_DIR, exist_ok=True)
-                iso_date = _dt.datetime.utcnow().strftime("%Y.%m.%d")
+                iso_date = _dt.datetime.now(_dt.UTC).strftime("%Y.%m.%d")
                 round_tag = f"iter-{self.iteration}-r{self._gate_rounds + 1}"
                 def res_str(r: int) -> str:
                     return "1-0" if r > 0 else ("0-1" if r < 0 else "1/2-1/2")
