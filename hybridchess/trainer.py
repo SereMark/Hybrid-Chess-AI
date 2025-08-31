@@ -26,6 +26,10 @@ from .config import (
     ARENA_GATE_DECISIVE_SECONDARY,
     ARENA_GATE_DRAW_WEIGHT,
     ARENA_GATE_EPS,
+    ARENA_LOG_CSV_ENABLE,
+    ARENA_LOG_CSV_PATH,
+    METRICS_LOG_CSV_ENABLE,
+    METRICS_LOG_CSV_PATH,
     ARENA_GATE_MIN_DECISIVES,
     ARENA_GATE_MIN_GAMES,
     ARENA_GATE_Z_EARLY,
@@ -95,6 +99,7 @@ from .config import (
     RESIGN_CONSECUTIVE_MIN,
     RESIGN_CONSECUTIVE_PLIES,
     RESIGN_VALUE_THRESHOLD,
+    RESIGN_DISABLE_UNTIL_ITERS,
     SEED,
     SELFPLAY_GAMES_PER_ITER,
     SELFPLAY_NUM_WORKERS,
@@ -120,6 +125,8 @@ from .config import (
     TRAIN_MOMENTUM,
     TRAIN_PIN_MEMORY,
     TRAIN_RECENT_SAMPLE_RATIO,
+    TRAIN_BATCH_SIZE_MAX,
+    TRAIN_BATCH_SIZE_MIN,
     TRAIN_TARGET_TRAIN_SAMPLES_PER_NEW,
     TRAIN_TOTAL_ITERATIONS,
     TRAIN_UPDATE_STEPS_MAX,
@@ -571,6 +578,9 @@ class Trainer:
                     "torch_cuda": torch.cuda.get_rng_state_all(),
                 },
             }
+            ckpt_dir = os.path.dirname(CHECKPOINT_FILE_PATH)
+            if ckpt_dir:
+                os.makedirs(ckpt_dir, exist_ok=True)
             tmp_path = f"{CHECKPOINT_FILE_PATH}.tmp"  # atomic replace
             torch.save(ckpt, tmp_path)
             os.replace(tmp_path, CHECKPOINT_FILE_PATH)
@@ -586,6 +596,9 @@ class Trainer:
                 "total_games": int(self.total_games),
                 "model": state_dict,
             }
+            best_dir = os.path.dirname(BEST_MODEL_FILE_PATH)
+            if best_dir:
+                os.makedirs(best_dir, exist_ok=True)
             tmp_path = f"{BEST_MODEL_FILE_PATH}.tmp"  # atomic replace
             torch.save(payload, tmp_path)
             os.replace(tmp_path, BEST_MODEL_FILE_PATH)
@@ -595,6 +608,9 @@ class Trainer:
 
     def _try_resume(self) -> None:
         path = CHECKPOINT_FILE_PATH
+        fallback = os.path.basename(path)
+        if not os.path.isfile(path) and fallback and os.path.isfile(fallback):
+            path = fallback
         if not os.path.isfile(path):
             self.log.info("[CKPT] no checkpoint found; starting fresh")
             return
@@ -815,7 +831,10 @@ class Trainer:
         )
 
     def training_iteration(self) -> dict[str, int | float]:
-        self.selfplay_engine.resign_consecutive = max(self.selfplay_engine.resign_consecutive, RESIGN_CONSECUTIVE_MIN)
+        if self.iteration < int(RESIGN_DISABLE_UNTIL_ITERS):
+            self.selfplay_engine.resign_consecutive = 0
+        else:
+            self.selfplay_engine.resign_consecutive = max(int(RESIGN_CONSECUTIVE_PLIES), int(RESIGN_CONSECUTIVE_MIN))
         if self.iteration == ARENA_GATE_Z_SWITCH_ITER:
             self._gate.z = float(ARENA_GATE_Z_LATE)
         stats: dict[str, int | float] = {}
@@ -938,7 +957,7 @@ class Trainer:
             f"batches {self._format_si(batches_total)}(+{self._format_si(delta_batches)}) | "
             f"evalN {self._format_si(eval_positions_total)}(+{self._format_si(delta_eval_positions)}) | bmax {max_batch_size}"
         )
-        self.log.info("[SP] " + sp_line + " | [EV] " + ev_short)
+        self.log.info("[SP] " + sp_line + "\n" + " " * 6 + "[EV] " + ev_short)
 
         stats.update(game_stats)
         stats["selfplay_time"] = sp_elapsed
@@ -982,7 +1001,7 @@ class Trainer:
                 losses.append((policy_loss_t, value_loss_t))
             except torch.OutOfMemoryError:
                 prev_bs_local = int(self.train_batch_size)
-                new_bs_local = int(max(4096, prev_bs_local - 1024))
+                new_bs_local = int(max(int(TRAIN_BATCH_SIZE_MIN), prev_bs_local - 1024))
                 if new_bs_local < prev_bs_local:
                     self.train_batch_size = new_bs_local
                     self.log.info(
@@ -1082,7 +1101,16 @@ class Trainer:
         )
         lr_sched_fragment = f"sched {TRAIN_LR_SCHED_STEPS_PER_ITER_EST}->{actual_update_steps} | drift {sched_drift_pct:+.0f}% | pos {self.scheduler.t}/{self._format_si(self.scheduler.total)}"
 
-        self.log.info("[TR] " + tr_plan_line + " | " + tr_line + " | " + lr_sched_fragment)
+        tr_line_parts = tr_line.split(" | ")
+        tr_line_step = tr_line_parts[0] if tr_line_parts else ""
+        tr_line_rest = " | ".join(tr_line_parts[1:]) if len(tr_line_parts) > 1 else ""
+        tr_block = (
+            "[TR] " + tr_plan_line + "\n"
+            + " " * 6 + tr_line_step + "\n"
+            + " " * 6 + tr_line_rest + "\n"
+            + " " * 6 + lr_sched_fragment
+        )
+        self.log.info(tr_block)
         self._prev_eval_m = eval_metrics
 
         return stats
@@ -1120,7 +1148,7 @@ class Trainer:
                 evaluator_white: _BatchedEval,
                 evaluator_black: _BatchedEval,
                 start_fen: str,
-            ) -> int:
+            ) -> tuple[int, list[str]]:
                 position = _ccore.Position()
                 position.from_fen(start_fen)
                 mcts_white = _ccore.MCTS(
@@ -1140,6 +1168,7 @@ class Trainer:
                 mcts_black.set_c_puct_params(MCTS_C_PUCT_BASE, MCTS_C_PUCT_INIT)
                 mcts_black.set_fpu_reduction(MCTS_FPU_REDUCTION)
                 ply = 0
+                moves_uci: list[str] = []
                 while position.result() == _ccore.ONGOING and ply < GAME_MAX_PLIES:
                     visits = (
                         mcts_white.search_batched(
@@ -1181,10 +1210,20 @@ class Trainer:
                                 )
                     else:
                         idx = int(_np.argmax(visit_counts))
-                    position.make_move(legal_moves[idx])
+                    mv = legal_moves[idx]
+                    try:
+                        mv_str = str(mv)
+                        if mv_str:
+                            moves_uci.append(mv_str)
+                    except Exception:
+                        pass
+                    position.make_move(mv)
                     ply += 1
                 r = position.result()
-                return 1 if r == _ccore.WHITE_WIN else (-1 if r == _ccore.BLACK_WIN else 0)
+                return (
+                    1 if r == _ccore.WHITE_WIN else (-1 if r == _ccore.BLACK_WIN else 0),
+                    moves_uci,
+                )
 
             pair_count = max(1, ARENA_GAMES_PER_EVAL // ARENA_PAIRING_FACTOR)
             if ARENA_STRATIFY_OPENINGS:
@@ -1200,10 +1239,26 @@ class Trainer:
                     ]
             else:
                 opening_indices = _np.random.randint(0, len(openings), size=pair_count)
+            pgn_candidates: list[dict[str, object]] = []
             for idx in opening_indices:
                 start_fen = openings[int(idx)]
-                r1 = play(challenger_eval, incumbent_eval, start_fen)
-                r2 = -play(incumbent_eval, challenger_eval, start_fen)
+                r1, mv1 = play(challenger_eval, incumbent_eval, start_fen)
+                r2_raw, mv2 = play(incumbent_eval, challenger_eval, start_fen)
+                r2 = -r2_raw
+                pgn_candidates.append({
+                    "fen": start_fen,
+                    "white": "Challenger-EMA",
+                    "black": "Incumbent-Best",
+                    "result": r1,
+                    "moves": mv1,
+                })
+                pgn_candidates.append({
+                    "fen": start_fen,
+                    "white": "Incumbent-Best",
+                    "black": "Challenger-EMA",
+                    "result": r2_raw,
+                    "moves": mv2,
+                })
                 for outcome in (r1, r2):
                     if outcome > 0:
                         wins += 1
@@ -1214,6 +1269,59 @@ class Trainer:
 
         total_games = max(1, wins + draws + losses)
         score = (wins + ARENA_DRAW_SCORE * draws) / total_games
+        try:
+            from .config import (
+                ARENA_SAVE_PGN_ENABLE,
+                ARENA_SAVE_PGN_DIR,
+                ARENA_SAVE_PGN_ON_PROMOTION,
+                ARENA_SAVE_PGN_SAMPLES_PER_ROUND,
+            )
+            if ARENA_SAVE_PGN_ENABLE and pgn_candidates:
+                import os as _os
+                import datetime as _dt
+                _os.makedirs(ARENA_SAVE_PGN_DIR, exist_ok=True)
+                iso_date = _dt.datetime.utcnow().strftime("%Y.%m.%d")
+                round_tag = f"iter-{self.iteration}-r{self._gate_rounds + 1}"
+                def res_str(r: int) -> str:
+                    return "1-0" if r > 0 else ("0-1" if r < 0 else "1/2-1/2")
+                def has_promo(moves: list[str]) -> bool:
+                    return any((len(m) >= 5 and m[-1] in ("q", "r", "b", "n")) for m in moves)
+                promo = [g for g in pgn_candidates if has_promo(g.get("moves", []) or [])] if ARENA_SAVE_PGN_ON_PROMOTION else []
+                saved = 0
+                def write_game(g: dict[str, object], name: str) -> None:
+                    nonlocal saved
+                    if saved >= int(ARENA_SAVE_PGN_SAMPLES_PER_ROUND):
+                        return
+                    path = _os.path.join(ARENA_SAVE_PGN_DIR, f"{round_tag}_{name}_{saved+1}.pgn")
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(f"[Event \"HybridChess Arena\"]\n")
+                        f.write(f"[Site \"local\"]\n")
+                        f.write(f"[Date \"{iso_date}\"]\n")
+                        f.write(f"[Round \"{round_tag}\"]\n")
+                        f.write(f"[White \"{g['white']}\"]\n")
+                        f.write(f"[Black \"{g['black']}\"]\n")
+                        f.write(f"[Result \"{res_str(int(g['result']))}\"]\n")
+                        f.write(f"[FEN \"{g['fen']}\"]\n[SetUp \"1\"]\n")
+                        mv = list(g.get("moves", []) or [])
+                        out = []
+                        move_no = 1
+                        for i, mvs in enumerate(mv):
+                            if i % 2 == 0:
+                                out.append(f"{move_no}. {mvs}")
+                                move_no += 1
+                            else:
+                                out.append(mvs)
+                        f.write(" ".join(out) + f" {res_str(int(g['result']))}\n")
+                    saved += 1
+                for g in promo:
+                    write_game(g, "promo")
+                if saved < int(ARENA_SAVE_PGN_SAMPLES_PER_ROUND):
+                    for g in pgn_candidates:
+                        if ARENA_SAVE_PGN_ON_PROMOTION and g in promo:
+                            continue
+                        write_game(g, "sample")
+        except Exception:
+            pass
         return score, wins, draws, losses
 
     def train(self) -> None:
@@ -1227,6 +1335,9 @@ class Trainer:
                 (iteration % ARENA_EVAL_EVERY_ITERS) == 0 if ARENA_EVAL_EVERY_ITERS > 0 else False
             )
             arena_elapsed = 0.0
+            arena_w = arena_d = arena_l = 0
+            arena_decision = "skipped"
+            arena_metrics: dict[str, float] = {}
             if do_eval:
                 if (
                     (not self._gate_active)
@@ -1254,6 +1365,51 @@ class Trainer:
                 self.log.info(
                     f"[AR ] W/D/L {aw}/{ad}/{al} | n {int(m.get('n', 0))} | p {100.0 * m.get('p', 0):>5.1f}% | elo {m.get('elo', 0):>6.1f} ±{m.get('se_elo', 0):.1f} | decision {decision.upper()} | time {self._format_time(arena_elapsed)} | age_iter {iteration - self._gate_started_iter} | rounds {self._gate_rounds}"
                 )
+                arena_w, arena_d, arena_l = int(aw), int(ad), int(al)
+                arena_decision = str(decision)
+                arena_metrics = {
+                    "n": float(m.get("n", 0.0)),
+                    "p": float(m.get("p", 0.0)),
+                    "lb": float(m.get("lb", 0.0)),
+                    "ub": float(m.get("ub", 0.0)),
+                    "elo": float(m.get("elo", 0.0)),
+                    "se_elo": float(m.get("se_elo", 0.0)),
+                }
+
+                if ARENA_LOG_CSV_ENABLE:
+                    try:
+                        import csv
+                        ar_dir = os.path.dirname(ARENA_LOG_CSV_PATH)
+                        if ar_dir:
+                            os.makedirs(ar_dir, exist_ok=True)
+                        write_header = not os.path.isfile(ARENA_LOG_CSV_PATH)
+                        fields = {
+                            "iter": int(self.iteration),
+                            "age_iter": int(self.iteration - self._gate_started_iter),
+                            "round": int(self._gate_rounds),
+                            "n": int(m.get("n", 0)),
+                            "w": int(aw),
+                            "d": int(ad),
+                            "l": int(al),
+                            "p": float(m.get("p", 0.0)),
+                            "lb": float(m.get("lb", 0.0)),
+                            "ub": float(m.get("ub", 0.0)),
+                            "elo": float(m.get("elo", 0.0)),
+                            "se_elo": float(m.get("se_elo", 0.0)),
+                            "decision": str(decision),
+                            "z": float(self._gate.z),
+                            "draw_w": float(ARENA_GATE_DRAW_WEIGHT),
+                            "baseline_p": float(ARENA_GATE_BASELINE_P),
+                            "deterministic": bool(ARENA_DETERMINISTIC),
+                            "mcts_sims": int(MCTS_EVAL_SIMULATIONS),
+                        }
+                        with open(ARENA_LOG_CSV_PATH, "a", newline="", encoding="utf-8") as f:
+                            w = csv.DictWriter(f, fieldnames=list(fields.keys()))
+                            if write_header:
+                                w.writeheader()
+                            w.writerow(fields)
+                    except Exception:
+                        pass
 
                 if decision == "accept":
                     assert self._pending_challenger is not None
@@ -1296,12 +1452,12 @@ class Trainer:
                     if (
                         peak_res < target_lo
                         and headroom_gb >= 8.0
-                        and prev_bs < 15360
+                        and prev_bs < int(TRAIN_BATCH_SIZE_MAX)
                         and int(self._oom_cooldown_iters) == 0
                     ):
-                        self.train_batch_size = int(min(15360, prev_bs + 512))
-                    elif peak_res > 0.92 * self.device_total_gb and prev_bs > 4096:
-                        self.train_batch_size = int(max(4096, prev_bs - 1024))
+                        self.train_batch_size = int(min(int(TRAIN_BATCH_SIZE_MAX), prev_bs + 512))
+                    elif peak_res > 0.92 * self.device_total_gb and prev_bs > int(TRAIN_BATCH_SIZE_MIN):
+                        self.train_batch_size = int(max(int(TRAIN_BATCH_SIZE_MIN), prev_bs - 1024))
                     if self.train_batch_size != prev_bs:
                         self.log.info(
                             f"[AUTO] train_batch_size {prev_bs} -> {self.train_batch_size} (peak_res {self._format_gb(peak_res)})"
@@ -1328,6 +1484,170 @@ class Trainer:
             )
 
             self._prev_eval_m = self.evaluator.get_metrics()
+
+            if METRICS_LOG_CSV_ENABLE:
+                try:
+                    import csv
+                    eval_metrics_now = self.evaluator.get_metrics()
+                    try:
+                        buf_cap = int(self.selfplay_engine.get_capacity())
+                    except Exception:
+                        buf_cap = int(self.selfplay_engine.buffer.maxlen or 1)
+                    sys_info = self._get_sys_info()
+                    lr = float(iter_stats.get("learning_rate", 0.0))
+                    opt_steps = int(iter_stats.get("optimizer_steps", 0))
+                    train_bs = int(self.train_batch_size)
+                    train_time = float(iter_stats.get("training_time", 0.0))
+                    samples_per_sec = (
+                        (opt_steps * train_bs) / train_time if train_time > 0 else 0.0
+                    )
+                    mt_dir = os.path.dirname(METRICS_LOG_CSV_PATH)
+                    if mt_dir:
+                        os.makedirs(mt_dir, exist_ok=True)
+                    write_header = not os.path.isfile(METRICS_LOG_CSV_PATH)
+                    fields = [
+                        "iter",
+                        "elapsed_s",
+                        "next_ar",
+                        # training
+                        "train_batch_size",
+                        "optimizer_steps",
+                        "learning_rate",
+                        "policy_loss",
+                        "value_loss",
+                        "batches_per_sec",
+                        "samples_per_sec",
+                        "lr_sched_t",
+                        "lr_sched_total",
+                        # selfplay
+                        "sp_games",
+                        "sp_white_wins",
+                        "sp_draws",
+                        "sp_black_wins",
+                        "sp_gpm",
+                        "sp_mps_k",
+                        "sp_avg_len",
+                        "sp_new_moves",
+                        "selfplay_time",
+                        # replay buffer
+                        "buffer_size",
+                        "buffer_capacity",
+                        "buffer_percent",
+                        # evaluator
+                        "eval_requests_total",
+                        "eval_cache_hits_total",
+                        "eval_hit_rate",
+                        "eval_batches_total",
+                        "eval_positions_total",
+                        "eval_batch_size_max",
+                        "eval_batch_cap",
+                        "eval_coalesce_ms",
+                        # arena
+                        "arena_ran",
+                        "arena_time_s",
+                        "arena_w",
+                        "arena_d",
+                        "arena_l",
+                        "arena_n",
+                        "arena_p",
+                        "arena_lb",
+                        "arena_ub",
+                        "arena_elo",
+                        "arena_se_elo",
+                        "arena_decision",
+                        "gate_rounds",
+                        # memory/system
+                        "gpu_peak_alloc_gb",
+                        "gpu_peak_reserved_gb",
+                        "gpu_allocated_gb",
+                        "gpu_reserved_gb",
+                        "gpu_total_gb",
+                        "rss_gb",
+                        "ram_used_gb",
+                        "ram_total_gb",
+                        "ram_pct",
+                        "cpu_sys_pct",
+                        "cpu_proc_pct",
+                        "load1",
+                    ]
+                    row = {
+                        "iter": int(self.iteration),
+                        "elapsed_s": float(time.time() - self.start_time),
+                        "next_ar": int(next_ar),
+                        # training
+                        "train_batch_size": train_bs,
+                        "optimizer_steps": opt_steps,
+                        "learning_rate": lr,
+                        "policy_loss": float(iter_stats.get("policy_loss", 0.0)),
+                        "value_loss": float(iter_stats.get("value_loss", 0.0)),
+                        "batches_per_sec": float(iter_stats.get("batches_per_sec", 0.0)),
+                        "samples_per_sec": float(samples_per_sec),
+                        "lr_sched_t": int(iter_stats.get("lr_sched_t", 0)),
+                        "lr_sched_total": int(iter_stats.get("lr_sched_total", 0)),
+                        # selfplay
+                        "sp_games": int(iter_stats.get("games", 0)),
+                        "sp_white_wins": int(iter_stats.get("white_wins", 0)),
+                        "sp_draws": int(iter_stats.get("draws", 0)),
+                        "sp_black_wins": int(iter_stats.get("black_wins", 0)),
+                        "sp_gpm": float(iter_stats.get("games_per_min", 0.0)),
+                        "sp_mps_k": float(iter_stats.get("moves_per_sec", 0.0)) / 1000.0,
+                        "sp_avg_len": float(
+                            (iter_stats.get("moves", 0) or 0) / max(1, (iter_stats.get("games", 0) or 0))
+                        ),
+                        "sp_new_moves": int(iter_stats.get("moves", 0)),
+                        "selfplay_time": float(iter_stats.get("selfplay_time", 0.0)),
+                        # replay buffer
+                        "buffer_size": int(iter_stats.get("buffer_size", len(self.selfplay_engine.buffer))),
+                        "buffer_capacity": int(buf_cap),
+                        "buffer_percent": float(iter_stats.get("buffer_percent", 100.0 * len(self.selfplay_engine.buffer) / max(1, buf_cap))),
+                        # evaluator
+                        "eval_requests_total": int(eval_metrics_now.get("requests_total", 0)),
+                        "eval_cache_hits_total": int(eval_metrics_now.get("cache_hits_total", 0)),
+                        "eval_hit_rate": (
+                            100.0
+                            * float(eval_metrics_now.get("cache_hits_total", 0))
+                            / max(1, float(eval_metrics_now.get("requests_total", 0)))
+                        ),
+                        "eval_batches_total": int(eval_metrics_now.get("batches_total", 0)),
+                        "eval_positions_total": int(eval_metrics_now.get("eval_positions_total", 0)),
+                        "eval_batch_size_max": int(eval_metrics_now.get("batch_size_max", 0)),
+                        "eval_batch_cap": int(self._eval_batch_cap),
+                        "eval_coalesce_ms": int(self._eval_coalesce_ms),
+                        # arena
+                        "arena_ran": int(1 if do_eval else 0),
+                        "arena_time_s": float(arena_elapsed),
+                        "arena_w": int(arena_w),
+                        "arena_d": int(arena_d),
+                        "arena_l": int(arena_l),
+                        "arena_n": int(arena_metrics.get("n", 0.0)),
+                        "arena_p": float(arena_metrics.get("p", 0.0)),
+                        "arena_lb": float(arena_metrics.get("lb", 0.0)),
+                        "arena_ub": float(arena_metrics.get("ub", 0.0)),
+                        "arena_elo": float(arena_metrics.get("elo", 0.0)),
+                        "arena_se_elo": float(arena_metrics.get("se_elo", 0.0)),
+                        "arena_decision": str(arena_decision),
+                        "gate_rounds": int(self._gate_rounds),
+                        # memory/system
+                        "gpu_peak_alloc_gb": float(peak_alloc),
+                        "gpu_peak_reserved_gb": float(peak_res),
+                        "gpu_allocated_gb": float(mem_info_summary.get("allocated_gb", 0.0)),
+                        "gpu_reserved_gb": float(mem_info_summary.get("reserved_gb", 0.0)),
+                        "gpu_total_gb": float(mem_info_summary.get("total_gb", 0.0)),
+                        "rss_gb": float(mem_info_summary.get("rss_gb", 0.0)),
+                        "ram_used_gb": float(sys_info.get("ram_used_gb", 0.0)),
+                        "ram_total_gb": float(sys_info.get("ram_total_gb", 0.0)),
+                        "ram_pct": float(sys_info.get("ram_pct", 0.0)),
+                        "cpu_sys_pct": float(sys_info.get("cpu_sys_pct", 0.0)),
+                        "cpu_proc_pct": float(sys_info.get("cpu_proc_pct", 0.0)),
+                        "load1": float(sys_info.get("load1", 0.0)),
+                    }
+                    with open(METRICS_LOG_CSV_PATH, "a", newline="", encoding="utf-8") as f:
+                        w = csv.DictWriter(f, fieldnames=fields)
+                        if write_header:
+                            w.writeheader()
+                        w.writerow(row)
+                except Exception:
+                    pass
 
 
 class EloGater:
@@ -1447,6 +1767,9 @@ if __name__ == "__main__":
     )
     root.addHandler(stdout_handler)
     if LOG_TO_FILE:
+        log_dir = os.path.dirname(LOG_FILE_PATH)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
         file_handler = logging.FileHandler(LOG_FILE_PATH, mode="w", encoding="utf-8")
         file_handler.setLevel(log_level)
         file_handler.setFormatter(
