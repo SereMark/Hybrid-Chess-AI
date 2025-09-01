@@ -37,7 +37,6 @@ from .config import (
     ARENA_GATE_Z_SWITCH_ITER,
     ARENA_OPENING_TEMPERATURE_EPS,
     ARENA_PAIRING_FACTOR,
-    ARENA_STRATIFY_OPENINGS,
     ARENA_TEMP_MOVES,
     ARENA_TEMPERATURE,
     AUGMENT_MIRROR_PROB,
@@ -94,7 +93,6 @@ from .config import (
     MODEL_CHANNELS_LAST,
     MODEL_VALUE_CONV_CHANNELS,
     MODEL_VALUE_HIDDEN_DIM,
-    OPENINGS_FILE_PATH,
     REPLAY_BUFFER_CAPACITY,
     RESIGN_CONSECUTIVE_MIN,
     RESIGN_CONSECUTIVE_PLIES,
@@ -323,9 +321,6 @@ class Trainer:
         self.device_total_gb = props.total_memory / 1024**3
         self._prev_eval_m: dict[str, float] = {}
 
-        self._arena_openings = self._load_openings()
-        if ARENA_EVAL_EVERY_ITERS > 0 and ARENA_GAMES_PER_EVAL > 0 and not self._arena_openings:
-            raise RuntimeError("No arena openings found.")
 
         self._gate = EloGater(
             z=ARENA_GATE_Z_EARLY,
@@ -411,9 +406,6 @@ class Trainer:
         )
         sections.append(
             f"[Arena   ] every={ARENA_EVAL_EVERY_ITERS} | games={ARENA_GAMES_PER_EVAL} | baseline_p={100.0 * ARENA_GATE_BASELINE_P:.0f}% | Z {ARENA_GATE_Z_EARLY}->{ARENA_GATE_Z_LATE} (switch@{ARENA_GATE_Z_SWITCH_ITER}) | min_games={ARENA_GATE_MIN_GAMES} | det={'on' if ARENA_DETERMINISTIC else 'off'}"
-        )
-        sections.append(
-            f"[Openings] loaded={len(self._arena_openings):,} | file={OPENINGS_FILE_PATH}"
         )
         sections.append(
             f"[Expect  ] total_games={TRAIN_TOTAL_ITERATIONS * SELFPLAY_GAMES_PER_ITER:,}"
@@ -680,31 +672,6 @@ class Trainer:
         except Exception as e:
             self.log.warning(f"[CKPT] failed to resume: {e}")
 
-    def _load_openings(self) -> list[str]:
-        seen: set[str] = set()
-
-        def _add_fenish(line: str) -> None:
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith(";"):
-                return
-            line = line.split(";", 1)[0].strip()
-            tokens = line.split()
-            if len(tokens) >= 6:
-                fen6 = " ".join(tokens[:6])
-            elif len(tokens) >= 4:
-                fen6 = " ".join(tokens[:4] + ["0", "1"])
-            else:
-                return
-            seen.add(fen6)
-
-        if not os.path.isfile(OPENINGS_FILE_PATH):
-            return []
-
-        with open(OPENINGS_FILE_PATH, encoding="utf-8") as f:
-            for line in f:
-                _add_fenish(line)
-
-        return sorted(seen)
 
     def train_step(
         self, batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray]]
@@ -1131,9 +1098,6 @@ class Trainer:
         from .model import BatchedEvaluator as _BatchedEval
 
         wins = draws = losses = 0
-        openings = self._arena_openings
-        if not openings:
-            raise RuntimeError("Arena openings not loaded.")
 
         with (
             _BatchedEval(self.device) as challenger_eval,
@@ -1226,22 +1190,9 @@ class Trainer:
                 )
 
             pair_count = max(1, ARENA_GAMES_PER_EVAL // ARENA_PAIRING_FACTOR)
-            if ARENA_STRATIFY_OPENINGS:
-                num_openings = len(openings)
-                if num_openings == 0:
-                    raise RuntimeError("Arena openings not loaded.")
-                if pair_count <= num_openings:
-                    opening_indices = _np.random.permutation(num_openings)[:pair_count]
-                else:
-                    reps = int(_np.ceil(pair_count / num_openings))
-                    opening_indices = _np.tile(_np.random.permutation(num_openings), reps)[
-                        :pair_count
-                    ]
-            else:
-                opening_indices = _np.random.randint(0, len(openings), size=pair_count)
             pgn_candidates: list[dict[str, object]] = []
-            for idx in opening_indices:
-                start_fen = openings[int(idx)]
+            for _ in range(pair_count):
+                start_fen = _ccore.Position().to_fen()
                 r1, mv1 = play(challenger_eval, incumbent_eval, start_fen)
                 r2_raw, mv2 = play(incumbent_eval, challenger_eval, start_fen)
                 r2 = -r2_raw
