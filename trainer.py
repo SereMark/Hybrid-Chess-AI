@@ -1729,7 +1729,7 @@ if __name__ == "__main__":
         root.addHandler(file_handler)
 
     if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is required to run this training pipeline (A100 expected).")
+        raise RuntimeError("CUDA is required to run this training pipeline.")
     torch.set_float32_matmul_precision(TORCH_MATMUL_FLOAT32_PRECISION)
     torch.backends.cuda.matmul.allow_tf32 = bool(TORCH_ALLOW_TF32 and (SEED == 0))
     torch.backends.cudnn.allow_tf32 = bool(TORCH_ALLOW_TF32 and (SEED == 0))
