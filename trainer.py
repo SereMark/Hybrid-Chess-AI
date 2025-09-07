@@ -11,7 +11,7 @@ import psutil
 import torch
 import torch.nn.functional as F
 
-from .config import (
+from config import (
     AMP_ENABLED,
     AMP_PREFER_BFLOAT16,
     ARENA_CANDIDATE_MAX_GAMES,
@@ -133,8 +133,8 @@ from .config import (
     U8_SCALE,
     VALUE_I8_SCALE,
 )
-from .model import BatchedEvaluator, ChessNet
-from .selfplay import SelfPlayEngine
+from model import BatchedEvaluator, ChessNet
+from selfplay import SelfPlayEngine
 
 
 class Trainer:
@@ -713,7 +713,7 @@ class Trainer:
         x = x.to(dtype=torch.float32) / float(U8_SCALE)
         x = x.contiguous(memory_format=torch.channels_last)
         if not hasattr(self, "_aug_mirror_idx"):
-            from .selfplay import Augment as _Aug
+            from selfplay import Augment as _Aug
 
             mirror_idx = _Aug._policy_index_permutation("mirror")
             rot180_idx = _Aug._policy_index_permutation("rot180")
@@ -1095,7 +1095,7 @@ class Trainer:
         import chesscore as _ccore
         import numpy as _np
 
-        from .model import BatchedEvaluator as _BatchedEval
+        from model import BatchedEvaluator as _BatchedEval
 
         wins = draws = losses = 0
 
@@ -1221,7 +1221,7 @@ class Trainer:
         total_games = max(1, wins + draws + losses)
         score = (wins + ARENA_DRAW_SCORE * draws) / total_games
         try:
-            from .config import (
+            from config import (
                 ARENA_SAVE_PGN_ENABLE,
                 ARENA_SAVE_PGN_DIR,
                 ARENA_SAVE_PGN_ON_PROMOTION,

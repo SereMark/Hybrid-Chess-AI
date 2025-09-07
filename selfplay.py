@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import chesscore as ccore
 import numpy as np
 
-from .config import (
+from config import (
     BOARD_SIZE,
     DIR_MAP_MIRROR,
     DIR_MAP_ROT180,
@@ -57,7 +57,7 @@ from .config import (
 )
 
 if TYPE_CHECKING:
-    from .model import BatchedEvaluator
+    from model import BatchedEvaluator
 
 
 class Augment:

@@ -12,7 +12,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from .config import (
+from config import (
     AMP_PREFER_BFLOAT16,
     BOARD_SIZE,
     EVAL_BATCH_COALESCE_MS,
