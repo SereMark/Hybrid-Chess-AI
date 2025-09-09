@@ -1,60 +1,40 @@
 from __future__ import annotations
 
+import threading
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import chesscore as ccore
 import numpy as np
 
-from config import (
-    BOARD_SIZE,
-    DIR_MAP_MIRROR,
-    DIR_MAP_ROT180,
-    DIR_MAP_VFLIP_CS,
-    DIR_MAX_DIST,
-    EVAL_BATCH_SIZE_MAX,
-    GAME_MAX_PLIES,
-    HISTORY_LENGTH,
-    KMAP_MIRROR,
-    KMAP_ROT180,
-    KMAP_VFLIP_CS,
-    KNIGHT_PLANES_BASE,
-    MCTS_C_PUCT,
-    MCTS_C_PUCT_BASE,
-    MCTS_C_PUCT_INIT,
-    MCTS_DIRICHLET_ALPHA,
-    MCTS_DIRICHLET_WEIGHT,
-    MCTS_FPU_REDUCTION,
-    MCTS_TRAIN_SIM_DECAY_MOVE_INTERVAL,
-    MCTS_TRAIN_SIMULATIONS_BASE,
-    MCTS_TRAIN_SIMULATIONS_MIN,
-    MCTS_VISIT_COUNT_CLAMP,
-    NSQUARES,
-    NUM_DIRECTIONS,
-    NUM_KNIGHT_DIRS,
-    PLANES_PER_POSITION,
-    PMAP_PROMOS,
-    POLICY_OUTPUT,
-    PROMO_CHOICES,
-    PROMO_STRIDE,
-    REPLAY_BUFFER_CAPACITY,
-    REPLAY_SNAPSHOT_RECENT_RATIO_DEFAULT,
-    REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC,
-    RESIGN_CONSECUTIVE_PLIES,
-    RESIGN_PLAYTHROUGH_FRACTION,
-    RESIGN_VALUE_THRESHOLD,
-    SEED,
-    SELFPLAY_DETERMINISTIC_TEMP_EPS,
-    SELFPLAY_NUM_WORKERS,
-    SELFPLAY_OPENING_RANDOM_PLIES_MAX,
-    SELFPLAY_TEMP_HIGH,
-    SELFPLAY_TEMP_LOW,
-    SELFPLAY_TEMP_MOVES,
-    U8_SCALE,
-    VALUE_I8_SCALE,
-)
+import config as C
+
+BOARD_SIZE = 8
+NSQUARES = 64
+PLANES_PER_POSITION = int(getattr(ccore, "PLANES_PER_POSITION", 14))
+HISTORY_LENGTH = int(getattr(ccore, "HISTORY_LENGTH", 8))
+POLICY_OUTPUT = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
+
+SELFPLAY_TEMP_MOVES = int(C.SELFPLAY.TEMP_MOVES)
+SELFPLAY_TEMP_HIGH = float(C.SELFPLAY.TEMP_HIGH)
+SELFPLAY_TEMP_LOW = float(C.SELFPLAY.TEMP_LOW)
+SELFPLAY_DETERMINISTIC_TEMP_EPS = float(C.SELFPLAY.DETERMINISTIC_TEMP_EPS)
+
+
+NUM_DIRECTIONS = 8
+DIR_MAX_DIST = 7
+NUM_KNIGHT_DIRS = 8
+KNIGHT_PLANES_BASE = 56
+PROMO_CHOICES = 3
+PROMO_STRIDE = 3
+DIR_MAP_MIRROR = [2, 1, 0, 4, 3, 7, 6, 5]
+KMAP_MIRROR = [1, 0, 3, 2, 5, 4, 7, 6]
+DIR_MAP_ROT180 = [7, 6, 5, 4, 3, 2, 1, 0]
+KMAP_ROT180 = [7, 6, 5, 4, 3, 2, 1, 0]
+DIR_MAP_VFLIP_CS = [5, 6, 7, 3, 4, 0, 1, 2]
+KMAP_VFLIP_CS = [6, 7, 4, 5, 2, 3, 0, 1]
+PMAP_PROMOS = [0, 2, 1]
 
 if TYPE_CHECKING:
     from model import BatchedEvaluator
@@ -196,7 +176,7 @@ class Augment:
                 if np.issubdtype(state_batch.dtype, np.floating):
                     one_val = 1.0
                 else:
-                    one_val = np.array(U8_SCALE, dtype=state_batch.dtype)
+                    one_val = np.array(C.DATA.U8_SCALE, dtype=state_batch.dtype)
                 state_batch[:, tp] = one_val - state_batch[:, tp]
             policy_batch = policy_batch[:, Augment._policy_index_permutation("vflip_cs")]
             stm_swapped = True
@@ -211,13 +191,11 @@ class SelfPlayEngine:
     """Generates self-play games, builds replay buffer, and samples batches."""
 
     def __init__(self, evaluator: BatchedEvaluator) -> None:
-        self.resign_consecutive = RESIGN_CONSECUTIVE_PLIES
+        self.resign_consecutive = C.RESIGN.CONSECUTIVE_PLIES
         self.evaluator = evaluator
-        self.buffer: deque[tuple[np.ndarray, np.ndarray, np.int8]] = deque(
-            maxlen=REPLAY_BUFFER_CAPACITY
-        )
+        self.buffer: deque[tuple[np.ndarray, np.ndarray, np.int8]] = deque(maxlen=C.REPLAY.BUFFER_CAPACITY)
         self.buffer_lock = threading.Lock()
-        self.num_workers: int = int(SELFPLAY_NUM_WORKERS)
+        self.num_workers: int = int(C.SELFPLAY.NUM_WORKERS)
 
     def set_num_workers(self, n: int) -> None:
         self.num_workers = int(max(1, n))
@@ -228,14 +206,18 @@ class SelfPlayEngine:
     @staticmethod
     def encode_u8(enc: np.ndarray) -> np.ndarray:
         """Quantize [0,1] float planes to uint8."""
-        x = np.clip(enc, 0.0, 1.0) * U8_SCALE
+        x = np.clip(enc, 0.0, 1.0) * C.DATA.U8_SCALE
         return np.rint(x).astype(np.uint8, copy=False)
 
     @staticmethod
     def encode_value_i8(v: float) -> np.int8:
         """Scale value target to int8."""
         return np.int8(
-            np.clip(np.rint(v * VALUE_I8_SCALE), -int(VALUE_I8_SCALE), int(VALUE_I8_SCALE))
+            np.clip(
+                np.rint(v * C.DATA.VALUE_I8_SCALE),
+                -int(C.DATA.VALUE_I8_SCALE),
+                int(C.DATA.VALUE_I8_SCALE),
+            )
         )
 
     def _select_move_by_temperature(
@@ -288,20 +270,18 @@ class SelfPlayEngine:
                     )
                 )
 
-    def play_single_game(
-        self, seed: int | None = None
-    ) -> tuple[int, int, list[tuple[np.ndarray, np.ndarray]], bool]:
+    def play_single_game(self, seed: int | None = None) -> tuple[int, int, list[tuple[np.ndarray, np.ndarray]], bool]:
         position = ccore.Position()
         resign_count = 0
         forced_result: int | None = None
         mcts = ccore.MCTS(
-            MCTS_TRAIN_SIMULATIONS_BASE,
-            MCTS_C_PUCT,
-            MCTS_DIRICHLET_ALPHA,
-            MCTS_DIRICHLET_WEIGHT,
+            C.MCTS.TRAIN_SIMULATIONS_BASE,
+            C.MCTS.C_PUCT,
+            C.MCTS.DIRICHLET_ALPHA,
+            C.MCTS.DIRICHLET_WEIGHT,
         )
-        mcts.set_c_puct_params(MCTS_C_PUCT_BASE, MCTS_C_PUCT_INIT)
-        mcts.set_fpu_reduction(MCTS_FPU_REDUCTION)
+        mcts.set_c_puct_params(C.MCTS.C_PUCT_BASE, C.MCTS.C_PUCT_INIT)
+        mcts.set_fpu_reduction(C.MCTS.FPU_REDUCTION)
         rng = np.random.default_rng(int(seed) if seed is not None else None)
         mcts.seed(int(rng.integers(2**63 - 1)))
 
@@ -309,7 +289,7 @@ class SelfPlayEngine:
         position_history: list[Any] = []
         move_count = 0
 
-        random_opening_plies = int(rng.integers(0, max(1, SELFPLAY_OPENING_RANDOM_PLIES_MAX)))
+        random_opening_plies = int(rng.integers(0, max(1, C.SELFPLAY.OPENING_RANDOM_PLIES_MAX)))
         for _ in range(random_opening_plies):
             if position.result() != ccore.ONGOING:
                 break
@@ -319,27 +299,24 @@ class SelfPlayEngine:
             position.make_move(moves[int(rng.integers(0, len(moves)))])
 
         first_to_move_is_white: bool | None = None
-        while position.result() == ccore.ONGOING and move_count < GAME_MAX_PLIES:
+        while position.result() == ccore.ONGOING and move_count < C.SELFPLAY.GAME_MAX_PLIES:
             pos_snapshot = ccore.Position(position)
 
             sims = max(
-                MCTS_TRAIN_SIMULATIONS_MIN,
-                MCTS_TRAIN_SIMULATIONS_BASE
-                // (1 + move_count // MCTS_TRAIN_SIM_DECAY_MOVE_INTERVAL),
+                C.MCTS.TRAIN_SIMULATIONS_MIN,
+                C.MCTS.TRAIN_SIMULATIONS_BASE // (1 + move_count // C.MCTS.TRAIN_SIM_DECAY_MOVE_INTERVAL),
             )
             mcts.set_simulations(sims)
 
-            if move_count < SELFPLAY_TEMP_MOVES:
-                mcts.set_dirichlet_params(MCTS_DIRICHLET_ALPHA, MCTS_DIRICHLET_WEIGHT)
+            if move_count < C.SELFPLAY.TEMP_MOVES:
+                mcts.set_dirichlet_params(C.MCTS.DIRICHLET_ALPHA, C.MCTS.DIRICHLET_WEIGHT)
             else:
-                mcts.set_dirichlet_params(MCTS_DIRICHLET_ALPHA, 0.0)
+                mcts.set_dirichlet_params(C.MCTS.DIRICHLET_ALPHA, 0.0)
 
             moves = position.legal_moves()
             if not moves:
                 break
-            visit_counts = mcts.search_batched(
-                position, self.evaluator.infer_positions, EVAL_BATCH_SIZE_MAX
-            )
+            visit_counts = mcts.search_batched(position, self.evaluator.infer_positions, C.EVAL.BATCH_SIZE_MAX)
             if not visit_counts or len(visit_counts) != len(moves):
                 break
 
@@ -347,7 +324,7 @@ class SelfPlayEngine:
             for mv, vc in zip(moves, visit_counts, strict=False):
                 move_index = ccore.encode_move_index(mv)
                 if (move_index is not None) and (0 <= int(move_index) < POLICY_OUTPUT):
-                    c = min(int(vc), MCTS_VISIT_COUNT_CLAMP)
+                    c = min(int(vc), C.MCTS.VISIT_COUNT_CLAMP)
                     policy_counts[int(move_index)] = np.uint16(c)
 
             if position_history:
@@ -365,22 +342,25 @@ class SelfPlayEngine:
             if self.resign_consecutive > 0:
                 _, val_arr = self.evaluator.infer_positions([pos_snapshot])
                 value_estimate = float(val_arr[0])
-                if value_estimate <= RESIGN_VALUE_THRESHOLD:
+                if value_estimate <= C.RESIGN.VALUE_THRESHOLD:
                     resign_count += 1
                     if resign_count >= self.resign_consecutive:
-                        if float(rng.random()) < RESIGN_PLAYTHROUGH_FRACTION:
+                        if float(rng.random()) < C.RESIGN.PLAYTHROUGH_FRACTION:
                             resign_count = 0
                         else:
                             side_to_move_is_white = position.turn == ccore.WHITE
-                            forced_result = (
-                                ccore.BLACK_WIN if side_to_move_is_white else ccore.WHITE_WIN
-                            )
+                            forced_result = ccore.BLACK_WIN if side_to_move_is_white else ccore.WHITE_WIN
                             break
                 else:
                     resign_count = 0
 
             move = self._select_move_by_temperature(moves, visit_counts, move_count, rng=rng)
             position.make_move(move)
+
+            try:
+                mcts.advance_root(position, move)
+            except Exception:
+                pass
             position_history.append(pos_snapshot)
             if len(position_history) > HISTORY_LENGTH:
                 position_history.pop(0)
@@ -415,22 +395,18 @@ class SelfPlayEngine:
         self,
         snapshot: list[tuple[np.ndarray, np.ndarray, np.int8]],
         batch_size: int,
-        recent_ratio: float = REPLAY_SNAPSHOT_RECENT_RATIO_DEFAULT,
+        recent_ratio: float = C.SAMPLING.REPLAY_SNAPSHOT_RECENT_RATIO_DEFAULT,
     ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]] | None:
         sample_count = len(snapshot)
         if batch_size > sample_count:
             return None
-        recent_window_count = max(1, int(sample_count * REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC))
+        recent_window_count = max(1, int(sample_count * C.SAMPLING.REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC))
         n_recent = round(batch_size * recent_ratio)
         n_old = batch_size - n_recent
-        recent_indices = np.random.randint(
-            max(0, sample_count - recent_window_count), sample_count, size=n_recent
-        )
+        recent_indices = np.random.randint(max(0, sample_count - recent_window_count), sample_count, size=n_recent)
         old_indices = np.random.randint(0, max(1, sample_count - recent_window_count), size=n_old)
         indices = np.concatenate([recent_indices, old_indices])
-        states_u8_list, counts_u16_list, values_i8_list = zip(
-            *[snapshot[int(i)] for i in indices], strict=False
-        )
+        states_u8_list, counts_u16_list, values_i8_list = zip(*[snapshot[int(i)] for i in indices], strict=False)
         states = list(states_u8_list)
         counts = list(counts_u16_list)
         values = list(values_i8_list)
@@ -445,7 +421,7 @@ class SelfPlayEngine:
             "draws": 0,
         }
         seeds = [int(np.random.randint(0, 2**63 - 1)) for _ in range(num_games)]
-        if int(SEED) != 0:
+        if int(C.SEED) != 0:
             results: dict[int, tuple[int, int, list[tuple[np.ndarray, np.ndarray]], bool]] = {}
             with ThreadPoolExecutor(max_workers=max(1, self.num_workers)) as ex:
                 futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
