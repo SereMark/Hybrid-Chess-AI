@@ -1,35 +1,20 @@
 from __future__ import annotations
 
-from collections import OrderedDict, deque
-from dataclasses import dataclass, field
 import numbers
 import threading
 import time
+from collections import OrderedDict, deque
+from contextlib import suppress
+from dataclasses import dataclass, field
 from typing import Any, cast
 
+import chesscore as ccore
 import numpy as np
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
-from config import (
-    AMP_PREFER_BFLOAT16,
-    BOARD_SIZE,
-    EVAL_BATCH_COALESCE_MS,
-    EVAL_BATCH_SIZE_MAX,
-    EVAL_CACHE_CAPACITY,
-    EVAL_CACHE_USE_FP16,
-    EVAL_MODEL_CHANNELS_LAST,
-    EVAL_PIN_MEMORY,
-    EVAL_WORKER_JOIN_TIMEOUT_S,
-    INPUT_PLANES,
-    MODEL_BLOCKS,
-    MODEL_CHANNELS,
-    MODEL_VALUE_CONV_CHANNELS,
-    MODEL_VALUE_HIDDEN_DIM,
-    NSQUARES,
-    POLICY_OUTPUT,
-)
+import config as C
 
 
 class ResidualBlock(nn.Module):
@@ -49,28 +34,34 @@ class ResidualBlock(nn.Module):
         return F.relu(x + skip)
 
 
+BOARD_SIZE: int = 8
+NSQUARES: int = 64
+INPUT_PLANES: int = int(getattr(ccore, "INPUT_PLANES", 14 * 8 + 7))
+POLICY_OUTPUT: int = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
+
+
 class ChessNet(nn.Module):
     """Policy + value network over encoded positions."""
 
     def __init__(self, num_blocks: int | None = None, channels: int | None = None) -> None:
         super().__init__()
-        num_blocks = num_blocks or MODEL_BLOCKS
-        channels = channels or MODEL_CHANNELS
+        num_blocks = num_blocks or C.MODEL.BLOCKS
+        channels = channels or C.MODEL.CHANNELS
         policy_planes = POLICY_OUTPUT // NSQUARES
-        # Trunk
+
         self.conv_in = nn.Conv2d(INPUT_PLANES, channels, 3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(channels)
         self.residual_stack = nn.Sequential(*[ResidualBlock(channels) for _ in range(num_blocks)])
-        # Policy head
+
         self.policy_conv = nn.Conv2d(channels, policy_planes, 1, bias=False)
         self.policy_bn = nn.BatchNorm2d(policy_planes)
         self.policy_fc = nn.Linear(policy_planes * NSQUARES, POLICY_OUTPUT)
-        # Value head
-        self.value_conv = nn.Conv2d(channels, MODEL_VALUE_CONV_CHANNELS, 1, bias=False)
-        self.value_bn = nn.BatchNorm2d(MODEL_VALUE_CONV_CHANNELS)
-        self.value_fc1 = nn.Linear(MODEL_VALUE_CONV_CHANNELS * NSQUARES, MODEL_VALUE_HIDDEN_DIM)
-        self.value_fc2 = nn.Linear(MODEL_VALUE_HIDDEN_DIM, 1)
-        # Init weights
+
+        self.value_conv = nn.Conv2d(channels, C.MODEL.VALUE_CONV_CHANNELS, 1, bias=False)
+        self.value_bn = nn.BatchNorm2d(C.MODEL.VALUE_CONV_CHANNELS)
+        self.value_fc1 = nn.Linear(C.MODEL.VALUE_CONV_CHANNELS * NSQUARES, C.MODEL.VALUE_HIDDEN_DIM)
+        self.value_fc2 = nn.Linear(C.MODEL.VALUE_HIDDEN_DIM, 1)
+
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
@@ -85,11 +76,11 @@ class ChessNet(nn.Module):
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         x = F.relu(self.bn_in(self.conv_in(x)))
         x = self.residual_stack(x)
-        # Policy
+
         policy_logits = F.relu(self.policy_bn(self.policy_conv(x)))
         policy_logits = policy_logits.flatten(1)
         policy_logits = self.policy_fc(policy_logits)
-        # Value
+
         value = F.relu(self.value_bn(self.value_conv(x)))
         value = value.flatten(1)
         value = F.relu(self.value_fc1(value))
@@ -116,22 +107,18 @@ class BatchedEvaluator:
         self.model_lock = threading.Lock()
         model_any: Any = ChessNet().to(self.device)
         self.eval_model: nn.Module = model_any
-        if EVAL_MODEL_CHANNELS_LAST:
+        if C.TORCH.EVAL_MODEL_CHANNELS_LAST:
             self.eval_model = cast(
                 nn.Module,
                 self.eval_model.to(memory_format=torch.channels_last),
             )
         self.eval_model = self.eval_model.eval()
-        use_bf16 = AMP_PREFER_BFLOAT16
-        self.eval_model = cast(
-            nn.Module,
-            self.eval_model.to(dtype=(torch.bfloat16 if use_bf16 else torch.float16)),
-        )
+        self.eval_model = cast(nn.Module, self.eval_model.to(dtype=torch.float16))
         for p in self.eval_model.parameters():
             p.requires_grad_(False)
         self.cache_lock = threading.Lock()
         self.cache: OrderedDict[int, tuple[np.ndarray, float | np.floating[Any]]] = OrderedDict()
-        self._cache_capacity = int(EVAL_CACHE_CAPACITY)
+        self._cache_capacity = int(C.EVAL.CACHE_CAPACITY)
         self._metrics_lock = threading.Lock()
         self._metrics: dict[str, float] = {
             "requests_total": 0,
@@ -144,11 +131,9 @@ class BatchedEvaluator:
         self._pending_lock = threading.Condition()
         self._pending: deque[_EvalRequest] = deque()
         self._shutdown = threading.Event()
-        self._batch_size_cap = int(EVAL_BATCH_SIZE_MAX)
-        self._coalesce_ms = int(EVAL_BATCH_COALESCE_MS)
-        self._thread = threading.Thread(
-            target=self._batch_worker, name="EvalBatchWorker", daemon=True
-        )
+        self._batch_size_cap = int(C.EVAL.BATCH_SIZE_MAX)
+        self._coalesce_ms = int(C.EVAL.COALESCE_MS)
+        self._thread = threading.Thread(target=self._batch_worker, name="EvalBatchWorker", daemon=True)
         self._thread.start()
 
     def set_batching_params(self, batch_size_max: int | None = None, coalesce_ms: int | None = None) -> None:
@@ -164,16 +149,15 @@ class BatchedEvaluator:
             for r in list(self._pending):
                 r.policy = np.zeros(
                     (POLICY_OUTPUT,),
-                    dtype=(np.float16 if EVAL_CACHE_USE_FP16 else np.float32),
+                    dtype=(np.float16 if C.EVAL.CACHE_USE_FP16 else np.float32),
                 )
                 r.value = 0.0
                 r.event.set()
             self._pending.clear()
             self._pending_lock.notify_all()
-        from contextlib import suppress
 
         with suppress(Exception):
-            self._thread.join(timeout=EVAL_WORKER_JOIN_TIMEOUT_S)
+            self._thread.join(timeout=C.EVAL.WORKER_JOIN_TIMEOUT_S)
         with self.cache_lock:
             self.cache.clear()
 
@@ -208,11 +192,7 @@ class BatchedEvaluator:
             if hasattr(base, "module"):
                 base = base.module
             self.eval_model.load_state_dict(base.state_dict(), strict=True)
-            use_bf16 = AMP_PREFER_BFLOAT16
-            self.eval_model = cast(
-                nn.Module,
-                self.eval_model.to(dtype=(torch.bfloat16 if use_bf16 else torch.float16)),
-            )
+            self.eval_model = cast(nn.Module, self.eval_model.to(dtype=torch.float16))
             self.eval_model.eval()
             for p in self.eval_model.parameters():
                 p.requires_grad_(False)
@@ -220,22 +200,20 @@ class BatchedEvaluator:
             self.cache.clear()
 
     def _encode_batch(self, positions: list[Any]) -> torch.Tensor:
-        import chesscore as ccore
-
         x_np = (
             np.zeros((0, INPUT_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=np.float32)
             if not positions
             else ccore.encode_batch(positions)
         )
         x = torch.from_numpy(x_np)
-        if EVAL_PIN_MEMORY:
+        if C.TORCH.EVAL_PIN_MEMORY:
             x = x.pin_memory()
         x = x.to(self.device, non_blocking=True)
         return x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
 
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         with self.model_lock, torch.inference_mode():
-            x = x.to(dtype=(torch.bfloat16 if (AMP_PREFER_BFLOAT16) else torch.float16))
+            x = x.to(dtype=torch.float16)
             return cast(tuple[torch.Tensor, torch.Tensor], self.eval_model(x))
 
     def _position_key(self, pos: Any) -> int | None:
@@ -266,7 +244,7 @@ class BatchedEvaluator:
             self._metrics["requests_total"] += len(positions)
         cached_policy: list[np.ndarray | None] = [None] * len(positions)
         cached_value: list[float] = [0.0] * len(positions)
-        index_request_pairs: list[tuple[int, _EvalRequest]] = []  # (original index, shared request)
+        index_request_pairs: list[tuple[int, _EvalRequest]] = []
         key_to_request_index: dict[int, int] = {}
         obj_to_request_index: dict[int, int] = {}
         cache_misses_count = 0
@@ -275,16 +253,14 @@ class BatchedEvaluator:
                 key = self._position_key(pos)
                 if key is not None and key in self.cache:
                     pol, val = self.cache.pop(key)
-                    self.cache[key] = (pol, val)  # recency bump (LRU-ish)
+                    self.cache[key] = (pol, val)
                     cached_policy[i] = pol
                     cached_value[i] = float(val)
                     with self._metrics_lock:
                         self._metrics["cache_hits_total"] += 1
                 elif key is not None:
                     if key in key_to_request_index:
-                        index_request_pairs.append(
-                            (i, index_request_pairs[key_to_request_index[key]][1])
-                        )
+                        index_request_pairs.append((i, index_request_pairs[key_to_request_index[key]][1]))
                     else:
                         r = _EvalRequest(pos)
                         key_to_request_index[key] = len(index_request_pairs)
@@ -327,7 +303,7 @@ class BatchedEvaluator:
                         policy_opt = cached_policy[idx]
                         value_scalar = cached_value[idx]
                         if policy_opt is not None and not getattr(r, "error", False):
-                            if EVAL_CACHE_USE_FP16:
+                            if C.EVAL.CACHE_USE_FP16:
                                 self.cache[key] = (
                                     policy_opt.astype(np.float16),
                                     np.float16(value_scalar),
@@ -340,10 +316,7 @@ class BatchedEvaluator:
                 while len(self.cache) > self._cache_capacity:
                     self.cache.popitem(last=False)
         policy = np.stack(
-            [
-                (p if p is not None else np.zeros((POLICY_OUTPUT,), dtype=np.float32))
-                for p in cached_policy
-            ]
+            [(p if p is not None else np.zeros((POLICY_OUTPUT,), dtype=np.float32)) for p in cached_policy]
         ).astype(np.float32)
         value = np.asarray(cached_value, dtype=np.float32)
         return policy, value
@@ -376,10 +349,8 @@ class BatchedEvaluator:
                 policy_out_t, value_out_t = self._forward(x)
                 policy_logits = policy_out_t.float()
                 policy_logits = policy_logits - policy_logits.amax(dim=1, keepdim=True)
-                out_dtype = torch.float16 if EVAL_CACHE_USE_FP16 else torch.float32
-                policies_np = (
-                    F.softmax(policy_logits, dim=1).detach().to(dtype=out_dtype).cpu().numpy()
-                )
+                out_dtype = torch.float16 if C.EVAL.CACHE_USE_FP16 else torch.float32
+                policies_np = F.softmax(policy_logits, dim=1).detach().to(dtype=out_dtype).cpu().numpy()
                 values_np = value_out_t.detach().to(dtype=out_dtype).cpu().numpy()
                 for i, r in enumerate(batch):
                     r.policy = policies_np[i]
@@ -395,7 +366,7 @@ class BatchedEvaluator:
                 for r in batch:
                     r.policy = np.zeros(
                         (POLICY_OUTPUT,),
-                        dtype=(np.float16 if EVAL_CACHE_USE_FP16 else np.float32),
+                        dtype=(np.float16 if C.EVAL.CACHE_USE_FP16 else np.float32),
                     )
                     r.value = 0.0
                     r.error = True
