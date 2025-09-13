@@ -1,0 +1,34 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+src = ["."]
+extend-exclude = [
+    ".venv",
+    "build",
+    "dist",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "UP",
+    "B",
+    "SIM",
+    "C4",
+    "RUF",
+]
+ignore = [
+    "E501",
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

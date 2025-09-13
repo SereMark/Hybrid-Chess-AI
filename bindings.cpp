@@ -5,7 +5,6 @@
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include <array>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -149,10 +148,12 @@ PYBIND11_MODULE(chesscore, m) {
     .def(
       "search_batched",
       [](mcts::MCTS& engine, const chess::Position& pos, py::object evaluator, int max_batch) {
-        auto eval_fn = [&evaluator](const std::vector<chess::Position>& positions,
-                                    std::vector<std::vector<float>>& policies, std::vector<float>& values) {
+        py::object eval_obj = evaluator;
+        mcts::MCTS::EvalBatchFn eval_fn = [eval_obj](const std::vector<chess::Position>& positions,
+                                                    std::vector<std::vector<float>>& policies,
+                                                    std::vector<float>& values) {
           py::gil_scoped_acquire acq;
-          py::object out = evaluator(positions);
+          py::object out = eval_obj(positions);
           if (!py::isinstance<py::tuple>(out)) throw py::value_error("evaluator() must return (policy, value)");
           auto tup = out.cast<py::tuple>();
           if (tup.size() != 2) throw py::value_error("evaluator() must return (policy, value)");
