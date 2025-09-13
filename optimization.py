@@ -31,7 +31,6 @@ def build_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
 
 
 class WarmupCosine:
-
     def __init__(
         self,
         optimizer: Any,
@@ -75,7 +74,6 @@ class WarmupCosine:
 
 
 class EMA:
-
     def __init__(self, model: torch.nn.Module, decay: float | None = None) -> None:
         self.decay = float(C.TRAIN.EMA_DECAY if decay is None else decay)
         base = getattr(model, "_orig_mod", model)

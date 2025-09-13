@@ -20,7 +20,6 @@ def arena_match(
     device: torch.device,
     eval_cache_cap: int,
 ) -> tuple[float, int, int, int]:
-    
     wins = draws = losses = 0
 
     with (
@@ -202,9 +201,7 @@ def arena_match(
                 return any((len(m) >= 5 and m[-1] in ("q", "r", "b", "n")) for m in moves)
 
             promo: list[_PGNCandidate] = (
-                [g for g in pgn_candidates_typed if has_promo(g.moves)]
-                if C.LOG.ARENA_SAVE_PGN_ON_PROMOTION
-                else []
+                [g for g in pgn_candidates_typed if has_promo(g.moves)] if C.LOG.ARENA_SAVE_PGN_ON_PROMOTION else []
             )
             saved = 0
 
@@ -212,16 +209,16 @@ def arena_match(
                 nonlocal saved
                 if saved >= int(C.LOG.ARENA_SAVE_PGN_SAMPLES_PER_ROUND):
                     return
-                path = f"{round_tag}_{name}_{saved+1}.pgn"
+                path = f"{round_tag}_{name}_{saved + 1}.pgn"
                 with open(path, "w", encoding="utf-8") as f:
                     f.write('[Event "HybridChess Arena"]\n')
                     f.write('[Site "local"]\n')
                     f.write(f'[Date "{iso_date}"]\n')
                     f.write(f'[Round "{round_tag}"]\n')
-                    f.write(f"[White \"{g.white}\"]\n")
-                    f.write(f"[Black \"{g.black}\"]\n")
-                    f.write(f"[Result \"{res_str(int(g.result))}\"]\n")
-                    f.write(f"[FEN \"{g.fen}\"]\n[SetUp \"1\"]\n")
+                    f.write(f'[White "{g.white}"]\n')
+                    f.write(f'[Black "{g.black}"]\n')
+                    f.write(f'[Result "{res_str(int(g.result))}"]\n')
+                    f.write(f'[FEN "{g.fen}"]\n[SetUp "1"]\n')
                     out: list[str] = []
                     move_no = 1
                     for i, m in enumerate(g.moves):
@@ -247,7 +244,6 @@ def arena_match(
 
 
 class EloGater:
-
     def __init__(
         self,
         *,

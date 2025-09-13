@@ -29,7 +29,6 @@ class ResidualBlock(nn.Module):
 
 
 class ChessNet(nn.Module):
-
     def __init__(self, num_blocks: int | None = None, channels: int | None = None) -> None:
         super().__init__()
         num_blocks = int(num_blocks if num_blocks is not None else C.MODEL.BLOCKS)
