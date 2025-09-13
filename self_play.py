@@ -24,7 +24,6 @@ SELFPLAY_DETERMINISTIC_TEMP_EPS = float(C.SELFPLAY.DETERMINISTIC_TEMP_EPS)
 
 
 class SelfPlayEngine:
-
     def __init__(self, evaluator: Any) -> None:
         self.resign_consecutive = C.RESIGN.CONSECUTIVE_PLIES
         self.evaluator = evaluator

@@ -16,9 +16,7 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     if trainer.iteration < int(C.RESIGN.DISABLE_UNTIL_ITERS):
         trainer.selfplay_engine.resign_consecutive = 0
     else:
-        trainer.selfplay_engine.resign_consecutive = max(
-            int(C.RESIGN.CONSECUTIVE_PLIES), int(C.RESIGN.CONSECUTIVE_MIN)
-        )
+        trainer.selfplay_engine.resign_consecutive = max(int(C.RESIGN.CONSECUTIVE_PLIES), int(C.RESIGN.CONSECUTIVE_MIN))
     if trainer.iteration == C.ARENA.GATE_Z_SWITCH_ITER:
         trainer._gate.z = float(C.ARENA.GATE_Z_LATE)
     stats: dict[str, int | float] = {}
@@ -52,19 +50,17 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
         if target_workers != cur_workers:
             try:
                 trainer.selfplay_engine.set_num_workers(target_workers)
-                trainer.log.info(f"[AUTO] selfplay_workers {cur_workers} -> {target_workers}")
+                trainer.log.info(f"[AUTO    ] selfplay_workers {cur_workers} -> {target_workers}")
             except Exception:
                 pass
     total_elapsed = time.time() - trainer.start_time
     pct_done = 100.0 * (trainer.iteration - 1) / max(1, C.TRAIN.TOTAL_ITERATIONS)
     trainer.log.info(
-        f"[ITR {trainer.iteration:>3}/{C.TRAIN.TOTAL_ITERATIONS} {pct_done:>4.1f}%] "
-        f"LRnext {header_lr:.2e} | t {format_time(total_elapsed)} | "
+        f"[Iter    ] i {trainer.iteration:>3}/{C.TRAIN.TOTAL_ITERATIONS} ({pct_done:>4.1f}%) | LRnext {header_lr:.2e} | t {format_time(total_elapsed)} | "
         f"buf {format_si(buffer_len)}/{format_si(buffer_cap)} ({int(buffer_pct)}%) | "
         f"GPU {format_gb(mem_info['allocated_gb'])}/{format_gb(mem_info['reserved_gb'])}/{format_gb(mem_info['total_gb'])} | "
         f"RSS {format_gb(mem_info['rss_gb'])} | CPU {sys_info['cpu_sys_pct']:.0f}/{sys_info['cpu_proc_pct']:.0f}% | "
-        f"RAM {format_gb(sys_info['ram_used_gb'])}/{format_gb(sys_info['ram_total_gb'])} ({sys_info['ram_pct']:.0f}%) | "
-        f"load {sys_info['load1']:.2f}"
+        f"RAM {format_gb(sys_info['ram_used_gb'])}/{format_gb(sys_info['ram_total_gb'])} ({sys_info['ram_pct']:.0f}%) | load {sys_info['load1']:.2f}"
     )
 
     t0 = time.time()
@@ -109,21 +105,21 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
                 if new_cap != cap:
                     trainer._eval_batch_cap = new_cap
                     trainer.evaluator.set_batching_params(batch_size_max=new_cap)
-                    trainer.log.info(f"[AUTO] eval_batch_size_max {cap} -> {new_cap}")
+                    trainer.log.info(f"[AUTO    ] eval_batch_size_max {cap} -> {new_cap}")
             elif avg_batch <= 0.25 * cap and trainer._eval_coalesce_ms > 4:
                 old_ms = int(trainer._eval_coalesce_ms)
                 new_ms = int(max(4, int(old_ms * 0.8)))
                 if new_ms != old_ms:
                     trainer._eval_coalesce_ms = new_ms
                     trainer.evaluator.set_batching_params(coalesce_ms=new_ms)
-                    trainer.log.info(f"[AUTO] eval_coalesce_ms {old_ms} -> {new_ms}")
+                    trainer.log.info(f"[AUTO    ] eval_coalesce_ms {old_ms} -> {new_ms}")
             elif avg_batch >= 0.80 * cap and trainer._eval_coalesce_ms < 50:
                 old_ms = int(trainer._eval_coalesce_ms)
                 new_ms = int(min(50, int(old_ms * 1.2 + 1)))
                 if new_ms != old_ms:
                     trainer._eval_coalesce_ms = new_ms
                     trainer.evaluator.set_batching_params(coalesce_ms=new_ms)
-                    trainer.log.info(f"[AUTO] eval_coalesce_ms {old_ms} -> {new_ms}")
+                    trainer.log.info(f"[AUTO    ] eval_coalesce_ms {old_ms} -> {new_ms}")
     except Exception:
         pass
 
@@ -183,7 +179,7 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
             if new_bs_local < prev_bs_local:
                 trainer.train_batch_size = new_bs_local
                 trainer.log.info(
-                    f"[AUTO] OOM encountered; reducing train_batch_size {prev_bs_local} -> {new_bs_local}"
+                    f"[AUTO    ] OOM encountered; reducing train_batch_size {prev_bs_local} -> {new_bs_local}"
                 )
             trainer._oom_cooldown_iters = max(int(trainer._oom_cooldown_iters), 3)
             with contextlib.suppress(Exception):
@@ -194,12 +190,8 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
 
     train_elapsed_s = time.time() - t1
     actual_update_steps = len(losses)
-    avg_policy_loss = (
-        float(torch.stack([pair[0] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
-    )
-    avg_value_loss = (
-        float(torch.stack([pair[1] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
-    )
+    avg_policy_loss = float(torch.stack([pair[0] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
+    avg_value_loss = float(torch.stack([pair[1] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
     buffer_size = len(trainer.selfplay_engine.buffer)
     try:
         buffer_capacity2 = int(trainer.selfplay_engine.get_capacity())
@@ -221,9 +213,7 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     sched_drift_pct = 0.0
     if C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST > 0:
         sched_drift_pct = (
-            100.0
-            * (actual_update_steps - C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST)
-            / C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST
+            100.0 * (actual_update_steps - C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST) / C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST
             if actual_update_steps > 0
             else 0.0
         )
@@ -237,7 +227,7 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
         new_total = max(trainer.scheduler.t + 1, new_total)
         trainer.scheduler.set_total_steps(new_total)
         trainer.log.info(
-            f"[LR ] adjust total_steps -> {trainer.scheduler.total} (iter1 measured {actual_update_steps} vs est {C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST}, drift {sched_drift_pct:+.1f}%)"
+            f"[LR      ] adjust total_steps -> {trainer.scheduler.total} (iter1 measured {actual_update_steps} vs est {C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST}, drift {sched_drift_pct:+.1f}%)"
         )
 
     stats.update(
@@ -273,16 +263,16 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     tr_line_step = tr_line_parts[0] if tr_line_parts else ""
     tr_line_rest = " | ".join(tr_line_parts[1:]) if len(tr_line_parts) > 1 else ""
     tr_block = (
-        "[TR] "
+        "[Train   ] "
         + tr_plan_line
         + "\n"
-        + " " * 6
+        + " " * 10
         + tr_line_step
         + "\n"
-        + " " * 6
+        + " " * 10
         + tr_line_rest
         + "\n"
-        + " " * 6
+        + " " * 10
         + lr_sched_fragment
     )
     trainer.log.info(tr_block)
@@ -291,7 +281,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     return stats
 
 
-def train_step(trainer: Any, batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray]]) -> tuple[torch.Tensor, torch.Tensor, float, float]:
+def train_step(
+    trainer: Any, batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray]]
+) -> tuple[torch.Tensor, torch.Tensor, float, float]:
     states_u8_list, counts_u16_list, values_i8_list = batch_data
     x_u8_np = np.stack(states_u8_list).astype(np.uint8, copy=False)
     x_u8_t = torch.from_numpy(x_u8_np)
@@ -377,9 +369,7 @@ def train_step(trainer: Any, batch_data: tuple[list[Any], list[np.ndarray], list
             if trainer.iteration >= C.TRAIN.LOSS_VALUE_WEIGHT_SWITCH_ITER
             else C.TRAIN.LOSS_VALUE_WEIGHT
         )
-        total_loss = (
-            C.TRAIN.LOSS_POLICY_WEIGHT * policy_loss + value_loss_weight * value_loss - entropy_coef * entropy
-        )
+        total_loss = C.TRAIN.LOSS_POLICY_WEIGHT * policy_loss + value_loss_weight * value_loss - entropy_coef * entropy
     trainer.optimizer.zero_grad(set_to_none=True)
     trainer.scaler.scale(total_loss).backward()
     trainer.scaler.unscale_(trainer.optimizer)

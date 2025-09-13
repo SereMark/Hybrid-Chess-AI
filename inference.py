@@ -28,7 +28,6 @@ class _EvalRequest:
 
 
 class BatchedEvaluator:
-
     def __init__(self, device: torch.device) -> None:
         self.device = device
         self.model_lock = threading.Lock()

@@ -131,17 +131,16 @@ def try_resume(trainer: Any) -> None:
                 trainer._pending_challenger = None
         rng = ckpt.get("rng", {})
         if "py" in rng:
-            __import__("random").setstate(rng["py"]) 
+            __import__("random").setstate(rng["py"])
         if "np" in rng:
-            np.random.set_state(rng["np"]) 
+            np.random.set_state(rng["np"])
         if "torch_cpu" in rng:
-            torch.set_rng_state(rng["torch_cpu"]) 
+            torch.set_rng_state(rng["torch_cpu"])
         if "torch_cuda" in rng:
-            torch.cuda.set_rng_state_all(rng["torch_cuda"]) 
+            torch.cuda.set_rng_state_all(rng["torch_cuda"])
         trainer._prev_eval_m = trainer.evaluator.get_metrics()
         if not getattr(trainer, "_prev_eval_m", None):
             trainer._prev_eval_m = {}
         trainer.log.info(f"[CKPT] resumed from {path} @ iter {trainer.iteration}")
     except Exception as e:
         trainer.log.warning(f"[CKPT] failed to resume: {e}")
-

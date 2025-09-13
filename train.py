@@ -19,13 +19,19 @@ from checkpoint import save_best_model, save_checkpoint, try_resume
 from inference import BatchedEvaluator
 from network import ChessNet
 from optimization import EMA, WarmupCosine, build_optimizer
-from reporting import format_gb, format_time, get_mem_info, get_sys_info, startup_summary
+from reporting import (
+    format_gb,
+    format_iteration_summary,
+    format_time,
+    get_mem_info,
+    get_sys_info,
+    startup_summary,
+)
 from self_play import SelfPlayEngine
 from train_loop import run_training_iteration, train_step as core_train_step
 
 
 class Trainer:
-
     def __init__(self, device: str | None = None, resume: bool = False) -> None:
         self.log = logging.getLogger("hybridchess.trainer")
         device_obj = torch.device(device or "cuda")
@@ -116,8 +122,6 @@ class Trainer:
     def _startup_summary(self) -> str:
         return startup_summary(self)
 
-    
-
     def _clone_model(self) -> torch.nn.Module:
         clone = ChessNet().to(self.device)
         src = getattr(self.model, "_orig_mod", self.model)
@@ -150,8 +154,6 @@ class Trainer:
             self.ema.copy_to(model_clone)
         return model_clone
 
-    
-
     def train(self) -> None:
         self.log.info(self._startup_summary())
 
@@ -171,7 +173,7 @@ class Trainer:
                     or ((self._gate.w + self._gate.d + self._gate.losses) >= C.ARENA.CANDIDATE_MAX_GAMES)
                 ):
                     if self._gate_active:
-                        self.log.info("[AR ] reset: timeboxing stuck challenger")
+                        self.log.info("[Arena   ] reset: timeboxing stuck challenger")
                     self._pending_challenger = self._clone_from_ema()
                     self._gate.reset()
                     self._gate_active = True
@@ -191,7 +193,7 @@ class Trainer:
                 self._gate_rounds += 1
                 decision, m = self._gate.decision()
                 self.log.info(
-                    f"[AR ] W/D/L {aw}/{ad}/{al} | n {int(m.get('n', 0))} | p {100.0 * m.get('p', 0):>5.1f}% | elo {m.get('elo', 0):>6.1f} ±{m.get('se_elo', 0):.1f} | decision {decision.upper()} | time {format_time(arena_elapsed)} | age_iter {iteration - self._gate_started_iter} | rounds {self._gate_rounds}"
+                    f"[Arena   ] W/D/L {aw}/{ad}/{al} | n {int(m.get('n', 0))} | p {100.0 * m.get('p', 0):>5.1f}% | elo {m.get('elo', 0):>6.1f} ±{m.get('se_elo', 0):.1f} | decision {decision.upper()} | time {format_time(arena_elapsed)} | age_iter {iteration - self._gate_started_iter} | rounds {self._gate_rounds}"
                 )
                 arena_w, arena_d, arena_l = int(aw), int(ad), int(al)
                 arena_decision = str(decision)
@@ -250,14 +252,11 @@ class Trainer:
                     self._pending_challenger = None
                     self._gate_rounds = 0
             else:
-                self.log.info(f"[AR ] skipped | games 0 | time {format_time(arena_elapsed)}")
+                self.log.info(f"[Arena   ] skipped | games 0 | time {format_time(arena_elapsed)}")
 
             if self.iteration % C.LOG.CHECKPOINT_SAVE_EVERY_ITERS == 0:
                 self._save_checkpoint()
 
-            sp_time = float(iter_stats.get("selfplay_time", 0.0))
-            tr_time = float(iter_stats.get("training_time", 0.0))
-            full_iter_time = sp_time + tr_time + arena_elapsed
             next_ar = 0
             if C.ARENA.EVAL_EVERY_ITERS > 0:
                 k = C.ARENA.EVAL_EVERY_ITERS
@@ -282,7 +281,7 @@ class Trainer:
                         self.train_batch_size = int(max(int(C.TRAIN.BATCH_SIZE_MIN), prev_bs - 1024))
                     if self.train_batch_size != prev_bs:
                         self.log.info(
-                            f"[AUTO] train_batch_size {prev_bs} -> {self.train_batch_size} (peak_res {format_gb(peak_res)})"
+                            f"[AUTO    ] train_batch_size {prev_bs} -> {self.train_batch_size} (peak_res {format_gb(peak_res)})"
                         )
                 if int(self._oom_cooldown_iters) > 0:
                     self._oom_cooldown_iters = int(self._oom_cooldown_iters) - 1
@@ -296,17 +295,22 @@ class Trainer:
             except Exception:
                 pass
 
-            self.log.info(
-                f"[SUM] iter {format_time(full_iter_time)} | sp {format_time(sp_time)} | tr {format_time(tr_time)} | ar {format_time(arena_elapsed)} | "
-                f"elapsed {format_time(time.time() - self.start_time)} | next_ar {next_ar} | games {self.total_games:,} | "
-                f"peak GPU {format_gb(peak_alloc)}/{format_gb(peak_res)} | RSS {format_gb(mem_info_summary['rss_gb'])} | batch {self.train_batch_size}"
-            )
+            for _line in format_iteration_summary(
+                self,
+                iter_stats,
+                arena_elapsed,
+                next_ar,
+                peak_alloc,
+                peak_res,
+                mem_info_summary,
+                get_sys_info(self._proc),
+            ):
+                self.log.info(_line)
 
             self._prev_eval_m = self.evaluator.get_metrics()
 
             if C.LOG.METRICS_LOG_CSV_ENABLE:
                 try:
-
                     eval_metrics_now = self.evaluator.get_metrics()
                     try:
                         buf_cap = int(self.selfplay_engine.get_capacity())
@@ -452,8 +456,6 @@ class Trainer:
                         w.writerow(row)
                 except Exception:
                     pass
-
-    
 
 
 if __name__ == "__main__":

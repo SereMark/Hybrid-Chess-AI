@@ -30,7 +30,6 @@ PMAP_PROMOS = [0, 2, 1]
 
 
 class Augment:
-
     _policy_map_cache: ClassVar[dict[str, np.ndarray]] = {}
 
     @staticmethod
