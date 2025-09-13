@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import dataclasses
 import numbers
 import threading
 import time
 from collections import OrderedDict, deque
 from contextlib import suppress
-from dataclasses import dataclass, field
 from typing import Any, cast
 
 import chesscore as ccore
@@ -15,92 +15,19 @@ import torch.nn.functional as F
 from torch import nn
 
 import config as C
+from network import BOARD_SIZE, INPUT_PLANES, POLICY_OUTPUT, ChessNet
 
 
-class ResidualBlock(nn.Module):
-    """Conv-BN-ReLU x2 with skip connection."""
-
-    def __init__(self, channels: int) -> None:
-        super().__init__()
-        self.conv1 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(channels)
-        self.conv2 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(channels)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        skip = x
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = self.bn2(self.conv2(x))
-        return F.relu(x + skip)
-
-
-BOARD_SIZE: int = 8
-NSQUARES: int = 64
-INPUT_PLANES: int = int(getattr(ccore, "INPUT_PLANES", 14 * 8 + 7))
-POLICY_OUTPUT: int = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
-
-
-class ChessNet(nn.Module):
-    """Policy + value network over encoded positions."""
-
-    def __init__(self, num_blocks: int | None = None, channels: int | None = None) -> None:
-        super().__init__()
-        num_blocks = num_blocks or C.MODEL.BLOCKS
-        channels = channels or C.MODEL.CHANNELS
-        policy_planes = POLICY_OUTPUT // NSQUARES
-
-        self.conv_in = nn.Conv2d(INPUT_PLANES, channels, 3, padding=1, bias=False)
-        self.bn_in = nn.BatchNorm2d(channels)
-        self.residual_stack = nn.Sequential(*[ResidualBlock(channels) for _ in range(num_blocks)])
-
-        self.policy_conv = nn.Conv2d(channels, policy_planes, 1, bias=False)
-        self.policy_bn = nn.BatchNorm2d(policy_planes)
-        self.policy_fc = nn.Linear(policy_planes * NSQUARES, POLICY_OUTPUT)
-
-        self.value_conv = nn.Conv2d(channels, C.MODEL.VALUE_CONV_CHANNELS, 1, bias=False)
-        self.value_bn = nn.BatchNorm2d(C.MODEL.VALUE_CONV_CHANNELS)
-        self.value_fc1 = nn.Linear(C.MODEL.VALUE_CONV_CHANNELS * NSQUARES, C.MODEL.VALUE_HIDDEN_DIM)
-        self.value_fc2 = nn.Linear(C.MODEL.VALUE_HIDDEN_DIM, 1)
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
-            elif isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        x = F.relu(self.bn_in(self.conv_in(x)))
-        x = self.residual_stack(x)
-
-        policy_logits = F.relu(self.policy_bn(self.policy_conv(x)))
-        policy_logits = policy_logits.flatten(1)
-        policy_logits = self.policy_fc(policy_logits)
-
-        value = F.relu(self.value_bn(self.value_conv(x)))
-        value = value.flatten(1)
-        value = F.relu(self.value_fc1(value))
-        value = torch.tanh(self.value_fc2(value)).squeeze(-1)
-        return policy_logits, value
-
-
-@dataclass
+@dataclasses.dataclass
 class _EvalRequest:
-    """Internal single evaluation request container."""
-
     position: Any
-    event: threading.Event = field(default_factory=threading.Event)
+    event: threading.Event = dataclasses.field(default_factory=threading.Event)
     policy: np.ndarray | None = None
     value: float = 0.0
     error: bool = False
 
 
 class BatchedEvaluator:
-    """Threaded batched inference with a small LRU cache."""
 
     def __init__(self, device: torch.device) -> None:
         self.device = device
@@ -137,7 +64,6 @@ class BatchedEvaluator:
         self._thread.start()
 
     def set_batching_params(self, batch_size_max: int | None = None, coalesce_ms: int | None = None) -> None:
-        """Dynamically adjust evaluator batching limits."""
         if batch_size_max is not None:
             self._batch_size_cap = int(max(1, batch_size_max))
         if coalesce_ms is not None:
@@ -162,7 +88,6 @@ class BatchedEvaluator:
             self.cache.clear()
 
     def set_cache_capacity(self, capacity: int) -> None:
-        """Adjust LRU cache capacity; trims if shrinking."""
         cap = int(max(0, capacity))
         with self.cache_lock:
             self._cache_capacity = cap
@@ -217,14 +142,13 @@ class BatchedEvaluator:
             return cast(tuple[torch.Tensor, torch.Tensor], self.eval_model(x))
 
     def _position_key(self, pos: Any) -> int | None:
-        """Best-effort stable cache key; prefers position.hash()."""
         try:
             h_attr = getattr(pos, "hash", None)
             h_val = h_attr() if callable(h_attr) else h_attr
             if h_val is None:
                 return None
             if isinstance(h_val, np.generic):
-                h_val = cast(np.generic, h_val).item()
+                h_val = cast(Any, h_val).item()
             if isinstance(h_val, numbers.Integral):
                 return int(h_val)
             if isinstance(h_val, str):
@@ -237,7 +161,6 @@ class BatchedEvaluator:
             return None
 
     def infer_positions(self, positions: list[Any]) -> tuple[np.ndarray, np.ndarray]:
-        """Return (policy, value) arrays with caching and de-duplication."""
         if not positions:
             return np.zeros((0, POLICY_OUTPUT), dtype=np.float32), np.zeros((0,), dtype=np.float32)
         with self._metrics_lock:
@@ -269,12 +192,7 @@ class BatchedEvaluator:
                 else:
                     obj_id = id(pos)
                     if obj_id in obj_to_request_index:
-                        index_request_pairs.append(
-                            (
-                                i,
-                                index_request_pairs[obj_to_request_index[obj_id]][1],
-                            )
-                        )
+                        index_request_pairs.append((i, index_request_pairs[obj_to_request_index[obj_id]][1]))
                     else:
                         r = _EvalRequest(pos)
                         obj_to_request_index[obj_id] = len(index_request_pairs)
@@ -304,15 +222,9 @@ class BatchedEvaluator:
                         value_scalar = cached_value[idx]
                         if policy_opt is not None and not getattr(r, "error", False):
                             if C.EVAL.CACHE_USE_FP16:
-                                self.cache[key] = (
-                                    policy_opt.astype(np.float16),
-                                    np.float16(value_scalar),
-                                )
+                                self.cache[key] = (policy_opt.astype(np.float16), np.float16(value_scalar))
                             else:
-                                self.cache[key] = (
-                                    policy_opt.astype(np.float32),
-                                    np.float32(value_scalar),
-                                )
+                                self.cache[key] = (policy_opt.astype(np.float32), np.float32(value_scalar))
                 while len(self.cache) > self._cache_capacity:
                     self.cache.popitem(last=False)
         policy = np.stack(
@@ -322,7 +234,6 @@ class BatchedEvaluator:
         return policy, value
 
     def _batch_worker(self) -> None:
-        """Coalesce pending requests into batches up to size/time limits."""
         while not self._shutdown.is_set():
             with self._pending_lock:
                 while not self._pending and not self._shutdown.is_set():
@@ -373,6 +284,5 @@ class BatchedEvaluator:
                     r.event.set()
 
     def get_metrics(self) -> dict[str, float]:
-        """Snapshot of internal evaluator counters."""
         with self._metrics_lock:
             return dict(self._metrics)

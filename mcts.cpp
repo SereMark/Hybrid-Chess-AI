@@ -106,9 +106,11 @@ int encode_move_index(const chess::Move& m) { return encode_move_73x64(m); }
 [[gnu::hot]] void MCTS::expand_node(Node* node, const chess::MoveList& moves, const std::vector<float>& policy) {
   const size_t n = moves.size();
   if (!n) return;
+  const uint32_t node_idx = node_pool_.get_index(node);
   Node* children = node_pool_.allocate(n);
-  node->first_child_index = node_pool_.get_index(children);
-  node->child_count = static_cast<uint16_t>(n);
+  Node* refreshed = node_pool_.get_node(node_idx);
+  refreshed->first_child_index = node_pool_.get_index(children);
+  refreshed->child_count = static_cast<uint16_t>(n);
 
   std::vector<float> pri(n, 0.0f);
   float sum = 0.0f;
@@ -154,7 +156,7 @@ int encode_move_index(const chess::Move& m) { return encode_move_73x64(m); }
   }
 }
 
-std::vector<int> MCTS::search_batched(const chess::Position& position, EvalBatchFn eval_fn, int max_batch) {
+std::vector<int> MCTS::search_batched(const chess::Position& position, const EvalBatchFn& eval_fn, int max_batch) {
   if (max_batch < 1) max_batch = 1;
   ensure_root(position);
 
@@ -199,7 +201,10 @@ std::vector<int> MCTS::search_batched(const chess::Position& position, EvalBatch
         working_pos_ = to_eval[i];
         working_pos_.legal_moves(child_moves);
       }
-      if (!child_moves.empty()) expand_node(node, child_moves, policy_batch[i]);
+      if (!child_moves.empty()) {
+        expand_node(node, child_moves, policy_batch[i]);
+        node = node_pool_.get_node(idx);
+      }
 
       node->val_sum += VIRTUAL_LOSS;
       float v = value_batch[i];
@@ -228,6 +233,7 @@ std::vector<int> MCTS::search_batched(const chess::Position& position, EvalBatch
       }
       root_policy = policy_batch[0];
       expand_node(root, root_moves, root_policy);
+      root = node_pool_.get_node(root_index_);
     }
     add_dirichlet_noise(root);
   }

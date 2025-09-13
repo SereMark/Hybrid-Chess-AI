@@ -47,7 +47,7 @@ public:
   using EvalBatchFn =
     std::function<void(const std::vector<chess::Position>&, std::vector<std::vector<float>>&, std::vector<float>&)>;
 
-  std::vector<int> search_batched(const chess::Position& position, EvalBatchFn eval_fn, int max_batch = 64);
+  std::vector<int> search_batched(const chess::Position& position, const EvalBatchFn& eval_fn, int max_batch = 64);
 
   void reset_tree();
   void advance_root(const chess::Position& new_position, const chess::Move& played_move);
