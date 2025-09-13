@@ -58,15 +58,15 @@ def arena_match(
             moves_uci: list[str] = []
             while position.result() == _ccore.ONGOING and ply < C.SELFPLAY.GAME_MAX_PLIES:
                 visits = (
-                    mcts_white.search_batched(
+                    mcts_white.search_batched_legal(
                         position,
-                        evaluator_white.infer_positions,
+                        evaluator_white.infer_positions_legal,
                         C.EVAL.BATCH_SIZE_MAX,
                     )
                     if ply % 2 == 0
-                    else mcts_black.search_batched(
+                    else mcts_black.search_batched_legal(
                         position,
-                        evaluator_black.infer_positions,
+                        evaluator_black.infer_positions_legal,
                         C.EVAL.BATCH_SIZE_MAX,
                     )
                 )

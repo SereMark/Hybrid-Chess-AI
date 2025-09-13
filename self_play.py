@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import contextlib
 import threading
-from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from typing import Any, cast
 
 import chesscore as ccore
 import numpy as np
@@ -27,9 +26,12 @@ class SelfPlayEngine:
     def __init__(self, evaluator: Any) -> None:
         self.resign_consecutive = C.RESIGN.CONSECUTIVE_PLIES
         self.evaluator = evaluator
-        self.buffer: deque[tuple[np.ndarray, np.ndarray, np.int8]] = deque(maxlen=C.REPLAY.BUFFER_CAPACITY)
+        total_planes = PLANES_PER_POSITION * HISTORY_LENGTH + 7
+        self._buf = ccore.ReplayBuffer(int(C.REPLAY.BUFFER_CAPACITY), int(total_planes), BOARD_SIZE, BOARD_SIZE)
         self.buffer_lock = threading.Lock()
         self.num_workers: int = int(C.SELFPLAY.NUM_WORKERS)
+        self._enc_cache: dict[int, np.ndarray] = {}
+        self._enc_cache_cap: int = 100_000
 
     def set_num_workers(self, n: int) -> None:
         self.num_workers = int(max(1, n))
@@ -80,7 +82,7 @@ class SelfPlayEngine:
 
     def _process_result(
         self,
-        examples: list[tuple[np.ndarray, np.ndarray]],
+        examples: list[tuple[np.ndarray, np.ndarray, np.ndarray]],
         result: int,
         first_to_move_is_white: bool,
     ) -> None:
@@ -91,18 +93,14 @@ class SelfPlayEngine:
         else:
             base = 0.0
         with self.buffer_lock:
-            for ply_index, (position_u8, counts_u16) in enumerate(examples):
+            for ply_index, (position_u8, idx_i32, counts_u16) in enumerate(examples):
                 stm_is_white = ((ply_index % 2) == 0) == bool(first_to_move_is_white)
                 target_value = base if stm_is_white else -base
-                self.buffer.append(
-                    (
-                        position_u8,
-                        counts_u16,
-                        SelfPlayEngine.encode_value_i8(target_value),
-                    )
-                )
+                self._buf.push(position_u8, idx_i32, counts_u16, SelfPlayEngine.encode_value_i8(target_value))
 
-    def play_single_game(self, seed: int | None = None) -> tuple[int, int, list[tuple[np.ndarray, np.ndarray]], bool]:
+    def play_single_game(
+        self, seed: int | None = None
+    ) -> tuple[int, int, list[tuple[np.ndarray, np.ndarray, np.ndarray]], bool]:
         position = ccore.Position()
         resign_count = 0
         forced_result: int | None = None
@@ -117,8 +115,7 @@ class SelfPlayEngine:
         rng = np.random.default_rng(int(seed) if seed is not None else None)
         mcts.seed(int(rng.integers(2**63 - 1)))
 
-        examples: list[tuple[np.ndarray, np.ndarray]] = []
-        position_history: list[Any] = []
+        examples: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
         move_count = 0
 
         random_opening_plies = int(rng.integers(0, max(1, C.SELFPLAY.OPENING_RANDOM_PLIES_MAX)))
@@ -148,23 +145,59 @@ class SelfPlayEngine:
             moves = position.legal_moves()
             if not moves:
                 break
-            visit_counts = mcts.search_batched(position, self.evaluator.infer_positions, C.EVAL.BATCH_SIZE_MAX)
+            visit_counts = mcts.search_batched_legal(
+                position, self.evaluator.infer_positions_legal, C.EVAL.BATCH_SIZE_MAX
+            )
             if not visit_counts or len(visit_counts) != len(moves):
                 break
 
-            policy_counts = np.zeros(POLICY_OUTPUT, dtype=np.uint16)
+            idx_list: list[int] = []
+            cnt_list: list[int] = []
             for mv, vc in zip(moves, visit_counts, strict=False):
                 move_index = ccore.encode_move_index(mv)
                 if (move_index is not None) and (0 <= int(move_index) < POLICY_OUTPUT):
                     c = min(int(vc), C.MCTS.VISIT_COUNT_CLAMP)
-                    policy_counts[int(move_index)] = c
-            enc = ccore.encode_position(pos_snapshot)
-            examples.append((SelfPlayEngine.encode_u8(enc), policy_counts))
+                    if c > 0:
+                        idx_list.append(int(move_index))
+                        cnt_list.append(int(c))
+            idx_arr = np.asarray(idx_list, dtype=np.int32)
+            cnt_arr = np.asarray(cnt_list, dtype=np.uint16)
+            key_attr = getattr(pos_snapshot, "hash", None)
+            _kv = key_attr() if callable(key_attr) else key_attr
+            key = 0
+            try:
+                import numpy as _np
+
+                if isinstance(_kv, int):
+                    key = _kv
+                elif isinstance(_kv, _np.generic):
+                    key = int(cast(int, _kv))
+                elif isinstance(_kv, str):
+                    try:
+                        key = int(cast(str, _kv))
+                    except Exception:
+                        key = 0
+            except Exception:
+                key = 0
+            if key in self._enc_cache:
+                enc_u8 = self._enc_cache.pop(key)
+                self._enc_cache[key] = enc_u8
+            else:
+                enc = ccore.encode_position(pos_snapshot)
+                enc_u8 = SelfPlayEngine.encode_u8(enc)
+                self._enc_cache[key] = enc_u8
+                if len(self._enc_cache) > self._enc_cache_cap:
+                    try:
+                        oldest = next(iter(self._enc_cache.keys()))
+                        self._enc_cache.pop(oldest, None)
+                    except Exception:
+                        self._enc_cache.clear()
+            examples.append((enc_u8, idx_arr, cnt_arr))
             if first_to_move_is_white is None:
                 first_to_move_is_white = position.turn == ccore.WHITE
 
             if C.RESIGN.ENABLED:
-                _, val_arr = self.evaluator.infer_positions([pos_snapshot])
+                val_arr = self.evaluator.infer_values([pos_snapshot])
                 value_estimate = float(val_arr[0])
                 if value_estimate <= C.RESIGN.VALUE_THRESHOLD:
                     resign_count += 1
@@ -183,9 +216,6 @@ class SelfPlayEngine:
 
             with contextlib.suppress(Exception):
                 mcts.advance_root(position, move)
-            position_history.append(pos_snapshot)
-            if len(position_history) > HISTORY_LENGTH:
-                position_history.pop(0)
             move_count += 1
 
         final_result = forced_result if forced_result is not None else position.result()
@@ -197,42 +227,35 @@ class SelfPlayEngine:
             True if first_to_move_is_white is None else bool(first_to_move_is_white),
         )
 
-    def snapshot(self) -> list[tuple[np.ndarray, np.ndarray, np.int8]]:
-        with self.buffer_lock:
-            return list(self.buffer)
-
     def get_capacity(self) -> int:
         with self.buffer_lock:
-            return int(self.buffer.maxlen or 0)
+            return int(self._buf.capacity)
 
     def set_capacity(self, capacity: int) -> None:
         cap = int(max(1, capacity))
         with self.buffer_lock:
-            items = list(self.buffer)
-            if len(items) > cap:
-                items = items[-cap:]
-            self.buffer = deque(items, maxlen=cap)
+            self._buf.set_capacity(cap)
 
-    def sample_from_snapshot(
+    def size(self) -> int:
+        with self.buffer_lock:
+            return int(self._buf.size)
+
+    def sample_batch(
         self,
-        snapshot: list[tuple[np.ndarray, np.ndarray, np.int8]],
         batch_size: int,
-        recent_ratio: float = C.SAMPLING.REPLAY_SNAPSHOT_RECENT_RATIO_DEFAULT,
-    ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]] | None:
-        sample_count = len(snapshot)
-        if batch_size > sample_count:
-            return None
-        recent_window_count = max(1, int(sample_count * C.SAMPLING.REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC))
-        n_recent = round(batch_size * recent_ratio)
-        n_old = batch_size - n_recent
-        recent_indices = np.random.randint(max(0, sample_count - recent_window_count), sample_count, size=n_recent)
-        old_indices = np.random.randint(0, max(1, sample_count - recent_window_count), size=n_old)
-        indices = np.concatenate([recent_indices, old_indices])
-        states_u8_list, counts_u16_list, values_i8_list = zip(*[snapshot[int(i)] for i in indices], strict=False)
-        states = list(states_u8_list)
-        counts = list(counts_u16_list)
-        values = list(values_i8_list)
-        return states, counts, values
+        recent_ratio: float = C.SAMPLING.TRAIN_RECENT_SAMPLE_RATIO,
+    ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray], list[np.ndarray]] | None:
+        with self.buffer_lock:
+            if batch_size > int(self._buf.size):
+                return None
+            states_u8, idx_list, cnt_list, values_i8 = self._buf.sample(
+                int(batch_size), float(recent_ratio), float(C.SAMPLING.REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC)
+            )
+        states = [states_u8[i] for i in range(states_u8.shape[0])]
+        indices_sparse = [np.asarray(idx_list[i], dtype=np.int32) for i in range(len(idx_list))]
+        counts_sparse = [np.asarray(cnt_list[i], dtype=np.uint16) for i in range(len(cnt_list))]
+        values = [np.int8(values_i8[i]) for i in range(values_i8.shape[0])]
+        return states, indices_sparse, counts_sparse, values
 
     def play_games(self, num_games: int) -> dict[str, Any]:
         stats: dict[str, Any] = {
@@ -244,7 +267,7 @@ class SelfPlayEngine:
         }
         seeds = [int(np.random.randint(0, 2**63 - 1)) for _ in range(num_games)]
         if int(C.SEED) != 0:
-            results: dict[int, tuple[int, int, list[tuple[np.ndarray, np.ndarray]], bool]] = {}
+            results: dict[int, tuple[int, int, list[tuple[np.ndarray, np.ndarray, np.ndarray]], bool]] = {}
             with ThreadPoolExecutor(max_workers=max(1, self.num_workers)) as ex:
                 futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
                 for fut in as_completed(futures):

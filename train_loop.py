@@ -9,7 +9,13 @@ import torch
 import torch.nn.functional as F
 
 import config as C
-from reporting import format_gb, format_si, format_time, get_mem_info, get_sys_info
+from reporting import (
+    format_gb,
+    format_si,
+    format_time,
+    get_mem_info,
+    get_sys_info,
+)
 
 
 def run_training_iteration(trainer: Any) -> dict[str, int | float]:
@@ -24,35 +30,14 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     header_lr = float(trainer.scheduler.peek_next_lr())
     mem_info = get_mem_info(trainer._proc, trainer.device, trainer.device_total_gb)
     sys_info = get_sys_info(trainer._proc)
-    buffer_len = len(trainer.selfplay_engine.buffer)
     try:
+        buffer_len = int(trainer.selfplay_engine.size())
         buffer_cap = int(trainer.selfplay_engine.get_capacity())
     except Exception:
-        buffer_cap = int(trainer.selfplay_engine.buffer.maxlen or 1)
+        buffer_len = 0
+        buffer_cap = 1
     buffer_pct = (buffer_len / buffer_cap) * 100
-    try:
-        import psutil as _ps
-
-        max_workers_cap = int(min(32, max(4, (_ps.cpu_count(logical=True) or 8) - 2)))
-    except Exception:
-        max_workers_cap = 16
-    try:
-        cur_workers = int(trainer.selfplay_engine.get_num_workers())
-    except Exception:
-        cur_workers = None
-    if cur_workers is not None:
-        cpu_pct = float(sys_info.get("cpu_sys_pct", 0.0))
-        target_workers = int(cur_workers)
-        if cpu_pct < 55.0 and buffer_pct < 60.0 and cur_workers < max_workers_cap:
-            target_workers = min(max_workers_cap, cur_workers + 2)
-        elif cpu_pct > 85.0 and cur_workers > 4:
-            target_workers = max(4, cur_workers - 2)
-        if target_workers != cur_workers:
-            try:
-                trainer.selfplay_engine.set_num_workers(target_workers)
-                trainer.log.info(f"[AUTO    ] selfplay_workers {cur_workers} -> {target_workers}")
-            except Exception:
-                pass
+    
     total_elapsed = time.time() - trainer.start_time
     pct_done = 100.0 * (trainer.iteration - 1) / max(1, C.TRAIN.TOTAL_ITERATIONS)
     trainer.log.info(
@@ -147,14 +132,17 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
         torch.cuda.empty_cache()
 
     losses: list[tuple[torch.Tensor, torch.Tensor]] = []
-    snapshot = trainer.selfplay_engine.snapshot()
     min_batch_samples = max(1, trainer.train_batch_size // 2)
     new_examples = int(game_stats.get("moves", 0))
     target_train_samples = int(C.TRAIN.TARGET_TRAIN_SAMPLES_PER_NEW * max(1, new_examples))
     num_steps = int(np.ceil(target_train_samples / max(1, trainer.train_batch_size)))
     num_steps = max(C.TRAIN.UPDATE_STEPS_MIN, min(C.TRAIN.UPDATE_STEPS_MAX, num_steps))
     samples_ratio = 0.0
-    if len(snapshot) < min_batch_samples:
+    try:
+        buffer_size_now = int(trainer.selfplay_engine.size())
+    except Exception:
+        buffer_size_now = 0
+    if buffer_size_now < min_batch_samples:
         num_steps = 0
     else:
         samples_ratio = (num_steps * trainer.train_batch_size) / max(1, new_examples)
@@ -162,14 +150,16 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     grad_norm_sum: float = 0.0
     entropy_sum: float = 0.0
     for _step in range(num_steps):
-        batch = trainer.selfplay_engine.sample_from_snapshot(
-            snapshot, trainer.train_batch_size, recent_ratio=C.SAMPLING.TRAIN_RECENT_SAMPLE_RATIO
+        batch = trainer.selfplay_engine.sample_batch(
+            trainer.train_batch_size, recent_ratio=C.SAMPLING.TRAIN_RECENT_SAMPLE_RATIO
         )
         if not batch:
             continue
-        states, policies, values = batch
+        states, indices_sparse, counts_sparse, values = batch
         try:
-            policy_loss_t, value_loss_t, grad_norm_val, pred_entropy = trainer.train_step((states, policies, values))
+            policy_loss_t, value_loss_t, grad_norm_val, pred_entropy = trainer.train_step(
+                (states, indices_sparse, counts_sparse, values)
+            )
             grad_norm_sum += float(grad_norm_val)
             entropy_sum += float(pred_entropy)
             losses.append((policy_loss_t, value_loss_t))
@@ -192,11 +182,12 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     actual_update_steps = len(losses)
     avg_policy_loss = float(torch.stack([pair[0] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
     avg_value_loss = float(torch.stack([pair[1] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
-    buffer_size = len(trainer.selfplay_engine.buffer)
     try:
+        buffer_size = int(trainer.selfplay_engine.size())
         buffer_capacity2 = int(trainer.selfplay_engine.get_capacity())
     except Exception:
-        buffer_capacity2 = int(trainer.selfplay_engine.buffer.maxlen or 1)
+        buffer_size = 0
+        buffer_capacity2 = 1
     buffer_pct2 = (buffer_size / buffer_capacity2) * 100
     batches_per_sec = (len(losses) / max(1e-9, train_elapsed_s)) if losses else 0.0
     samples_per_sec = ((len(losses) * trainer.train_batch_size) / max(1e-9, train_elapsed_s)) if losses else 0.0
@@ -282,28 +273,15 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
 
 
 def train_step(
-    trainer: Any, batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray]]
+    trainer: Any, batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray], list[np.ndarray]]
 ) -> tuple[torch.Tensor, torch.Tensor, float, float]:
-    states_u8_list, counts_u16_list, values_i8_list = batch_data
+    states_u8_list, indices_i32_list, counts_u16_list, values_i8_list = batch_data
     x_u8_np = np.stack(states_u8_list).astype(np.uint8, copy=False)
     x_u8_t = torch.from_numpy(x_u8_np)
     if C.TORCH.TRAIN_PIN_MEMORY:
         with contextlib.suppress(Exception):
             x_u8_t = x_u8_t.pin_memory()
     x = x_u8_t.to(trainer.device, non_blocking=True)
-    pi_u16_np = np.stack(counts_u16_list).astype(np.uint16, copy=False)
-    pi_u16_t = torch.from_numpy(pi_u16_np)
-    if C.TORCH.TRAIN_PIN_MEMORY:
-        with contextlib.suppress(Exception):
-            pi_u16_t = pi_u16_t.pin_memory()
-    pi_counts = pi_u16_t.to(trainer.device, non_blocking=True).to(dtype=torch.float32)
-    denom = pi_counts.sum(dim=1, keepdim=True)
-    num_actions = int(pi_counts.shape[1])
-    pi_target = torch.where(
-        denom > 0.0,
-        pi_counts / denom.clamp_min(1.0),
-        torch.full_like(pi_counts, 1.0 / max(1, num_actions)),
-    )
     v_i8_np = np.asarray(values_i8_list, dtype=np.int8)
     v_i8_t = torch.from_numpy(v_i8_np)
     if C.TORCH.TRAIN_PIN_MEMORY:
@@ -326,18 +304,35 @@ def train_step(
         trainer._aug_rot180_idx = torch.tensor(rot180_idx, dtype=torch.long, device=trainer.device)
         trainer._aug_vflip_idx = torch.tensor(vflip_idx, dtype=torch.long, device=trainer.device)
         trainer._aug_vflip_plane_perm = torch.tensor(plane_perm, dtype=torch.long, device=trainer.device)
+
+        def _inv_perm(perm: list[int]) -> np.ndarray:
+            perm_np = np.asarray(perm, dtype=np.int64)
+            inv = np.empty_like(perm_np)
+            inv[perm_np] = np.arange(perm_np.size, dtype=np.int64)
+            return inv
+
+        trainer._aug_mirror_inv_np = _inv_perm(mirror_idx)
+        trainer._aug_rot180_inv_np = _inv_perm(rot180_idx)
+        trainer._aug_vflip_inv_np = _inv_perm(vflip_idx)
+
     if np.random.rand() < C.AUGMENT.MIRROR_PROB:
         x = torch.flip(x, dims=[-1])
-        pi_target = pi_target.index_select(1, trainer._aug_mirror_idx)
+        indices_i32_list = [
+            trainer._aug_mirror_inv_np[np.asarray(idx, dtype=np.int64)].astype(np.int32) for idx in indices_i32_list
+        ]
     if np.random.rand() < C.AUGMENT.ROT180_PROB:
         x = torch.flip(x, dims=[-1, -2])
-        pi_target = pi_target.index_select(1, trainer._aug_rot180_idx)
+        indices_i32_list = [
+            trainer._aug_rot180_inv_np[np.asarray(idx, dtype=np.int64)].astype(np.int32) for idx in indices_i32_list
+        ]
     if np.random.rand() < C.AUGMENT.VFLIP_CS_PROB:
         x = torch.flip(x, dims=[-2])
         x = x.index_select(1, trainer._aug_vflip_plane_perm)
         if 0 <= getattr(trainer, "_turn_plane_idx", x.shape[1]) < x.shape[1]:
             x[:, trainer._turn_plane_idx] = 1.0 - x[:, trainer._turn_plane_idx]
-        pi_target = pi_target.index_select(1, trainer._aug_vflip_idx)
+        indices_i32_list = [
+            trainer._aug_vflip_inv_np[np.asarray(idx, dtype=np.int64)].astype(np.int32) for idx in indices_i32_list
+        ]
         v_target = -v_target
     trainer.model.train()
     with torch.autocast(
@@ -347,14 +342,54 @@ def train_step(
     ):
         policy_logits, value_pred = trainer.model(x)
         value_pred = value_pred.squeeze(-1)
-        if C.TRAIN.LOSS_POLICY_LABEL_SMOOTH > 0.0:
-            num_actions = pi_target.shape[1]
-            pi_smooth = (1.0 - C.TRAIN.LOSS_POLICY_LABEL_SMOOTH) * pi_target + (
-                C.TRAIN.LOSS_POLICY_LABEL_SMOOTH / num_actions
-            )
+        log_probs = F.log_softmax(policy_logits, dim=1)
+        rows_list: list[torch.Tensor] = []
+        cols_list: list[torch.Tensor] = []
+        cnt_list: list[torch.Tensor] = []
+        for i, (idx_arr, cnt_arr) in enumerate(zip(indices_i32_list, counts_u16_list, strict=False)):
+            idx_np = np.asarray(idx_arr, dtype=np.int64)
+            cnt_np = np.asarray(cnt_arr, dtype=np.float32)
+            if idx_np.size == 0:
+                continue
+            valid = (idx_np >= 0) & (idx_np < log_probs.shape[1]) & (cnt_np > 0)
+            if not np.any(valid):
+                continue
+            idx_np = idx_np[valid]
+            cnt_np = cnt_np[valid]
+            it = torch.from_numpy(idx_np)
+            vt = torch.from_numpy(cnt_np)
+            if C.TORCH.TRAIN_PIN_MEMORY:
+                with contextlib.suppress(Exception):
+                    it = it.pin_memory()
+                    vt = vt.pin_memory()
+            it = it.to(trainer.device, non_blocking=True, dtype=torch.long)
+            vt = vt.to(trainer.device, non_blocking=True, dtype=torch.float32)
+            rt = torch.full((it.numel(),), i, device=trainer.device, dtype=torch.long)
+            rows_list.append(rt)
+            cols_list.append(it)
+            cnt_list.append(vt)
+        if rows_list:
+            rows = torch.cat(rows_list)
+            cols = torch.cat(cols_list)
+            cnts = torch.cat(cnt_list)
+            denom_rows = torch.zeros((x.shape[0],), device=trainer.device, dtype=torch.float32)
+            denom_rows.index_add_(0, rows, cnts)
+            denom = denom_rows.index_select(0, rows).clamp_min(1e-9)
+            weights = cnts / denom
+            eps = float(C.TRAIN.LOSS_POLICY_LABEL_SMOOTH)
+            if eps > 0.0:
+                ones = torch.ones_like(weights)
+                m_rows = torch.zeros((x.shape[0],), device=trainer.device, dtype=torch.float32)
+                m_rows.index_add_(0, rows, ones)
+                m = m_rows.index_select(0, rows).clamp_min(1.0)
+                weights = (1.0 - eps) * weights + (eps / m)
+            sel = log_probs[rows, cols]
+            per_entry = -weights * sel
+            loss_rows = torch.zeros((x.shape[0],), device=trainer.device, dtype=torch.float32)
+            loss_rows.index_add_(0, rows, per_entry)
+            policy_loss = loss_rows.mean()
         else:
-            pi_smooth = pi_target
-        policy_loss = F.kl_div(F.log_softmax(policy_logits, dim=1), pi_smooth, reduction="batchmean")
+            policy_loss = torch.tensor(0.0, device=trainer.device, dtype=torch.float32)
         value_loss = F.mse_loss(value_pred, v_target)
         entropy_coef = 0.0
         if C.TRAIN.LOSS_ENTROPY_COEF_INIT > 0 and trainer.iteration <= C.TRAIN.LOSS_ENTROPY_ANNEAL_ITERS:

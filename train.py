@@ -41,19 +41,6 @@ class Trainer:
             self.model = net_any.to(memory_format=torch.channels_last)
         else:
             self.model = net_any
-        self._compiled = False
-        try:
-            if C.TORCH.COMPILE:
-                self.model = torch.compile(
-                    self.model,
-                    mode=C.TORCH.COMPILE_MODE,
-                    fullgraph=C.TORCH.COMPILE_FULLGRAPH,
-                    dynamic=C.TORCH.COMPILE_DYNAMIC,
-                )
-                self._compiled = True
-        except Exception as e:
-            self._compiled = False
-            self.log.warning(f"torch.compile unavailable; running uncompiled ({e})")
 
         self.optimizer = build_optimizer(self.model)
 
@@ -74,6 +61,8 @@ class Trainer:
         self._eval_coalesce_ms = int(C.EVAL.COALESCE_MS)
         with contextlib.suppress(Exception):
             self.evaluator.set_batching_params(self._eval_batch_cap, self._eval_coalesce_ms)
+        with contextlib.suppress(Exception):
+            self.evaluator.set_cache_capacity(int(C.EVAL.CACHE_CAPACITY))
         self.train_batch_size: int = int(C.TRAIN.BATCH_SIZE)
         self._current_eval_cache_cap: int = int(C.EVAL.CACHE_CAPACITY)
         self._current_replay_cap: int = int(C.REPLAY.BUFFER_CAPACITY)
@@ -141,7 +130,7 @@ class Trainer:
         try_resume(self)
 
     def train_step(
-        self, batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray]]
+        self, batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray], list[np.ndarray]]
     ) -> tuple[torch.Tensor, torch.Tensor, float, float]:
         return core_train_step(self, batch_data)
 
@@ -268,21 +257,20 @@ class Trainer:
             try:
                 target_lo = 0.60 * self.device_total_gb
                 prev_bs = int(self.train_batch_size)
-                if (not C.TORCH.COMPILE) or C.TORCH.COMPILE_DYNAMIC:
-                    headroom_gb = max(0.0, float(self.device_total_gb) - float(peak_res))
-                    if (
-                        peak_res < target_lo
-                        and headroom_gb >= 8.0
-                        and prev_bs < int(C.TRAIN.BATCH_SIZE_MAX)
-                        and int(self._oom_cooldown_iters) == 0
-                    ):
-                        self.train_batch_size = int(min(int(C.TRAIN.BATCH_SIZE_MAX), prev_bs + 512))
-                    elif peak_res > 0.92 * self.device_total_gb and prev_bs > int(C.TRAIN.BATCH_SIZE_MIN):
-                        self.train_batch_size = int(max(int(C.TRAIN.BATCH_SIZE_MIN), prev_bs - 1024))
-                    if self.train_batch_size != prev_bs:
-                        self.log.info(
-                            f"[AUTO    ] train_batch_size {prev_bs} -> {self.train_batch_size} (peak_res {format_gb(peak_res)})"
-                        )
+                headroom_gb = max(0.0, float(self.device_total_gb) - float(peak_res))
+                if (
+                    peak_res < target_lo
+                    and headroom_gb >= 8.0
+                    and prev_bs < int(C.TRAIN.BATCH_SIZE_MAX)
+                    and int(self._oom_cooldown_iters) == 0
+                ):
+                    self.train_batch_size = int(min(int(C.TRAIN.BATCH_SIZE_MAX), prev_bs + 512))
+                elif peak_res > 0.92 * self.device_total_gb and prev_bs > int(C.TRAIN.BATCH_SIZE_MIN):
+                    self.train_batch_size = int(max(int(C.TRAIN.BATCH_SIZE_MIN), prev_bs - 1024))
+                if self.train_batch_size != prev_bs:
+                    self.log.info(
+                        f"[AUTO    ] train_batch_size {prev_bs} -> {self.train_batch_size} (peak_res {format_gb(peak_res)})"
+                    )
                 if int(self._oom_cooldown_iters) > 0:
                     self._oom_cooldown_iters = int(self._oom_cooldown_iters) - 1
                 else:
@@ -315,7 +303,7 @@ class Trainer:
                     try:
                         buf_cap = int(self.selfplay_engine.get_capacity())
                     except Exception:
-                        buf_cap = int(self.selfplay_engine.buffer.maxlen or 1)
+                        buf_cap = 1
                     sys_info = get_sys_info(self._proc)
                     lr = float(iter_stats.get("learning_rate", 0.0))
                     opt_steps = int(iter_stats.get("optimizer_steps", 0))
@@ -406,10 +394,15 @@ class Trainer:
                         ),
                         "sp_new_moves": int(iter_stats.get("moves", 0)),
                         "selfplay_time": float(iter_stats.get("selfplay_time", 0.0)),
-                        "buffer_size": int(iter_stats.get("buffer_size", len(self.selfplay_engine.buffer))),
+                        "buffer_size": int(
+                            iter_stats.get("buffer_size", getattr(self.selfplay_engine, "size", lambda: 0)())
+                        ),
                         "buffer_capacity": int(buf_cap),
                         "buffer_percent": float(
-                            iter_stats.get("buffer_percent", 100.0 * len(self.selfplay_engine.buffer) / max(1, buf_cap))
+                            iter_stats.get(
+                                "buffer_percent",
+                                100.0 * float(getattr(self.selfplay_engine, "size", lambda: 0)()) / max(1, buf_cap),
+                            )
                         ),
                         "eval_requests_total": int(eval_metrics_now.get("requests_total", 0)),
                         "eval_cache_hits_total": int(eval_metrics_now.get("cache_hits_total", 0)),
