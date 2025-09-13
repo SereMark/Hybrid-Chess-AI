@@ -285,10 +285,6 @@ def startup_summary(trainer: Any) -> str:
                 "CUDA": getattr(torch.version, "cuda", "unknown"),
                 "cuDNN": torch.backends.cudnn.version(),
                 "NCCL": nccl_v,
-                "Compile": ("on" if trainer._compiled else "off"),
-                "Mode": C.TORCH.COMPILE_MODE,
-                "FullGraph": C.TORCH.COMPILE_FULLGRAPH,
-                "Dynamic": C.TORCH.COMPILE_DYNAMIC,
             },
         )
     )

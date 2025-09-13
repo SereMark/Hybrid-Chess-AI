@@ -1,30 +1,18 @@
 from __future__ import annotations
 
-import dataclasses
 import numbers
 import threading
-import time
-from collections import OrderedDict, deque
+from collections import OrderedDict
 from contextlib import suppress
 from typing import Any, cast
 
 import chesscore as ccore
 import numpy as np
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 import config as C
 from network import BOARD_SIZE, INPUT_PLANES, POLICY_OUTPUT, ChessNet
-
-
-@dataclasses.dataclass
-class _EvalRequest:
-    position: Any
-    event: threading.Event = dataclasses.field(default_factory=threading.Event)
-    policy: np.ndarray | None = None
-    value: float = 0.0
-    error: bool = False
 
 
 class BatchedEvaluator:
@@ -43,8 +31,6 @@ class BatchedEvaluator:
         for p in self.eval_model.parameters():
             p.requires_grad_(False)
         self.cache_lock = threading.Lock()
-        self.cache: OrderedDict[int, tuple[np.ndarray, float | np.floating[Any]]] = OrderedDict()
-        self._cache_capacity = int(C.EVAL.CACHE_CAPACITY)
         self._metrics_lock = threading.Lock()
         self._metrics: dict[str, float] = {
             "requests_total": 0,
@@ -54,13 +40,14 @@ class BatchedEvaluator:
             "eval_positions_total": 0,
             "batch_size_max": 0,
         }
-        self._pending_lock = threading.Condition()
-        self._pending: deque[_EvalRequest] = deque()
         self._shutdown = threading.Event()
         self._batch_size_cap = int(C.EVAL.BATCH_SIZE_MAX)
         self._coalesce_ms = int(C.EVAL.COALESCE_MS)
-        self._thread = threading.Thread(target=self._batch_worker, name="EvalBatchWorker", daemon=True)
-        self._thread.start()
+
+        self._val_cache_cap = 200_000
+        self._val_cache: OrderedDict[int, float] = OrderedDict()
+        self._enc_cache_cap = 64_000
+        self._enc_cache: OrderedDict[int, np.ndarray] = OrderedDict()
 
     def set_batching_params(self, batch_size_max: int | None = None, coalesce_ms: int | None = None) -> None:
         if batch_size_max is not None:
@@ -70,32 +57,18 @@ class BatchedEvaluator:
 
     def close(self) -> None:
         self._shutdown.set()
-        with self._pending_lock:
-            for r in list(self._pending):
-                r.policy = np.zeros(
-                    (POLICY_OUTPUT,),
-                    dtype=(np.float16 if C.EVAL.CACHE_USE_FP16 else np.float32),
-                )
-                r.value = 0.0
-                r.event.set()
-            self._pending.clear()
-            self._pending_lock.notify_all()
-
         with suppress(Exception):
-            self._thread.join(timeout=C.EVAL.WORKER_JOIN_TIMEOUT_S)
-        with self.cache_lock:
-            self.cache.clear()
-
+            self._enc_cache.clear()
+        with suppress(Exception):
+            self._val_cache.clear()
     def set_cache_capacity(self, capacity: int) -> None:
         cap = int(max(0, capacity))
-        with self.cache_lock:
-            self._cache_capacity = cap
-            while len(self.cache) > self._cache_capacity:
-                self.cache.popitem(last=False)
+        self._enc_cache_cap = max(1, cap)
+        self._val_cache_cap = max(1, cap)
 
     @property
     def cache_capacity(self) -> int:
-        return int(self._cache_capacity)
+        return int(self._enc_cache_cap)
 
     @cache_capacity.setter
     def cache_capacity(self, value: int) -> None:
@@ -108,7 +81,10 @@ class BatchedEvaluator:
         self.close()
 
     def __del__(self):
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def refresh_from(self, src_model: torch.nn.Module) -> None:
         with self.model_lock:
@@ -116,29 +92,156 @@ class BatchedEvaluator:
             if hasattr(base, "module"):
                 base = base.module
             self.eval_model.load_state_dict(base.state_dict(), strict=True)
+            with suppress(Exception):
+                self._fuse_eval_model()
             self.eval_model = cast(nn.Module, self.eval_model.to(dtype=torch.float16))
             self.eval_model.eval()
             for p in self.eval_model.parameters():
                 p.requires_grad_(False)
         with self.cache_lock:
-            self.cache.clear()
+            self._enc_cache.clear()
+        with suppress(Exception):
+            self._val_cache.clear()
 
     def _encode_batch(self, positions: list[Any]) -> torch.Tensor:
-        x_np = (
-            np.zeros((0, INPUT_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=np.float32)
-            if not positions
-            else ccore.encode_batch(positions)
-        )
+        if not positions:
+            x = torch.zeros((0, INPUT_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=torch.float32)
+            return x.to(self.device)
+        encoded: list[np.ndarray] = [None] * len(positions)
+        misses: list[tuple[int, Any]] = []
+        keys: list[int | None] = [self._position_key(p) for p in positions]
+        with self.cache_lock:
+            for i, k in enumerate(keys):
+                if k is not None and k in self._enc_cache:
+                    arr = self._enc_cache.pop(k)
+                    self._enc_cache[k] = arr
+                    encoded[i] = arr
+                else:
+                    misses.append((i, positions[i]))
+        if misses:
+            miss_pos = [p for _, p in misses]
+            miss_np = ccore.encode_batch(miss_pos)
+            for j, (i, _) in enumerate(misses):
+                arr = miss_np[j].astype(np.float16, copy=False)
+                encoded[i] = arr
+
+        with self.cache_lock:
+            for i, k in enumerate(keys):
+                if k is not None:
+                    arr = encoded[i]
+                    if arr is not None:
+                        self._enc_cache[k] = arr
+                        while len(self._enc_cache) > self._enc_cache_cap:
+                            self._enc_cache.popitem(last=False)
+        x_np = np.stack([np.asarray(e, dtype=np.float16, order="C") for e in encoded])
         x = torch.from_numpy(x_np)
         if C.TORCH.EVAL_PIN_MEMORY:
             x = x.pin_memory()
         x = x.to(self.device, non_blocking=True)
         return x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
 
+    @staticmethod
+    def _fuse_conv_bn_(conv: nn.Conv2d, bn: nn.BatchNorm2d) -> None:
+        if not isinstance(conv, nn.Conv2d) or not isinstance(bn, nn.BatchNorm2d):
+            return
+        w = conv.weight.data
+        if conv.bias is None:
+            conv.bias = nn.Parameter(torch.zeros(w.size(0), device=w.device, dtype=w.dtype))
+        b = conv.bias.data
+        gamma = bn.weight.data
+        beta = bn.bias.data
+        mean = bn.running_mean.data
+        var = bn.running_var.data
+        eps = bn.eps
+        inv_std = torch.rsqrt(var + eps)
+        w.mul_(gamma.reshape(-1, 1, 1, 1) * inv_std.reshape(-1, 1, 1, 1))
+        b.mul_(1)
+        b.copy_(b + (beta - gamma * mean * inv_std))
+
+    def _fuse_eval_model(self) -> None:
+        m = self.eval_model
+        from network import ChessNet, ResidualBlock
+
+        if not isinstance(m, ChessNet):
+            return
+        if isinstance(m.bn_in, nn.BatchNorm2d):
+            self._fuse_conv_bn_(m.conv_in, m.bn_in)
+            m.bn_in = nn.Identity()
+        for blk in m.residual_stack:
+            if isinstance(blk, ResidualBlock):
+                if isinstance(blk.bn1, nn.BatchNorm2d):
+                    self._fuse_conv_bn_(blk.conv1, blk.bn1)
+                    blk.bn1 = nn.Identity()
+                if isinstance(blk.bn2, nn.BatchNorm2d):
+                    self._fuse_conv_bn_(blk.conv2, blk.bn2)
+                    blk.bn2 = nn.Identity()
+        if isinstance(m.policy_bn, nn.BatchNorm2d):
+            self._fuse_conv_bn_(m.policy_conv, m.policy_bn)
+            m.policy_bn = nn.Identity()
+        if isinstance(m.value_bn, nn.BatchNorm2d):
+            self._fuse_conv_bn_(m.value_conv, m.value_bn)
+            m.value_bn = nn.Identity()
+
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         with self.model_lock, torch.inference_mode():
             x = x.to(dtype=torch.float16)
             return cast(tuple[torch.Tensor, torch.Tensor], self.eval_model(x))
+    def infer_positions_legal(
+        self, positions: list[Any], moves_per_position: list[list[Any]]
+    ) -> tuple[list[np.ndarray], np.ndarray]:
+        if not positions:
+            return [], np.zeros((0,), dtype=np.float32)
+        with self._metrics_lock:
+            self._metrics["requests_total"] += len(positions)
+        x = self._encode_batch(positions)
+        policy_out_t, value_out_t = self._forward(x)
+        policy_logits = policy_out_t.float()
+        policy_logits = policy_logits - policy_logits.amax(dim=1, keepdim=True)
+        try:
+            idx_lists_py = ccore.encode_move_indices_batch(moves_per_position)
+            idx_lists: list[np.ndarray] = [
+                np.asarray(idx_lists_py[i], dtype=np.int64).reshape(-1) for i in range(len(positions))
+            ]
+        except Exception:
+            idx_lists = [
+                np.asarray([int(ccore.encode_move_index(m)) for m in moves], dtype=np.int64).reshape(-1)
+                for moves in moves_per_position
+            ]
+        lengths = [int(arr.shape[0]) for arr in idx_lists]
+        Lmax = max(1, max(lengths))
+        idx_padded = torch.full((len(positions), Lmax), -1, dtype=torch.long, device=self.device)
+        for i, arr in enumerate(idx_lists):
+            if arr.size == 0:
+                continue
+            arr_clamped = np.where((arr >= 0) & (arr < POLICY_OUTPUT), arr, -1)
+            t = torch.from_numpy(arr_clamped)
+            if C.TORCH.EVAL_PIN_MEMORY:
+                with suppress(Exception):
+                    t = t.pin_memory()
+            t = t.to(self.device, non_blocking=True, dtype=torch.long)
+            idx_padded[i, : t.numel()] = t
+        mask = idx_padded >= 0
+        gather_idx = idx_padded.clamp_min(0)
+        gathered = policy_logits.gather(1, gather_idx)
+        neg_inf = torch.finfo(gathered.dtype).min
+        masked = torch.where(mask, gathered, torch.full_like(gathered, neg_inf))
+        maxv = masked.max(dim=1, keepdim=True).values
+        exp = torch.exp(masked - maxv)
+        exp = torch.where(mask, exp, torch.zeros_like(exp))
+        denom = exp.sum(dim=1, keepdim=True).clamp_min(1e-9)
+        probs = exp / denom
+        out_dtype = torch.float16 if C.EVAL.CACHE_USE_FP16 else torch.float32
+        probs_np = probs.detach().to(dtype=out_dtype).cpu().numpy()
+        values_np = value_out_t.detach().to(dtype=out_dtype).cpu().numpy()
+        pol_list: list[np.ndarray] = []
+        for i, L in enumerate(lengths):
+            pol_list.append(probs_np[i, :L].astype(np.float32, copy=False))
+        with self._metrics_lock:
+            self._metrics["batches_total"] += 1
+            self._metrics["eval_positions_total"] += len(positions)
+            if len(positions) > int(self._metrics["batch_size_max"]):
+                self._metrics["batch_size_max"] = float(len(positions))
+        return pol_list, values_np.astype(np.float32, copy=False)
 
     def _position_key(self, pos: Any) -> int | None:
         try:
@@ -160,128 +263,36 @@ class BatchedEvaluator:
             return None
 
     def infer_positions(self, positions: list[Any]) -> tuple[np.ndarray, np.ndarray]:
-        if not positions:
-            return np.zeros((0, POLICY_OUTPUT), dtype=np.float32), np.zeros((0,), dtype=np.float32)
-        with self._metrics_lock:
-            self._metrics["requests_total"] += len(positions)
-        cached_policy: list[np.ndarray | None] = [None] * len(positions)
-        cached_value: list[float] = [0.0] * len(positions)
-        index_request_pairs: list[tuple[int, _EvalRequest]] = []
-        key_to_request_index: dict[int, int] = {}
-        obj_to_request_index: dict[int, int] = {}
-        cache_misses_count = 0
-        with self.cache_lock:
-            for i, pos in enumerate(positions):
-                key = self._position_key(pos)
-                if key is not None and key in self.cache:
-                    pol, val = self.cache.pop(key)
-                    self.cache[key] = (pol, val)
-                    cached_policy[i] = pol
-                    cached_value[i] = float(val)
-                    with self._metrics_lock:
-                        self._metrics["cache_hits_total"] += 1
-                elif key is not None:
-                    if key in key_to_request_index:
-                        index_request_pairs.append((i, index_request_pairs[key_to_request_index[key]][1]))
-                    else:
-                        r = _EvalRequest(pos)
-                        key_to_request_index[key] = len(index_request_pairs)
-                        index_request_pairs.append((i, r))
-                        cache_misses_count += 1
-                else:
-                    obj_id = id(pos)
-                    if obj_id in obj_to_request_index:
-                        index_request_pairs.append((i, index_request_pairs[obj_to_request_index[obj_id]][1]))
-                    else:
-                        r = _EvalRequest(pos)
-                        obj_to_request_index[obj_id] = len(index_request_pairs)
-                        index_request_pairs.append((i, r))
-        unique_requests: list[_EvalRequest] = []
-        seen: set[int] = set()
-        for _, r in index_request_pairs:
-            if id(r) not in seen:
-                unique_requests.append(r)
-                seen.add(id(r))
-        with self._metrics_lock:
-            self._metrics["cache_misses_total"] += cache_misses_count
-        for r in unique_requests:
-            with self._pending_lock:
-                self._pending.append(r)
-                self._pending_lock.notify()
-        for idx, r in index_request_pairs:
-            r.event.wait()
-            cached_policy[idx] = r.policy
-            cached_value[idx] = r.value
-        if index_request_pairs:
-            with self.cache_lock:
-                for idx, r in index_request_pairs:
-                    key = self._position_key(positions[idx])
-                    if key is not None and key not in self.cache:
-                        policy_opt = cached_policy[idx]
-                        value_scalar = cached_value[idx]
-                        if policy_opt is not None and not getattr(r, "error", False):
-                            if C.EVAL.CACHE_USE_FP16:
-                                self.cache[key] = (policy_opt.astype(np.float16), np.float16(value_scalar))
-                            else:
-                                self.cache[key] = (policy_opt.astype(np.float32), np.float32(value_scalar))
-                while len(self.cache) > self._cache_capacity:
-                    self.cache.popitem(last=False)
-        policy = np.stack(
-            [(p if p is not None else np.zeros((POLICY_OUTPUT,), dtype=np.float32)) for p in cached_policy]
-        ).astype(np.float32)
-        value = np.asarray(cached_value, dtype=np.float32)
-        return policy, value
-
-    def _batch_worker(self) -> None:
-        while not self._shutdown.is_set():
-            with self._pending_lock:
-                while not self._pending and not self._shutdown.is_set():
-                    self._pending_lock.wait()
-                if self._shutdown.is_set():
-                    break
-                batch: list[_EvalRequest] = [self._pending.popleft()]
-                coalesce_start = time.time()
-                coalesce_timeout_s = max(0.0, float(self._coalesce_ms) / 1000.0)
-                while len(batch) < self._batch_size_cap and not self._shutdown.is_set():
-                    remaining = coalesce_timeout_s - (time.time() - coalesce_start)
-                    if remaining <= 0.0:
-                        break
-                    if not self._pending:
-                        self._pending_lock.wait(timeout=remaining)
-                        if not self._pending:
-                            break
-                    while self._pending and len(batch) < self._batch_size_cap:
-                        batch.append(self._pending.popleft())
-            if self._shutdown.is_set():
-                break
-            try:
-                x = self._encode_batch([r.position for r in batch])
-                policy_out_t, value_out_t = self._forward(x)
-                policy_logits = policy_out_t.float()
-                policy_logits = policy_logits - policy_logits.amax(dim=1, keepdim=True)
-                out_dtype = torch.float16 if C.EVAL.CACHE_USE_FP16 else torch.float32
-                policies_np = F.softmax(policy_logits, dim=1).detach().to(dtype=out_dtype).cpu().numpy()
-                values_np = value_out_t.detach().to(dtype=out_dtype).cpu().numpy()
-                for i, r in enumerate(batch):
-                    r.policy = policies_np[i]
-                    r.value = float(values_np[i])
-                    r.error = False
-                    r.event.set()
-                with self._metrics_lock:
-                    self._metrics["batches_total"] += 1
-                    self._metrics["eval_positions_total"] += len(batch)
-                    if len(batch) > int(self._metrics["batch_size_max"]):
-                        self._metrics["batch_size_max"] = float(len(batch))
-            except Exception:
-                for r in batch:
-                    r.policy = np.zeros(
-                        (POLICY_OUTPUT,),
-                        dtype=(np.float16 if C.EVAL.CACHE_USE_FP16 else np.float32),
-                    )
-                    r.value = 0.0
-                    r.error = True
-                    r.event.set()
+        raise NotImplementedError("infer_positions dense path is removed; use infer_positions_legal")
 
     def get_metrics(self) -> dict[str, float]:
         with self._metrics_lock:
             return dict(self._metrics)
+
+    def infer_values(self, positions: list[Any]) -> np.ndarray:
+        if not positions:
+            return np.zeros((0,), dtype=np.float32)
+        pending: list[tuple[int, Any]] = []
+        values: list[float | None] = [None] * len(positions)
+        with self.cache_lock:
+            for i, pos in enumerate(positions):
+                key = self._position_key(pos)
+                if key is not None and key in self._val_cache:
+                    val = self._val_cache.pop(key)
+                    self._val_cache[key] = val
+                    values[i] = float(val)
+                else:
+                    pending.append((i, pos))
+        if pending:
+            x = self._encode_batch([p for _, p in pending])
+            _, val_t = self._forward(x)
+            val_np = val_t.detach().to(dtype=torch.float32).cpu().numpy()
+            with self.cache_lock:
+                for (i, pos), v in zip(pending, val_np, strict=False):
+                    values[i] = float(v)
+                    key = self._position_key(pos)
+                    if key is not None:
+                        self._val_cache[key] = float(v)
+                        while len(self._val_cache) > self._val_cache_cap:
+                            self._val_cache.popitem(last=False)
+        return np.asarray([(0.0 if v is None else float(v)) for v in values], dtype=np.float32)
