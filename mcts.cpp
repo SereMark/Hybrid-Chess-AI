@@ -202,7 +202,7 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position, con
       expand_node_with_priors(node, pending_moves[i], policies_legal[i]);
       float v = values[i];
       for (auto it = eval_paths[i].rbegin(); it != eval_paths[i].rend(); ++it) {
-        node_pool_.get_node(*it)->update(-v);
+        node_pool_.get_node(*it)->update(v);
         v = -v;
       }
       node_pool_.get_node(root_index_)->update(v);
@@ -265,7 +265,7 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position, con
           v = -v;
       }
       for (int i = depth - 1; i >= 0; --i) {
-        node_pool_.get_node(path_buffer_[i])->update(-v);
+        node_pool_.get_node(path_buffer_[i])->update(v);
         v = -v;
       }
       node_pool_.get_node(root_index_)->update(v);
@@ -287,7 +287,6 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position, con
       eval_paths.push_back(std::move(path));
 
       Node* pend = node_pool_.get_node(idx);
-      pend->visits += 1;
       pend->val_sum -= VIRTUAL_LOSS;
       pending_nodes.push_back(idx);
       pending_moves.push_back(std::move(mvvec));
