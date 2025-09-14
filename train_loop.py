@@ -58,7 +58,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     games_count = int(game_stats["games"])
     white_wins = int(game_stats["white_wins"])
     black_wins = int(game_stats["black_wins"])
-    draws_count = int(game_stats["draws"])
+    draws_true = int(game_stats.get("draws_true", 0))
+    draws_cap = int(game_stats.get("draws_cap", 0))
+    draws_count = int(draws_true + draws_cap)
     white_win_pct = 100.0 * white_wins / max(1, games_count)
     draw_pct = 100.0 * draws_count / max(1, games_count)
     black_win_pct = 100.0 * black_wins / max(1, games_count)
@@ -112,7 +114,7 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
         f"games {games_count:,} | W/D/B {white_wins}/{draws_count}/{black_wins} "
         f"({white_win_pct:.0f}%/{draw_pct:.0f}%/{black_win_pct:.0f}%) | len {avg_game_length:>4.1f} | "
         f"gpm {games_per_min:>5.1f} | mps {moves_per_sec / 1000:>4.1f}k | t {format_time(sp_elapsed)} | "
-        f"new {format_si(int(game_stats.get('moves', 0)))}"
+        f"new {format_si(int(game_stats.get('moves', 0)))} | cap {draws_cap}"
     )
 
     ev_short = (
@@ -343,9 +345,9 @@ def train_step(
         policy_logits, value_pred = trainer.model(x)
         value_pred = value_pred.squeeze(-1)
         log_probs = F.log_softmax(policy_logits, dim=1)
-        rows_list: list[torch.Tensor] = []
-        cols_list: list[torch.Tensor] = []
-        cnt_list: list[torch.Tensor] = []
+        rows_np_list: list[np.ndarray] = []
+        cols_np_list: list[np.ndarray] = []
+        cnts_np_list: list[np.ndarray] = []
         for i, (idx_arr, cnt_arr) in enumerate(zip(indices_i32_list, counts_u16_list, strict=False)):
             idx_np = np.asarray(idx_arr, dtype=np.int64)
             cnt_np = np.asarray(cnt_arr, dtype=np.float32)
@@ -356,22 +358,21 @@ def train_step(
                 continue
             idx_np = idx_np[valid]
             cnt_np = cnt_np[valid]
-            it = torch.from_numpy(idx_np)
-            vt = torch.from_numpy(cnt_np)
+            cols_np_list.append(idx_np)
+            cnts_np_list.append(cnt_np)
+            rows_np_list.append(np.full((idx_np.size,), i, dtype=np.int64))
+        if rows_np_list:
+            cols_cpu = torch.from_numpy(np.concatenate(cols_np_list, axis=0))
+            cnts_cpu = torch.from_numpy(np.concatenate(cnts_np_list, axis=0).astype(np.float32, copy=False))
+            rows_cpu = torch.from_numpy(np.concatenate(rows_np_list, axis=0))
             if C.TORCH.TRAIN_PIN_MEMORY:
                 with contextlib.suppress(Exception):
-                    it = it.pin_memory()
-                    vt = vt.pin_memory()
-            it = it.to(trainer.device, non_blocking=True, dtype=torch.long)
-            vt = vt.to(trainer.device, non_blocking=True, dtype=torch.float32)
-            rt = torch.full((it.numel(),), i, device=trainer.device, dtype=torch.long)
-            rows_list.append(rt)
-            cols_list.append(it)
-            cnt_list.append(vt)
-        if rows_list:
-            rows = torch.cat(rows_list)
-            cols = torch.cat(cols_list)
-            cnts = torch.cat(cnt_list)
+                    cols_cpu = cols_cpu.pin_memory()
+                    cnts_cpu = cnts_cpu.pin_memory()
+                    rows_cpu = rows_cpu.pin_memory()
+            cols = cols_cpu.to(trainer.device, non_blocking=True, dtype=torch.long)
+            cnts = cnts_cpu.to(trainer.device, non_blocking=True, dtype=torch.float32)
+            rows = rows_cpu.to(trainer.device, non_blocking=True, dtype=torch.long)
             denom_rows = torch.zeros((x.shape[0],), device=trainer.device, dtype=torch.float32)
             denom_rows.index_add_(0, rows, cnts)
             denom = denom_rows.index_select(0, rows).clamp_min(1e-9)
