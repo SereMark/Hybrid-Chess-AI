@@ -26,6 +26,7 @@ def build_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
         lr=C.TRAIN.LR_INIT,
         momentum=C.TRAIN.MOMENTUM,
         nesterov=True,
+        foreach=True,
     )
     return optimizer
 

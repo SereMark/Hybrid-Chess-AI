@@ -255,18 +255,20 @@ class Trainer:
             peak_res = torch.cuda.max_memory_reserved(self.device) / 1024**3
             mem_info_summary = get_mem_info(self._proc, self.device, self.device_total_gb)
             try:
-                target_lo = 0.60 * self.device_total_gb
                 prev_bs = int(self.train_batch_size)
-                headroom_gb = max(0.0, float(self.device_total_gb) - float(peak_res))
-                if (
-                    peak_res < target_lo
-                    and headroom_gb >= 8.0
+                alloc_frac = float(peak_alloc) / max(1e-9, float(self.device_total_gb))
+                headroom_gb = max(0.0, float(self.device_total_gb) - float(peak_alloc))
+                can_increase = (
+                    alloc_frac < 0.70
+                    and headroom_gb >= 0.5
                     and prev_bs < int(C.TRAIN.BATCH_SIZE_MAX)
                     and int(self._oom_cooldown_iters) == 0
-                ):
-                    self.train_batch_size = int(min(int(C.TRAIN.BATCH_SIZE_MAX), prev_bs + 512))
-                elif peak_res > 0.92 * self.device_total_gb and prev_bs > int(C.TRAIN.BATCH_SIZE_MIN):
-                    self.train_batch_size = int(max(int(C.TRAIN.BATCH_SIZE_MIN), prev_bs - 1024))
+                )
+                can_decrease = alloc_frac > 0.90 and prev_bs > int(C.TRAIN.BATCH_SIZE_MIN)
+                if can_increase:
+                    self.train_batch_size = int(min(int(C.TRAIN.BATCH_SIZE_MAX), prev_bs + 128))
+                elif can_decrease:
+                    self.train_batch_size = int(max(int(C.TRAIN.BATCH_SIZE_MIN), prev_bs - 256))
                 if self.train_batch_size != prev_bs:
                     self.log.info(
                         f"[AUTO    ] train_batch_size {prev_bs} -> {self.train_batch_size} (peak_res {format_gb(peak_res)})"
@@ -327,7 +329,10 @@ class Trainer:
                         "sp_games",
                         "sp_white_wins",
                         "sp_draws",
+                        "sp_draws_true",
+                        "sp_draws_cap",
                         "sp_black_wins",
+                        "sp_decisive_pct",
                         "sp_gpm",
                         "sp_mps_k",
                         "sp_avg_len",
@@ -386,7 +391,14 @@ class Trainer:
                         "sp_games": int(iter_stats.get("games", 0)),
                         "sp_white_wins": int(iter_stats.get("white_wins", 0)),
                         "sp_draws": int(iter_stats.get("draws", 0)),
+                        "sp_draws_true": int(iter_stats.get("draws_true", 0)),
+                        "sp_draws_cap": int(iter_stats.get("draws_cap", 0)),
                         "sp_black_wins": int(iter_stats.get("black_wins", 0)),
+                        "sp_decisive_pct": (
+                            100.0
+                            * (int(iter_stats.get("white_wins", 0)) + int(iter_stats.get("black_wins", 0)))
+                            / max(1, int(iter_stats.get("games", 0)))
+                        ),
                         "sp_gpm": float(iter_stats.get("games_per_min", 0.0)),
                         "sp_mps_k": float(iter_stats.get("moves_per_sec", 0.0)) / 1000.0,
                         "sp_avg_len": float(
@@ -479,7 +491,6 @@ if __name__ == "__main__":
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
-    torch.backends.cudnn.benchmark = bool(C.TORCH.CUDNN_BENCHMARK and (C.SEED == 0))
     if C.SEED != 0:
         torch.use_deterministic_algorithms(True)
     torch.set_num_threads(C.TORCH.THREADS_INTRA)

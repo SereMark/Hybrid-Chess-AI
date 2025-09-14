@@ -264,6 +264,8 @@ class SelfPlayEngine:
             "white_wins": 0,
             "black_wins": 0,
             "draws": 0,
+            "draws_true": 0,
+            "draws_cap": 0,
         }
         seeds = [int(np.random.randint(0, 2**63 - 1)) for _ in range(num_games)]
         if int(C.SEED) != 0:
@@ -274,28 +276,36 @@ class SelfPlayEngine:
                     i = futures[fut]
                     results[i] = fut.result()
             for i in range(num_games):
-                moves, result, examples, first_to_move_is_white = results[i]
+                mv_count, result, examples, first_to_move_is_white = results[i]
                 self._process_result(examples, result, bool(first_to_move_is_white))
                 stats["games"] += 1
-                stats["moves"] += moves
+                stats["moves"] += mv_count
                 if result == ccore.WHITE_WIN:
                     stats["white_wins"] += 1
                 elif result == ccore.BLACK_WIN:
                     stats["black_wins"] += 1
                 else:
+                    if result == ccore.DRAW:
+                        stats["draws_true"] += 1
+                    else:
+                        stats["draws_cap"] += 1
                     stats["draws"] += 1
         else:
             with ThreadPoolExecutor(max_workers=max(1, self.num_workers)) as ex:
                 futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
                 for fut in as_completed(futures):
-                    moves, result, examples, first_to_move_is_white = fut.result()
+                    mv_count, result, examples, first_to_move_is_white = fut.result()
                     self._process_result(examples, result, bool(first_to_move_is_white))
                     stats["games"] += 1
-                    stats["moves"] += moves
+                    stats["moves"] += mv_count
                     if result == ccore.WHITE_WIN:
                         stats["white_wins"] += 1
                     elif result == ccore.BLACK_WIN:
                         stats["black_wins"] += 1
                     else:
+                        if result == ccore.DRAW:
+                            stats["draws_true"] += 1
+                        else:
+                            stats["draws_cap"] += 1
                         stats["draws"] += 1
         return stats
