@@ -12,6 +12,12 @@ import config as C
 
 def save_checkpoint(trainer: Any) -> None:
     try:
+        try:
+            _dir = os.path.dirname(C.LOG.CHECKPOINT_FILE_PATH)
+            if _dir:
+                os.makedirs(_dir, exist_ok=True)
+        except Exception:
+            pass
         base = getattr(trainer.model, "_orig_mod", trainer.model)
         ckpt = {
             "iter": int(trainer.iteration),
@@ -57,6 +63,12 @@ def save_checkpoint(trainer: Any) -> None:
 
 def save_best_model(trainer: Any) -> None:
     try:
+        try:
+            _dir = os.path.dirname(C.LOG.BEST_MODEL_FILE_PATH)
+            if _dir:
+                os.makedirs(_dir, exist_ok=True)
+        except Exception:
+            pass
         state_dict = trainer.best_model.state_dict()
         payload = {
             "iter": int(trainer.iteration),

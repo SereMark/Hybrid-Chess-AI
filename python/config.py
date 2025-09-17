@@ -7,15 +7,16 @@ LOG = _NS(
     LEVEL="INFO",
     CUDA_EMPTY_CACHE_EVERY_ITERS=120,
     CHECKPOINT_SAVE_EVERY_ITERS=16,
-    CHECKPOINT_FILE_PATH="checkpoint.pt",
-    BEST_MODEL_FILE_PATH="best_model.pt",
+    CHECKPOINT_FILE_PATH="checkpoints/checkpoint.pt",
+    BEST_MODEL_FILE_PATH="checkpoints/best_model.pt",
     ARENA_LOG_CSV_ENABLE=True,
-    ARENA_LOG_CSV_PATH="arena_log.csv",
+    ARENA_LOG_CSV_PATH="logs/arena_log.csv",
     METRICS_LOG_CSV_ENABLE=True,
-    METRICS_LOG_CSV_PATH="training_log.csv",
+    METRICS_LOG_CSV_PATH="logs/training_log.csv",
     ARENA_SAVE_PGN_ENABLE=True,
     ARENA_SAVE_PGN_ON_PROMOTION=True,
     ARENA_SAVE_PGN_SAMPLES_PER_ROUND=4,
+    ARENA_PGN_DIR="logs",
 )
 
 

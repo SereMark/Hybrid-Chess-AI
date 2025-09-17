@@ -158,6 +158,13 @@ def arena_match(
         if C.LOG.ARENA_SAVE_PGN_ENABLE and pgn_candidates:
             iso_date = _dt.datetime.now(_dt.UTC).strftime("%Y.%m.%d")
             round_tag = _dt.datetime.now(_dt.UTC).strftime("%Y%m%d_%H%M%S")
+            try:
+                import os as _os
+                pgn_dir = str(C.LOG.ARENA_PGN_DIR)
+                if pgn_dir:
+                    _os.makedirs(pgn_dir, exist_ok=True)
+            except Exception:
+                pgn_dir = ""
 
             @dataclass
             class _PGNCandidate:
@@ -210,7 +217,8 @@ def arena_match(
                 if saved >= int(C.LOG.ARENA_SAVE_PGN_SAMPLES_PER_ROUND):
                     return
                 path = f"{round_tag}_{name}_{saved + 1}.pgn"
-                with open(path, "w", encoding="utf-8") as f:
+                full_path = f"{pgn_dir}/{path}" if pgn_dir else path
+                with open(full_path, "w", encoding="utf-8") as f:
                     f.write('[Event "HybridChess Arena"]\n')
                     f.write('[Site "local"]\n')
                     f.write(f'[Date "{iso_date}"]\n')

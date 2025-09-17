@@ -103,6 +103,12 @@ class Trainer:
             try_resume(self)
         else:
             try:
+                try:
+                    log_dir = os.path.dirname(C.LOG.METRICS_LOG_CSV_PATH)
+                    if log_dir:
+                        os.makedirs(log_dir, exist_ok=True)
+                except Exception:
+                    pass
                 if C.LOG.METRICS_LOG_CSV_ENABLE and os.path.isfile(C.LOG.METRICS_LOG_CSV_PATH):
                     os.remove(C.LOG.METRICS_LOG_CSV_PATH)
             except Exception:
@@ -197,6 +203,12 @@ class Trainer:
 
                 if C.LOG.ARENA_LOG_CSV_ENABLE:
                     try:
+                        try:
+                            log_dir = os.path.dirname(C.LOG.ARENA_LOG_CSV_PATH)
+                            if log_dir:
+                                os.makedirs(log_dir, exist_ok=True)
+                        except Exception:
+                            pass
                         write_header = not os.path.isfile(C.LOG.ARENA_LOG_CSV_PATH)
                         arena_record = {
                             "iter": int(self.iteration),
@@ -301,6 +313,12 @@ class Trainer:
 
             if C.LOG.METRICS_LOG_CSV_ENABLE:
                 try:
+                    try:
+                        log_dir = os.path.dirname(C.LOG.METRICS_LOG_CSV_PATH)
+                        if log_dir:
+                            os.makedirs(log_dir, exist_ok=True)
+                    except Exception:
+                        pass
                     eval_metrics_now = self.evaluator.get_metrics()
                     try:
                         buf_cap = int(self.selfplay_engine.get_capacity())
