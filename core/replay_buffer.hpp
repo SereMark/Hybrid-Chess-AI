@@ -18,7 +18,7 @@ public:
     return size_;
   }
 
-  void push(const uint8_t* state, size_t state_bytes, const int32_t* idx, size_t idx_len, const uint16_t* cnt,
+  void push(const uint8_t* state, [[maybe_unused]] size_t state_bytes, const int32_t* idx, size_t idx_len, const uint16_t* cnt,
             size_t cnt_len, int8_t v);
 
   void sample(size_t batch_size, double recent_ratio, double recent_window_frac, std::vector<uint8_t>& out_states,

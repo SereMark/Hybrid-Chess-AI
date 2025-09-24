@@ -86,7 +86,7 @@ void ReplayBuffer::maybe_compact_ragged() {
   cnt_store_.swap(new_cnt);
 }
 
-void ReplayBuffer::push(const uint8_t* state, size_t state_bytes, const int32_t* idx, size_t idx_len,
+void ReplayBuffer::push(const uint8_t* state, [[maybe_unused]] size_t state_bytes, const int32_t* idx, size_t idx_len,
                         const uint16_t* cnt, size_t cnt_len, int8_t v) {
   assert(state_bytes == state_stride_);
   if (idx_len != cnt_len)
