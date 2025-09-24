@@ -4,10 +4,10 @@ import os
 import time
 from typing import Any
 
+import config as C
 import numpy as np
 import torch
-
-import config as C
+from torch.cuda.amp import GradScaler
 
 
 def save_checkpoint(trainer: Any) -> None:
@@ -102,18 +102,16 @@ def try_resume(trainer: Any) -> None:
             state_dict = best_ckpt.get("model", best_ckpt)
             trainer.best_model.load_state_dict(state_dict, strict=True)
             trainer.best_model.eval()
-            trainer.evaluator.refresh_from(trainer.best_model)
         elif "best_model" in ckpt:
             trainer.best_model.load_state_dict(ckpt["best_model"], strict=True)
             trainer.best_model.eval()
-            trainer.evaluator.refresh_from(trainer.best_model)
         if "optimizer" in ckpt:
             trainer.optimizer.load_state_dict(ckpt["optimizer"])
         if "scheduler" in ckpt:
             sd = ckpt["scheduler"]
             trainer.scheduler.set_total_steps(int(sd.get("total", trainer.scheduler.total)))
             trainer.scheduler.t = int(sd.get("t", trainer.scheduler.t))
-        if "scaler" in ckpt and isinstance(trainer.scaler, torch.amp.GradScaler):
+        if "scaler" in ckpt and isinstance(trainer.scaler, GradScaler):
             trainer.scaler.load_state_dict(ckpt["scaler"])
         trainer.iteration = int(ckpt.get("iter", 0))
         trainer.total_games = int(ckpt.get("total_games", 0))
@@ -153,6 +151,7 @@ def try_resume(trainer: Any) -> None:
         trainer._prev_eval_m = trainer.evaluator.get_metrics()
         if not getattr(trainer, "_prev_eval_m", None):
             trainer._prev_eval_m = {}
+        trainer._sync_selfplay_evaluator()
         trainer.log.info(f"[CKPT] resumed from {path} @ iter {trainer.iteration}")
     except Exception as e:
         trainer.log.warning(f"[CKPT] failed to resume: {e}")

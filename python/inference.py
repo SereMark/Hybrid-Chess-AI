@@ -8,12 +8,11 @@ from contextlib import suppress
 from typing import Any, cast
 
 import chesscore as ccore
+import config as C
 import numpy as np
 import torch
-from torch import nn
-
-import config as C
 from network import BOARD_SIZE, INPUT_PLANES, POLICY_OUTPUT, ChessNet
+from torch import nn
 
 
 class BatchedEvaluator:
@@ -25,12 +24,17 @@ class BatchedEvaluator:
         if C.TORCH.EVAL_MODEL_CHANNELS_LAST:
             self.eval_model = cast(
                 nn.Module,
-                self.eval_model.to(memory_format=torch.channels_last),
+                self.eval_model.to(memory_format=torch.channels_last),  # pyright: ignore[reportCallIssue]
             )
         self.eval_model = self.eval_model.eval()
-        self.eval_model = cast(nn.Module, self.eval_model.to(dtype=torch.float16))
+        self._inference_dtype = torch.float16 if self.device.type == "cuda" else torch.float32
+        self.eval_model = cast(nn.Module, self.eval_model.to(dtype=self._inference_dtype))
         for p in self.eval_model.parameters():
             p.requires_grad_(False)
+        self._np_inference_dtype = np.float16 if self._inference_dtype == torch.float16 else np.float32
+        self._cache_out_dtype = (
+            torch.float16 if (C.EVAL.CACHE_USE_FP16 and self._inference_dtype == torch.float16) else torch.float32
+        )
         self.cache_lock = threading.Lock()
         self._metrics_lock = threading.Lock()
         self._metrics: dict[str, float] = {
@@ -53,7 +57,7 @@ class BatchedEvaluator:
         self._out_cache: OrderedDict[int, tuple[np.ndarray, float]] = OrderedDict()
 
         self._req_cv = threading.Condition()
-        self._req_queue: list["_EvalRequest"] = []
+        self._req_queue: list[_EvalRequest] = []
         self._coalesce_thread = threading.Thread(target=self._coalesce_loop, name="EvalCoalesce", daemon=True)
         self._coalesce_thread.start()
 
@@ -65,9 +69,8 @@ class BatchedEvaluator:
 
     def close(self) -> None:
         self._shutdown.set()
-        with suppress(Exception):
-            with self._req_cv:
-                self._req_cv.notify_all()
+        with suppress(Exception), self._req_cv:
+            self._req_cv.notify_all()
         with suppress(Exception):
             if getattr(self, "_coalesce_thread", None) is not None and self._coalesce_thread.is_alive():
                 self._coalesce_thread.join(timeout=1.0)
@@ -98,23 +101,31 @@ class BatchedEvaluator:
         self.close()
 
     def __del__(self):
-        try:
+        with suppress(Exception):
             self.close()
-        except Exception:
-            pass
 
     def refresh_from(self, src_model: torch.nn.Module) -> None:
         with self.model_lock:
-            base = getattr(src_model, "_orig_mod", src_model)
-            if hasattr(base, "module"):
-                base = base.module
-            self.eval_model.load_state_dict(base.state_dict(), strict=True)
+            base_obj = getattr(src_model, "_orig_mod", src_model)
+            if hasattr(base_obj, "module"):
+                base_obj = base_obj.module
+            base = cast(nn.Module, base_obj)
+            new_model: nn.Module = ChessNet().to(self.device)
+            new_model.load_state_dict(base.state_dict(), strict=True)
+            if C.TORCH.EVAL_MODEL_CHANNELS_LAST:
+                new_model = cast(
+                    nn.Module,
+                    new_model.to(memory_format=torch.channels_last),  # pyright: ignore[reportCallIssue]
+                )
             with suppress(Exception):
+                self.eval_model = new_model
                 self._fuse_eval_model()
-            self.eval_model = cast(nn.Module, self.eval_model.to(dtype=torch.float16))
-            self.eval_model.eval()
-            for p in self.eval_model.parameters():
+                new_model = self.eval_model
+            new_model = cast(nn.Module, new_model.to(dtype=self._inference_dtype))
+            new_model.eval()
+            for p in new_model.parameters():
                 p.requires_grad_(False)
+            self.eval_model = new_model
         with self.cache_lock:
             self._enc_cache.clear()
             self._val_cache.clear()
@@ -124,7 +135,7 @@ class BatchedEvaluator:
         if not positions:
             x = torch.zeros((0, INPUT_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=torch.float32)
             return x.to(self.device)
-        encoded: list[np.ndarray] = [None] * len(positions)
+        encoded: list[np.ndarray | None] = [None] * len(positions)
         misses: list[tuple[int, Any]] = []
         keys: list[int | None] = [self._position_key(p) for p in positions]
         with self.cache_lock:
@@ -139,7 +150,7 @@ class BatchedEvaluator:
             miss_pos = [p for _, p in misses]
             miss_np = ccore.encode_batch(miss_pos)
             for j, (i, _) in enumerate(misses):
-                arr = miss_np[j].astype(np.float16, copy=False)
+                arr = miss_np[j].astype(self._np_inference_dtype, copy=False)
                 encoded[i] = arr
 
         with self.cache_lock:
@@ -150,10 +161,13 @@ class BatchedEvaluator:
                         self._enc_cache[k] = arr
                         while len(self._enc_cache) > self._enc_cache_cap:
                             self._enc_cache.popitem(last=False)
-        x_np = np.stack([np.asarray(e, dtype=np.float16, order="C") for e in encoded])
+        x_np = np.stack(
+            [
+                np.asarray(cast(np.ndarray, e), dtype=self._np_inference_dtype, order="C")
+                for e in encoded
+            ]
+        )
         x = torch.from_numpy(x_np)
-        if C.TORCH.EVAL_PIN_MEMORY:
-            x = x.pin_memory()
         x = x.to(self.device, non_blocking=True)
         return x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
 
@@ -162,13 +176,19 @@ class BatchedEvaluator:
         if not isinstance(conv, nn.Conv2d) or not isinstance(bn, nn.BatchNorm2d):
             return
         w = conv.weight.data
-        if conv.bias is None:
+        bias = conv.bias
+        if bias is None:
             conv.bias = nn.Parameter(torch.zeros(w.size(0), device=w.device, dtype=w.dtype))
-        b = conv.bias.data
+            bias = conv.bias
+        b = bias.data
         gamma = bn.weight.data
         beta = bn.bias.data
-        mean = bn.running_mean.data
-        var = bn.running_var.data
+        running_mean = getattr(bn, "running_mean", None)
+        running_var = getattr(bn, "running_var", None)
+        if running_mean is None or running_var is None:
+            return
+        mean = running_mean.data
+        var = running_var.data
         eps = bn.eps
         inv_std = torch.rsqrt(var + eps)
         w.mul_(gamma.reshape(-1, 1, 1, 1) * inv_std.reshape(-1, 1, 1, 1))
@@ -183,25 +203,25 @@ class BatchedEvaluator:
             return
         if isinstance(m.bn_in, nn.BatchNorm2d):
             self._fuse_conv_bn_(m.conv_in, m.bn_in)
-            m.bn_in = nn.Identity()
+            m.bn_in = nn.Identity()  # pyright: ignore[reportAttributeAccessIssue]
         for blk in m.residual_stack:
             if isinstance(blk, ResidualBlock):
                 if isinstance(blk.bn1, nn.BatchNorm2d):
                     self._fuse_conv_bn_(blk.conv1, blk.bn1)
-                    blk.bn1 = nn.Identity()
+                    blk.bn1 = nn.Identity()  # pyright: ignore[reportAttributeAccessIssue]
                 if isinstance(blk.bn2, nn.BatchNorm2d):
                     self._fuse_conv_bn_(blk.conv2, blk.bn2)
-                    blk.bn2 = nn.Identity()
+                    blk.bn2 = nn.Identity()  # pyright: ignore[reportAttributeAccessIssue]
         if isinstance(m.policy_bn, nn.BatchNorm2d):
             self._fuse_conv_bn_(m.policy_conv, m.policy_bn)
-            m.policy_bn = nn.Identity()
+            m.policy_bn = nn.Identity()  # pyright: ignore[reportAttributeAccessIssue]
         if isinstance(m.value_bn, nn.BatchNorm2d):
             self._fuse_conv_bn_(m.value_conv, m.value_bn)
-            m.value_bn = nn.Identity()
+            m.value_bn = nn.Identity()  # pyright: ignore[reportAttributeAccessIssue]
 
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         with self.model_lock, torch.inference_mode():
-            x = x.to(dtype=torch.float16)
+            x = x.to(dtype=self._inference_dtype)
             return cast(tuple[torch.Tensor, torch.Tensor], self.eval_model(x))
     def _infer_positions_legal_direct(
         self, positions: list[Any], moves_per_position: list[list[Any]]
@@ -223,8 +243,8 @@ class BatchedEvaluator:
                 for moves in moves_per_position
             ]
 
-        probs_out: list[np.ndarray | None] = [None] * n
-        values_out: list[float | None] = [None] * n
+        probs_out: list[np.ndarray] = [np.zeros((0,), dtype=np.float32) for _ in range(n)]
+        values_out: list[float] = [0.0] * n
         hits: list[int] = []
         misses: list[int] = []
         keys: list[int | None] = [self._position_key(p) for p in positions]
@@ -237,9 +257,7 @@ class BatchedEvaluator:
                     idx_arr = np.asarray(idx_lists[i], dtype=np.int64)
                     valid = (idx_arr >= 0) & (idx_arr < POLICY_OUTPUT)
                     idx_arr = idx_arr[valid]
-                    if idx_arr.size == 0:
-                        probs_out[i] = np.zeros((0,), dtype=np.float32)
-                    else:
+                    if idx_arr.size > 0:
                         sel = pol_logits_np[idx_arr].astype(np.float32, copy=False)
                         m = float(sel.max()) if sel.size > 0 else 0.0
                         ex = np.exp(sel - m)
@@ -265,11 +283,7 @@ class BatchedEvaluator:
                 if arr.size == 0:
                     continue
                 arr = np.where((arr >= 0) & (arr < POLICY_OUTPUT), arr, -1)
-                t = torch.from_numpy(arr)
-                if C.TORCH.EVAL_PIN_MEMORY:
-                    with suppress(Exception):
-                        t = t.pin_memory()
-                t = t.to(self.device, non_blocking=True, dtype=torch.long)
+                t = torch.from_numpy(arr).to(self.device, non_blocking=True, dtype=torch.long)
                 idx_padded[j, : t.numel()] = t
             mask = idx_padded >= 0
             gather_idx = idx_padded.clamp_min(0)
@@ -282,7 +296,7 @@ class BatchedEvaluator:
             denom = exp.sum(dim=1, keepdim=True).clamp_min(1e-9)
             probs = exp / denom
 
-            out_dtype = torch.float16 if C.EVAL.CACHE_USE_FP16 else torch.float32
+            out_dtype = self._cache_out_dtype
             probs_np = probs.detach().to(dtype=out_dtype).cpu().numpy()
             values_np = value_out_t.detach().to(dtype=out_dtype).cpu().numpy()
             policy_logits_np_batch = (
@@ -312,10 +326,8 @@ class BatchedEvaluator:
             with self._metrics_lock:
                 self._metrics["cache_hits_total"] += len(hits)
 
-        pol_list: list[np.ndarray] = [
-            (np.zeros((0,), dtype=np.float32) if probs_out[i] is None else probs_out[i]) for i in range(n)
-        ]
-        values_arr = np.asarray([(0.0 if v is None else float(v)) for v in values_out], dtype=np.float32)
+        pol_list: list[np.ndarray] = list(probs_out)
+        values_arr = np.asarray(values_out, dtype=np.float32)
         return pol_list, values_arr
 
     def infer_positions_legal(
@@ -436,7 +448,7 @@ class BatchedEvaluator:
 
 
 class _EvalRequest:
-    __slots__ = ("positions", "moves", "size", "out_pol", "out_val", "ev")
+    __slots__ = ("ev", "moves", "out_pol", "out_val", "positions", "size")
 
     def __init__(self, positions: list[Any], moves: list[list[Any]]) -> None:
         self.positions = positions
