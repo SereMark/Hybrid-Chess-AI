@@ -44,14 +44,10 @@ On Linux/macOS:
 ```bash
 # From repo root
 python -m pip install --upgrade pip
-python -m pip install cmake ninja pybind11 numpy psutil
+python -m pip install cmake pybind11 numpy psutil
 
-# Configure CMake (tell it where pybind11's CMake files are)
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -Dpybind11_DIR="$(python -m pybind11 --cmakedir)"
-
-# Build
-cmake --build build -j
+# Configure + build (defaults to Makefiles on Linux/macOS)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
 
 # You should see python/chesscore*.so (or .dylib/.pyd on your OS)
 ```
@@ -59,13 +55,16 @@ cmake --build build -j
 On Windows (PowerShell):
 ```powershell
 py -m pip install --upgrade pip
-py -m pip install cmake ninja pybind11 numpy psutil
+py -m pip install cmake pybind11 numpy psutil
 
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
-  -Dpybind11_DIR="$(py -m pybind11 --cmakedir)"
-cmake --build build -j
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 # Verify python\chesscore*.pyd exists
 ```
+
+If CMake can't locate the pybind11 CMake package automatically, append
+`-Dpybind11_DIR="$(python -m pybind11 --cmakedir)"` (or use `py` on Windows)
+to the configure command above.
 
 Tip: The build uses `-O3 -march=native`. If you redistribute binaries, build on the target CPU.
 
