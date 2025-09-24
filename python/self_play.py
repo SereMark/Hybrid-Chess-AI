@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import contextlib
 import threading
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, cast
+from typing import Any
 
 import chesscore as ccore
-import numpy as np
-
 import config as C
+import numpy as np
 
 BOARD_SIZE = 8
 NSQUARES = 64
@@ -16,10 +16,18 @@ PLANES_PER_POSITION = int(getattr(ccore, "PLANES_PER_POSITION", 14))
 HISTORY_LENGTH = int(getattr(ccore, "HISTORY_LENGTH", 8))
 POLICY_OUTPUT = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
 
+_MATERIAL_WEIGHTS = (1.0, 3.0, 3.0, 5.0, 9.0, 0.0)
+
 SELFPLAY_TEMP_MOVES = int(C.SELFPLAY.TEMP_MOVES)
 SELFPLAY_TEMP_HIGH = float(C.SELFPLAY.TEMP_HIGH)
 SELFPLAY_TEMP_LOW = float(C.SELFPLAY.TEMP_LOW)
 SELFPLAY_DETERMINISTIC_TEMP_EPS = float(C.SELFPLAY.DETERMINISTIC_TEMP_EPS)
+SELFPLAY_COLOR_FLIP_PROB = float(getattr(C.SELFPLAY, "COLOR_FLIP_PROB", 0.0))
+SELFPLAY_REP_NOISE_COUNT = max(0, int(getattr(C.SELFPLAY, "REPETITION_NOISE_COUNT", 0)))
+SELFPLAY_REP_NOISE_WINDOW = max(0, int(getattr(C.SELFPLAY, "REPETITION_NOISE_WINDOW", 0)))
+
+_DEFAULT_START_FEN_WHITE = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+_DEFAULT_START_FEN_BLACK = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1"
 
 
 class SelfPlayEngine:
@@ -32,12 +40,48 @@ class SelfPlayEngine:
         self.num_workers: int = int(C.SELFPLAY.NUM_WORKERS)
         self._enc_cache: dict[int, np.ndarray] = {}
         self._enc_cache_cap: int = 100_000
+        base_prob = float(np.clip(SELFPLAY_COLOR_FLIP_PROB, 0.0, 1.0))
+        self._color_flip_prob_base = base_prob if base_prob > 0.0 else 0.5
+        self._color_bias = self._color_flip_prob_base
 
     def set_num_workers(self, n: int) -> None:
         self.num_workers = int(max(1, n))
 
     def get_num_workers(self) -> int:
         return int(self.num_workers)
+
+    def set_color_bias(self, prob_black: float) -> None:
+        self._color_bias = float(np.clip(prob_black, 0.1, 0.9))
+
+    def get_color_bias(self) -> float:
+        return float(self._color_bias)
+
+    @staticmethod
+    def _material_balance(position: ccore.Position) -> float:
+        pieces = position.pieces
+        balance = 0.0
+        for idx, weight in enumerate(_MATERIAL_WEIGHTS):
+            if weight == 0.0:
+                continue
+            white_bb = int(pieces[idx][0])
+            black_bb = int(pieces[idx][1])
+            balance += weight * (white_bb.bit_count() - black_bb.bit_count())
+        return balance
+
+    @staticmethod
+    def _position_hash_key(position: ccore.Position) -> int | None:
+        key_attr = getattr(position, "hash", None)
+        try:
+            raw = key_attr() if callable(key_attr) else key_attr
+            if raw is None:
+                return None
+            if isinstance(raw, (int, np.integer)):
+                return int(raw)
+            if isinstance(raw, str):
+                return int(raw)
+        except Exception:
+            return None
+        return None
 
     @staticmethod
     def encode_u8(enc: np.ndarray) -> np.ndarray:
@@ -100,10 +144,22 @@ class SelfPlayEngine:
 
     def play_single_game(
         self, seed: int | None = None
-    ) -> tuple[int, int, list[tuple[np.ndarray, np.ndarray, np.ndarray]], bool]:
+    ) -> tuple[int, int, list[tuple[np.ndarray, np.ndarray, np.ndarray]], bool, dict[str, int]]:
         position = ccore.Position()
+        rng = np.random.default_rng(int(seed) if seed is not None else None)
+        try:
+            prob_black = float(np.clip(self._color_bias, 0.0, 1.0))
+            if SELFPLAY_COLOR_FLIP_PROB <= 0.0 and self._color_flip_prob_base > 0.0:
+                prob_black = self._color_flip_prob_base
+            flip_to_black = prob_black > 0.0 and float(rng.random()) < prob_black
+            start_fen = _DEFAULT_START_FEN_BLACK if flip_to_black else _DEFAULT_START_FEN_WHITE
+            position.from_fen(start_fen)
+        except Exception:
+            position = ccore.Position()
+
         resign_count = 0
         forced_result: int | None = None
+        termination_reason = "natural"
         mcts = ccore.MCTS(
             C.MCTS.TRAIN_SIMULATIONS_BASE,
             C.MCTS.C_PUCT,
@@ -112,11 +168,16 @@ class SelfPlayEngine:
         )
         mcts.set_c_puct_params(C.MCTS.C_PUCT_BASE, C.MCTS.C_PUCT_INIT)
         mcts.set_fpu_reduction(C.MCTS.FPU_REDUCTION)
-        rng = np.random.default_rng(int(seed) if seed is not None else None)
         mcts.seed(int(rng.integers(2**63 - 1)))
 
         examples: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
         move_count = 0
+        loop_breaks = 0
+        repetition_hits = 0
+        repetition_counts: dict[int, int] = {}
+        key_history: deque[int] | None = None
+        if SELFPLAY_REP_NOISE_WINDOW > 0:
+            key_history = deque(maxlen=SELFPLAY_REP_NOISE_WINDOW)
 
         random_opening_plies = int(rng.integers(0, max(1, C.SELFPLAY.OPENING_RANDOM_PLIES_MAX)))
         for _ in range(random_opening_plies):
@@ -142,6 +203,21 @@ class SelfPlayEngine:
             else:
                 mcts.set_dirichlet_params(C.MCTS.DIRICHLET_ALPHA, 0.0)
 
+            repetition_count = 0
+            pos_key = SelfPlayEngine._position_hash_key(position)
+            if pos_key is not None:
+                if key_history is not None and key_history.maxlen is not None:
+                    if len(key_history) == key_history.maxlen:
+                        old_key = key_history.popleft()
+                        prev = repetition_counts.get(old_key, 0) - 1
+                        if prev <= 0:
+                            repetition_counts.pop(old_key, None)
+                        else:
+                            repetition_counts[old_key] = prev
+                    key_history.append(pos_key)
+                repetition_counts[pos_key] = repetition_counts.get(pos_key, 0) + 1
+                repetition_count = repetition_counts[pos_key]
+
             moves = position.legal_moves()
             if not moves:
                 break
@@ -162,22 +238,8 @@ class SelfPlayEngine:
                         cnt_list.append(int(c))
             idx_arr = np.asarray(idx_list, dtype=np.int32)
             cnt_arr = np.asarray(cnt_list, dtype=np.uint16)
-            key_attr = getattr(pos_snapshot, "hash", None)
-            _kv = key_attr() if callable(key_attr) else key_attr
-            key = 0
-            try:
-                import numpy as _np
-
-                if isinstance(_kv, int):
-                    key = _kv
-                elif isinstance(_kv, _np.generic):
-                    key = int(cast(int, _kv))
-                elif isinstance(_kv, str):
-                    try:
-                        key = int(cast(str, _kv))
-                    except Exception:
-                        key = 0
-            except Exception:
+            key = SelfPlayEngine._position_hash_key(pos_snapshot)
+            if key is None:
                 key = 0
             if key in self._enc_cache:
                 enc_u8 = self._enc_cache.pop(key)
@@ -196,7 +258,7 @@ class SelfPlayEngine:
             if first_to_move_is_white is None:
                 first_to_move_is_white = position.turn == ccore.WHITE
 
-            if C.RESIGN.ENABLED:
+            if C.RESIGN.ENABLED and self.resign_consecutive > 0:
                 val_arr = self.evaluator.infer_values([pos_snapshot])
                 value_estimate = float(val_arr[0])
                 if value_estimate <= C.RESIGN.VALUE_THRESHOLD:
@@ -207,24 +269,55 @@ class SelfPlayEngine:
                         else:
                             side_to_move_is_white = position.turn == ccore.WHITE
                             forced_result = ccore.BLACK_WIN if side_to_move_is_white else ccore.WHITE_WIN
+                            termination_reason = "resign"
                             break
                 else:
                     resign_count = 0
 
-            move = self._select_move_by_temperature(moves, visit_counts, move_count, rng=rng)
+            inject_noise = (
+                SELFPLAY_REP_NOISE_COUNT > 0
+                and repetition_count >= SELFPLAY_REP_NOISE_COUNT
+                and len(moves) > 1
+            )
+            if inject_noise:
+                visit_arr = np.asarray(visit_counts, dtype=np.float64)
+                top_k = min(len(moves), 4)
+                try:
+                    top_indices = np.argsort(visit_arr)[-top_k:]
+                except Exception:
+                    top_indices = np.arange(len(moves))
+                chosen_idx = int(rng.choice(top_indices))
+                move = moves[chosen_idx]
+                loop_breaks += 1
+                repetition_hits += 1
+            else:
+                move = self._select_move_by_temperature(moves, visit_counts, move_count, rng=rng)
             position.make_move(move)
 
             with contextlib.suppress(Exception):
                 mcts.advance_root(position, move)
             move_count += 1
 
+        if forced_result is None and move_count >= C.SELFPLAY.GAME_MAX_PLIES:
+            termination_reason = "exhausted"
+
         final_result = forced_result if forced_result is not None else position.result()
+        if forced_result is None and final_result == ccore.ONGOING:
+            termination_reason = "exhausted"
+            final_result = ccore.DRAW
+
+        meta = {
+            "loop_breaks": int(loop_breaks),
+            "repetition_hits": int(repetition_hits),
+            "termination": termination_reason,
+        }
 
         return (
             move_count,
             final_result,
             examples,
             True if first_to_move_is_white is None else bool(first_to_move_is_white),
+            meta,
         )
 
     def get_capacity(self) -> int:
@@ -240,11 +333,52 @@ class SelfPlayEngine:
         with self.buffer_lock:
             return int(self._buf.size)
 
+    def _record_game(
+        self,
+        stats: dict[str, Any],
+        game_data: tuple[int, int, list[tuple[np.ndarray, np.ndarray, np.ndarray]], bool, dict[str, int]],
+    ) -> None:
+        move_count, result, examples, first_to_move_is_white, meta = game_data
+        self._process_result(examples, result, bool(first_to_move_is_white))
+        stats["games"] += 1
+        stats["moves"] += move_count
+        if bool(first_to_move_is_white):
+            stats["starts_white"] += 1
+        else:
+            stats["starts_black"] += 1
+        meta = meta or {}
+        stats["loop_breaks"] += int(meta.get("loop_breaks", 0))
+        stats["repetition_hits"] += int(meta.get("repetition_hits", 0))
+        term_reason = str(meta.get("termination", "natural"))
+        if term_reason == "resign":
+            stats["term_resign"] += 1
+        elif term_reason == "exhausted":
+            stats["term_exhausted"] += 1
+        elif term_reason == "threefold":
+            stats["term_threefold"] += 1
+        elif term_reason == "fifty_move":
+            stats["term_fifty"] += 1
+        else:
+            stats["term_natural"] += 1
+        if result == ccore.WHITE_WIN:
+            stats["white_wins"] += 1
+        elif result == ccore.BLACK_WIN:
+            stats["black_wins"] += 1
+        else:
+            if result == ccore.DRAW:
+                if term_reason in {"exhausted", "fifty_move", "threefold"}:
+                    stats["draws_cap"] += 1
+                else:
+                    stats["draws_true"] += 1
+            else:
+                stats["draws_cap"] += 1
+            stats["draws"] += 1
+
     def sample_batch(
         self,
         batch_size: int,
         recent_ratio: float = C.SAMPLING.TRAIN_RECENT_SAMPLE_RATIO,
-    ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray], list[np.ndarray]] | None:
+    ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray], list[np.int8]] | None:
         with self.buffer_lock:
             if batch_size > int(self._buf.size):
                 return None
@@ -266,46 +400,31 @@ class SelfPlayEngine:
             "draws": 0,
             "draws_true": 0,
             "draws_cap": 0,
+            "starts_white": 0,
+            "starts_black": 0,
+            "loop_breaks": 0,
+            "repetition_hits": 0,
+            "term_natural": 0,
+            "term_resign": 0,
+            "term_exhausted": 0,
+            "term_threefold": 0,
+            "term_fifty": 0,
         }
         seeds = [int(np.random.randint(0, 2**63 - 1)) for _ in range(num_games)]
-        if int(C.SEED) != 0:
-            results: dict[int, tuple[int, int, list[tuple[np.ndarray, np.ndarray, np.ndarray]], bool]] = {}
-            with ThreadPoolExecutor(max_workers=max(1, self.num_workers)) as ex:
-                futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
-                for fut in as_completed(futures):
-                    i = futures[fut]
-                    results[i] = fut.result()
-            for i in range(num_games):
-                mv_count, result, examples, first_to_move_is_white = results[i]
-                self._process_result(examples, result, bool(first_to_move_is_white))
-                stats["games"] += 1
-                stats["moves"] += mv_count
-                if result == ccore.WHITE_WIN:
-                    stats["white_wins"] += 1
-                elif result == ccore.BLACK_WIN:
-                    stats["black_wins"] += 1
+        deterministic = int(C.SEED) != 0
+        pending: dict[int, tuple[int, int, list[tuple[np.ndarray, np.ndarray, np.ndarray]], bool, dict[str, int]]] = {}
+        with ThreadPoolExecutor(max_workers=max(1, self.num_workers)) as ex:
+            futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
+            for fut in as_completed(futures):
+                idx = futures[fut]
+                game_data = fut.result()
+                if deterministic:
+                    pending[idx] = game_data
                 else:
-                    if result == ccore.DRAW:
-                        stats["draws_true"] += 1
-                    else:
-                        stats["draws_cap"] += 1
-                    stats["draws"] += 1
-        else:
-            with ThreadPoolExecutor(max_workers=max(1, self.num_workers)) as ex:
-                futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
-                for fut in as_completed(futures):
-                    mv_count, result, examples, first_to_move_is_white = fut.result()
-                    self._process_result(examples, result, bool(first_to_move_is_white))
-                    stats["games"] += 1
-                    stats["moves"] += mv_count
-                    if result == ccore.WHITE_WIN:
-                        stats["white_wins"] += 1
-                    elif result == ccore.BLACK_WIN:
-                        stats["black_wins"] += 1
-                    else:
-                        if result == ccore.DRAW:
-                            stats["draws_true"] += 1
-                        else:
-                            stats["draws_cap"] += 1
-                        stats["draws"] += 1
+                    self._record_game(stats, game_data)
+        if deterministic:
+            for idx in range(num_games):
+                if idx in pending:
+                    self._record_game(stats, pending[idx])
+        stats["color_bias_prob_black"] = float(self._color_bias)
         return stats

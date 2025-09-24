@@ -2,20 +2,31 @@ from __future__ import annotations
 
 import contextlib
 import time
+from collections.abc import Sequence
 from typing import Any
 
+import config as C
 import numpy as np
 import torch
 import torch.nn.functional as F
+from reporting import get_mem_info
 
-import config as C
-from reporting import (
-    format_gb,
-    format_si,
-    format_time,
-    get_mem_info,
-    get_sys_info,
-)
+
+def _entropy_coefficient(iteration: int) -> float:
+    coef = 0.0
+    if C.TRAIN.LOSS_ENTROPY_COEF_INIT > 0 and iteration <= C.TRAIN.LOSS_ENTROPY_ANNEAL_ITERS:
+        coef = C.TRAIN.LOSS_ENTROPY_COEF_INIT * (
+            1.0 - (iteration - 1) / max(1, C.TRAIN.LOSS_ENTROPY_ANNEAL_ITERS)
+        )
+    if C.TRAIN.LOSS_ENTROPY_COEF_MIN > 0:
+        coef = max(float(coef), float(C.TRAIN.LOSS_ENTROPY_COEF_MIN))
+    return float(coef)
+
+
+def _value_loss_weight(iteration: int) -> float:
+    if iteration >= C.TRAIN.LOSS_VALUE_WEIGHT_SWITCH_ITER:
+        return float(C.TRAIN.LOSS_VALUE_WEIGHT_LATE)
+    return float(C.TRAIN.LOSS_VALUE_WEIGHT)
 
 
 def run_training_iteration(trainer: Any) -> dict[str, int | float]:
@@ -26,27 +37,31 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     if trainer.iteration == C.ARENA.GATE_Z_SWITCH_ITER:
         trainer._gate.z = float(C.ARENA.GATE_Z_LATE)
     stats: dict[str, int | float] = {}
-    torch.cuda.reset_peak_memory_stats(trainer.device)
-    header_lr = float(trainer.scheduler.peek_next_lr())
-    mem_info = get_mem_info(trainer._proc, trainer.device, trainer.device_total_gb)
-    sys_info = get_sys_info(trainer._proc)
+    if trainer.device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(trainer.device)
     try:
         buffer_len = int(trainer.selfplay_engine.size())
         buffer_cap = int(trainer.selfplay_engine.get_capacity())
     except Exception:
         buffer_len = 0
         buffer_cap = 1
-    buffer_pct = (buffer_len / buffer_cap) * 100
-    
-    total_elapsed = time.time() - trainer.start_time
-    pct_done = 100.0 * (trainer.iteration - 1) / max(1, C.TRAIN.TOTAL_ITERATIONS)
-    trainer.log.info(
-        f"[Iter    ] i {trainer.iteration:>3}/{C.TRAIN.TOTAL_ITERATIONS} ({pct_done:>4.1f}%) | LRnext {header_lr:.2e} | t {format_time(total_elapsed)} | "
-        f"buf {format_si(buffer_len)}/{format_si(buffer_cap)} ({int(buffer_pct)}%) | "
-        f"GPU {format_gb(mem_info['allocated_gb'])}/{format_gb(mem_info['reserved_gb'])}/{format_gb(mem_info['total_gb'])} | "
-        f"RSS {format_gb(mem_info['rss_gb'])} | CPU {sys_info['cpu_sys_pct']:.0f}/{sys_info['cpu_proc_pct']:.0f}% | "
-        f"RAM {format_gb(sys_info['ram_used_gb'])}/{format_gb(sys_info['ram_total_gb'])} ({sys_info['ram_pct']:.0f}%) | load {sys_info['load1']:.2f}"
-    )
+    buffer_fill = buffer_len / max(1, buffer_cap)
+    ratio_max = float(getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_RATIO_MAX", C.SAMPLING.TRAIN_RECENT_SAMPLE_RATIO))
+    ratio_min = float(getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_RATIO_MIN", ratio_max))
+    decay_start = float(getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_BUFFER_DECAY_START", 0.6))
+    decay_end = float(getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_BUFFER_DECAY_END", 1.0))
+    decay_start = float(np.clip(decay_start, 0.0, 1.0))
+    decay_end = float(np.clip(decay_end, decay_start + 1e-6, 1.0))
+    if buffer_fill <= decay_start:
+        trainer._recent_sample_ratio = float(np.clip(ratio_max, ratio_min, ratio_max))
+    elif buffer_fill >= decay_end:
+        trainer._recent_sample_ratio = float(np.clip(ratio_min, ratio_min, ratio_max))
+    else:
+        span = decay_end - decay_start
+        alpha = (buffer_fill - decay_start) / max(1e-9, span)
+        target_ratio = ratio_max - alpha * (ratio_max - ratio_min)
+        trainer._recent_sample_ratio = float(np.clip(target_ratio, ratio_min, ratio_max))
+
 
     t0 = time.time()
     game_stats = trainer.selfplay_engine.play_games(C.TRAIN.GAMES_PER_ITER)
@@ -65,6 +80,61 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     draw_pct = 100.0 * draws_count / max(1, games_count)
     black_win_pct = 100.0 * black_wins / max(1, games_count)
     avg_game_length = game_stats["moves"] / max(1, games_count)
+    starts_white = int(game_stats.get("starts_white", 0))
+    starts_black = int(game_stats.get("starts_black", 0))
+    total_starts = max(1, starts_white + starts_black)
+    white_start_pct = 100.0 * starts_white / total_starts
+    black_start_pct = 100.0 * starts_black / total_starts
+    loop_breaks = int(game_stats.get("loop_breaks", 0))
+    repetition_hits = int(game_stats.get("repetition_hits", 0))
+    loop_break_rate = loop_breaks / max(1, games_count)
+    term_nat = int(game_stats.get("term_natural", 0))
+    term_exh = int(game_stats.get("term_exhausted", 0))
+    term_resign = int(game_stats.get("term_resign", 0))
+    term_threefold = int(game_stats.get("term_threefold", 0))
+    term_fifty = int(game_stats.get("term_fifty", 0))
+    color_delta = abs(white_start_pct - 50.0)
+    color_tol = float(getattr(C.SELFPLAY, "COLOR_BALANCE_TOLERANCE_PCT", 5.0))
+    color_window = getattr(trainer, "_color_window", None)
+    window_logged = False
+    window_white_pct = None
+    window_black_pct = None
+    if color_window:
+        color_window.append((starts_white, starts_black))
+        window_games = sum(w + b for w, b in color_window)
+        if window_games > 0 and len(color_window) >= color_window.maxlen:
+            window_white = sum(w for w, _ in color_window)
+            window_white_pct = 100.0 * window_white / window_games
+            window_black_pct = 100.0 - window_white_pct
+            window_delta = abs(window_white_pct - 50.0)
+            if window_delta > color_tol:
+                trainer.log.info(
+                    "[SelfPlay] color-start imbalance (%d-game window) W/B %.1f/%.1f%% (tol=%.1f%%)",
+                    window_games,
+                    window_white_pct,
+                    window_black_pct,
+                    color_tol,
+                )
+                window_logged = True
+    if not window_logged and color_delta > color_tol:
+        trainer.log.info(
+            "[SelfPlay] color-start imbalance W/B %.1f/%.1f%% (tol=%.1f%%)",
+            white_start_pct,
+            black_start_pct,
+            color_tol,
+        )
+
+    imbalance_source_pct = window_white_pct if window_white_pct is not None else white_start_pct
+    imbalance = (imbalance_source_pct - 50.0) / 100.0
+    tol_ratio = color_tol / 100.0
+    if abs(imbalance) <= tol_ratio:
+        target_prob_black = 0.5
+    else:
+        adjust = float(np.clip(imbalance * 1.5, -0.3, 0.3))
+        target_prob_black = float(np.clip(0.5 + adjust, 0.2, 0.8))
+    with contextlib.suppress(Exception):
+        trainer.selfplay_engine.set_color_bias(target_prob_black)
+    bias_actual = float(game_stats.get("color_bias_prob_black", trainer.selfplay_engine.get_color_bias()))
 
     eval_metrics = trainer.evaluator.get_metrics()
     requests_total = int(eval_metrics.get("requests_total", 0))
@@ -79,28 +149,29 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     delta_eval_positions = int(eval_positions_total - int(prev_metrics.get("eval_positions_total", 0)))
     hit_rate = (100.0 * cache_hits_total / max(1, requests_total)) if requests_total else 0.0
     hit_rate_d = (100.0 * delta_hits / max(1, delta_requests)) if delta_requests > 0 else 0.0
+    avg_batch_delta = 0.0
 
     try:
         if delta_batches > 0 and delta_eval_positions > 0:
-            avg_batch = delta_eval_positions / max(1, delta_batches)
+            avg_batch_delta = delta_eval_positions / max(1, delta_batches)
             cap = int(trainer._eval_batch_cap)
             max_cap_allowed = int(min(8192, max(1024, int(2048 * (trainer.device_total_gb / 16.0)))))
             mem_now = get_mem_info(trainer._proc, trainer.device, trainer.device_total_gb)
             reserved_frac = float(mem_now["reserved_gb"]) / max(1e-9, float(mem_now["total_gb"]))
-            if avg_batch >= 0.90 * cap and cap < max_cap_allowed and reserved_frac < 0.90:
+            if avg_batch_delta >= 0.90 * cap and cap < max_cap_allowed and reserved_frac < 0.90:
                 new_cap = int(min(max_cap_allowed, cap + 512))
                 if new_cap != cap:
                     trainer._eval_batch_cap = new_cap
                     trainer.evaluator.set_batching_params(batch_size_max=new_cap)
                     trainer.log.info(f"[AUTO    ] eval_batch_size_max {cap} -> {new_cap}")
-            elif avg_batch <= 0.25 * cap and trainer._eval_coalesce_ms > 4:
+            elif avg_batch_delta <= 0.25 * cap and trainer._eval_coalesce_ms > 4:
                 old_ms = int(trainer._eval_coalesce_ms)
                 new_ms = int(max(4, int(old_ms * 0.8)))
                 if new_ms != old_ms:
                     trainer._eval_coalesce_ms = new_ms
                     trainer.evaluator.set_batching_params(coalesce_ms=new_ms)
                     trainer.log.info(f"[AUTO    ] eval_coalesce_ms {old_ms} -> {new_ms}")
-            elif avg_batch >= 0.80 * cap and trainer._eval_coalesce_ms < 50:
+            elif avg_batch_delta >= 0.80 * cap and trainer._eval_coalesce_ms < 50:
                 old_ms = int(trainer._eval_coalesce_ms)
                 new_ms = int(min(50, int(old_ms * 1.2 + 1)))
                 if new_ms != old_ms:
@@ -110,27 +181,42 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     except Exception:
         pass
 
-    sp_line = (
-        f"games {games_count:,} | W/D/B {white_wins}/{draws_count}/{black_wins} "
-        f"({white_win_pct:.0f}%/{draw_pct:.0f}%/{black_win_pct:.0f}%) | len {avg_game_length:>4.1f} | "
-        f"gpm {games_per_min:>5.1f} | mps {moves_per_sec / 1000:>4.1f}k | t {format_time(sp_elapsed)} | "
-        f"new {format_si(int(game_stats.get('moves', 0)))} | cap {draws_cap}"
-    )
-
-    ev_short = (
-        f"req {format_si(requests_total)}(+{format_si(delta_requests)}) | hit {hit_rate:>4.1f}% (+{hit_rate_d:>4.1f}%) | "
-        f"batches {format_si(batches_total)}(+{format_si(delta_batches)}) | "
-        f"evalN {format_si(eval_positions_total)}(+{format_si(delta_eval_positions)}) | bmax {max_batch_size}"
-    )
-    trainer.log.info("[SP] " + sp_line + "\n" + " " * 6 + "[EV] " + ev_short)
-
     stats.update(game_stats)
     stats["selfplay_time"] = sp_elapsed
     stats["games_per_min"] = games_per_min
     stats["moves_per_sec"] = moves_per_sec
+    stats["sp_white_win_pct"] = white_win_pct
+    stats["sp_draw_pct"] = draw_pct
+    stats["sp_black_win_pct"] = black_win_pct
+    stats["sp_avg_len"] = avg_game_length
+    stats["sp_new_moves"] = int(game_stats.get("moves", 0))
+    stats["sp_white_starts"] = starts_white
+    stats["sp_black_starts"] = starts_black
+    stats["sp_white_start_pct"] = white_start_pct
+    stats["sp_black_start_pct"] = black_start_pct
+    stats["sp_color_bias_black_pct"] = 100.0 * bias_actual
+    stats["sp_color_bias_target_pct"] = 100.0 * target_prob_black
+    stats["sp_loop_breaks"] = loop_breaks
+    stats["sp_loop_break_rate"] = loop_break_rate
+    stats["sp_repetition_hits"] = repetition_hits
+    stats["sp_term_natural"] = term_nat
+    stats["sp_term_exhausted"] = term_exh
+    stats["sp_term_resign"] = term_resign
+    stats["sp_term_threefold"] = term_threefold
+    stats["sp_term_fifty"] = term_fifty
+    term_total = max(1, term_nat + term_exh + term_resign + term_threefold + term_fifty)
+    stats["sp_term_natural_pct"] = 100.0 * term_nat / term_total
+    stats["sp_term_exhausted_pct"] = 100.0 * term_exh / term_total
+    stats["sp_term_resign_pct"] = 100.0 * term_resign / term_total
+    stats["sp_term_threefold_pct"] = 100.0 * term_threefold / term_total
+    stats["sp_term_fifty_pct"] = 100.0 * term_fifty / term_total
 
     t1 = time.time()
-    if (C.LOG.CUDA_EMPTY_CACHE_EVERY_ITERS > 0) and (trainer.iteration % C.LOG.CUDA_EMPTY_CACHE_EVERY_ITERS == 0):
+    if (
+        trainer.device.type == "cuda"
+        and C.LOG.CUDA_EMPTY_CACHE_EVERY_ITERS > 0
+        and (trainer.iteration % C.LOG.CUDA_EMPTY_CACHE_EVERY_ITERS == 0)
+    ):
         torch.cuda.empty_cache()
 
     losses: list[tuple[torch.Tensor, torch.Tensor]] = []
@@ -153,7 +239,7 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     entropy_sum: float = 0.0
     for _step in range(num_steps):
         batch = trainer.selfplay_engine.sample_batch(
-            trainer.train_batch_size, recent_ratio=C.SAMPLING.TRAIN_RECENT_SAMPLE_RATIO
+            trainer.train_batch_size, recent_ratio=trainer._recent_sample_ratio
         )
         if not batch:
             continue
@@ -174,10 +260,11 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
                     f"[AUTO    ] OOM encountered; reducing train_batch_size {prev_bs_local} -> {new_bs_local}"
                 )
             trainer._oom_cooldown_iters = max(int(trainer._oom_cooldown_iters), 3)
-            with contextlib.suppress(Exception):
-                torch.cuda.empty_cache()
-            with contextlib.suppress(Exception):
-                torch.cuda.reset_peak_memory_stats(trainer.device)
+            if trainer.device.type == "cuda":
+                with contextlib.suppress(Exception):
+                    torch.cuda.empty_cache()
+                with contextlib.suppress(Exception):
+                    torch.cuda.reset_peak_memory_stats(trainer.device)
             break
 
     train_elapsed_s = time.time() - t1
@@ -196,13 +283,7 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     learning_rate = trainer.optimizer.param_groups[0]["lr"]
     avg_grad_norm = (grad_norm_sum / max(1, len(losses))) if losses else 0.0
     avg_entropy = (entropy_sum / max(1, len(losses))) if losses else 0.0
-    entropy_coef = 0.0
-    if C.TRAIN.LOSS_ENTROPY_COEF_INIT > 0 and trainer.iteration <= C.TRAIN.LOSS_ENTROPY_ANNEAL_ITERS:
-        entropy_coef = C.TRAIN.LOSS_ENTROPY_COEF_INIT * (
-            1.0 - (trainer.iteration - 1) / max(1, C.TRAIN.LOSS_ENTROPY_ANNEAL_ITERS)
-        )
-    if C.TRAIN.LOSS_ENTROPY_COEF_MIN > 0:
-        entropy_coef = max(float(entropy_coef), float(C.TRAIN.LOSS_ENTROPY_COEF_MIN))
+    entropy_coef = _entropy_coefficient(trainer.iteration)
     sched_drift_pct = 0.0
     if C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST > 0:
         sched_drift_pct = (
@@ -223,6 +304,8 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
             f"[LR      ] adjust total_steps -> {trainer.scheduler.total} (iter1 measured {actual_update_steps} vs est {C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST}, drift {sched_drift_pct:+.1f}%)"
         )
 
+    recent_pct = round(100.0 * trainer._recent_sample_ratio)
+
     stats.update(
         {
             "policy_loss": avg_policy_loss,
@@ -230,45 +313,40 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
             "learning_rate": float(learning_rate),
             "buffer_size": buffer_size,
             "buffer_percent": buffer_pct2,
-            "training_time": train_elapsed_s,
+            "train_time_s": train_elapsed_s,
             "batches_per_sec": batches_per_sec,
+            "samples_per_sec": samples_per_sec,
             "optimizer_steps": actual_update_steps,
             "lr_sched_t": trainer.scheduler.t,
             "lr_sched_total": trainer.scheduler.total,
+            "train_steps_planned": num_steps,
+            "train_steps_actual": actual_update_steps,
+            "samples_ratio": samples_ratio,
+            "avg_grad_norm": avg_grad_norm,
+            "avg_entropy": avg_entropy,
+            "entropy_coef": entropy_coef,
+            "train_samples": len(losses) * trainer.train_batch_size,
+            "train_recent_pct": recent_pct,
         }
     )
-
-    recent_pct = round(100.0 * C.SAMPLING.TRAIN_RECENT_SAMPLE_RATIO)
-    old_pct = max(0, 100 - recent_pct)
-    tr_plan_line = (
-        f"plan {num_steps} | tgt {C.TRAIN.TARGET_TRAIN_SAMPLES_PER_NEW:.1f}x | act {samples_ratio:>3.1f}x | mix {recent_pct}/{old_pct}%"
-        if num_steps > 0
-        else "plan 0 skip (buffer underfilled)"
+    stats.update(
+        {
+            "eval_requests_total": requests_total,
+            "eval_cache_hits_total": cache_hits_total,
+            "eval_hit_rate": hit_rate,
+            "eval_batches_total": batches_total,
+            "eval_positions_total": eval_positions_total,
+            "eval_batch_size_max": max_batch_size,
+            "eval_batch_cap": trainer._eval_batch_cap,
+            "eval_coalesce_ms": trainer._eval_coalesce_ms,
+            "eval_requests_delta": delta_requests,
+            "eval_cache_hits_delta": delta_hits,
+            "eval_batches_delta": delta_batches,
+            "eval_positions_delta": delta_eval_positions,
+            "eval_hit_rate_delta": hit_rate_d,
+            "eval_avg_batch": avg_batch_delta,
+        }
     )
-    tr_line = (
-        f"steps {len(losses):>3} | b/s {batches_per_sec:>4.1f} | sps {format_si(samples_per_sec, digits=1)} | t {format_time(train_elapsed_s)} | "
-        f"P {avg_policy_loss:>6.4f} | V {avg_value_loss:>6.4f} | LR {learning_rate:.2e} | grad {avg_grad_norm:>5.3f} | ent {avg_entropy:>5.3f} | "
-        f"entc {entropy_coef:.2e} | clip {C.TRAIN.GRAD_CLIP_NORM:.1f} | buf {int(buffer_pct2):>3}% ({format_si(buffer_size)}) | batch {trainer.train_batch_size}"
-    )
-    lr_sched_fragment = f"sched {C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST}->{actual_update_steps} | drift {sched_drift_pct:+.0f}% | pos {trainer.scheduler.t}/{format_si(trainer.scheduler.total)}"
-
-    tr_line_parts = tr_line.split(" | ")
-    tr_line_step = tr_line_parts[0] if tr_line_parts else ""
-    tr_line_rest = " | ".join(tr_line_parts[1:]) if len(tr_line_parts) > 1 else ""
-    tr_block = (
-        "[Train   ] "
-        + tr_plan_line
-        + "\n"
-        + " " * 10
-        + tr_line_step
-        + "\n"
-        + " " * 10
-        + tr_line_rest
-        + "\n"
-        + " " * 10
-        + lr_sched_fragment
-    )
-    trainer.log.info(tr_block)
     trainer._prev_eval_m = eval_metrics
 
     return stats
@@ -279,17 +357,14 @@ def train_step(
 ) -> tuple[torch.Tensor, torch.Tensor, float, float]:
     states_u8_list, indices_i32_list, counts_u16_list, values_i8_list = batch_data
     x_u8_np = np.stack(states_u8_list).astype(np.uint8, copy=False)
-    x_u8_t = torch.from_numpy(x_u8_np)
-    if C.TORCH.TRAIN_PIN_MEMORY:
-        with contextlib.suppress(Exception):
-            x_u8_t = x_u8_t.pin_memory()
-    x = x_u8_t.to(trainer.device, non_blocking=True)
+    x = torch.from_numpy(x_u8_np).to(trainer.device, non_blocking=True)
     v_i8_np = np.asarray(values_i8_list, dtype=np.int8)
-    v_i8_t = torch.from_numpy(v_i8_np)
-    if C.TORCH.TRAIN_PIN_MEMORY:
-        with contextlib.suppress(Exception):
-            v_i8_t = v_i8_t.pin_memory()
-    v_target = v_i8_t.to(trainer.device, non_blocking=True).to(dtype=torch.float32) / float(C.DATA.VALUE_I8_SCALE)
+    v_target = (
+        torch.from_numpy(v_i8_np)
+        .to(trainer.device, non_blocking=True)
+        .to(dtype=torch.float32)
+        / float(C.DATA.VALUE_I8_SCALE)
+    )
     x = x.to(dtype=torch.float32) / float(C.DATA.U8_SCALE)
     x = x.contiguous(memory_format=torch.channels_last)
     if not hasattr(trainer, "_aug_mirror_idx"):
@@ -307,15 +382,15 @@ def train_step(
         trainer._aug_vflip_idx = torch.tensor(vflip_idx, dtype=torch.long, device=trainer.device)
         trainer._aug_vflip_plane_perm = torch.tensor(plane_perm, dtype=torch.long, device=trainer.device)
 
-        def _inv_perm(perm: list[int]) -> np.ndarray:
+        def _inv_perm(perm: Sequence[int]) -> np.ndarray:
             perm_np = np.asarray(perm, dtype=np.int64)
             inv = np.empty_like(perm_np)
             inv[perm_np] = np.arange(perm_np.size, dtype=np.int64)
             return inv
 
-        trainer._aug_mirror_inv_np = _inv_perm(mirror_idx)
-        trainer._aug_rot180_inv_np = _inv_perm(rot180_idx)
-        trainer._aug_vflip_inv_np = _inv_perm(vflip_idx)
+        trainer._aug_mirror_inv_np = _inv_perm(mirror_idx.tolist())
+        trainer._aug_rot180_inv_np = _inv_perm(rot180_idx.tolist())
+        trainer._aug_vflip_inv_np = _inv_perm(vflip_idx.tolist())
 
     if np.random.rand() < C.AUGMENT.MIRROR_PROB:
         x = torch.flip(x, dims=[-1])
@@ -337,10 +412,12 @@ def train_step(
         ]
         v_target = -v_target
     trainer.model.train()
+    autocast_device = "cuda" if trainer.device.type == "cuda" else "cpu"
+    autocast_dtype = torch.float16 if autocast_device == "cuda" else torch.bfloat16
     with torch.autocast(
-        device_type="cuda",
-        dtype=torch.float16,
-        enabled=C.TORCH.AMP_ENABLED,
+        device_type=autocast_device,
+        dtype=autocast_dtype,
+        enabled=getattr(trainer, "_amp_enabled", False),
     ):
         policy_logits, value_pred = trainer.model(x)
         value_pred = value_pred.squeeze(-1)
@@ -365,11 +442,6 @@ def train_step(
             cols_cpu = torch.from_numpy(np.concatenate(cols_np_list, axis=0))
             cnts_cpu = torch.from_numpy(np.concatenate(cnts_np_list, axis=0).astype(np.float32, copy=False))
             rows_cpu = torch.from_numpy(np.concatenate(rows_np_list, axis=0))
-            if C.TORCH.TRAIN_PIN_MEMORY:
-                with contextlib.suppress(Exception):
-                    cols_cpu = cols_cpu.pin_memory()
-                    cnts_cpu = cnts_cpu.pin_memory()
-                    rows_cpu = rows_cpu.pin_memory()
             cols = cols_cpu.to(trainer.device, non_blocking=True, dtype=torch.long)
             cnts = cnts_cpu.to(trainer.device, non_blocking=True, dtype=torch.float32)
             rows = rows_cpu.to(trainer.device, non_blocking=True, dtype=torch.long)
@@ -392,20 +464,14 @@ def train_step(
         else:
             policy_loss = torch.tensor(0.0, device=trainer.device, dtype=torch.float32)
         value_loss = F.mse_loss(value_pred, v_target)
-        entropy_coef = 0.0
-        if C.TRAIN.LOSS_ENTROPY_COEF_INIT > 0 and trainer.iteration <= C.TRAIN.LOSS_ENTROPY_ANNEAL_ITERS:
-            entropy_coef = C.TRAIN.LOSS_ENTROPY_COEF_INIT * (
-                1.0 - (trainer.iteration - 1) / max(1, C.TRAIN.LOSS_ENTROPY_ANNEAL_ITERS)
-            )
-        if C.TRAIN.LOSS_ENTROPY_COEF_MIN > 0:
-            entropy_coef = max(float(entropy_coef), float(C.TRAIN.LOSS_ENTROPY_COEF_MIN))
+        entropy_coef = _entropy_coefficient(trainer.iteration)
         entropy = (-(F.softmax(policy_logits, dim=1) * F.log_softmax(policy_logits, dim=1)).sum(dim=1)).mean()
-        value_loss_weight = (
-            C.TRAIN.LOSS_VALUE_WEIGHT_LATE
-            if trainer.iteration >= C.TRAIN.LOSS_VALUE_WEIGHT_SWITCH_ITER
-            else C.TRAIN.LOSS_VALUE_WEIGHT
+        value_loss_weight = _value_loss_weight(trainer.iteration)
+        total_loss = (
+            C.TRAIN.LOSS_POLICY_WEIGHT * policy_loss
+            + value_loss_weight * value_loss
+            - entropy_coef * entropy
         )
-        total_loss = C.TRAIN.LOSS_POLICY_WEIGHT * policy_loss + value_loss_weight * value_loss - entropy_coef * entropy
     trainer.optimizer.zero_grad(set_to_none=True)
     trainer.scaler.scale(total_loss).backward()
     trainer.scaler.unscale_(trainer.optimizer)

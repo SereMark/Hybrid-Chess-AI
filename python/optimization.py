@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
-
-import torch
+from typing import Any, cast
 
 import config as C
+import torch
 
 
 def build_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
@@ -39,34 +38,47 @@ class WarmupCosine:
         warmup_steps: int,
         final_lr: float,
         total_steps: int,
+        restart_interval: int | None = None,
+        restart_decay: float = 1.0,
     ) -> None:
         self.opt = optimizer
         self.base = float(base_lr)
         self.warm = max(1, int(warmup_steps))
         self.final = float(final_lr)
         self.total = max(1, int(total_steps))
+        self.restart_steps = max(0, int(restart_interval or 0))
+        self.restart_decay = max(0.0, float(restart_decay))
         self.t = 0
+
+    def _lr_at(self, step: int) -> float:
+        import math as _m
+
+        if step <= self.warm:
+            return self.base * (step / max(1, self.warm))
+
+        if self.restart_steps <= 0:
+            progress = min(1.0, (step - self.warm) / max(1, self.total - self.warm))
+            return self.final + (self.base - self.final) * 0.5 * (1.0 + _m.cos(_m.pi * progress))
+
+        cycle_len = max(1, self.restart_steps)
+        cycle_step = max(0, step - self.warm)
+        cycle_index = cycle_step // cycle_len
+        within_cycle = cycle_step % cycle_len
+        cycle_progress = within_cycle / cycle_len
+        decay_scale = self.restart_decay**cycle_index if self.restart_decay > 0.0 else 0.0
+        peak = self.base * decay_scale
+        trough = self.final * decay_scale
+        return trough + (peak - trough) * 0.5 * (1.0 + _m.cos(_m.pi * cycle_progress))
 
     def step(self) -> None:
         self.t += 1
-        if self.t <= self.warm:
-            lr = self.base * (self.t / self.warm)
-        else:
-            import math as _m
-
-            progress = min(1.0, (self.t - self.warm) / max(1, self.total - self.warm))
-            lr = self.final + (self.base - self.final) * 0.5 * (1.0 + _m.cos(_m.pi * progress))
+        lr = self._lr_at(self.t)
         for pg in self.opt.param_groups:
             pg["lr"] = lr
 
     def peek_next_lr(self) -> float:
         t_next = self.t + 1
-        if t_next <= self.warm:
-            return self.base * (t_next / self.warm)
-        import math as _m
-
-        progress = min(1.0, (t_next - self.warm) / max(1, self.total - self.warm))
-        return self.final + (self.base - self.final) * 0.5 * (1.0 + _m.cos(_m.pi * progress))
+        return self._lr_at(t_next)
 
     def set_total_steps(self, total_steps: int) -> None:
         self.total = max(self.t + 1, int(total_steps))
@@ -77,16 +89,12 @@ class WarmupCosine:
 class EMA:
     def __init__(self, model: torch.nn.Module, decay: float | None = None) -> None:
         self.decay = float(C.TRAIN.EMA_DECAY if decay is None else decay)
-        base = getattr(model, "_orig_mod", model)
-        if hasattr(base, "module"):
-            base = base.module
+        base = _unwrap_module(model)
         self.shadow = {k: v.detach().clone() for k, v in base.state_dict().items()}
 
     @torch.no_grad()
     def update(self, model: torch.nn.Module) -> None:
-        base = getattr(model, "_orig_mod", model)
-        if hasattr(base, "module"):
-            base = base.module
+        base = _unwrap_module(model)
         for k, v in base.state_dict().items():
             if not torch.is_floating_point(v):
                 self.shadow[k] = v.detach().clone()
@@ -96,7 +104,11 @@ class EMA:
             self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1.0 - self.decay)
 
     def copy_to(self, model: torch.nn.Module) -> None:
-        base = getattr(model, "_orig_mod", model)
-        if hasattr(base, "module"):
-            base = base.module
+        base = _unwrap_module(model)
         base.load_state_dict(self.shadow, strict=True)
+
+def _unwrap_module(model: torch.nn.Module) -> torch.nn.Module:
+    base = getattr(model, "_orig_mod", model)
+    if hasattr(base, "module"):
+        base = base.module
+    return cast(torch.nn.Module, base)

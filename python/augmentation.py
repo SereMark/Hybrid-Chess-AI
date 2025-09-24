@@ -3,9 +3,8 @@ from __future__ import annotations
 from typing import ClassVar
 
 import chesscore as ccore
-import numpy as np
-
 import config as C
+import numpy as np
 
 BOARD_SIZE = 8
 NSQUARES = 64
