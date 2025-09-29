@@ -1,0 +1,11 @@
+[Event "HybridChess Arena"]
+[Site "local"]
+[Date "2025.09.29"]
+[Round "20250929_071012"]
+[White "Challenger-EMA"]
+[Black "Incumbent-Best"]
+[Result "1-0"]
+[Termination "adjudicated"]
+[FEN "rn1qkb1r/1bppp2p/7n/p4pp1/p5P1/R2P1P2/1PPKP2P/1NBQ1BNR b kq - 1 8"]
+[SetUp "1"]
+1. d6 c4 2. Qd7 gxf5 3. Qe6 f6 4. Bg7 fxg7 5. Ba6 e3 6. g4 gxh8=Q 7. Kd7 b4 8. Kc6 b5 9. Kd7 Nh3 10. Qf6 b6 11. Ke6 bxc7 12. Ke5 cxb8=Q 13. Qg7 Qbd8 14. e6 Qe7 15. Nf5 Qc7 16. h6 Qc6 17. h5 Qd7 18. Rd8 Qxd6 19. Kxd6 Rg1 20. Rd7 Qh6 21. Qf7 Qxh5 22. Qe8 Rg3 23. Qe7 Rg2 24. Kc6 Rg3 25. Rd6 Rg2 26. Kd7 Rg3 27. e5 Rg2 28. Ke6 Qh6 29. Kd7 Rg3 30. Ke8 Rg2 31. Rg6 Qh5 32. Qd6 Rg3 33. Ke7 Rxg4 34. Rg5 Ke2 35. Qg6 Nd2 36. Rxg4 Kf2 37. Qg5 Ke1 38. Qxe3 Qe2 39. Qxf3 Nxf3 40. Kd6 Qd2 41. Kc6 Nxe5 42. Kb6 Qhg5 43. Kc7 Qh6 44. Rg5 Qh5 45. Rg4 Nf7 46. Rg5 Qe3 47. Rg4 Qf3 48. Rg5 Qe4 49. Rg4 Qe6 50. Rg5 Qe5 51. Kc6 Qf4 52. Kd7 Bb2 53. Ke6 Qe5 54. Kd7 Qxg5 55. Kc6 Qh6 56. Kd7 Qhd6 57. Kc8 Qdd4 58. Kb7 Qg4 59. Ka8 Qgxf5 60. Kb7 Qff6 61. Ka8 Rb3 62. a3 Rxa3 63. a4 Qfe7 64. Bb7 Q7g5 65. Ba6 Qh6 66. Ka7 Qhh5 67. Ka8 Qd5 68. Kb8 Qc6 69. Bb7 Qd7 70. Ba8 Qd6 71. Kc8 Qc6 72. Kb8 Qxa8 73. Kc7 Bg2 74. Kb6 Bh1 75. Kc7 Bg2 76. Kb6 d4 77. Kc7 Bh1 78. Kb6 Bg2 79. Kc7 Bh1 80. Kb6 Qg2 81. Kc7 Qg3 82. Kc8 Qg2 83. Kb8 Re3 84. Kc8 Rf3 85. Kb7 Qh6 86. Ka8 Qh5 87. a3 Rb3 88. Ka7 Rb4 1-0
