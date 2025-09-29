@@ -32,6 +32,11 @@ SELFPLAY_REP_NOISE_WINDOW = max(0, int(getattr(C.SELFPLAY, "REPETITION_NOISE_WIN
 SELFPLAY_REP_AVOID_TOP_K = max(0, int(getattr(C.SELFPLAY, "REPETITION_AVOID_TOP_K", 1)))
 SELFPLAY_DIRICHLET_LATE = float(getattr(C.SELFPLAY, "DIRICHLET_WEIGHT_LATE", C.MCTS.DIRICHLET_WEIGHT))
 SELFPLAY_DIRICHLET_HALFMOVE = int(getattr(C.SELFPLAY, "DIRICHLET_HALFMOVE_THRESHOLD", 0))
+SELFPLAY_REP_AVOID_SCALE = float(np.clip(getattr(C.SELFPLAY, "REPETITION_AVOID_SCALE", 0.5), 0.0, 1.0))
+SELFPLAY_REP_TEMP_BOOST = float(max(1.0, getattr(C.SELFPLAY, "REPETITION_TEMP_BOOST", 1.0)))
+SELFPLAY_LOOP_MIN_PLIES = int(max(0, getattr(C.SELFPLAY, "LOOP_MIN_PLIES", 0)))
+SELFPLAY_LOOP_UNIQUE_RATIO_MAX = float(np.clip(getattr(C.SELFPLAY, "LOOP_UNIQUE_RATIO_MAX", 0.0), 0.0, 1.0))
+SELFPLAY_LOOP_PENALTY = float(np.clip(getattr(C.SELFPLAY, "LOOP_PENALTY_VALUE", 0.0), 0.0, 0.5))
 
 _CURRICULUM_PROB = float(getattr(C.SELFPLAY, "CURRICULUM_SAMPLE_PROB", 0.0))
 _CURRICULUM_FENS: tuple[str, ...] = tuple(
@@ -170,6 +175,7 @@ class SelfPlayEngine:
         natural_dup = max(1, round(natural_weight))
         exhaust_dup = max(1, round(exhaust_weight))
         adjud_dup = max(1, round(adjud_weight))
+        loop_dup = max(1, round(getattr(C.SAMPLING, "LOOP_DUPLICATE_WEIGHT", adjud_weight)))
         self._dup_weights = {
             "natural": natural_dup,
             "resign": natural_dup,
@@ -177,6 +183,7 @@ class SelfPlayEngine:
             "fifty_move": exhaust_dup,
             "exhausted": exhaust_dup,
             "adjudicated": adjud_dup,
+            "loop": loop_dup,
         }
 
     def set_num_workers(self, n: int) -> None:
@@ -323,8 +330,13 @@ class SelfPlayEngine:
         visit_counts: list[int],
         move_number: int,
         rng: np.random.Generator | None = None,
+        temperature_override: float | None = None,
     ) -> Any:
-        temperature = SELFPLAY_TEMP_HIGH if move_number < SELFPLAY_TEMP_MOVES else SELFPLAY_TEMP_LOW
+        temperature = (
+            float(temperature_override)
+            if temperature_override is not None
+            else (SELFPLAY_TEMP_HIGH if move_number < SELFPLAY_TEMP_MOVES else SELFPLAY_TEMP_LOW)
+        )
         if temperature > SELFPLAY_DETERMINISTIC_TEMP_EPS:
             probs = np.maximum(np.array(visit_counts, dtype=np.float64), 0.0)
             s = probs.sum()
@@ -442,6 +454,7 @@ class SelfPlayEngine:
         eval_window: deque[float] = deque(maxlen=max(1, self.adjudicate_value_persist))
         eval_samples: list[float] = []
         sims_last = int(C.MCTS.TRAIN_SIMULATIONS_BASE)
+        loop_alert_count = 0
 
         while position.result() == ccore.ONGOING and move_count < self.game_max_plies:
             pos_snapshot = ccore.Position(position)
@@ -488,6 +501,23 @@ class SelfPlayEngine:
 
             visit_counts_arr = np.asarray(visit_counts_raw, dtype=np.float64)
             visit_counts = visit_counts_arr.tolist()
+            base_temperature = SELFPLAY_TEMP_HIGH if move_count < SELFPLAY_TEMP_MOVES else SELFPLAY_TEMP_LOW
+            temperature_override = None
+            repetition_triggered = (
+                SELFPLAY_REP_NOISE_COUNT > 0 and repetition_count >= SELFPLAY_REP_NOISE_COUNT
+            )
+            if repetition_triggered:
+                loop_alert_count += 1
+                if SELFPLAY_REP_AVOID_TOP_K > 0 and len(visit_counts_arr) > 1:
+                    avoid = min(SELFPLAY_REP_AVOID_TOP_K, len(visit_counts_arr) - 1)
+                    if avoid > 0:
+                        decay = SELFPLAY_REP_AVOID_SCALE if SELFPLAY_REP_AVOID_SCALE > 0.0 else 0.1
+                        order = np.argsort(visit_counts_arr)
+                        for idx in order[::-1][:avoid]:
+                            visit_counts_arr[idx] *= decay
+                    visit_counts = visit_counts_arr.tolist()
+                if SELFPLAY_REP_TEMP_BOOST > 1.0:
+                    temperature_override = max(base_temperature * SELFPLAY_REP_TEMP_BOOST, base_temperature + 1e-3)
 
             idx_list: list[int] = []
             cnt_list: list[int] = []
@@ -588,7 +618,13 @@ class SelfPlayEngine:
                 dirichlet_weight = max(dirichlet_weight, 0.5 * C.MCTS.DIRICHLET_WEIGHT)
             mcts.set_dirichlet_params(C.MCTS.DIRICHLET_ALPHA, dirichlet_weight)
 
-            move = self._select_move_by_temperature(moves, visit_counts, move_count, rng=rng)
+            move = self._select_move_by_temperature(
+                moves,
+                visit_counts,
+                move_count,
+                rng=rng,
+                temperature_override=temperature_override,
+            )
             position.make_move(move)
 
             next_key = SelfPlayEngine._position_hash_key(position)
@@ -681,6 +717,32 @@ class SelfPlayEngine:
                 elif final_result == ccore.BLACK_WIN:
                     value_shift -= tempo_bonus
 
+        unique_ratio = len(seen_hashes) / float(move_count + 1) if move_count > 0 else 1.0
+        loop_flag = False
+        loop_bias = 0.0
+        if loop_alert_count >= 3:
+            loop_flag = True
+        if (
+            not loop_flag
+            and move_count >= SELFPLAY_LOOP_MIN_PLIES
+            and unique_ratio <= SELFPLAY_LOOP_UNIQUE_RATIO_MAX
+        ):
+            loop_flag = True
+        if loop_flag:
+            if SELFPLAY_LOOP_PENALTY > 0.0 and termination_reason in {"exhausted", "adjudicated"}:
+                balance = SelfPlayEngine._material_balance(position)
+                if final_result == ccore.DRAW and abs(balance) > 1e-6:
+                    loop_bias = SELFPLAY_LOOP_PENALTY if balance > 0 else -SELFPLAY_LOOP_PENALTY
+                    value_shift += loop_bias
+                elif final_result == ccore.WHITE_WIN:
+                    loop_bias = 0.5 * SELFPLAY_LOOP_PENALTY
+                    value_shift += loop_bias
+                elif final_result == ccore.BLACK_WIN:
+                    loop_bias = -0.5 * SELFPLAY_LOOP_PENALTY
+                    value_shift += loop_bias
+            if termination_reason == "exhausted" and final_result == ccore.DRAW:
+                termination_reason = "loop"
+
         if value_shift != 0.0:
             value_shift = float(np.clip(value_shift, -0.5, 0.5))
 
@@ -702,11 +764,15 @@ class SelfPlayEngine:
                 meta["eval_std"] = float(np.std(np.asarray(eval_samples, dtype=np.float32)))
             except Exception:
                 meta["eval_std"] = 0.0
-        if move_count > 0:
-            unique_ratio = len(seen_hashes) / float(move_count + 1)
-            meta["unique_ratio"] = float(unique_ratio)
-        else:
-            meta["unique_ratio"] = 1.0
+        meta["unique_ratio"] = float(unique_ratio)
+        if loop_flag:
+            meta["loop_alerts"] = int(loop_alert_count)
+            meta["loop_unique_ratio"] = float(unique_ratio)
+            meta["loop"] = 1
+            if loop_bias != 0.0:
+                meta["loop_bias"] = float(loop_bias)
+        elif loop_alert_count:
+            meta["loop_alerts"] = int(loop_alert_count)
         if adjudicated:
             meta["adjudicated"] = 1
             meta["adjudicated_balance"] = adjudicated_balance
@@ -754,6 +820,10 @@ class SelfPlayEngine:
         meta = meta or {}
         value_shift = float(meta.get("value_shift", 0.0))
         term_reason = str(meta.get("termination", "natural"))
+        loop_alerts = int(meta.get("loop_alerts", 0))
+        if loop_alerts:
+            stats["loop_alert_games"] += 1
+            stats["loop_alerts_total"] += loop_alerts
         self._process_result(
             examples,
             result,
@@ -785,6 +855,8 @@ class SelfPlayEngine:
             stats["threefold_draws"] += 1
         elif term_reason == "fifty_move":
             stats["term_fifty"] += 1
+        elif term_reason == "loop":
+            stats["term_loop"] += 1
         elif term_reason == "adjudicated":
             stats["term_adjudicated"] += 1
         else:
@@ -876,6 +948,7 @@ class SelfPlayEngine:
             "term_threefold": 0,
             "term_fifty": 0,
             "term_adjudicated": 0,
+            "term_loop": 0,
             "adjudicated_games": 0,
             "adjudicated_white": 0,
             "adjudicated_black": 0,
@@ -891,6 +964,8 @@ class SelfPlayEngine:
             "value_trend_hits": 0,
             "tempo_bonus_sum": 0.0,
             "sims_last_sum": 0,
+            "loop_alert_games": 0,
+            "loop_alerts_total": 0,
             "_loss_eval_samples": [],
         }
         seeds = [int(np.random.randint(0, 2**63 - 1)) for _ in range(num_games)]

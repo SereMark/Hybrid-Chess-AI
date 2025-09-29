@@ -170,6 +170,7 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     term_threefold = int(game_stats.get("term_threefold", 0))
     term_fifty = int(game_stats.get("term_fifty", 0))
     term_adjudicated = int(game_stats.get("term_adjudicated", 0))
+    term_loop = int(game_stats.get("term_loop", 0))
     adjudicated_games = int(game_stats.get("adjudicated_games", 0))
     adjudicated_white = int(game_stats.get("adjudicated_white", 0))
     adjudicated_black = int(game_stats.get("adjudicated_black", 0))
@@ -298,6 +299,11 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     stats["sp_threefold_pct"] = threefold_pct
     stats["sp_threefold_games"] = threefold_games
     stats["sp_threefold_draws"] = threefold_draws
+    loop_games = int(game_stats.get("loop_alert_games", 0))
+    loop_alerts = int(game_stats.get("loop_alerts_total", 0))
+    stats["sp_loop_games"] = loop_games
+    stats["sp_loop_alerts"] = loop_alerts
+    stats["sp_loop_pct"] = 100.0 * loop_games / max(1, games_count)
     stats["sp_curriculum_games"] = curriculum_games
     stats["sp_curriculum_pct"] = 100.0 * curriculum_games / max(1, games_count)
     stats["sp_curriculum_win_pct"] = curriculum_win_pct
@@ -310,11 +316,12 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     stats["sp_term_threefold"] = term_threefold
     stats["sp_term_fifty"] = term_fifty
     stats["sp_term_adjudicated"] = term_adjudicated
+    stats["sp_term_loop"] = term_loop
     stats["sp_adjudicated_games"] = adjudicated_games
     stats["sp_adjudicated_white"] = adjudicated_white
     stats["sp_adjudicated_black"] = adjudicated_black
     stats["sp_adjudicated_draw"] = adjudicated_draw
-    term_total = max(1, term_nat + term_exh + term_resign + term_threefold + term_fifty + term_adjudicated)
+    term_total = max(1, term_nat + term_exh + term_resign + term_threefold + term_fifty + term_adjudicated + term_loop)
     adjudicated_pct = 100.0 * adjudicated_games / max(1, games_count)
     adjudicated_white_pct = 100.0 * adjudicated_white / max(1, adjudicated_games) if adjudicated_games else 0.0
     adjudicated_black_pct = 100.0 * adjudicated_black / max(1, adjudicated_games) if adjudicated_games else 0.0
@@ -336,6 +343,7 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     stats["sp_term_threefold_pct"] = 100.0 * term_threefold / term_total
     stats["sp_term_fifty_pct"] = 100.0 * term_fifty / term_total
     stats["sp_term_adjudicated_pct"] = 100.0 * term_adjudicated / term_total
+    stats["sp_term_loop_pct"] = 100.0 * term_loop / term_total
     stats["sp_adjudicated_pct"] = adjudicated_pct
     stats["sp_adjudicated_white_pct"] = adjudicated_white_pct
     stats["sp_adjudicated_black_pct"] = adjudicated_black_pct
