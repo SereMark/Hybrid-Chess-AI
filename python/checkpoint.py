@@ -7,7 +7,7 @@ from typing import Any
 import config as C
 import numpy as np
 import torch
-from torch.cuda.amp import GradScaler
+from torch.amp import GradScaler
 
 
 def save_checkpoint(trainer: Any) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import math
 import time
 from collections.abc import Sequence
 from typing import Any
@@ -29,14 +30,66 @@ def _value_loss_weight(iteration: int) -> float:
     return float(C.TRAIN.LOSS_VALUE_WEIGHT)
 
 
-def run_training_iteration(trainer: Any) -> dict[str, int | float]:
-    if trainer.iteration < int(C.RESIGN.DISABLE_UNTIL_ITERS):
+def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
+    stats: dict[str, int | float | str] = {}
+    if hasattr(trainer, "_grad_skip_count"):
+        trainer._grad_skip_count = 0
+    buffer_reset = 0
+    resign_status = "disabled:warmup"
+    guard_min_len = float(getattr(C.RESIGN, "GUARD_MIN_AVG_LEN", 0.0))
+    prev_cooldown = int(getattr(trainer, "_resign_cooldown", 0))
+    trainer._resign_cooldown = max(0, prev_cooldown - 1)
+    if not C.RESIGN.ENABLED:
         trainer.selfplay_engine.resign_consecutive = 0
+        resign_status = "disabled:config"
     else:
-        trainer.selfplay_engine.resign_consecutive = max(int(C.RESIGN.CONSECUTIVE_PLIES), int(C.RESIGN.CONSECUTIVE_MIN))
+        allow_resign = True
+        if trainer.iteration < int(getattr(C.RESIGN, "DISABLE_UNTIL_ITERS", 0)):
+            allow_resign = False
+            resign_status = "disabled:warmup"
+        elif getattr(trainer, "_resign_cooldown", 0) > 0:
+            allow_resign = False
+            resign_status = "disabled:cooldown"
+        else:
+            resign_status = "enabled"
+
+        if not allow_resign:
+            trainer.selfplay_engine.resign_consecutive = 0
+        else:
+            ramp_start = int(getattr(C.RESIGN, "VALUE_THRESHOLD_RAMP_START", 0))
+            ramp_end = int(max(ramp_start + 1, getattr(C.RESIGN, "VALUE_THRESHOLD_RAMP_END", ramp_start + 1)))
+            init_thr = float(getattr(C.RESIGN, "VALUE_THRESHOLD_INIT", C.RESIGN.VALUE_THRESHOLD))
+            final_thr = float(getattr(C.RESIGN, "VALUE_THRESHOLD", init_thr))
+            thr_alpha = 0.0 if ramp_end <= ramp_start else float(
+                np.clip((trainer.iteration - ramp_start) / (ramp_end - ramp_start), 0.0, 1.0)
+            )
+            threshold = init_thr + thr_alpha * (final_thr - init_thr)
+
+            window = getattr(trainer, "_resign_eval_losses", None)
+            target_pct = float(getattr(trainer, "_resign_target_pct", getattr(C.RESIGN, "TARGET_LOSS_VALUE_PCTL", 0.25)))
+            if window and len(window) >= 8:
+                sorted_losses = sorted(window)
+                idx = int(max(0, min(len(sorted_losses) - 1, math.floor(target_pct * (len(sorted_losses) - 1)))))
+                dynamic_thr = float(sorted_losses[idx])
+                threshold = float(min(threshold, dynamic_thr))
+
+            mp_start = int(max(0, getattr(C.RESIGN, "MIN_PLIES_INIT", 0)))
+            mp_final = int(max(0, getattr(C.RESIGN, "MIN_PLIES_FINAL", mp_start)))
+            mp_end = int(max(ramp_start + 1, getattr(C.RESIGN, "MIN_PLIES_RAMP_END", ramp_end)))
+            mp_alpha = 0.0 if mp_end <= ramp_start else float(
+                np.clip((trainer.iteration - ramp_start) / (mp_end - ramp_start), 0.0, 1.0)
+            )
+            min_plies = round(mp_start + mp_alpha * (mp_final - mp_start))
+
+            trainer._resign_threshold = threshold
+            trainer._resign_min_plies = int(min_plies)
+            trainer.selfplay_engine.set_resign_params(threshold, int(min_plies))
+            trainer.selfplay_engine.resign_consecutive = max(
+                int(C.RESIGN.CONSECUTIVE_PLIES), int(C.RESIGN.CONSECUTIVE_MIN)
+            )
+
     if trainer.iteration == C.ARENA.GATE_Z_SWITCH_ITER:
         trainer._gate.z = float(C.ARENA.GATE_Z_LATE)
-    stats: dict[str, int | float] = {}
     if trainer.device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(trainer.device)
     try:
@@ -64,9 +117,22 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
 
 
     t0 = time.time()
+    with contextlib.suppress(Exception):
+        trainer.selfplay_engine.update_adjudication(trainer.iteration)
     game_stats = trainer.selfplay_engine.play_games(C.TRAIN.GAMES_PER_ITER)
     trainer.total_games += int(game_stats["games"])
     sp_elapsed = time.time() - t0
+
+    loss_samples_priv = game_stats.pop("_loss_eval_samples", None)
+    loss_window = getattr(trainer, "_resign_eval_losses", None)
+    if loss_window is not None and loss_samples_priv:
+        for sample in loss_samples_priv:
+            try:
+                val = float(sample)
+            except (TypeError, ValueError):
+                continue
+            if val <= 0.0:
+                loss_window.append(val)
 
     games_per_min = game_stats["games"] / max(1e-9, sp_elapsed / 60)
     moves_per_sec = game_stats["moves"] / max(1e-9, sp_elapsed)
@@ -79,20 +145,37 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     white_win_pct = 100.0 * white_wins / max(1, games_count)
     draw_pct = 100.0 * draws_count / max(1, games_count)
     black_win_pct = 100.0 * black_wins / max(1, games_count)
+    draw_true_pct = 100.0 * draws_true / max(1, games_count)
+    draw_cap_pct = 100.0 * draws_cap / max(1, games_count)
     avg_game_length = game_stats["moves"] / max(1, games_count)
     starts_white = int(game_stats.get("starts_white", 0))
     starts_black = int(game_stats.get("starts_black", 0))
     total_starts = max(1, starts_white + starts_black)
     white_start_pct = 100.0 * starts_white / total_starts
     black_start_pct = 100.0 * starts_black / total_starts
-    loop_breaks = int(game_stats.get("loop_breaks", 0))
-    repetition_hits = int(game_stats.get("repetition_hits", 0))
-    loop_break_rate = loop_breaks / max(1, games_count)
+    unique_positions_avg = float(game_stats.get("unique_positions_avg", 0.0))
+    unique_ratio_avg = float(game_stats.get("unique_ratio_avg", 0.0))
+    unique_ratio_pct = 100.0 * unique_ratio_avg
+    halfmove_avg = float(game_stats.get("halfmove_avg", 0.0))
+    halfmove_max = int(game_stats.get("halfmove_max", 0))
+    threefold_pct = float(game_stats.get("threefold_pct", 0.0))
+    threefold_games = int(game_stats.get("threefold_games", 0))
+    threefold_draws = int(game_stats.get("threefold_draws", 0))
+    curriculum_games = int(game_stats.get("curriculum_games", 0))
+    curriculum_win_pct = float(game_stats.get("curriculum_win_pct", 0.0))
+    curriculum_draw_pct = float(game_stats.get("curriculum_draw_pct", 0.0))
     term_nat = int(game_stats.get("term_natural", 0))
     term_exh = int(game_stats.get("term_exhausted", 0))
     term_resign = int(game_stats.get("term_resign", 0))
     term_threefold = int(game_stats.get("term_threefold", 0))
     term_fifty = int(game_stats.get("term_fifty", 0))
+    term_adjudicated = int(game_stats.get("term_adjudicated", 0))
+    adjudicated_games = int(game_stats.get("adjudicated_games", 0))
+    adjudicated_white = int(game_stats.get("adjudicated_white", 0))
+    adjudicated_black = int(game_stats.get("adjudicated_black", 0))
+    adjudicated_draw = int(game_stats.get("adjudicated_draw", 0))
+    adjudicated_balance_total = float(game_stats.get("adjudicated_balance_total", 0.0))
+    adjudicated_balance_abs_total = float(game_stats.get("adjudicated_balance_abs_total", 0.0))
     color_delta = abs(white_start_pct - 50.0)
     color_tol = float(getattr(C.SELFPLAY, "COLOR_BALANCE_TOLERANCE_PCT", 5.0))
     color_window = getattr(trainer, "_color_window", None)
@@ -155,11 +238,13 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
         if delta_batches > 0 and delta_eval_positions > 0:
             avg_batch_delta = delta_eval_positions / max(1, delta_batches)
             cap = int(trainer._eval_batch_cap)
-            max_cap_allowed = int(min(8192, max(1024, int(2048 * (trainer.device_total_gb / 16.0)))))
+            max_cap_allowed = int(
+                min(512, max(256, int(1024 * (trainer.device_total_gb / 12.0))))
+            )
             mem_now = get_mem_info(trainer._proc, trainer.device, trainer.device_total_gb)
             reserved_frac = float(mem_now["reserved_gb"]) / max(1e-9, float(mem_now["total_gb"]))
             if avg_batch_delta >= 0.90 * cap and cap < max_cap_allowed and reserved_frac < 0.90:
-                new_cap = int(min(max_cap_allowed, cap + 512))
+                new_cap = int(min(max_cap_allowed, cap + 256))
                 if new_cap != cap:
                     trainer._eval_batch_cap = new_cap
                     trainer.evaluator.set_batching_params(batch_size_max=new_cap)
@@ -171,9 +256,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
                     trainer._eval_coalesce_ms = new_ms
                     trainer.evaluator.set_batching_params(coalesce_ms=new_ms)
                     trainer.log.info(f"[AUTO    ] eval_coalesce_ms {old_ms} -> {new_ms}")
-            elif avg_batch_delta >= 0.80 * cap and trainer._eval_coalesce_ms < 50:
+            elif avg_batch_delta >= 0.80 * cap and trainer._eval_coalesce_ms < 36:
                 old_ms = int(trainer._eval_coalesce_ms)
-                new_ms = int(min(50, int(old_ms * 1.2 + 1)))
+                new_ms = int(min(36, int(old_ms * 1.15 + 1)))
                 if new_ms != old_ms:
                     trainer._eval_coalesce_ms = new_ms
                     trainer.evaluator.set_batching_params(coalesce_ms=new_ms)
@@ -185,8 +270,18 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     stats["selfplay_time"] = sp_elapsed
     stats["games_per_min"] = games_per_min
     stats["moves_per_sec"] = moves_per_sec
+    stats["sp_terminal_eval_mean"] = float(game_stats.get("terminal_eval_mean", 0.0))
+    stats["sp_terminal_eval_abs_mean"] = float(game_stats.get("terminal_eval_abs_mean", 0.0))
+    stats["sp_tempo_bonus_avg"] = float(game_stats.get("tempo_bonus_avg", 0.0))
+    stats["sp_sims_avg"] = float(game_stats.get("sims_avg", 0.0))
+    stats["sp_value_trend_hit_pct"] = float(game_stats.get("value_trend_hit_pct", 0.0))
+    stats["sp_loss_eval_mean"] = float(game_stats.get("loss_eval_mean", 0.0))
+    stats["sp_loss_eval_p05"] = float(game_stats.get("loss_eval_p05", 0.0))
+    stats["sp_loss_eval_p25"] = float(game_stats.get("loss_eval_p25", 0.0))
     stats["sp_white_win_pct"] = white_win_pct
     stats["sp_draw_pct"] = draw_pct
+    stats["sp_draw_true_pct"] = draw_true_pct
+    stats["sp_draw_cap_pct"] = draw_cap_pct
     stats["sp_black_win_pct"] = black_win_pct
     stats["sp_avg_len"] = avg_game_length
     stats["sp_new_moves"] = int(game_stats.get("moves", 0))
@@ -196,20 +291,90 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
     stats["sp_black_start_pct"] = black_start_pct
     stats["sp_color_bias_black_pct"] = 100.0 * bias_actual
     stats["sp_color_bias_target_pct"] = 100.0 * target_prob_black
-    stats["sp_loop_breaks"] = loop_breaks
-    stats["sp_loop_break_rate"] = loop_break_rate
-    stats["sp_repetition_hits"] = repetition_hits
+    stats["sp_unique_positions_avg"] = unique_positions_avg
+    stats["sp_unique_ratio_pct"] = unique_ratio_pct
+    stats["sp_halfmove_avg"] = halfmove_avg
+    stats["sp_halfmove_max"] = halfmove_max
+    stats["sp_threefold_pct"] = threefold_pct
+    stats["sp_threefold_games"] = threefold_games
+    stats["sp_threefold_draws"] = threefold_draws
+    stats["sp_curriculum_games"] = curriculum_games
+    stats["sp_curriculum_pct"] = 100.0 * curriculum_games / max(1, games_count)
+    stats["sp_curriculum_win_pct"] = curriculum_win_pct
+    stats["sp_curriculum_draw_pct"] = curriculum_draw_pct
+    stats["sp_adjudicate_margin"] = float(game_stats.get("adjudicate_margin", 0.0))
+    stats["sp_adjudicate_min_plies"] = int(game_stats.get("adjudicate_min_plies", 0))
     stats["sp_term_natural"] = term_nat
     stats["sp_term_exhausted"] = term_exh
     stats["sp_term_resign"] = term_resign
     stats["sp_term_threefold"] = term_threefold
     stats["sp_term_fifty"] = term_fifty
-    term_total = max(1, term_nat + term_exh + term_resign + term_threefold + term_fifty)
+    stats["sp_term_adjudicated"] = term_adjudicated
+    stats["sp_adjudicated_games"] = adjudicated_games
+    stats["sp_adjudicated_white"] = adjudicated_white
+    stats["sp_adjudicated_black"] = adjudicated_black
+    stats["sp_adjudicated_draw"] = adjudicated_draw
+    term_total = max(1, term_nat + term_exh + term_resign + term_threefold + term_fifty + term_adjudicated)
+    adjudicated_pct = 100.0 * adjudicated_games / max(1, games_count)
+    adjudicated_white_pct = 100.0 * adjudicated_white / max(1, adjudicated_games) if adjudicated_games else 0.0
+    adjudicated_black_pct = 100.0 * adjudicated_black / max(1, adjudicated_games) if adjudicated_games else 0.0
+    adjudicated_draw_pct = 100.0 * adjudicated_draw / max(1, adjudicated_games) if adjudicated_games else 0.0
+    adjudicated_balance_mean = (
+        adjudicated_balance_total / max(1, adjudicated_games)
+        if adjudicated_games
+        else 0.0
+    )
+    adjudicated_balance_abs_mean = (
+        adjudicated_balance_abs_total / max(1, adjudicated_games)
+        if adjudicated_games
+        else 0.0
+    )
+
     stats["sp_term_natural_pct"] = 100.0 * term_nat / term_total
     stats["sp_term_exhausted_pct"] = 100.0 * term_exh / term_total
     stats["sp_term_resign_pct"] = 100.0 * term_resign / term_total
     stats["sp_term_threefold_pct"] = 100.0 * term_threefold / term_total
     stats["sp_term_fifty_pct"] = 100.0 * term_fifty / term_total
+    stats["sp_term_adjudicated_pct"] = 100.0 * term_adjudicated / term_total
+    stats["sp_adjudicated_pct"] = adjudicated_pct
+    stats["sp_adjudicated_white_pct"] = adjudicated_white_pct
+    stats["sp_adjudicated_black_pct"] = adjudicated_black_pct
+    stats["sp_adjudicated_draw_pct"] = adjudicated_draw_pct
+    stats["sp_adjudicated_balance_mean"] = adjudicated_balance_mean
+    stats["sp_adjudicated_balance_abs_mean"] = adjudicated_balance_abs_mean
+    stats["sp_adjudicated_balance_total"] = adjudicated_balance_total
+    stats["sp_adjudicated_balance_abs_total"] = adjudicated_balance_abs_total
+
+    if hasattr(trainer, "_recent_len_window"):
+        trainer._recent_len_window.append(float(avg_game_length))
+        if len(trainer._recent_len_window) == trainer._recent_len_window.maxlen:
+            window_avg = sum(trainer._recent_len_window) / max(1, len(trainer._recent_len_window))
+            if C.RESIGN.ENABLED and window_avg < guard_min_len:
+                guard_cd = int(max(0, getattr(C.RESIGN, "GUARD_COOLDOWN_ITERS", 0)))
+                if guard_cd > 0 and trainer._resign_cooldown < guard_cd:
+                    trainer._resign_cooldown = guard_cd
+                    resign_status = "disabled:guard"
+                    trainer.selfplay_engine.resign_consecutive = 0
+                    with contextlib.suppress(Exception):
+                        trainer.selfplay_engine.clear_buffer()
+                        buffer_reset = 1
+                    with contextlib.suppress(Exception):
+                        trainer._recent_len_window.clear()
+                        trainer._recent_sample_ratio = float(
+                            getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_RATIO", 0.8)
+                        )
+                    trainer.log.warning(
+                        "[Resign  ] guard triggered; avg_len window %.2f < %.2f. Disabling resigns for %d iters",
+                        window_avg,
+                        guard_min_len,
+                        guard_cd,
+                    )
+
+    stats["resign_status"] = resign_status
+    stats["resign_threshold"] = float(getattr(trainer, "_resign_threshold", C.RESIGN.VALUE_THRESHOLD))
+    stats["resign_min_plies"] = int(getattr(trainer, "_resign_min_plies", 0))
+    stats["resign_cooldown_iters"] = int(getattr(trainer, "_resign_cooldown", 0))
+    stats["replay_reset"] = buffer_reset
 
     t1 = time.time()
     if (
@@ -245,10 +410,12 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
             continue
         states, indices_sparse, counts_sparse, values = batch
         try:
-            policy_loss_t, value_loss_t, grad_norm_val, pred_entropy = trainer.train_step(
-                (states, indices_sparse, counts_sparse, values)
-            )
-            grad_norm_sum += float(grad_norm_val)
+            step_result = trainer.train_step((states, indices_sparse, counts_sparse, values))
+            if step_result is None:
+                continue
+            policy_loss_t, value_loss_t, grad_norm_val, pred_entropy = step_result
+            if math.isfinite(float(grad_norm_val)):
+                grad_norm_sum += float(grad_norm_val)
             entropy_sum += float(pred_entropy)
             losses.append((policy_loss_t, value_loss_t))
         except torch.OutOfMemoryError:
@@ -327,6 +494,8 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
             "entropy_coef": entropy_coef,
             "train_samples": len(losses) * trainer.train_batch_size,
             "train_recent_pct": recent_pct,
+            "lr_sched_drift_pct": sched_drift_pct,
+            "grad_skip_count": int(getattr(trainer, "_grad_skip_count", 0)),
         }
     )
     stats.update(
@@ -354,7 +523,7 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float]:
 
 def train_step(
     trainer: Any, batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray], list[np.ndarray]]
-) -> tuple[torch.Tensor, torch.Tensor, float, float]:
+) -> tuple[torch.Tensor, torch.Tensor, float, float] | None:
     states_u8_list, indices_i32_list, counts_u16_list, values_i8_list = batch_data
     x_u8_np = np.stack(states_u8_list).astype(np.uint8, copy=False)
     x = torch.from_numpy(x_u8_np).to(trainer.device, non_blocking=True)
@@ -476,6 +645,20 @@ def train_step(
     trainer.scaler.scale(total_loss).backward()
     trainer.scaler.unscale_(trainer.optimizer)
     grad_total_norm = torch.nn.utils.clip_grad_norm_(trainer.model.parameters(), C.TRAIN.GRAD_CLIP_NORM)
+    if torch.is_tensor(grad_total_norm):
+        grad_finite = bool(torch.isfinite(grad_total_norm))
+        grad_value = float(grad_total_norm.detach().cpu())
+    else:
+        grad_value = float(grad_total_norm)
+        grad_finite = math.isfinite(grad_value)
+    if not grad_finite:
+        trainer.optimizer.zero_grad(set_to_none=True)
+        trainer.scaler.update()
+        trainer.scheduler.step()
+        if hasattr(trainer, "_grad_skip_count"):
+            trainer._grad_skip_count += 1
+        return None
+
     trainer.scaler.step(trainer.optimizer)
     trainer.scaler.update()
     trainer.scheduler.step()
@@ -484,6 +667,6 @@ def train_step(
     return (
         policy_loss.detach(),
         value_loss.detach(),
-        float(grad_total_norm.detach().cpu()),
+        grad_value,
         float(entropy.detach().cpu()),
     )

@@ -24,7 +24,7 @@ class BatchedEvaluator:
         if C.TORCH.EVAL_MODEL_CHANNELS_LAST:
             self.eval_model = cast(
                 nn.Module,
-                self.eval_model.to(memory_format=torch.channels_last),  # pyright: ignore[reportCallIssue]
+                self.eval_model.to(memory_format=torch.channels_last),
             )
         self.eval_model = self.eval_model.eval()
         self._inference_dtype = torch.float16 if self.device.type == "cuda" else torch.float32
@@ -115,7 +115,7 @@ class BatchedEvaluator:
             if C.TORCH.EVAL_MODEL_CHANNELS_LAST:
                 new_model = cast(
                     nn.Module,
-                    new_model.to(memory_format=torch.channels_last),  # pyright: ignore[reportCallIssue]
+                    new_model.to(memory_format=torch.channels_last),
                 )
             with suppress(Exception):
                 self.eval_model = new_model
@@ -203,21 +203,21 @@ class BatchedEvaluator:
             return
         if isinstance(m.bn_in, nn.BatchNorm2d):
             self._fuse_conv_bn_(m.conv_in, m.bn_in)
-            m.bn_in = nn.Identity()  # pyright: ignore[reportAttributeAccessIssue]
+            m.bn_in = nn.Identity()
         for blk in m.residual_stack:
             if isinstance(blk, ResidualBlock):
                 if isinstance(blk.bn1, nn.BatchNorm2d):
                     self._fuse_conv_bn_(blk.conv1, blk.bn1)
-                    blk.bn1 = nn.Identity()  # pyright: ignore[reportAttributeAccessIssue]
+                    blk.bn1 = nn.Identity()
                 if isinstance(blk.bn2, nn.BatchNorm2d):
                     self._fuse_conv_bn_(blk.conv2, blk.bn2)
-                    blk.bn2 = nn.Identity()  # pyright: ignore[reportAttributeAccessIssue]
+                    blk.bn2 = nn.Identity()
         if isinstance(m.policy_bn, nn.BatchNorm2d):
             self._fuse_conv_bn_(m.policy_conv, m.policy_bn)
-            m.policy_bn = nn.Identity()  # pyright: ignore[reportAttributeAccessIssue]
+            m.policy_bn = nn.Identity()
         if isinstance(m.value_bn, nn.BatchNorm2d):
             self._fuse_conv_bn_(m.value_conv, m.value_bn)
-            m.value_bn = nn.Identity()  # pyright: ignore[reportAttributeAccessIssue]
+            m.value_bn = nn.Identity()
 
     def _forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         with self.model_lock, torch.inference_mode():
