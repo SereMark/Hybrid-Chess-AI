@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-import contextlib
 import ctypes
 import gc
 import logging
 import os
 import time
 from collections import deque
+from dataclasses import dataclass, field
 from typing import Any, cast
 
-import config as C
 import numpy as np
 import psutil
 import torch
+from torch.amp import GradScaler
+
+import config as C
 from arena import EloGater, arena_match
 from checkpoint import save_best_model, save_checkpoint, try_resume
 from inference import BatchedEvaluator
@@ -27,7 +29,6 @@ from reporting import (
     startup_summary,
 )
 from self_play import SelfPlayEngine
-from torch.amp import GradScaler
 from train_loop import run_training_iteration, train_step as core_train_step
 
 
@@ -45,6 +46,25 @@ def _as_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+@dataclass(slots=True)
+class ArenaResult:
+    ran: bool = False
+    elapsed: float = 0.0
+    w: int = 0
+    d: int = 0
+    losses: int = 0
+    score_pct: float = 0.0
+    draw_pct: float = 0.0
+    decisive_pct: float = 0.0
+    decision: str = "skipped"
+    metrics: dict[str, Any] = field(default_factory=dict)
+    notes: list[str] = field(default_factory=list)
+
+    @property
+    def games_played(self) -> int:
+        return self.w + self.d + self.losses
 
 
 class Trainer:
@@ -95,10 +115,14 @@ class Trainer:
         self.evaluator = BatchedEvaluator(self.device)
         self._eval_batch_cap = int(C.EVAL.BATCH_SIZE_MAX)
         self._eval_coalesce_ms = int(C.EVAL.COALESCE_MS)
-        with contextlib.suppress(Exception):
+        try:
             self.evaluator.set_batching_params(self._eval_batch_cap, self._eval_coalesce_ms)
-        with contextlib.suppress(Exception):
+        except Exception as exc:
+            self.log.debug("Failed to apply evaluator batching params: %s", exc, exc_info=True)
+        try:
             self.evaluator.set_cache_capacity(int(C.EVAL.CACHE_CAPACITY))
+        except Exception as exc:
+            self.log.debug("Failed to apply evaluator cache capacity: %s", exc, exc_info=True)
         self.train_batch_size: int = int(C.TRAIN.BATCH_SIZE)
         if self.device.type != "cuda":
             self.train_batch_size = int(min(self.train_batch_size, 128))
@@ -128,10 +152,14 @@ class Trainer:
         self._sync_selfplay_evaluator()
 
         self.selfplay_engine = SelfPlayEngine(self.evaluator)
-        with contextlib.suppress(Exception):
+        try:
             self.selfplay_engine.update_adjudication(0)
-        with contextlib.suppress(Exception):
+        except Exception as exc:
+            self.log.debug("Self-play adjudication priming failed: %s", exc, exc_info=True)
+        try:
             self.selfplay_engine.set_game_length(self.settings.selfplay.game_max_plies)
+        except Exception as exc:
+            self.log.debug("Unable to set self-play game length: %s", exc, exc_info=True)
         self.iteration = 0
         self.total_games = 0
         self.start_time = time.time()
@@ -172,11 +200,20 @@ class Trainer:
             if self.settings.logging.enable_csv:
                 log_dir = os.path.dirname(self.settings.logging.csv_path)
                 if log_dir:
-                    with contextlib.suppress(Exception):
+                    try:
                         os.makedirs(log_dir, exist_ok=True)
-                with contextlib.suppress(Exception):
-                    if os.path.isfile(self.settings.logging.csv_path):
+                    except OSError as exc:
+                        self.log.debug("Unable to create metrics directory %s: %s", log_dir, exc, exc_info=True)
+                if os.path.isfile(self.settings.logging.csv_path):
+                    try:
                         os.remove(self.settings.logging.csv_path)
+                    except OSError as exc:
+                        self.log.debug(
+                            "Unable to remove existing metrics CSV %s: %s",
+                            self.settings.logging.csv_path,
+                            exc,
+                            exc_info=True,
+                        )
 
     def _startup_summary(self) -> str:
         return startup_summary(self)
@@ -199,6 +236,236 @@ class Trainer:
             model_src.load_state_dict(base.state_dict(), strict=True)
         model_src.eval()
         self.evaluator.refresh_from(model_src)
+
+    def _gate_state_metrics(self, expected_games: int, games_played: int) -> dict[str, Any]:
+        games_played = max(0, int(games_played))
+        expected_games = max(0, int(expected_games))
+        total_games = self._gate.w + self._gate.d + self._gate.losses
+        return {
+            "round": float(self._gate_rounds),
+            "age_iter": float(max(0, self.iteration - self._gate_started_iter)),
+            "gate_z": float(self._gate.z),
+            "gate_w": float(self._gate.w),
+            "gate_d": float(self._gate.d),
+            "gate_l": float(self._gate.losses),
+            "gate_games": float(total_games),
+            "gate_min_games": float(self._gate.min_games),
+            "gate_min_decisive": float(self._gate.min_decisive),
+            "gate_force_decisive": 1.0 if self._gate.force_decisive else 0.0,
+            "gate_draw_weight": float(self._gate.draw_w),
+            "gate_baseline_p": float(self._gate.baseline_p),
+            "gate_baseline_margin": float(self._gate.baseline_margin),
+            "gate_started_iter": float(self._gate_started_iter),
+            "expected_games": float(expected_games),
+            "actual_games": float(games_played),
+        }
+
+    def _baseline_arena_metrics(self, expected_games: int) -> dict[str, Any]:
+        baseline = {
+            "n": 0.0,
+            "p": 0.0,
+            "lb": 0.0,
+            "ub": 0.0,
+            "elo": 0.0,
+            "se_elo": 0.0,
+            "draw_pct": 0.0,
+            "decisive_pct": 0.0,
+            "score_pct": 0.0,
+            "decisive": 0.0,
+            "margin_target": 0.0,
+            "term_resign": 0.0,
+            "term_natural": 0.0,
+            "term_exhausted": 0.0,
+            "term_threefold": 0.0,
+            "term_fifty": 0.0,
+            "term_adjudicated": 0.0,
+            "term_natural_pct": 0.0,
+            "term_adjudicated_pct": 0.0,
+            "natural_gate_blocked": 0.0,
+            "curriculum_gate_blocked": 0.0,
+            "curriculum_games": 0.0,
+            "curriculum_wins": 0.0,
+            "curriculum_decisive": 0.0,
+            "notes": "",
+        }
+        baseline.update(self._gate_state_metrics(expected_games, 0))
+        return baseline
+
+    def _maybe_run_arena(self, iteration: int, expected_games: int, run_eval: bool) -> ArenaResult:
+        metrics = self._baseline_arena_metrics(expected_games)
+        result = ArenaResult(metrics=dict(metrics))
+        if not run_eval:
+            return result
+
+        if (
+            (not self._gate_active)
+            or (self._gate_rounds >= C.ARENA.CANDIDATE_MAX_ROUNDS)
+            or ((self._gate.w + self._gate.d + self._gate.losses) >= C.ARENA.CANDIDATE_MAX_GAMES)
+        ):
+            if self._gate_active:
+                self.log.info("[Arena   ] reset: timeboxing stuck challenger")
+            self._pending_challenger = self._clone_from_ema()
+            self._gate.reset()
+            self._gate_active = True
+            self._gate_started_iter = iteration
+            self._gate_rounds = 0
+
+        assert self._pending_challenger is not None
+        start = time.time()
+        score_raw, aw, ad, al, arena_details = arena_match(
+            self._pending_challenger,
+            self.best_model,
+            device=self.device,
+            eval_cache_cap=self._arena_eval_cache_cap,
+            batch_size_cap=self._eval_batch_cap,
+        )
+        result.elapsed = time.time() - start
+        result.ran = True
+        result.w = int(aw)
+        result.d = int(ad)
+        result.losses = int(al)
+        games_played = result.games_played
+        if games_played != expected_games:
+            self.log.warning(
+                "[Arena   ] games_played mismatch: got %d expected %d",
+                games_played,
+                expected_games,
+            )
+
+        self._gate.update(result.w, result.d, result.losses)
+        self._gate_rounds += 1
+        decision, decision_metrics = self._gate.decision()
+        result.decision = str(decision)
+
+        total_games = max(1, games_played)
+        result.draw_pct = 100.0 * result.d / total_games
+        result.decisive_pct = 100.0 * (result.w + result.losses) / total_games
+        score_pct = 100.0 * _as_float(decision_metrics.get("p"), float(score_raw))
+        result.score_pct = score_pct
+
+        reason_counts = {
+            str(k): int(v)
+            for k, v in ((arena_details or {}).get("reason_counts", {}) or {}).items()
+        }
+        curriculum_games = int((arena_details or {}).get("curriculum_games", 0))
+        curriculum_wins = int((arena_details or {}).get("curriculum_wins", 0))
+        curriculum_decisive = int((arena_details or {}).get("curriculum_decisive", 0))
+        term_resign = int(reason_counts.get("resign", 0))
+        term_natural = int(reason_counts.get("natural", 0))
+        term_exhausted = int(reason_counts.get("exhausted", 0))
+        term_threefold = int(reason_counts.get("threefold", 0))
+        term_fifty = int(reason_counts.get("fifty_move", 0))
+        term_adjudicated = int(reason_counts.get("adjudicated", 0))
+        total_reason_games = max(1, sum(reason_counts.values()))
+        natural_like = term_natural + term_resign + term_threefold + term_fifty
+        if bool(getattr(C.ARENA, "COUNT_ADJUDICATED_AS_NATURAL", False)):
+            natural_like += term_adjudicated
+        arena_notes: list[str] = []
+
+        natural_threshold = float(getattr(C.ARENA, "GATE_MIN_NATURAL_PCT", 0.0))
+        natural_gate_blocked = False
+        natural_ratio = (natural_like / max(1, total_reason_games)) if total_reason_games else 0.0
+        if (
+            natural_threshold > 0.0
+            and natural_ratio < natural_threshold
+            and decision in {"accept", "reject"}
+        ):
+            natural_gate_blocked = True
+            decision = "undecided"
+            result.decision = "undecided"
+            self.log.info(
+                "[Arena   ] gate paused: natural term %.1f%% < target %.1f%%",
+                100.0 * natural_ratio,
+                natural_threshold * 100.0,
+            )
+            decision_metrics["natural_gate_blocked"] = 1.0
+            arena_notes.append("insufficient-natural")
+
+        curriculum_gate_blocked = False
+        min_curr_wins = int(getattr(C.ARENA, "CURRICULUM_MIN_WINS", 0))
+        min_curr_dec = int(getattr(C.ARENA, "CURRICULUM_MIN_DECISIVES", 0))
+        if (
+            decision == "accept"
+            and (
+                (min_curr_wins > 0 and curriculum_wins < min_curr_wins)
+                or (min_curr_dec > 0 and curriculum_decisive < min_curr_dec)
+            )
+        ):
+            decision = "undecided"
+            result.decision = "undecided"
+            curriculum_gate_blocked = True
+            self.log.info(
+                "[Arena   ] gate paused: curriculum wins %d/%d, decisives %d (needs %d wins, %d decisives)",
+                curriculum_wins,
+                max(1, curriculum_games),
+                curriculum_decisive,
+                min_curr_wins,
+                min_curr_dec,
+            )
+            arena_notes.append("curriculum-block")
+            decision_metrics["curriculum_gate_blocked"] = 1.0
+
+        margin_raw = decision_metrics.get("margin_target")
+        gate_margin = (
+            float(margin_raw)
+            if margin_raw is not None
+            else float(C.ARENA.GATE_BASELINE_P + C.ARENA.GATE_BASELINE_MARGIN)
+        )
+
+        metrics.update(
+            {
+                "n": _as_float(decision_metrics.get("n"), 0.0),
+                "p": _as_float(decision_metrics.get("p"), float(score_raw)),
+                "lb": _as_float(decision_metrics.get("lb"), 0.0),
+                "ub": _as_float(decision_metrics.get("ub"), 0.0),
+                "elo": _as_float(decision_metrics.get("elo"), 0.0),
+                "se_elo": _as_float(decision_metrics.get("se_elo"), 0.0),
+                "draw_pct": result.draw_pct,
+                "decisive_pct": result.decisive_pct,
+                "score_pct": score_pct,
+                "decisive": float(result.w + result.losses),
+                "margin_target": gate_margin,
+                "term_resign": float(term_resign),
+                "term_natural": float(term_natural),
+                "term_exhausted": float(term_exhausted),
+                "term_threefold": float(term_threefold),
+                "term_fifty": float(term_fifty),
+                "term_adjudicated": float(term_adjudicated),
+                "term_natural_pct": (
+                    100.0 * natural_like / total_reason_games if total_reason_games else 0.0
+                ),
+                "term_adjudicated_pct": (
+                    100.0 * term_adjudicated / total_reason_games if total_reason_games else 0.0
+                ),
+                "natural_gate_blocked": 1.0 if natural_gate_blocked else 0.0,
+                "curriculum_gate_blocked": 1.0 if curriculum_gate_blocked else 0.0,
+                "curriculum_games": float(curriculum_games),
+                "curriculum_wins": float(curriculum_wins),
+                "curriculum_decisive": float(curriculum_decisive),
+            }
+        )
+
+        if decision == "accept":
+            assert self._pending_challenger is not None
+            self.best_model.load_state_dict(self._pending_challenger.state_dict(), strict=True)
+            self.best_model.eval()
+            self._sync_selfplay_evaluator()
+            self._save_checkpoint()
+            self._save_best_model()
+            self._gate_active = False
+            self._pending_challenger = None
+            self._gate_rounds = 0
+        elif decision == "reject":
+            self._gate_active = False
+            self._pending_challenger = None
+            self._gate_rounds = 0
+            self._restore_best_weights()
+
+        metrics.update(self._gate_state_metrics(expected_games, games_played))
+        metrics["notes"] = "; ".join(arena_notes)
+        result.metrics = metrics
+        result.notes = arena_notes
+        return result
 
     def _restore_best_weights(self) -> None:
         base_best = _unwrap_module(self.best_model)
@@ -263,207 +530,18 @@ class Trainer:
             iter_stats = self.training_iteration()
 
             arena_every = max(1, self.settings.arena.eval_every_iters)
-            do_eval = (iteration % arena_every) == 0 if self.settings.arena.eval_every_iters > 0 else False
-            arena_elapsed = 0.0
-            arena_w = arena_d = arena_l = 0
-            arena_decision = "skipped"
-            arena_metrics: dict[str, Any] = {}
-            arena_draw_pct = 0.0
-            arena_decisive_pct = 0.0
-            score_pct = 0.0
-            arena_notes: list[str] = []
-            games_played = 0
             expected_games = int(self.settings.arena.games_per_eval)
-            if do_eval:
-                if (
-                    (not self._gate_active)
-                    or (self._gate_rounds >= C.ARENA.CANDIDATE_MAX_ROUNDS)
-                    or ((self._gate.w + self._gate.d + self._gate.losses) >= C.ARENA.CANDIDATE_MAX_GAMES)
-                ):
-                    if self._gate_active:
-                        self.log.info("[Arena   ] reset: timeboxing stuck challenger")
-                    self._pending_challenger = self._clone_from_ema()
-                    self._gate.reset()
-                    self._gate_active = True
-                    self._gate_started_iter = iteration
-                    self._gate_rounds = 0
-                t_ar = time.time()
-                assert self._pending_challenger is not None
-                score_raw, aw, ad, al, arena_details = arena_match(
-                    self._pending_challenger,
-                    self.best_model,
-                    device=self.device,
-                    eval_cache_cap=self._arena_eval_cache_cap,
-                )
-                arena_elapsed = time.time() - t_ar
-                games_played = int(aw + ad + al)
-                if games_played != expected_games:
-                    self.log.warning(
-                        "[Arena   ] games_played mismatch: got %d expected %d",
-                        games_played,
-                        expected_games,
-                    )
-
-                self._gate.update(aw, ad, al)
-                self._gate_rounds += 1
-                decision, m = self._gate.decision()
-                arena_w, arena_d, arena_l = int(aw), int(ad), int(al)
-                total_games = max(1, arena_w + arena_d + arena_l)
-                arena_draw_pct = 100.0 * arena_d / total_games
-                arena_decisive_pct = 100.0 * (arena_w + arena_l) / total_games
-                score_pct = 100.0 * m.get("p", float(score_raw))
-                decisive_games = arena_w + arena_l
-                reason_counts = {
-                    str(k): int(v)
-                    for k, v in ((arena_details or {}).get("reason_counts", {}) or {}).items()
-                }
-                curriculum_games = int((arena_details or {}).get("curriculum_games", 0))
-                curriculum_wins = int((arena_details or {}).get("curriculum_wins", 0))
-                curriculum_decisive = int((arena_details or {}).get("curriculum_decisive", 0))
-                term_resign = int(reason_counts.get("resign", 0))
-                term_natural = int(reason_counts.get("natural", 0))
-                term_exhausted = int(reason_counts.get("exhausted", 0))
-                term_threefold = int(reason_counts.get("threefold", 0))
-                term_fifty = int(reason_counts.get("fifty_move", 0))
-                term_adjudicated = int(reason_counts.get("adjudicated", 0))
-                total_reason_games = max(1, sum(reason_counts.values()))
-                natural_like = term_natural + term_resign + term_threefold + term_fifty
-                if bool(getattr(C.ARENA, "COUNT_ADJUDICATED_AS_NATURAL", False)):
-                    natural_like += term_adjudicated
-                arena_natural_pct = 100.0 * natural_like / total_reason_games
-                natural_threshold = float(getattr(C.ARENA, "GATE_MIN_NATURAL_PCT", 0.0))
-                natural_gate_blocked = False
-                natural_ratio = (natural_like / max(1, total_reason_games)) if total_reason_games else 0.0
-                if (
-                    natural_threshold > 0.0
-                    and natural_ratio < natural_threshold
-                    and decision in {"accept", "reject"}
-                ):
-                    natural_gate_blocked = True
-                    decision = "undecided"
-                    self.log.info(
-                        "[Arena   ] gate paused: natural term %.1f%% < target %.1f%%",
-                        arena_natural_pct,
-                        natural_threshold * 100.0,
-                    )
-                    m["natural_gate_blocked"] = 1.0
-                    arena_notes.append("insufficient-natural")
-                curriculum_gate_blocked = False
-                min_curr_wins = int(getattr(C.ARENA, "CURRICULUM_MIN_WINS", 0))
-                min_curr_dec = int(getattr(C.ARENA, "CURRICULUM_MIN_DECISIVES", 0))
-                if (
-                    decision == "accept"
-                    and (
-                        (min_curr_wins > 0 and curriculum_wins < min_curr_wins)
-                        or (min_curr_dec > 0 and curriculum_decisive < min_curr_dec)
-                    )
-                ):
-                    decision = "undecided"
-                    curriculum_gate_blocked = True
-                    self.log.info(
-                        "[Arena   ] gate paused: curriculum wins %d/%d, decisives %d (needs %d wins, %d decisives)",
-                        curriculum_wins,
-                        max(1, curriculum_games),
-                        curriculum_decisive,
-                        min_curr_wins,
-                        min_curr_dec,
-                    )
-                    arena_notes.append("curriculum-block")
-                    m["curriculum_gate_blocked"] = 1.0
-                margin_raw = m.get("margin_target")
-                gate_margin = (
-                    float(margin_raw)
-                    if margin_raw is not None
-                    else float(C.ARENA.GATE_BASELINE_P + C.ARENA.GATE_BASELINE_MARGIN)
-                )
-                arena_decision = str(decision)
-                arena_metrics: dict[str, Any] = {
-                    "n": _as_float(m.get("n"), 0.0),
-                    "p": _as_float(m.get("p"), 0.0),
-                    "lb": _as_float(m.get("lb"), 0.0),
-                    "ub": _as_float(m.get("ub"), 0.0),
-                    "elo": _as_float(m.get("elo"), 0.0),
-                    "se_elo": _as_float(m.get("se_elo"), 0.0),
-                    "draw_pct": arena_draw_pct,
-                    "decisive_pct": arena_decisive_pct,
-                    "score_pct": score_pct,
-                    "decisive": float(decisive_games),
-                    "margin_target": gate_margin,
-                    "term_resign": float(term_resign),
-                    "term_natural": float(term_natural),
-                    "term_exhausted": float(term_exhausted),
-                    "term_threefold": float(term_threefold),
-                    "term_fifty": float(term_fifty),
-                    "term_adjudicated": float(term_adjudicated),
-                    "term_natural_pct": arena_natural_pct,
-                    "term_adjudicated_pct": (
-                        100.0 * term_adjudicated / total_reason_games if total_reason_games else 0.0
-                    ),
-                    "natural_gate_blocked": 1.0 if natural_gate_blocked else 0.0,
-                    "curriculum_gate_blocked": 1.0 if curriculum_gate_blocked else 0.0,
-                    "round": float(self._gate_rounds),
-                    "age_iter": float(iteration - self._gate_started_iter),
-                    "gate_z": float(self._gate.z),
-                    "gate_w": float(self._gate.w),
-                    "gate_d": float(self._gate.d),
-                    "gate_l": float(self._gate.losses),
-                    "gate_games": float(self._gate.w + self._gate.d + self._gate.losses),
-                    "gate_min_games": float(self._gate.min_games),
-                    "gate_min_decisive": float(self._gate.min_decisive),
-                    "gate_force_decisive": 1.0 if self._gate.force_decisive else 0.0,
-                    "gate_draw_weight": float(self._gate.draw_w),
-                    "gate_baseline_p": float(self._gate.baseline_p),
-                    "gate_baseline_margin": float(self._gate.baseline_margin),
-                    "gate_started_iter": float(self._gate_started_iter),
-                    "expected_games": float(expected_games),
-                    "actual_games": float(games_played),
-                    "curriculum_games": float(curriculum_games),
-                    "curriculum_wins": float(curriculum_wins),
-                    "curriculum_decisive": float(curriculum_decisive),
-                }
-                if decision == "undecided" and decisive_games < self._gate.min_decisive:
-                    arena_notes.append(
-                        f"awaiting decisives {decisive_games}/{self._gate.min_decisive}"
-                    )
-
-                if decision == "accept":
-                    assert self._pending_challenger is not None
-                    self.best_model.load_state_dict(self._pending_challenger.state_dict(), strict=True)
-                    self.best_model.eval()
-                    self._sync_selfplay_evaluator()
-                    self._save_checkpoint()
-                    self._save_best_model()
-                    self._gate_active = False
-                    self._pending_challenger = None
-                    self._gate_rounds = 0
-                elif decision == "reject":
-                    self._gate_active = False
-                    self._pending_challenger = None
-                    self._gate_rounds = 0
-                    self._restore_best_weights()
-            else:
-                pass
-
-            gate_state_metrics = {
-                "round": float(self._gate_rounds),
-                "age_iter": float(max(0, self.iteration - self._gate_started_iter)),
-                "gate_z": float(self._gate.z),
-                "gate_w": float(self._gate.w),
-                "gate_d": float(self._gate.d),
-                "gate_l": float(self._gate.losses),
-                "gate_games": float(self._gate.w + self._gate.d + self._gate.losses),
-                "gate_min_games": float(self._gate.min_games),
-                "gate_min_decisive": float(self._gate.min_decisive),
-                "gate_force_decisive": 1.0 if self._gate.force_decisive else 0.0,
-                "gate_draw_weight": float(self._gate.draw_w),
-                "gate_baseline_p": float(self._gate.baseline_p),
-                "gate_baseline_margin": float(self._gate.baseline_margin),
-                "gate_started_iter": float(self._gate_started_iter),
-                "expected_games": float(expected_games),
-                "actual_games": float(games_played),
-            }
-            for key, value in gate_state_metrics.items():
-                arena_metrics.setdefault(key, value)
+            should_eval = self.settings.arena.eval_every_iters > 0 and (iteration % arena_every) == 0
+            arena_result = self._maybe_run_arena(iteration, expected_games, should_eval)
+            arena_elapsed = arena_result.elapsed
+            arena_w, arena_d, arena_l = arena_result.w, arena_result.d, arena_result.losses
+            arena_decision = arena_result.decision
+            arena_metrics = dict(arena_result.metrics)
+            arena_draw_pct = float(arena_result.draw_pct)
+            arena_decisive_pct = float(arena_result.decisive_pct)
+            score_pct = float(arena_result.score_pct)
+            arena_notes = list(arena_result.notes)
+            games_played = arena_result.games_played
             arena_metrics.setdefault("notes", "; ".join(arena_notes))
 
             if self.iteration % C.LOG.CHECKPOINT_SAVE_EVERY_ITERS == 0:
@@ -519,42 +597,27 @@ class Trainer:
             sp_b = int(iter_stats.get("black_wins", 0))
             sp_d = int(iter_stats.get("draws", 0))
             sp_len = float(iter_stats.get("sp_avg_len", 0.0))
-            sp_termN = int(iter_stats.get("sp_term_natural", 0))
-            sp_termT = int(iter_stats.get("sp_term_threefold", 0))
-            sp_termF = int(iter_stats.get("sp_term_fifty", 0))
-            sp_termE = int(iter_stats.get("sp_term_exhausted", 0))
-            sp_termR = int(iter_stats.get("sp_term_resign", 0))
-            sp_termA = int(iter_stats.get("sp_term_adjudicated", 0))
             sp_time = float(iter_stats.get("selfplay_time", 0.0))
-            sp_draws_true = int(iter_stats.get("draws_true", 0))
-            sp_draws_cap = int(iter_stats.get("draws_cap", 0))
-            sp_draw_true_pct = float(iter_stats.get("sp_draw_true_pct", 0.0))
-            sp_draw_cap_pct = float(iter_stats.get("sp_draw_cap_pct", 0.0))
             sp_games_per_min = float(iter_stats.get("games_per_min", 0.0))
             sp_moves_per_sec = float(iter_stats.get("moves_per_sec", 0.0))
-            sp_white_start_pct = float(iter_stats.get("sp_white_start_pct", 0.0))
-            sp_black_start_pct = float(iter_stats.get("sp_black_start_pct", 0.0))
-            sp_color_target_pct = _as_float(iter_stats.get("sp_color_bias_target_pct"), 0.0)
-            sp_color_bias_black_pct = _as_float(iter_stats.get("sp_color_bias_black_pct"), 0.0)
-            sp_adjudicated_games = int(iter_stats.get("sp_adjudicated_games", 0))
-            sp_adjudicated_white = int(iter_stats.get("sp_adjudicated_white", 0))
-            sp_adjudicated_black = int(iter_stats.get("sp_adjudicated_black", 0))
-            sp_adjudicated_draw = int(iter_stats.get("sp_adjudicated_draw", 0))
-            sp_adjudicated_pct = _as_float(iter_stats.get("sp_adjudicated_pct"), 0.0)
-            sp_adjudicated_white_pct = _as_float(iter_stats.get("sp_adjudicated_white_pct"), 0.0)
-            sp_adjudicated_black_pct = _as_float(iter_stats.get("sp_adjudicated_black_pct"), 0.0)
-            sp_adjudicated_draw_pct = _as_float(iter_stats.get("sp_adjudicated_draw_pct"), 0.0)
-            sp_adjudicated_balance_abs_mean = _as_float(
-                iter_stats.get("sp_adjudicated_balance_abs_mean"), 0.0
-            )
-            sp_adjudicate_margin = _as_float(iter_stats.get("sp_adjudicate_margin"), 0.0)
-            sp_adjudicate_min_plies = int(iter_stats.get("sp_adjudicate_min_plies", 0))
+            sp_mps_k = sp_moves_per_sec / 1000.0
             sp_curriculum_games = int(iter_stats.get("sp_curriculum_games", 0))
             sp_curriculum_pct = _as_float(iter_stats.get("sp_curriculum_pct"), 0.0)
-            sp_curriculum_win_pct = _as_float(iter_stats.get("sp_curriculum_win_pct"), 0.0)
-            sp_curriculum_draw_pct = _as_float(iter_stats.get("sp_curriculum_draw_pct"), 0.0)
-            sp_mps_k = sp_moves_per_sec / 1000.0
-            sp_color_bias_white_pct = 100.0 - sp_color_bias_black_pct
+            sp_term_nat_pct = float(iter_stats.get("sp_term_natural_pct", 0.0))
+            sp_term_adj_pct = float(iter_stats.get("sp_term_adjudicated_pct", 0.0))
+            sp_term_resign_pct = float(iter_stats.get("sp_term_resign_pct", 0.0))
+            sp_term_loop_pct = float(iter_stats.get("sp_term_loop_pct", 0.0))
+            sp_loop_pct = float(iter_stats.get("sp_loop_pct", 0.0))
+            sp_loop_flag_pct = float(iter_stats.get("sp_loop_flag_pct", 0.0))
+            sp_loop_unique_pct = float(iter_stats.get("sp_loop_unique_ratio_pct", 0.0))
+            sp_loop_bias_avg = float(iter_stats.get("sp_loop_bias_avg", 0.0))
+            sp_eval_mean = float(iter_stats.get("sp_terminal_eval_mean", 0.0))
+            sp_eval_abs = float(iter_stats.get("sp_terminal_eval_abs_mean", 0.0))
+            sp_tempo_bonus = float(iter_stats.get("sp_tempo_bonus_avg", 0.0))
+            sp_loss_eval_mean = float(iter_stats.get("sp_loss_eval_mean", 0.0))
+            sp_loss_eval_p25 = float(iter_stats.get("sp_loss_eval_p25", 0.0))
+            sp_value_trend = float(iter_stats.get("sp_value_trend_hit_pct", 0.0))
+            sp_sims = float(iter_stats.get("sp_sims_avg", 0.0))
             resign_status_str = str(iter_stats.get("resign_status", "n/a"))
             resign_threshold = _as_float(iter_stats.get("resign_threshold"), C.RESIGN.VALUE_THRESHOLD)
             resign_min_plies = int(iter_stats.get("resign_min_plies", getattr(C.RESIGN, "MIN_PLIES_FINAL", 0)))
@@ -580,69 +643,55 @@ class Trainer:
 
             eval_hit = float(iter_stats.get("eval_hit_rate", 0.0))
             eval_avg_batch = float(iter_stats.get("eval_avg_batch", 0.0))
+            ram_used = float(sys_info.get("ram_used_gb", 0.0))
+            ram_total = float(sys_info.get("ram_total_gb", 0.0))
+            ram_pct = float(sys_info.get("ram_pct", 0.0))
 
             arena_termN = float(arena_metrics.get("term_natural", 0.0))
-            arena_termT = float(arena_metrics.get("term_threefold", 0.0))
-            arena_termF = float(arena_metrics.get("term_fifty", 0.0))
-            arena_termE = float(arena_metrics.get("term_exhausted", 0.0))
-            arena_termR = float(arena_metrics.get("term_resign", 0.0))
             arena_termA = float(arena_metrics.get("term_adjudicated", 0.0))
             arena_notes_str = arena_metrics.get("notes", "")
+            arena_draw_pct = float(arena_metrics.get("draw_pct", 0.0))
+            arena_decisive_pct = float(arena_metrics.get("decisive_pct", 0.0))
 
-            self.log.info(f"[Iter {iteration:03d}/{C.TRAIN.TOTAL_ITERATIONS}]")
-            self.log.info(
-                f"    selfplay : games={sp_games} W/D/L={sp_w}/{sp_d}/{sp_b} len={sp_len:.1f}"
-                f" gpm={sp_games_per_min:.1f} mps={sp_mps_k:.2f}k"
-                f" termN/T/F/E/R/A={sp_termN}/{sp_termT}/{sp_termF}/{sp_termE}/{sp_termR}/{sp_termA}"
-                f" adj={sp_adjudicated_games} ({sp_adjudicated_pct:.1f}%)"
-                f" eval={float(iter_stats.get('sp_terminal_eval_mean', 0.0)):.2f}"
-                f" |eval|={float(iter_stats.get('sp_terminal_eval_abs_mean', 0.0)):.2f}"
-                f" sims={float(iter_stats.get('sp_sims_avg', 0.0)):.0f}"
-                f" curr={sp_curriculum_games} ({sp_curriculum_pct:.1f}% W={sp_curriculum_win_pct:.1f}% D={sp_curriculum_draw_pct:.1f}%)"
-                f" time={sp_time:.1f}s"
+            sp_summary = (
+                f"[Iter {iteration:03d}/{C.TRAIN.TOTAL_ITERATIONS}] "
+                f"SP  games={sp_games} W/D/L={sp_w}/{sp_d}/{sp_b} len={sp_len:.1f} "
+                f"gpm={sp_games_per_min:.1f} mps={sp_mps_k:.2f}k"
             )
-            self.log.info(
-                f"              tempo={float(iter_stats.get('sp_tempo_bonus_avg', 0.0)):.3f}"
-                f" lossEval={float(iter_stats.get('sp_loss_eval_mean', 0.0)):.2f}"
-                f"/p25={float(iter_stats.get('sp_loss_eval_p25', 0.0)):.2f}"
-                f" trend={float(iter_stats.get('sp_value_trend_hit_pct', 0.0)):.1f}%"
+            sp_loop_line = (
+                f"           loop={sp_loop_pct:.0f}% flag={sp_loop_flag_pct:.0f}% uniq={sp_loop_unique_pct:.0f}% bias={sp_loop_bias_avg:+.2f} "
+                f"nat/adj/res={sp_term_nat_pct:.0f}/{sp_term_adj_pct:.0f}/{sp_term_resign_pct:.0f}% loopTerm={sp_term_loop_pct:.0f}% eval={sp_eval_mean:.2f}±{sp_eval_abs:.2f} "
+                f"sims={sp_sims:.0f} tempo={sp_tempo_bonus:.3f} lossEval={sp_loss_eval_mean:.2f}/{sp_loss_eval_p25:.2f} trend={sp_value_trend:.1f}% "
+                f"curr={sp_curriculum_games}({sp_curriculum_pct:.0f}%) time={sp_time:.1f}s"
             )
-            self.log.info(
-                f"              draws true/cap={sp_draws_true}/{sp_draws_cap} ({sp_draw_true_pct:.1f}/{sp_draw_cap_pct:.1f}%)"
-                f" adjW/B/D={sp_adjudicated_white}/{sp_adjudicated_black}/{sp_adjudicated_draw}"
-                f" ({sp_adjudicated_white_pct:.1f}/{sp_adjudicated_black_pct:.1f}/{sp_adjudicated_draw_pct:.1f}%)"
-                f" |Δ|={sp_adjudicated_balance_abs_mean:.2f} margin={sp_adjudicate_margin:.1f} minPlies={sp_adjudicate_min_plies}"
-                f" biasW/B={sp_white_start_pct:.1f}/{sp_black_start_pct:.1f}%"
-                f" tgtB={sp_color_target_pct:.1f}% colorBiasW/B={sp_color_bias_white_pct:.1f}/{sp_color_bias_black_pct:.1f}%"
+            trn_line = (
+                f"           TRN steps={train_steps}/{train_plan} lossP={loss_p:.3f} lossV={loss_v:.3f} lr={lr_now:.2e} grad={grad:.2f} ent={entropy:.2f} entc={ent_coef:.2e} "
+                f"sps={samples_per_sec:.0f} b/s={batches_per_sec:.1f} buf={buffer_pct:.0f}% recent={train_recent_pct:.0f}% mix={samples_ratio:.1f} skips={grad_skips} "
+                f"res={resign_status_str} thr={resign_threshold:.2f}@{resign_min_plies} reset={replay_reset_flag}"
             )
-            self.log.info(
-                f"    resign  : status={resign_status_str} thr={resign_threshold:.3f}"
-                f" minPlies={resign_min_plies} cooldown={resign_cooldown} reset={replay_reset_flag}"
-            )
-            self.log.info(
-                f"    train    : steps={train_steps}/{train_plan} lossP={loss_p:.4f} lossV={loss_v:.4f}"
-                f" lr={lr_now:.2e} grad={grad:.2f} skips={grad_skips} ent={entropy:.2f} entc={ent_coef:.2e}"
-                f" mix={samples_ratio:.1f} recent={train_recent_pct:.0f}% sched={lr_sched_drift_pct:+.1f}%"
-                f" b/s={batches_per_sec:.1f} sps={samples_per_sec:.0f}"
-                f" buf={buffer_pct:.0f}% batch={self.train_batch_size} t={train_time:.1f}s"
-            )
-            if do_eval:
+            if arena_result.ran:
+                arena_n = max(1, games_played)
+                arena_draw_pct_val = 100.0 * arena_d / arena_n if arena_n else 0.0
+                arena_decisive_pct_val = 100.0 * (arena_w + arena_l) / arena_n if arena_n else 0.0
                 arena_line = (
-                    f"    arena    : {arena_decision.upper()} score={score_pct:.1f}%"
-                    f" W/D/L={arena_w}/{arena_d}/{arena_l}"
-                    f" termN/T/F/E/R/A={arena_termN:.0f}/{arena_termT:.0f}/{arena_termF:.0f}/{arena_termE:.0f}/{arena_termR:.0f}/{arena_termA:.0f}"
-                    f" time={arena_elapsed:.1f}s"
+                    f"           ARENA {arena_decision.upper():<7} score={score_pct:.1f}% W/D/L={arena_w}/{arena_d}/{arena_l} "
+                    f"draw={arena_draw_pct_val:.1f}% dec={arena_decisive_pct_val:.1f}% nat={arena_termN:.0f} adj={arena_termA:.0f} "
+                    f"time={arena_elapsed:.1f}s"
                 )
                 if arena_notes_str:
                     arena_line += f" note={arena_notes_str}"
-                self.log.info(arena_line)
             else:
-                self.log.info(f"    arena    : skipped (next in {next_ar})")
-            self.log.info(
-                f"    system   : gpu={peak_alloc:.1f}G/{peak_res:.1f}G rss={mem_info_summary.get('rss_gb', 0.0):.1f}G"
-                f" ram={sys_info.get('ram_used_gb', 0.0):.1f}/{sys_info.get('ram_total_gb', 0.0):.1f}G"
-                f" ({sys_info.get('ram_pct', 0.0):.0f}%) eval_hit={eval_hit:.1f}% avg_batch={eval_avg_batch:.1f}/{self._eval_batch_cap}"
+                arena_line = f"           ARENA skipped (next in {next_ar})"
+            sys_line = (
+                f"           SYS  gpu={peak_alloc:.1f}/{peak_res:.1f}G ram={ram_used:.1f}/{ram_total:.1f}G ({ram_pct:.0f}%) "
+                f"eval={eval_hit:.1f}% batch={eval_avg_batch:.1f}/{self._eval_batch_cap} sched={lr_sched_drift_pct:+.1f}%"
             )
+
+            self.log.info(sp_summary)
+            self.log.info(sp_loop_line)
+            self.log.info(trn_line)
+            self.log.info(arena_line)
+            self.log.info(sys_line)
             self.log.info("")
 
             self._prev_eval_m = self.evaluator.get_metrics()
@@ -717,6 +766,20 @@ class Trainer:
                         "sp_terminal_eval_abs_mean",
                         "sp_tempo_bonus_avg",
                         "sp_sims_avg",
+                        "sp_unique_positions_avg",
+                        "sp_unique_ratio_pct",
+                        "sp_halfmove_avg",
+                        "sp_halfmove_max",
+                        "sp_threefold_pct",
+                        "sp_threefold_games",
+                        "sp_threefold_draws",
+                        "sp_loop_games",
+                        "sp_loop_alerts",
+                        "sp_loop_pct",
+                        "sp_loop_flag_games",
+                        "sp_loop_flag_pct",
+                        "sp_loop_unique_ratio_pct",
+                        "sp_loop_bias_avg",
                         "sp_value_trend_hit_pct",
                         "sp_loss_eval_mean",
                         "sp_loss_eval_p05",
@@ -734,12 +797,14 @@ class Trainer:
                         "sp_term_threefold",
                         "sp_term_fifty",
                         "sp_term_adjudicated",
+                        "sp_term_loop",
                         "sp_term_natural_pct",
                         "sp_term_exhausted_pct",
                         "sp_term_resign_pct",
                         "sp_term_threefold_pct",
                         "sp_term_fifty_pct",
                         "sp_term_adjudicated_pct",
+                        "sp_term_loop_pct",
                         "sp_adjudicated_games",
                         "sp_adjudicated_white",
                         "sp_adjudicated_black",
@@ -878,14 +943,28 @@ class Trainer:
                         "sp_black_starts": int(iter_stats.get("sp_black_starts", 0)),
                         "sp_white_start_pct": float(iter_stats.get("sp_white_start_pct", 0.0)),
                         "sp_black_start_pct": float(iter_stats.get("sp_black_start_pct", 0.0)),
-                        "sp_color_bias_black_pct": sp_color_bias_black_pct,
-                        "sp_color_bias_target_pct": sp_color_target_pct,
+                        "sp_color_bias_black_pct": float(iter_stats.get("sp_color_bias_black_pct", 0.0)),
+                        "sp_color_bias_target_pct": float(iter_stats.get("sp_color_bias_target_pct", 0.0)),
                         "sp_terminal_eval_mean": float(iter_stats.get("sp_terminal_eval_mean", 0.0)),
                         "sp_terminal_eval_abs_mean": float(
                             iter_stats.get("sp_terminal_eval_abs_mean", 0.0)
                         ),
                         "sp_tempo_bonus_avg": float(iter_stats.get("sp_tempo_bonus_avg", 0.0)),
                         "sp_sims_avg": float(iter_stats.get("sp_sims_avg", 0.0)),
+                        "sp_unique_positions_avg": float(iter_stats.get("sp_unique_positions_avg", 0.0)),
+                        "sp_unique_ratio_pct": float(iter_stats.get("sp_unique_ratio_pct", 0.0)),
+                        "sp_halfmove_avg": float(iter_stats.get("sp_halfmove_avg", 0.0)),
+                        "sp_halfmove_max": int(iter_stats.get("sp_halfmove_max", 0)),
+                        "sp_threefold_pct": float(iter_stats.get("sp_threefold_pct", 0.0)),
+                        "sp_threefold_games": int(iter_stats.get("sp_threefold_games", 0)),
+                        "sp_threefold_draws": int(iter_stats.get("sp_threefold_draws", 0)),
+                        "sp_loop_games": int(iter_stats.get("sp_loop_games", 0)),
+                        "sp_loop_alerts": int(iter_stats.get("sp_loop_alerts", 0)),
+                        "sp_loop_pct": float(iter_stats.get("sp_loop_pct", 0.0)),
+                        "sp_loop_flag_games": int(iter_stats.get("sp_loop_flag_games", 0)),
+                        "sp_loop_flag_pct": float(iter_stats.get("sp_loop_flag_pct", 0.0)),
+                        "sp_loop_unique_ratio_pct": float(iter_stats.get("sp_loop_unique_ratio_pct", 0.0)),
+                        "sp_loop_bias_avg": float(iter_stats.get("sp_loop_bias_avg", 0.0)),
                         "sp_value_trend_hit_pct": float(
                             iter_stats.get("sp_value_trend_hit_pct", 0.0)
                         ),
@@ -905,12 +984,14 @@ class Trainer:
                         "sp_term_threefold": int(iter_stats.get("sp_term_threefold", 0)),
                         "sp_term_fifty": int(iter_stats.get("sp_term_fifty", 0)),
                         "sp_term_adjudicated": int(iter_stats.get("sp_term_adjudicated", 0)),
+                        "sp_term_loop": int(iter_stats.get("sp_term_loop", 0)),
                         "sp_term_natural_pct": float(iter_stats.get("sp_term_natural_pct", 0.0)),
                         "sp_term_exhausted_pct": float(iter_stats.get("sp_term_exhausted_pct", 0.0)),
                         "sp_term_resign_pct": float(iter_stats.get("sp_term_resign_pct", 0.0)),
                         "sp_term_threefold_pct": float(iter_stats.get("sp_term_threefold_pct", 0.0)),
                         "sp_term_fifty_pct": float(iter_stats.get("sp_term_fifty_pct", 0.0)),
                         "sp_term_adjudicated_pct": float(iter_stats.get("sp_term_adjudicated_pct", 0.0)),
+                        "sp_term_loop_pct": float(iter_stats.get("sp_term_loop_pct", 0.0)),
                         "sp_adjudicated_games": int(iter_stats.get("sp_adjudicated_games", 0)),
                         "sp_adjudicated_white": int(iter_stats.get("sp_adjudicated_white", 0)),
                         "sp_adjudicated_black": int(iter_stats.get("sp_adjudicated_black", 0)),
@@ -956,7 +1037,7 @@ class Trainer:
                         "eval_batch_cap": int(iter_stats.get("eval_batch_cap", self._eval_batch_cap)),
                         "eval_coalesce_ms": int(iter_stats.get("eval_coalesce_ms", self._eval_coalesce_ms)),
                         "eval_avg_batch": float(iter_stats.get("eval_avg_batch", 0.0)),
-                        "arena_ran": (1 if do_eval else 0),
+                        "arena_ran": (1 if arena_result.ran else 0),
                         "arena_time_s": float(arena_elapsed),
                         "arena_w": int(arena_w),
                         "arena_d": int(arena_d),
@@ -1059,7 +1140,9 @@ if __name__ == "__main__":
         root.removeHandler(handler)
     stdout_handler = logging.StreamHandler(stream=sys.stdout)
     stdout_handler.setLevel(log_level)
-    stdout_handler.setFormatter(logging.Formatter(fmt="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"))
+    stdout_handler.setFormatter(
+        logging.Formatter(fmt="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
+    )
     root.addHandler(stdout_handler)
 
     has_cuda = torch.cuda.is_available()

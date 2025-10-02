@@ -9,9 +9,10 @@ from numbers import Integral
 from typing import Any, cast
 
 import chesscore as _ccore
-import config as C
 import numpy as _np
 import torch
+
+import config as C
 from fen_tools import flip_fen_perspective, sanitize_fen
 from inference import BatchedEvaluator as _BatchedEval
 
@@ -222,6 +223,7 @@ def arena_match(
     *,
     device: torch.device,
     eval_cache_cap: int,
+    batch_size_cap: int | None = None,
 ) -> tuple[float, int, int, int, dict[str, Any]]:
     wins = draws = losses = 0
 
@@ -233,6 +235,9 @@ def arena_match(
         incumbent_eval.refresh_from(incumbent)
         challenger_eval.cache_capacity = eval_cache_cap
         incumbent_eval.cache_capacity = eval_cache_cap
+        if batch_size_cap is not None and batch_size_cap > 0:
+            challenger_eval.set_batching_params(batch_size_max=int(batch_size_cap))
+            incumbent_eval.set_batching_params(batch_size_max=int(batch_size_cap))
 
         reason_counter: Counter[str] = Counter()
 
@@ -381,17 +386,29 @@ def arena_match(
                         trend_sign = 0
                         trend_count = 0
 
+                white_batch_cap = int(
+                    max(
+                        1,
+                        getattr(evaluator_white, "batch_size_cap", C.EVAL.BATCH_SIZE_MAX),
+                    )
+                )
+                black_batch_cap = int(
+                    max(
+                        1,
+                        getattr(evaluator_black, "batch_size_cap", C.EVAL.BATCH_SIZE_MAX),
+                    )
+                )
                 visits = (
                     mcts_white.search_batched_legal(
                         position,
                         evaluator_white.infer_positions_legal,
-                        C.EVAL.BATCH_SIZE_MAX,
+                        white_batch_cap,
                     )
                     if ply % 2 == 0
                     else mcts_black.search_batched_legal(
                         position,
                         evaluator_black.infer_positions_legal,
-                        C.EVAL.BATCH_SIZE_MAX,
+                        black_batch_cap,
                     )
                 )
                 if visits is None:

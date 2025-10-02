@@ -4,10 +4,11 @@ import os
 import time
 from typing import Any
 
-import config as C
 import numpy as np
 import torch
 from torch.amp import GradScaler
+
+import config as C
 
 
 def save_checkpoint(trainer: Any) -> None:

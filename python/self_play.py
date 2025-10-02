@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-import contextlib
+import logging
 import math
 import threading
 from collections import deque
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from numbers import Integral
 from typing import Any, cast
 
 import chesscore as ccore
-import config as C
 import numpy as np
+
+import config as C
 from fen_tools import flip_fen_perspective, sanitize_fen
 
 BOARD_SIZE = 8
@@ -94,8 +96,163 @@ _DEFAULT_START_FEN_WHITE = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -
 _DEFAULT_START_FEN_BLACK = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1"
 
 
+@dataclass(slots=True)
+class _SelfPlayAggregate:
+    games: int = 0
+    moves: int = 0
+    white_wins: int = 0
+    black_wins: int = 0
+    draws: int = 0
+    draws_true: int = 0
+    draws_cap: int = 0
+    starts_white: int = 0
+    starts_black: int = 0
+    unique_positions_total: int = 0
+    unique_ratio_total: float = 0.0
+    halfmove_sum: float = 0.0
+    halfmove_max_total: int = 0
+    threefold_games: int = 0
+    threefold_draws: int = 0
+    term_natural: int = 0
+    term_resign: int = 0
+    term_exhausted: int = 0
+    term_threefold: int = 0
+    term_fifty: int = 0
+    term_adjudicated: int = 0
+    term_loop: int = 0
+    adjudicated_games: int = 0
+    adjudicated_white: int = 0
+    adjudicated_black: int = 0
+    adjudicated_draw: int = 0
+    adjudicated_balance_total: float = 0.0
+    adjudicated_balance_abs_total: float = 0.0
+    curriculum_games: int = 0
+    curriculum_white_wins: int = 0
+    curriculum_black_wins: int = 0
+    curriculum_draws: int = 0
+    terminal_eval_sum: float = 0.0
+    terminal_eval_abs_sum: float = 0.0
+    value_trend_hits: int = 0
+    tempo_bonus_sum: float = 0.0
+    sims_last_sum: int = 0
+    loop_alert_games: int = 0
+    loop_alerts_total: int = 0
+    loop_flag_games: int = 0
+    loop_unique_ratio_total: float = 0.0
+    loop_bias_total: float = 0.0
+    loss_eval_samples: list[float] = field(default_factory=list)
+
+    def add_loss_sample(self, value: float, limit: int = 1024) -> None:
+        self.loss_eval_samples.append(value)
+        excess = len(self.loss_eval_samples) - limit
+        if excess > 0:
+            del self.loss_eval_samples[:excess]
+
+    def finalize(
+        self,
+        *,
+        color_bias_prob_black: float,
+        adjudicate_margin: float,
+        adjudicate_min_plies: int,
+    ) -> dict[str, Any]:
+        games_total = max(1, self.games)
+        data: dict[str, Any] = {
+            "games": self.games,
+            "moves": self.moves,
+            "white_wins": self.white_wins,
+            "black_wins": self.black_wins,
+            "draws": self.draws,
+            "draws_true": self.draws_true,
+            "draws_cap": self.draws_cap,
+            "starts_white": self.starts_white,
+            "starts_black": self.starts_black,
+            "threefold_games": self.threefold_games,
+            "threefold_draws": self.threefold_draws,
+            "term_natural": self.term_natural,
+            "term_resign": self.term_resign,
+            "term_exhausted": self.term_exhausted,
+            "term_threefold": self.term_threefold,
+            "term_fifty": self.term_fifty,
+            "term_adjudicated": self.term_adjudicated,
+            "term_loop": self.term_loop,
+            "adjudicated_games": self.adjudicated_games,
+            "adjudicated_white": self.adjudicated_white,
+            "adjudicated_black": self.adjudicated_black,
+            "adjudicated_draw": self.adjudicated_draw,
+            "adjudicated_balance_total": self.adjudicated_balance_total,
+            "adjudicated_balance_abs_total": self.adjudicated_balance_abs_total,
+            "curriculum_games": self.curriculum_games,
+            "curriculum_white_wins": self.curriculum_white_wins,
+            "curriculum_black_wins": self.curriculum_black_wins,
+            "curriculum_draws": self.curriculum_draws,
+            "value_trend_hits": self.value_trend_hits,
+            "loop_alert_games": self.loop_alert_games,
+            "loop_alerts_total": self.loop_alerts_total,
+            "loop_flag_games": self.loop_flag_games,
+            "loop_unique_ratio_total": self.loop_unique_ratio_total,
+            "loop_bias_total": self.loop_bias_total,
+            "color_bias_prob_black": float(color_bias_prob_black),
+            "adjudicate_margin": float(adjudicate_margin),
+            "adjudicate_min_plies": int(adjudicate_min_plies),
+            "_loss_eval_samples": list(self.loss_eval_samples),
+        }
+
+        data["unique_positions_total"] = self.unique_positions_total
+        data["unique_positions_avg"] = self.unique_positions_total / games_total
+        data["unique_ratio_total"] = self.unique_ratio_total
+        data["unique_ratio_avg"] = self.unique_ratio_total / games_total
+        data["halfmove_sum"] = self.halfmove_sum
+        data["halfmove_avg"] = self.halfmove_sum / games_total
+        data["halfmove_max_total"] = self.halfmove_max_total
+        data["halfmove_max"] = int(self.halfmove_max_total)
+        data["threefold_pct"] = 100.0 * self.threefold_games / games_total
+        data["curriculum_win_pct"] = (
+            100.0
+            * (self.curriculum_white_wins + self.curriculum_black_wins)
+            / max(1, self.curriculum_games)
+            if self.curriculum_games
+            else 0.0
+        )
+        data["curriculum_draw_pct"] = (
+            100.0 * self.curriculum_draws / max(1, self.curriculum_games)
+            if self.curriculum_games
+            else 0.0
+        )
+        data["terminal_eval_sum"] = self.terminal_eval_sum
+        data["terminal_eval_abs_sum"] = self.terminal_eval_abs_sum
+        data["terminal_eval_mean"] = self.terminal_eval_sum / games_total
+        data["terminal_eval_abs_mean"] = self.terminal_eval_abs_sum / games_total
+        data["tempo_bonus_sum"] = self.tempo_bonus_sum
+        data["tempo_bonus_avg"] = self.tempo_bonus_sum / games_total
+        data["sims_last_sum"] = self.sims_last_sum
+        data["sims_avg"] = self.sims_last_sum / games_total
+        data["value_trend_hit_pct"] = 100.0 * self.value_trend_hits / games_total
+
+        loop_flag_games = self.loop_flag_games
+        denom = max(1, loop_flag_games)
+        data["loop_flag_pct"] = 100.0 * loop_flag_games / games_total
+        data["loop_unique_ratio_avg"] = (
+            self.loop_unique_ratio_total / denom if loop_flag_games else 0.0
+        )
+        data["loop_unique_ratio_pct"] = data["loop_unique_ratio_avg"] * 100.0
+        data["loop_bias_avg"] = self.loop_bias_total / denom if loop_flag_games else 0.0
+
+        if self.loss_eval_samples:
+            arr = np.asarray(self.loss_eval_samples, dtype=np.float32)
+            data["loss_eval_mean"] = float(arr.mean())
+            data["loss_eval_p05"] = float(np.percentile(arr, 5))
+            data["loss_eval_p25"] = float(np.percentile(arr, 25))
+        else:
+            data["loss_eval_mean"] = 0.0
+            data["loss_eval_p05"] = 0.0
+            data["loss_eval_p25"] = 0.0
+
+        return data
+
+
 class SelfPlayEngine:
     def __init__(self, evaluator: Any) -> None:
+        self.log = logging.getLogger("hybridchess.selfplay")
         self.resign_consecutive = C.RESIGN.CONSECUTIVE_PLIES
         self.evaluator = evaluator
         total_planes = PLANES_PER_POSITION * HISTORY_LENGTH + 7
@@ -493,8 +650,15 @@ class SelfPlayEngine:
             moves = position.legal_moves()
             if not moves:
                 break
+            eval_batch_cap = getattr(self.evaluator, "batch_size_cap", C.EVAL.BATCH_SIZE_MAX)
+            try:
+                batch_cap = int(max(1, eval_batch_cap))
+            except (TypeError, ValueError):
+                batch_cap = int(C.EVAL.BATCH_SIZE_MAX)
             visit_counts_raw = mcts.search_batched_legal(
-                position, self.evaluator.infer_positions_legal, C.EVAL.BATCH_SIZE_MAX
+                position,
+                self.evaluator.infer_positions_legal,
+                batch_cap,
             )
             if not visit_counts_raw or len(visit_counts_raw) != len(moves):
                 break
@@ -521,7 +685,6 @@ class SelfPlayEngine:
 
             idx_list: list[int] = []
             cnt_list: list[int] = []
-            move_strings: list[str] = []
             for mv, vc in zip(moves, visit_counts, strict=False):
                 move_index = ccore.encode_move_index(mv)
                 if (move_index is not None) and (0 <= int(move_index) < POLICY_OUTPUT):
@@ -529,8 +692,6 @@ class SelfPlayEngine:
                     if c > 0:
                         idx_list.append(int(move_index))
                         cnt_list.append(int(c))
-                with contextlib.suppress(Exception):
-                    move_strings.append(str(mv))
             idx_arr = np.asarray(idx_list, dtype=np.int32)
             cnt_arr = np.asarray(cnt_list, dtype=np.uint16)
             key = SelfPlayEngine._position_hash_key(pos_snapshot)
@@ -603,9 +764,7 @@ class SelfPlayEngine:
                         termination_reason = "resign"
                         break
 
-            halfmove_clock = 0
-            with contextlib.suppress(Exception):
-                halfmove_clock = int(getattr(pos_snapshot, "halfmove", 0))
+            halfmove_clock = int(getattr(pos_snapshot, "halfmove", 0) or 0)
             halfmove_sum += float(halfmove_clock)
             halfmove_max = max(halfmove_max, halfmove_clock)
 
@@ -631,8 +790,10 @@ class SelfPlayEngine:
             if next_key is not None:
                 seen_hashes[next_key] = seen_hashes.get(next_key, 0) + 1
 
-            with contextlib.suppress(Exception):
+            try:
                 mcts.advance_root(position, move)
+            except Exception as exc:
+                self.log.debug("MCTS advance_root failed: %s", exc, exc_info=True)
             move_count += 1
 
             if threefold_detected:
@@ -720,7 +881,7 @@ class SelfPlayEngine:
         unique_ratio = len(seen_hashes) / float(move_count + 1) if move_count > 0 else 1.0
         loop_flag = False
         loop_bias = 0.0
-        if loop_alert_count >= 3:
+        if loop_alert_count >= 2:
             loop_flag = True
         if (
             not loop_flag
@@ -799,8 +960,7 @@ class SelfPlayEngine:
                 BOARD_SIZE,
                 BOARD_SIZE,
             )
-        with contextlib.suppress(Exception):
-            self._enc_cache.clear()
+        self._enc_cache.clear()
 
     def set_capacity(self, capacity: int) -> None:
         cap = int(max(1, capacity))
@@ -813,7 +973,7 @@ class SelfPlayEngine:
 
     def _record_game(
         self,
-        stats: dict[str, Any],
+        aggregate: _SelfPlayAggregate,
         game_data: tuple[int, int, list[tuple[np.ndarray, np.ndarray, np.ndarray]], bool, dict[str, int]],
     ) -> None:
         move_count, result, examples, first_to_move_is_white, meta = game_data
@@ -822,8 +982,12 @@ class SelfPlayEngine:
         term_reason = str(meta.get("termination", "natural"))
         loop_alerts = int(meta.get("loop_alerts", 0))
         if loop_alerts:
-            stats["loop_alert_games"] += 1
-            stats["loop_alerts_total"] += loop_alerts
+            aggregate.loop_alert_games += 1
+            aggregate.loop_alerts_total += loop_alerts
+        if int(meta.get("loop", 0)):
+            aggregate.loop_flag_games += 1
+            aggregate.loop_unique_ratio_total += float(meta.get("loop_unique_ratio", 0.0))
+            aggregate.loop_bias_total += float(meta.get("loop_bias", 0.0))
         self._process_result(
             examples,
             result,
@@ -831,82 +995,77 @@ class SelfPlayEngine:
             value_shift,
             termination=term_reason,
         )
-        stats["games"] += 1
-        stats["moves"] += move_count
+        aggregate.games += 1
+        aggregate.moves += move_count
         if bool(first_to_move_is_white):
-            stats["starts_white"] += 1
+            aggregate.starts_white += 1
         else:
-            stats["starts_black"] += 1
-        stats["unique_positions_total"] += int(meta.get("unique_positions", 0))
-        stats["unique_ratio_total"] += float(meta.get("unique_ratio", 0.0))
-        stats["halfmove_sum"] += float(meta.get("halfmove_avg", 0.0))
-        stats["halfmove_max_total"] = max(
-            stats["halfmove_max_total"], int(meta.get("halfmove_max", 0))
+            aggregate.starts_black += 1
+        aggregate.unique_positions_total += int(meta.get("unique_positions", 0))
+        aggregate.unique_ratio_total += float(meta.get("unique_ratio", 0.0))
+        aggregate.halfmove_sum += float(meta.get("halfmove_avg", 0.0))
+        aggregate.halfmove_max_total = max(
+            aggregate.halfmove_max_total, int(meta.get("halfmove_max", 0))
         )
         if int(meta.get("threefold", 0)):
-            stats["threefold_games"] += 1
+            aggregate.threefold_games += 1
         term_reason = str(meta.get("termination", "natural"))
         if term_reason == "resign":
-            stats["term_resign"] += 1
+            aggregate.term_resign += 1
         elif term_reason == "exhausted":
-            stats["term_exhausted"] += 1
+            aggregate.term_exhausted += 1
         elif term_reason == "threefold":
-            stats["term_threefold"] += 1
-            stats["threefold_draws"] += 1
+            aggregate.term_threefold += 1
+            aggregate.threefold_draws += 1
         elif term_reason == "fifty_move":
-            stats["term_fifty"] += 1
+            aggregate.term_fifty += 1
         elif term_reason == "loop":
-            stats["term_loop"] += 1
+            aggregate.term_loop += 1
         elif term_reason == "adjudicated":
-            stats["term_adjudicated"] += 1
+            aggregate.term_adjudicated += 1
         else:
-            stats["term_natural"] += 1
+            aggregate.term_natural += 1
         if int(meta.get("adjudicated", 0)):
-            stats["adjudicated_games"] += 1
+            aggregate.adjudicated_games += 1
             balance = float(meta.get("adjudicated_balance", 0.0))
-            stats["adjudicated_balance_total"] += balance
-            stats["adjudicated_balance_abs_total"] += abs(balance)
+            aggregate.adjudicated_balance_total += balance
+            aggregate.adjudicated_balance_abs_total += abs(balance)
             if result == ccore.WHITE_WIN:
-                stats["adjudicated_white"] += 1
+                aggregate.adjudicated_white += 1
             elif result == ccore.BLACK_WIN:
-                stats["adjudicated_black"] += 1
+                aggregate.adjudicated_black += 1
             else:
-                stats["adjudicated_draw"] += 1
+                aggregate.adjudicated_draw += 1
         if result == ccore.WHITE_WIN:
-            stats["white_wins"] += 1
+            aggregate.white_wins += 1
         elif result == ccore.BLACK_WIN:
-            stats["black_wins"] += 1
+            aggregate.black_wins += 1
         else:
             if result == ccore.DRAW:
                 if term_reason in {"exhausted", "fifty_move", "threefold"}:
-                    stats["draws_cap"] += 1
+                    aggregate.draws_cap += 1
                 else:
-                    stats["draws_true"] += 1
+                    aggregate.draws_true += 1
             else:
-                stats["draws_cap"] += 1
-            stats["draws"] += 1
+                aggregate.draws_cap += 1
+            aggregate.draws += 1
         if int(meta.get("curriculum_seed", 0)):
-            stats["curriculum_games"] += 1
+            aggregate.curriculum_games += 1
             if result == ccore.WHITE_WIN:
-                stats["curriculum_white_wins"] += 1
+                aggregate.curriculum_white_wins += 1
             elif result == ccore.BLACK_WIN:
-                stats["curriculum_black_wins"] += 1
+                aggregate.curriculum_black_wins += 1
             else:
-                stats["curriculum_draws"] += 1
+                aggregate.curriculum_draws += 1
         terminal_eval_meta = float(meta.get("terminal_eval", 0.0))
-        stats["terminal_eval_sum"] += terminal_eval_meta
-        stats["terminal_eval_abs_sum"] += abs(terminal_eval_meta)
-        stats["tempo_bonus_sum"] += float(meta.get("tempo_bonus", 0.0))
-        stats["sims_last_sum"] += int(meta.get("sims_last", 0))
+        aggregate.terminal_eval_sum += terminal_eval_meta
+        aggregate.terminal_eval_abs_sum += abs(terminal_eval_meta)
+        aggregate.tempo_bonus_sum += float(meta.get("tempo_bonus", 0.0))
+        aggregate.sims_last_sum += int(meta.get("sims_last", 0))
         if int(meta.get("value_trend_len", 0)) >= self.adjudicate_value_persist:
-            stats["value_trend_hits"] += 1
+            aggregate.value_trend_hits += 1
         if result in {ccore.WHITE_WIN, ccore.BLACK_WIN}:
-            losses = stats.get("_loss_eval_samples")
-            if isinstance(losses, list):
-                losses.append(float(np.clip(terminal_eval_meta, -1.0, 1.0)))
-                max_keep = 1024
-                if len(losses) > max_keep:
-                    del losses[: len(losses) - max_keep]
+            aggregate.add_loss_sample(float(np.clip(terminal_eval_meta, -1.0, 1.0)))
 
     def sample_batch(
         self,
@@ -926,48 +1085,7 @@ class SelfPlayEngine:
         return states, indices_sparse, counts_sparse, values
 
     def play_games(self, num_games: int) -> dict[str, Any]:
-        stats: dict[str, Any] = {
-            "games": 0,
-            "moves": 0,
-            "white_wins": 0,
-            "black_wins": 0,
-            "draws": 0,
-            "draws_true": 0,
-            "draws_cap": 0,
-            "starts_white": 0,
-            "starts_black": 0,
-            "threefold_draws": 0,
-            "unique_positions_total": 0,
-            "unique_ratio_total": 0.0,
-            "halfmove_sum": 0.0,
-            "halfmove_max_total": 0,
-            "threefold_games": 0,
-            "term_natural": 0,
-            "term_resign": 0,
-            "term_exhausted": 0,
-            "term_threefold": 0,
-            "term_fifty": 0,
-            "term_adjudicated": 0,
-            "term_loop": 0,
-            "adjudicated_games": 0,
-            "adjudicated_white": 0,
-            "adjudicated_black": 0,
-            "adjudicated_draw": 0,
-            "adjudicated_balance_total": 0.0,
-            "adjudicated_balance_abs_total": 0.0,
-            "curriculum_games": 0,
-            "curriculum_white_wins": 0,
-            "curriculum_black_wins": 0,
-            "curriculum_draws": 0,
-            "terminal_eval_sum": 0.0,
-            "terminal_eval_abs_sum": 0.0,
-            "value_trend_hits": 0,
-            "tempo_bonus_sum": 0.0,
-            "sims_last_sum": 0,
-            "loop_alert_games": 0,
-            "loop_alerts_total": 0,
-            "_loss_eval_samples": [],
-        }
+        aggregate = _SelfPlayAggregate()
         seeds = [int(np.random.randint(0, 2**63 - 1)) for _ in range(num_games)]
         deterministic = int(C.SEED) != 0
         pending: dict[int, tuple[int, int, list[tuple[np.ndarray, np.ndarray, np.ndarray]], bool, dict[str, int]]] = {}
@@ -975,54 +1093,36 @@ class SelfPlayEngine:
             futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
             for fut in as_completed(futures):
                 idx = futures[fut]
-                game_data = fut.result()
+                try:
+                    game_data = fut.result()
+                except Exception as exc:
+                    self.log.exception("Self-play worker %d failed", idx, exc_info=exc)
+                    continue
                 if deterministic:
                     pending[idx] = game_data
                 else:
-                    self._record_game(stats, game_data)
+                    self._record_game(aggregate, game_data)
         if deterministic:
             for idx in range(num_games):
                 if idx in pending:
-                    self._record_game(stats, pending[idx])
-        stats["color_bias_prob_black"] = float(self._color_bias)
-        stats["adjudicate_margin"] = float(self.adjudicate_margin) if self.adjudicate_enabled else 0.0
-        stats["adjudicate_min_plies"] = int(self.adjudicate_min_plies if self.adjudicate_enabled else 0)
-        games_total = max(1, stats["games"])
-        stats["unique_positions_avg"] = stats["unique_positions_total"] / games_total
-        stats["unique_ratio_avg"] = stats["unique_ratio_total"] / games_total
-        stats["halfmove_avg"] = stats["halfmove_sum"] / games_total
-        stats["halfmove_max"] = int(stats["halfmove_max_total"])
-        stats["threefold_pct"] = 100.0 * stats["threefold_games"] / games_total
-        curr_games = max(0, int(stats.get("curriculum_games", 0)))
-        if curr_games > 0:
-            cw = int(stats.get("curriculum_white_wins", 0))
-            cb = int(stats.get("curriculum_black_wins", 0))
-            cd = int(stats.get("curriculum_draws", 0))
-            stats["curriculum_win_pct"] = 100.0 * (cw + cb) / curr_games
-            stats["curriculum_draw_pct"] = 100.0 * cd / curr_games
-        else:
-            stats["curriculum_win_pct"] = 0.0
-            stats["curriculum_draw_pct"] = 0.0
-        stats["terminal_eval_mean"] = stats["terminal_eval_sum"] / games_total
-        stats["terminal_eval_abs_mean"] = stats["terminal_eval_abs_sum"] / games_total
-        stats["tempo_bonus_avg"] = stats["tempo_bonus_sum"] / games_total
-        stats["sims_avg"] = stats["sims_last_sum"] / games_total
-        stats["value_trend_hit_pct"] = 100.0 * stats["value_trend_hits"] / games_total
-        losses_list = stats.get("_loss_eval_samples")
-        if losses_list:
-            arr = np.asarray(losses_list, dtype=np.float32)
-            stats["loss_eval_mean"] = float(arr.mean())
-            stats["loss_eval_p05"] = float(np.percentile(arr, 5))
-            stats["loss_eval_p25"] = float(np.percentile(arr, 25))
-        else:
-            stats["loss_eval_mean"] = 0.0
-            stats["loss_eval_p05"] = 0.0
-            stats["loss_eval_p25"] = 0.0
+                    self._record_game(aggregate, pending[idx])
+
+        adjudicate_margin = float(self.adjudicate_margin) if self.adjudicate_enabled else 0.0
+        adjudicate_min_plies = int(self.adjudicate_min_plies if self.adjudicate_enabled else 0)
+        stats = aggregate.finalize(
+            color_bias_prob_black=self._color_bias,
+            adjudicate_margin=adjudicate_margin,
+            adjudicate_min_plies=adjudicate_min_plies,
+        )
         for tmp_key in (
             "unique_positions_total",
             "unique_ratio_total",
             "halfmove_sum",
             "halfmove_max_total",
+            "tempo_bonus_sum",
+            "sims_last_sum",
+            "loop_unique_ratio_total",
+            "loop_bias_total",
         ):
             stats.pop(tmp_key, None)
         return stats

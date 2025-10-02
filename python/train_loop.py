@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import contextlib
 import math
 import time
 from collections.abc import Sequence
 from typing import Any
 
-import config as C
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+import config as C
 from reporting import get_mem_info
 
 
@@ -117,8 +117,10 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
 
 
     t0 = time.time()
-    with contextlib.suppress(Exception):
+    try:
         trainer.selfplay_engine.update_adjudication(trainer.iteration)
+    except Exception as exc:
+        trainer.log.debug("Self-play adjudication tick failed: %s", exc, exc_info=True)
     game_stats = trainer.selfplay_engine.play_games(C.TRAIN.GAMES_PER_ITER)
     trainer.total_games += int(game_stats["games"])
     sp_elapsed = time.time() - t0
@@ -216,8 +218,10 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     else:
         adjust = float(np.clip(imbalance * 1.5, -0.3, 0.3))
         target_prob_black = float(np.clip(0.5 + adjust, 0.2, 0.8))
-    with contextlib.suppress(Exception):
+    try:
         trainer.selfplay_engine.set_color_bias(target_prob_black)
+    except Exception as exc:
+        trainer.log.debug("Failed to adjust color bias to %.3f: %s", target_prob_black, exc, exc_info=True)
     bias_actual = float(game_stats.get("color_bias_prob_black", trainer.selfplay_engine.get_color_bias()))
 
     eval_metrics = trainer.evaluator.get_metrics()
@@ -301,9 +305,17 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     stats["sp_threefold_draws"] = threefold_draws
     loop_games = int(game_stats.get("loop_alert_games", 0))
     loop_alerts = int(game_stats.get("loop_alerts_total", 0))
+    loop_flag_games = int(game_stats.get("loop_flag_games", 0))
+    loop_flag_pct = float(game_stats.get("loop_flag_pct", 0.0))
+    loop_unique_ratio_pct = float(game_stats.get("loop_unique_ratio_pct", 0.0))
+    loop_bias_avg = float(game_stats.get("loop_bias_avg", 0.0))
     stats["sp_loop_games"] = loop_games
     stats["sp_loop_alerts"] = loop_alerts
     stats["sp_loop_pct"] = 100.0 * loop_games / max(1, games_count)
+    stats["sp_loop_flag_games"] = loop_flag_games
+    stats["sp_loop_flag_pct"] = loop_flag_pct
+    stats["sp_loop_unique_ratio_pct"] = loop_unique_ratio_pct
+    stats["sp_loop_bias_avg"] = loop_bias_avg
     stats["sp_curriculum_games"] = curriculum_games
     stats["sp_curriculum_pct"] = 100.0 * curriculum_games / max(1, games_count)
     stats["sp_curriculum_win_pct"] = curriculum_win_pct
@@ -363,14 +375,18 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
                     trainer._resign_cooldown = guard_cd
                     resign_status = "disabled:guard"
                     trainer.selfplay_engine.resign_consecutive = 0
-                    with contextlib.suppress(Exception):
+                    try:
                         trainer.selfplay_engine.clear_buffer()
                         buffer_reset = 1
-                    with contextlib.suppress(Exception):
+                    except Exception as exc:
+                        trainer.log.debug("Replay buffer clear failed during resign guard: %s", exc, exc_info=True)
+                    try:
                         trainer._recent_len_window.clear()
                         trainer._recent_sample_ratio = float(
                             getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_RATIO", 0.8)
                         )
+                    except Exception as exc:
+                        trainer.log.debug("Unable to reset recent length window during resign guard: %s", exc, exc_info=True)
                     trainer.log.warning(
                         "[Resign  ] guard triggered; avg_len window %.2f < %.2f. Disabling resigns for %d iters",
                         window_avg,
@@ -436,10 +452,14 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
                 )
             trainer._oom_cooldown_iters = max(int(trainer._oom_cooldown_iters), 3)
             if trainer.device.type == "cuda":
-                with contextlib.suppress(Exception):
+                try:
                     torch.cuda.empty_cache()
-                with contextlib.suppress(Exception):
+                except Exception as exc:
+                    trainer.log.debug("torch.cuda.empty_cache failed: %s", exc, exc_info=True)
+                try:
                     torch.cuda.reset_peak_memory_stats(trainer.device)
+                except Exception as exc:
+                    trainer.log.debug("reset_peak_memory_stats failed: %s", exc, exc_info=True)
             break
 
     train_elapsed_s = time.time() - t1
