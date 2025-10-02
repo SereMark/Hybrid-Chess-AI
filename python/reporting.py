@@ -5,9 +5,10 @@ import socket
 from datetime import datetime
 from typing import Any
 
-import config as C
 import psutil
 import torch
+
+import config as C
 
 
 def format_time(seconds: float) -> str:

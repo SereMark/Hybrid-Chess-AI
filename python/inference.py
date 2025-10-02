@@ -8,11 +8,12 @@ from contextlib import suppress
 from typing import Any, cast
 
 import chesscore as ccore
-import config as C
 import numpy as np
 import torch
-from network import BOARD_SIZE, INPUT_PLANES, POLICY_OUTPUT, ChessNet
 from torch import nn
+
+import config as C
+from network import BOARD_SIZE, INPUT_PLANES, POLICY_OUTPUT, ChessNet
 
 
 class BatchedEvaluator:
@@ -342,6 +343,10 @@ class BatchedEvaluator:
         req.ev.wait()
         return cast(tuple[list[np.ndarray], np.ndarray], (req.out_pol, req.out_val))
 
+    @property
+    def batch_size_cap(self) -> int:
+        return int(self._batch_size_cap)
+
     def _coalesce_loop(self) -> None:
         while not self._shutdown.is_set():
             batch: list[_EvalRequest] = []
@@ -410,9 +415,6 @@ class BatchedEvaluator:
             return None
         except Exception:
             return None
-
-    def infer_positions(self, positions: list[Any]) -> tuple[np.ndarray, np.ndarray]:
-        raise NotImplementedError("infer_positions dense path is removed; use infer_positions_legal")
 
     def get_metrics(self) -> dict[str, float]:
         with self._metrics_lock:

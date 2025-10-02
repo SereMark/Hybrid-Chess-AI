@@ -1,22 +1,22 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/pyright/main/packages/pyright/schema/pyrightconfig.schema.json",
-  "include": ["."],
+  "include": ["python"],
   "exclude": [
     ".venv",
     "build",
     "dist",
+    "logs",
+    "checkpoints",
     "**/__pycache__"
   ],
-  "typeCheckingMode": "basic",
-  "reportMissingImports": "none",
-  "reportMissingModuleSource": "none",
-  "reportMissingTypeStubs": "none",
-  "useLibraryCodeForTypes": true,
+  "extraPaths": ["python"],
+  "typeCheckingMode": "standard",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "warning",
   "pythonVersion": "3.13",
-  
   "executionEnvironments": [
     {
-      "root": ".",
+      "root": "python",
       "pythonVersion": "3.13"
     }
   ]

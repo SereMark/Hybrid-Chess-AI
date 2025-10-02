@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-import config as C
 import torch
+
+import config as C
 
 
 def build_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
