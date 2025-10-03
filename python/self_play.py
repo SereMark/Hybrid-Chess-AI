@@ -341,6 +341,7 @@ class SelfPlayEngine:
             "exhausted": exhaust_dup,
             "adjudicated": adjud_dup,
             "loop": loop_dup,
+            "loop_loss": loop_dup,
         }
 
     def set_num_workers(self, n: int) -> None:
@@ -890,7 +891,20 @@ class SelfPlayEngine:
         ):
             loop_flag = True
         if loop_flag:
-            if SELFPLAY_LOOP_PENALTY > 0.0 and termination_reason in {"exhausted", "adjudicated"}:
+            loop_penalty_applied = False
+            if final_result == ccore.DRAW:
+                loser_is_white = position.turn == ccore.WHITE
+                final_result = ccore.BLACK_WIN if loser_is_white else ccore.WHITE_WIN
+                forced_result = final_result
+                termination_reason = "loop_loss"
+                value_shift = 0.0
+                loop_bias = 0.0
+                loop_penalty_applied = True
+            if (
+                not loop_penalty_applied
+                and SELFPLAY_LOOP_PENALTY > 0.0
+                and termination_reason in {"exhausted", "adjudicated"}
+            ):
                 balance = SelfPlayEngine._material_balance(position)
                 if final_result == ccore.DRAW and abs(balance) > 1e-6:
                     loop_bias = SELFPLAY_LOOP_PENALTY if balance > 0 else -SELFPLAY_LOOP_PENALTY
@@ -901,7 +915,11 @@ class SelfPlayEngine:
                 elif final_result == ccore.BLACK_WIN:
                     loop_bias = -0.5 * SELFPLAY_LOOP_PENALTY
                     value_shift += loop_bias
-            if termination_reason == "exhausted" and final_result == ccore.DRAW:
+            if (
+                not loop_penalty_applied
+                and termination_reason == "exhausted"
+                and final_result == ccore.DRAW
+            ):
                 termination_reason = "loop"
 
         if value_shift != 0.0:
@@ -1019,7 +1037,7 @@ class SelfPlayEngine:
             aggregate.threefold_draws += 1
         elif term_reason == "fifty_move":
             aggregate.term_fifty += 1
-        elif term_reason == "loop":
+        elif term_reason in {"loop", "loop_loss"}:
             aggregate.term_loop += 1
         elif term_reason == "adjudicated":
             aggregate.term_adjudicated += 1

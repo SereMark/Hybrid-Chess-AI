@@ -201,7 +201,7 @@ def _material_balance(pos: _ccore.Position) -> float:
     return balance
 
 
-def _position_hash(pos: _ccore.Position) -> int | None:
+def _position_hash_key(pos: _ccore.Position) -> int | None:
     key_attr = getattr(pos, "hash", None)
     try:
         raw = key_attr() if callable(key_attr) else key_attr
@@ -212,7 +212,10 @@ def _position_hash(pos: _ccore.Position) -> int | None:
     if isinstance(raw, Integral):
         return int(raw)
     if isinstance(raw, str):
-        return int(raw)
+        try:
+            return int(raw)
+        except ValueError:
+            return None
     return None
 
 
@@ -305,7 +308,26 @@ def arena_match(
             trend_count = 0
             forced_result: int | None = None
             forced_reason: str | None = None
-            seen_positions: dict[int, int] = {}
+            repetition_counts: dict[int, int] = {}
+            loop_hash_counts: dict[int, int] = {}
+            unique_hashes: set[int] = set()
+            loop_alert_count = 0
+
+            def _record_position_state(pos: _ccore.Position) -> int:
+                nonlocal loop_alert_count
+                key = _position_hash_key(pos)
+                if key is None:
+                    return 0
+                unique_hashes.add(key)
+                loop_hits = loop_hash_counts.get(key, 0) + 1
+                loop_hash_counts[key] = loop_hits
+                if loop_hits >= 2:
+                    loop_alert_count += 1
+                rep_hits = repetition_counts.get(key, 0) + 1
+                repetition_counts[key] = rep_hits
+                return rep_hits
+
+            _record_position_state(position)
             adjudicate_enabled = bool(getattr(C.ARENA, "ADJUDICATE_ENABLED", False))
             adjudicate_margin = float(
                 getattr(
@@ -325,19 +347,17 @@ def arena_match(
                 )
             )
             while position.result() == _ccore.ONGOING and ply < max_plies:
-                pos_snapshot = _ccore.Position(position)
-                pos_key = _position_hash(position)
-                if pos_key is not None:
-                    seen_positions[pos_key] = seen_positions.get(pos_key, 0) + 1
-                    if seen_positions[pos_key] >= 3:
-                        forced_result = _ccore.DRAW
-                        forced_reason = "threefold"
-                        break
+                current_key = _position_hash_key(position)
+                if current_key is not None and repetition_counts.get(current_key, 0) >= 3:
+                    forced_result = _ccore.DRAW
+                    forced_reason = "threefold"
+                    break
                 halfmove_clock = int(getattr(position, "halfmove_clock", 0))
                 if halfmove_clock >= 100:
                     forced_result = _ccore.DRAW
                     forced_reason = "fifty_move"
                     break
+                pos_snapshot = _ccore.Position(position)
                 evaluator_to_move = evaluator_white if pos_snapshot.turn == _ccore.WHITE else evaluator_black
                 if resign_enabled:
                     value_estimate: float | None
@@ -452,7 +472,12 @@ def arena_match(
                     mcts_black.advance_root(position, mv)
                 except Exception:
                     pass
+                hits_after_move = _record_position_state(position)
                 ply += 1
+                if hits_after_move >= 3:
+                    forced_result = _ccore.DRAW
+                    forced_reason = "threefold"
+                    break
 
             final_reason = "natural"
             if forced_result is not None:
@@ -475,6 +500,25 @@ def arena_match(
                 else:
                     result_flag = current_result
                     final_reason = "natural"
+
+            total_positions = max(1, ply + 1)
+            unique_ratio = len(unique_hashes) / total_positions if unique_hashes else 1.0
+            loop_flag = False
+            if loop_alert_count >= 2:
+                loop_flag = True
+            if (
+                not loop_flag
+                and ply >= int(getattr(C.SELFPLAY, "LOOP_MIN_PLIES", 0))
+                and unique_ratio <= float(getattr(C.SELFPLAY, "LOOP_UNIQUE_RATIO_MAX", 0.0))
+            ):
+                loop_flag = True
+            if loop_flag:
+                if result_flag == _ccore.DRAW:
+                    loser_is_white = position.turn == _ccore.WHITE
+                    result_flag = _ccore.BLACK_WIN if loser_is_white else _ccore.WHITE_WIN
+                    final_reason = "loop_loss"
+                elif final_reason == "exhausted":
+                    final_reason = "loop"
 
             reason_counter[final_reason] += 1
             score_result = 1 if result_flag == _ccore.WHITE_WIN else (-1 if result_flag == _ccore.BLACK_WIN else 0)
