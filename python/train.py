@@ -180,6 +180,7 @@ class Trainer:
             np.clip(getattr(C.RESIGN, "TARGET_LOSS_VALUE_PCTL", 0.25), 0.05, 0.5)
         )
         self._grad_skip_count = 0
+        self._loop_cooldown = 0
 
         self._gate = EloGater(
             z=C.ARENA.GATE_Z_EARLY,
@@ -356,8 +357,11 @@ class Trainer:
         term_threefold = int(reason_counts.get("threefold", 0))
         term_fifty = int(reason_counts.get("fifty_move", 0))
         term_adjudicated = int(reason_counts.get("adjudicated", 0))
+        term_loop_forced = int(reason_counts.get("loop", 0))
+        term_loop_loss = int(reason_counts.get("loop_loss", 0))
+        term_loop = term_loop_forced + term_loop_loss
         total_reason_games = max(1, sum(reason_counts.values()))
-        natural_like = term_natural + term_resign + term_threefold + term_fifty
+        natural_like = term_natural + term_resign + term_threefold + term_fifty + term_loop
         if bool(getattr(C.ARENA, "COUNT_ADJUDICATED_AS_NATURAL", False)):
             natural_like += term_adjudicated
         arena_notes: list[str] = []
@@ -405,6 +409,9 @@ class Trainer:
             arena_notes.append("curriculum-block")
             decision_metrics["curriculum_gate_blocked"] = 1.0
 
+        if term_loop > 0:
+            arena_notes.append("loop-loss")
+
         margin_raw = decision_metrics.get("margin_target")
         gate_margin = (
             float(margin_raw)
@@ -431,11 +438,15 @@ class Trainer:
                 "term_threefold": float(term_threefold),
                 "term_fifty": float(term_fifty),
                 "term_adjudicated": float(term_adjudicated),
+                "term_loop": float(term_loop),
                 "term_natural_pct": (
                     100.0 * natural_like / total_reason_games if total_reason_games else 0.0
                 ),
                 "term_adjudicated_pct": (
                     100.0 * term_adjudicated / total_reason_games if total_reason_games else 0.0
+                ),
+                "term_loop_pct": (
+                    100.0 * term_loop / total_reason_games if total_reason_games else 0.0
                 ),
                 "natural_gate_blocked": 1.0 if natural_gate_blocked else 0.0,
                 "curriculum_gate_blocked": 1.0 if curriculum_gate_blocked else 0.0,
@@ -853,8 +864,10 @@ class Trainer:
                         "arena_term_threefold",
                         "arena_term_fifty",
                         "arena_term_adjudicated",
+                        "arena_term_loop",
                         "arena_term_natural_pct",
                         "arena_term_adjudicated_pct",
+                        "arena_term_loop_pct",
                         "arena_natural_gate_blocked",
                         "arena_lb",
                         "arena_ub",
@@ -1057,10 +1070,12 @@ class Trainer:
                         "arena_term_threefold": _as_float(arena_metrics.get("term_threefold"), 0.0),
                         "arena_term_fifty": _as_float(arena_metrics.get("term_fifty"), 0.0),
                         "arena_term_adjudicated": _as_float(arena_metrics.get("term_adjudicated"), 0.0),
+                        "arena_term_loop": _as_float(arena_metrics.get("term_loop"), 0.0),
                         "arena_term_natural_pct": _as_float(arena_metrics.get("term_natural_pct"), 0.0),
                         "arena_term_adjudicated_pct": _as_float(
                             arena_metrics.get("term_adjudicated_pct"), 0.0
                         ),
+                        "arena_term_loop_pct": _as_float(arena_metrics.get("term_loop_pct"), 0.0),
                         "arena_natural_gate_blocked": _as_float(
                             arena_metrics.get("natural_gate_blocked"), 0.0
                         ),

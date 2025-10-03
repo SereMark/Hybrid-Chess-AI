@@ -316,6 +316,31 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     stats["sp_loop_flag_pct"] = loop_flag_pct
     stats["sp_loop_unique_ratio_pct"] = loop_unique_ratio_pct
     stats["sp_loop_bias_avg"] = loop_bias_avg
+
+    loop_reset_threshold = float(getattr(C.SELFPLAY, "LOOP_AUTO_RESET_THRESHOLD", 0.0))
+    loop_cooldown_iters = int(max(0, getattr(C.SELFPLAY, "LOOP_AUTO_RESET_COOLDOWN", 0)))
+    current_loop_cooldown = max(0, getattr(trainer, "_loop_cooldown", 0))
+    if loop_reset_threshold > 0.0 and loop_flag_pct >= loop_reset_threshold:
+        if current_loop_cooldown == 0:
+            trainer.log.warning(
+                "[SelfPlay] loop rate %.1f%% >= %.1f%%; refreshing replay buffer",
+                loop_flag_pct,
+                loop_reset_threshold,
+            )
+            try:
+                trainer.selfplay_engine.clear_buffer()
+                buffer_reset = 1
+            except Exception as exc:
+                trainer.log.debug("Replay buffer clear failed during loop reset: %s", exc, exc_info=True)
+            trainer._recent_sample_ratio = float(
+                getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_RATIO", trainer._recent_sample_ratio)
+            )
+            trainer._loop_cooldown = loop_cooldown_iters
+        else:
+            trainer._loop_cooldown = current_loop_cooldown - 1
+    else:
+        trainer._loop_cooldown = max(current_loop_cooldown - 1, 0)
+
     stats["sp_curriculum_games"] = curriculum_games
     stats["sp_curriculum_pct"] = 100.0 * curriculum_games / max(1, games_count)
     stats["sp_curriculum_win_pct"] = curriculum_win_pct
