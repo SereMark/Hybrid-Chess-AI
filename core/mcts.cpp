@@ -1,6 +1,7 @@
 #include "mcts.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -10,14 +11,13 @@
 
 namespace mcts {
 
-[[gnu::hot, gnu::always_inline]] inline float Node::ucb(float c_puct, float sqrt_visits, float parent_q,
-                                                        float fpu) const {
+[[nodiscard]] inline float Node::ucb(float c_puct, float sqrt_visits, float parent_q, float fpu) const {
   const float q = (visits > 0) ? (val_sum / visits) : (parent_q - fpu);
   const float u = c_puct * prior * sqrt_visits / (1.0f + visits);
   return q + u;
 }
 
-[[gnu::always_inline]] inline void Node::update(float v) {
+inline void Node::update(float v) {
   ++visits;
   val_sum += v;
 }
@@ -96,7 +96,7 @@ int encode_move_index(const chess::Move& m) {
   return encode_move_73x64(m);
 }
 
-[[gnu::hot]] Node* MCTS::select_child(Node* parent) {
+Node* MCTS::select_child(Node* parent) {
   Node*       children    = node_pool_.get_node(parent->first_child_index);
   const float sqrt_visits = sqrtf(1.0f + static_cast<float>(parent->visits));
   float       c           = c_puct_;
@@ -107,8 +107,6 @@ int encode_move_index(const chess::Move& m) {
   Node* best       = &children[0];
   float best_score = best->ucb(c, sqrt_visits, parent_q, fpu_reduction_);
   for (uint16_t i = 1; i < parent->child_count; ++i) {
-    if (i + 1 < parent->child_count)
-      __builtin_prefetch(&children[i + 1], 0, 1);
     float sc = children[i].ucb(c, sqrt_visits, parent_q, fpu_reduction_);
     if (sc > best_score) {
       best_score = sc;
@@ -118,8 +116,8 @@ int encode_move_index(const chess::Move& m) {
   return best;
 }
 
-[[gnu::hot]] void MCTS::expand_node_with_priors(Node* node, const std::vector<chess::Move>& moves,
-                                                const std::vector<float>& priors) {
+void MCTS::expand_node_with_priors(Node* node, const std::vector<chess::Move>& moves,
+                                   const std::vector<float>& priors) {
   const size_t n = moves.size();
   if (n == 0)
     return;
@@ -140,7 +138,7 @@ int encode_move_index(const chess::Move& m) {
   }
 }
 
-[[gnu::hot]] void MCTS::add_dirichlet_noise(Node* node) {
+void MCTS::add_dirichlet_noise(Node* node) {
   if (node->child_count == 0)
     return;
   Node*        children = node_pool_.get_node(node->first_child_index);
@@ -326,7 +324,7 @@ void MCTS::set_c_puct_params(float base, float init) {
   c_puct_init_ = init;
 }
 
-[[gnu::always_inline]] inline bool MCTS::ensure_root(const chess::Position& position) {
+bool MCTS::ensure_root(const chess::Position& position) {
   const uint64_t h = position.get_hash();
   if (!root_initialized_ || h != root_hash_) {
     node_pool_.reset();

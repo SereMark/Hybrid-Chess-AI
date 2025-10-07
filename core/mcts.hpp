@@ -22,8 +22,8 @@ struct alignas(32) Node {
   float       prior   = 0.0f;
   int         visits  = 0;
 
-  [[gnu::hot, gnu::always_inline]] float ucb(float c_puct, float sqrt_visits, float parent_q, float fpu) const;
-  [[gnu::always_inline]] void            update(float v);
+  float ucb(float c_puct, float sqrt_visits, float parent_q, float fpu) const;
+  void  update(float v);
 };
 
 class NodePool {
@@ -92,10 +92,10 @@ private:
   uint64_t root_hash_        = 0;
   bool     root_initialized_ = false;
 
-  [[gnu::hot]] Node*          select_child(Node* parent);
-  [[gnu::hot]] void           expand_node_with_priors(Node* node, const std::vector<chess::Move>& moves,
-                                                      const std::vector<float>& priors);
-  [[gnu::hot]] void           add_dirichlet_noise(Node* node);
-  [[gnu::always_inline]] bool ensure_root(const chess::Position& position);
+  Node* select_child(Node* parent);
+  void  expand_node_with_priors(Node* node, const std::vector<chess::Move>& moves,
+                                const std::vector<float>& priors);
+  void  add_dirichlet_noise(Node* node);
+  bool  ensure_root(const chess::Position& position);
 };
 } // namespace mcts

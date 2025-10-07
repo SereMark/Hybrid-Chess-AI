@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -68,41 +69,41 @@ struct Move {
 };
 
 struct MoveList {
-  Move                        moves[MAX_MOVES_PER_POSITION];
-  size_t                      count = 0;
-  [[gnu::always_inline]] void add(Move m) noexcept {
+  Move   moves[MAX_MOVES_PER_POSITION];
+  size_t count = 0;
+  inline void add(Move m) noexcept {
     if (count < MAX_MOVES_PER_POSITION)
       moves[count++] = m;
   }
-  [[gnu::always_inline]] void add(Square from, Square to, Piece promo = PIECE_NONE) noexcept {
+  inline void add(Square from, Square to, Piece promo = PIECE_NONE) noexcept {
     if (count < MAX_MOVES_PER_POSITION)
       moves[count++] = Move(from, to, promo);
   }
-  [[gnu::always_inline]] void clear() noexcept {
+  inline void clear() noexcept {
     count = 0;
   }
-  [[nodiscard]] [[gnu::always_inline]] size_t size() const noexcept {
+  [[nodiscard]] inline size_t size() const noexcept {
     return count;
   }
-  [[nodiscard]] [[gnu::always_inline]] bool empty() const noexcept {
+  [[nodiscard]] inline bool empty() const noexcept {
     return count == 0;
   }
-  [[gnu::always_inline]] Move& operator[](size_t i) noexcept {
+  inline Move& operator[](size_t i) noexcept {
     return moves[i];
   }
-  [[gnu::always_inline]] const Move& operator[](size_t i) const noexcept {
+  inline const Move& operator[](size_t i) const noexcept {
     return moves[i];
   }
-  [[gnu::always_inline]] Move* begin() noexcept {
+  inline Move* begin() noexcept {
     return moves;
   }
-  [[gnu::always_inline]] Move* end() noexcept {
+  inline Move* end() noexcept {
     return moves + count;
   }
-  [[gnu::always_inline]] const Move* begin() const noexcept {
+  inline const Move* begin() const noexcept {
     return moves;
   }
-  [[gnu::always_inline]] const Move* end() const noexcept {
+  inline const Move* end() const noexcept {
     return moves + count;
   }
 };
@@ -188,26 +189,26 @@ private:
   [[nodiscard]] std::string serialize_game_state_to_fen() const;
   friend class mcts::MCTS;
 };
-[[gnu::always_inline, gnu::const]] inline Square lsb(Bitboard b) noexcept {
-  return __builtin_ctzll(b);
+[[nodiscard]] inline Square lsb(Bitboard b) noexcept {
+  return static_cast<Square>(std::countr_zero(b));
 }
-[[gnu::always_inline, gnu::const]] inline int popcount(Bitboard b) noexcept {
-  return __builtin_popcountll(b);
+inline int popcount(Bitboard b) noexcept {
+  return static_cast<int>(std::popcount(b));
 }
-[[gnu::always_inline, gnu::const]] inline Bitboard bit(Square s) noexcept {
+inline Bitboard bit(Square s) noexcept {
   return (s >= 0 && s < NSQUARES) ? (1ULL << s) : 0ULL;
 }
-[[gnu::always_inline]] inline void pop_lsb(Bitboard& b) noexcept {
+inline void pop_lsb(Bitboard& b) noexcept {
   b &= b - 1;
 }
-template <typename F> [[gnu::always_inline]] inline void for_each_piece(Bitboard bb, F f) {
+template <typename F> inline void for_each_piece(Bitboard bb, F f) {
   while (bb) {
     const Square s = lsb(bb);
     pop_lsb(bb);
     f(s);
   }
 }
-template <typename F> [[gnu::always_inline]] inline void for_each_attack(Bitboard a, F f) {
+template <typename F> inline void for_each_attack(Bitboard a, F f) {
   while (a) {
     const Square t = lsb(a);
     pop_lsb(a);
