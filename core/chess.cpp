@@ -5,6 +5,7 @@
 #include <mutex>
 #include <random>
 #include <sstream>
+#include <utility>
 #ifdef __BMI2__
 #include <immintrin.h>
 #endif
@@ -170,7 +171,7 @@ Bitboard knight_attacks(Square s) {
 Bitboard king_attacks(Square s) {
   return king_attack_table[s];
 }
-[[gnu::hot]] static inline Bitboard sliding_attacks(const int dir_ids[], int ndirs, Square s, Bitboard occ) {
+static inline Bitboard sliding_attacks(const int dir_ids[], int ndirs, Square s, Bitboard occ) {
   Bitboard attacks = 0;
   for (int i = 0; i < ndirs; ++i) {
     const int            d   = dir_ids[i];

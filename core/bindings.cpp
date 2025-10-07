@@ -11,6 +11,7 @@
 #include <vector>
 
 namespace py = pybind11;
+using PySsize_t = py::ssize_t;
 
 namespace {
 inline std::string sq_to_str(int sq) {
@@ -154,14 +155,14 @@ PYBIND11_MODULE(chesscore, m) {
               using ValArr        = py::array_t<float, py::array::c_style | py::array::forcecast>;
               ValArr        val   = tup[1].cast<ValArr>();
               auto          vinfo = val.request();
-              const ssize_t B     = static_cast<ssize_t>(positions.size());
+              const PySsize_t B   = static_cast<PySsize_t>(positions.size());
               if (vinfo.ndim != 1 || vinfo.shape[0] != B)
                 throw py::value_error("value must be [B]");
               const float* vbase = static_cast<const float*>(vinfo.ptr);
               policies_legal.clear();
               policies_legal.reserve(static_cast<size_t>(B));
               values.resize(static_cast<size_t>(B));
-              for (ssize_t i = 0; i < B; ++i) {
+              for (PySsize_t i = 0; i < B; ++i) {
                 py::object item = pol_list[static_cast<size_t>(i)];
                 using Arr1D     = py::array_t<float, py::array::c_style | py::array::forcecast>;
                 Arr1D arr       = item.cast<Arr1D>();
@@ -169,7 +170,7 @@ PYBIND11_MODULE(chesscore, m) {
                 if (ainfo.ndim != 1)
                   throw py::value_error("each policy must be 1D");
                 const float*  aptr = static_cast<const float*>(ainfo.ptr);
-                const ssize_t n    = ainfo.shape[0];
+                const PySsize_t n  = ainfo.shape[0];
                 policies_legal.emplace_back();
                 policies_legal.back().assign(aptr, aptr + n);
                 values[static_cast<size_t>(i)] = vbase[i];
@@ -192,9 +193,10 @@ PYBIND11_MODULE(chesscore, m) {
   m.def(
       "encode_position",
       [](const chess::Position& pos) {
-        constexpr int      planes = encoder::INPUT_PLANES;
-        constexpr int      H = chess::BOARD_SIZE, W = chess::BOARD_SIZE;
-        py::array_t<float> a({planes, H, W});
+        constexpr PySsize_t planes = static_cast<PySsize_t>(encoder::INPUT_PLANES);
+        constexpr PySsize_t H      = static_cast<PySsize_t>(chess::BOARD_SIZE);
+        constexpr PySsize_t W      = static_cast<PySsize_t>(chess::BOARD_SIZE);
+        py::array_t<float>  a({planes, H, W});
         auto               info = a.request();
         auto*              ptr  = static_cast<float*>(info.ptr);
         {
@@ -208,16 +210,17 @@ PYBIND11_MODULE(chesscore, m) {
   m.def(
       "encode_batch",
       [](const std::vector<chess::Position>& positions) {
-        constexpr int      planes = encoder::INPUT_PLANES;
-        constexpr int      H = chess::BOARD_SIZE, W = chess::BOARD_SIZE;
-        const ssize_t      B = static_cast<ssize_t>(positions.size());
-        py::array_t<float> a({B, static_cast<ssize_t>(planes), static_cast<ssize_t>(H), static_cast<ssize_t>(W)});
-        auto               info   = a.request();
-        auto*              ptr    = static_cast<float*>(info.ptr);
-        const size_t       stride = static_cast<size_t>(planes * H * W);
+        constexpr PySsize_t planes = static_cast<PySsize_t>(encoder::INPUT_PLANES);
+        constexpr PySsize_t H      = static_cast<PySsize_t>(chess::BOARD_SIZE);
+        constexpr PySsize_t W      = static_cast<PySsize_t>(chess::BOARD_SIZE);
+        const PySsize_t     B      = static_cast<PySsize_t>(positions.size());
+        py::array_t<float>  a({B, planes, H, W});
+        auto                info   = a.request();
+        auto*               ptr    = static_cast<float*>(info.ptr);
+        const size_t        stride = static_cast<size_t>(planes * H * W);
         {
           py::gil_scoped_release rel;
-          for (ssize_t i = 0; i < B; ++i)
+          for (PySsize_t i = 0; i < B; ++i)
             encoder::encode_position_into(positions[static_cast<size_t>(i)], ptr + stride * static_cast<size_t>(i));
         }
         return a;
@@ -227,16 +230,17 @@ PYBIND11_MODULE(chesscore, m) {
   m.def(
       "encode_batch",
       [](const std::vector<std::vector<chess::Position>>& histories) {
-        constexpr int      planes = encoder::INPUT_PLANES;
-        constexpr int      H = chess::BOARD_SIZE, W = chess::BOARD_SIZE;
-        const ssize_t      B = static_cast<ssize_t>(histories.size());
-        py::array_t<float> a({B, static_cast<ssize_t>(planes), static_cast<ssize_t>(H), static_cast<ssize_t>(W)});
-        auto               info   = a.request();
-        auto*              ptr    = static_cast<float*>(info.ptr);
-        const size_t       stride = static_cast<size_t>(planes * H * W);
+        constexpr PySsize_t planes = static_cast<PySsize_t>(encoder::INPUT_PLANES);
+        constexpr PySsize_t H      = static_cast<PySsize_t>(chess::BOARD_SIZE);
+        constexpr PySsize_t W      = static_cast<PySsize_t>(chess::BOARD_SIZE);
+        const PySsize_t     B      = static_cast<PySsize_t>(histories.size());
+        py::array_t<float>  a({B, planes, H, W});
+        auto                info   = a.request();
+        auto*               ptr    = static_cast<float*>(info.ptr);
+        const size_t        stride = static_cast<size_t>(planes * H * W);
         {
           py::gil_scoped_release rel;
-          for (ssize_t i = 0; i < B; ++i)
+          for (PySsize_t i = 0; i < B; ++i)
             encoder::encode_position_with_history(histories[static_cast<size_t>(i)],
                                                   ptr + stride * static_cast<size_t>(i));
         }
@@ -249,7 +253,7 @@ PYBIND11_MODULE(chesscore, m) {
       [](const std::vector<std::vector<chess::Move>>& moves_lists) {
         py::list out;
         for (const auto& lst : moves_lists) {
-          py::array_t<int32_t> a(lst.size());
+          py::array_t<int32_t> a(static_cast<PySsize_t>(lst.size()));
           auto                 info = a.request();
           auto*                ptr  = static_cast<int32_t*>(info.ptr);
           for (size_t i = 0; i < lst.size(); ++i)
@@ -316,19 +320,19 @@ PYBIND11_MODULE(chesscore, m) {
             std::vector<size_t>   cnt_off;
             std::vector<int8_t>   val;
             buf.sample(batch, recent_ratio, recent_window_frac, states, state_off, idx, idx_off, cnt, cnt_off, val);
-            const ssize_t        B = static_cast<ssize_t>(val.size());
-            const ssize_t        P = static_cast<ssize_t>(buf.planes());
-            const ssize_t        H = static_cast<ssize_t>(buf.height());
-            const ssize_t        W = static_cast<ssize_t>(buf.width());
+            const PySsize_t      B = static_cast<PySsize_t>(val.size());
+            const PySsize_t      P = static_cast<PySsize_t>(buf.planes());
+            const PySsize_t      H = static_cast<PySsize_t>(buf.height());
+            const PySsize_t      W = static_cast<PySsize_t>(buf.width());
             py::array_t<uint8_t> a_states({B, P, H, W});
             std::memcpy(a_states.request().ptr, states.data(), states.size());
             py::list idx_list;
             py::list cnt_list;
-            for (ssize_t i = 0; i < B; ++i) {
-              const ssize_t         i0 = static_cast<ssize_t>(idx_off[static_cast<size_t>(i)]);
-              const ssize_t         i1 = static_cast<ssize_t>(idx_off[static_cast<size_t>(i + 1)]);
-              const ssize_t         c0 = static_cast<ssize_t>(cnt_off[static_cast<size_t>(i)]);
-              const ssize_t         c1 = static_cast<ssize_t>(cnt_off[static_cast<size_t>(i + 1)]);
+            for (PySsize_t i = 0; i < B; ++i) {
+              const PySsize_t       i0 = static_cast<PySsize_t>(idx_off[static_cast<size_t>(i)]);
+              const PySsize_t       i1 = static_cast<PySsize_t>(idx_off[static_cast<size_t>(i + 1)]);
+              const PySsize_t       c0 = static_cast<PySsize_t>(cnt_off[static_cast<size_t>(i)]);
+              const PySsize_t       c1 = static_cast<PySsize_t>(cnt_off[static_cast<size_t>(i + 1)]);
               py::array_t<int32_t>  ai(i1 - i0);
               py::array_t<uint16_t> ac(c1 - c0);
               if (i1 > i0)
