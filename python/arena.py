@@ -13,7 +13,7 @@ import numpy as _np
 import torch
 
 import config as C
-from fen_tools import flip_fen_perspective, sanitize_fen
+from utils import flip_fen_perspective, sanitize_fen
 from inference import BatchedEvaluator as _BatchedEval
 
 _DEFAULT_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"

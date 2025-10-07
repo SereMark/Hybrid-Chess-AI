@@ -14,7 +14,7 @@ import chesscore as ccore
 import numpy as np
 
 import config as C
-from fen_tools import flip_fen_perspective, sanitize_fen
+from utils import flip_fen_perspective, sanitize_fen
 
 BOARD_SIZE = 8
 NSQUARES = 64
