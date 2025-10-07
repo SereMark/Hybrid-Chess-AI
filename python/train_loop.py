@@ -10,7 +10,7 @@ import torch
 import torch.nn.functional as F
 
 import config as C
-from reporting import get_mem_info
+from utils import get_mem_info
 
 
 def _entropy_coefficient(iteration: int) -> float:

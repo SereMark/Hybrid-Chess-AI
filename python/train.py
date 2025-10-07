@@ -18,11 +18,8 @@ import config as C
 from arena import EloGater, arena_match
 from checkpoint import save_best_model, save_checkpoint, try_resume
 from inference import BatchedEvaluator
-from metrics import MetricsReporter
-from network import ChessNet
-from optimization import EMA, WarmupCosine, build_optimizer
-from pipeline import PipelineSettings, load_settings
-from reporting import (
+from utils import (
+    MetricsReporter,
     format_gb,
     get_mem_info,
     get_sys_info,
@@ -78,8 +75,7 @@ class Trainer:
             if device_obj.type != "cuda":
                 self.log.warning("CUDA unavailable; falling back to CPU for training")
         self.device = device_obj
-        self.settings: PipelineSettings = load_settings()
-        self.metrics = MetricsReporter(self.settings.logging.csv_path)
+        self.metrics = MetricsReporter(C.LOG.METRICS_LOG_CSV_PATH)
         net_any: Any = ChessNet().to(self.device)
         if C.TORCH.MODEL_CHANNELS_LAST:
             self.model = net_any.to(memory_format=torch.channels_last)
@@ -157,7 +153,7 @@ class Trainer:
         except Exception as exc:
             self.log.debug("Self-play adjudication priming failed: %s", exc, exc_info=True)
         try:
-            self.selfplay_engine.set_game_length(self.settings.selfplay.game_max_plies)
+            self.selfplay_engine.set_game_length(C.ARENA.GAME_MAX_PLIES)
         except Exception as exc:
             self.log.debug("Unable to set self-play game length: %s", exc, exc_info=True)
         self.iteration = 0
@@ -198,20 +194,20 @@ class Trainer:
         if resume:
             try_resume(self)
         else:
-            if self.settings.logging.enable_csv:
-                log_dir = os.path.dirname(self.settings.logging.csv_path)
+            if C.LOG.METRICS_LOG_CSV_ENABLE:
+                log_dir = os.path.dirname(C.LOG.METRICS_LOG_CSV_PATH)
                 if log_dir:
                     try:
                         os.makedirs(log_dir, exist_ok=True)
                     except OSError as exc:
                         self.log.debug("Unable to create metrics directory %s: %s", log_dir, exc, exc_info=True)
-                if os.path.isfile(self.settings.logging.csv_path):
+                if os.path.isfile(C.LOG.METRICS_LOG_CSV_PATH):
                     try:
-                        os.remove(self.settings.logging.csv_path)
+                        os.remove(C.LOG.METRICS_LOG_CSV_PATH)
                     except OSError as exc:
                         self.log.debug(
                             "Unable to remove existing metrics CSV %s: %s",
-                            self.settings.logging.csv_path,
+                            C.LOG.METRICS_LOG_CSV_PATH,
                             exc,
                             exc_info=True,
                         )
@@ -540,9 +536,9 @@ class Trainer:
             self.iteration = iteration
             iter_stats = self.training_iteration()
 
-            arena_every = max(1, self.settings.arena.eval_every_iters)
-            expected_games = int(self.settings.arena.games_per_eval)
-            should_eval = self.settings.arena.eval_every_iters > 0 and (iteration % arena_every) == 0
+            arena_every = max(1, C.ARENA.EVAL_EVERY_ITERS)
+            expected_games = int(C.ARENA.GAMES_PER_EVAL)
+            should_eval = C.ARENA.EVAL_EVERY_ITERS > 0 and (iteration % arena_every) == 0
             arena_result = self._maybe_run_arena(iteration, expected_games, should_eval)
             arena_elapsed = arena_result.elapsed
             arena_w, arena_d, arena_l = arena_result.w, arena_result.d, arena_result.losses
@@ -559,7 +555,7 @@ class Trainer:
                 self._save_checkpoint()
 
             next_ar = 0
-            if self.settings.arena.eval_every_iters > 0:
+            if C.ARENA.EVAL_EVERY_ITERS > 0:
                 k = arena_every
                 r = self.iteration % k
                 next_ar = (k - r) if r != 0 else k
@@ -707,10 +703,10 @@ class Trainer:
 
             self._prev_eval_m = self.evaluator.get_metrics()
 
-            if self.settings.logging.enable_csv:
+            if C.LOG.METRICS_LOG_CSV_ENABLE:
                 try:
                     try:
-                        log_dir = os.path.dirname(self.settings.logging.csv_path)
+                        log_dir = os.path.dirname(C.LOG.METRICS_LOG_CSV_PATH)
                         if log_dir:
                             os.makedirs(log_dir, exist_ok=True)
                     except Exception:
@@ -1131,7 +1127,7 @@ class Trainer:
                         "cpu_proc_pct": float(sys_info.get("cpu_proc_pct", 0.0)),
                         "load1": float(sys_info.get("load1", 0.0)),
                     }
-                    self._append_csv_row(self.settings.logging.csv_path, row, fieldnames)
+                    self._append_csv_row(C.LOG.METRICS_LOG_CSV_PATH, row, fieldnames)
                 except Exception as exc:
                     self.log.debug("Failed to append metrics row: %s", exc, exc_info=True)
 
