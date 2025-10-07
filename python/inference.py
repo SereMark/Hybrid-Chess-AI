@@ -28,14 +28,23 @@ class BatchedEvaluator:
                 self.eval_model.to(memory_format=torch.channels_last),
             )
         self.eval_model = self.eval_model.eval()
-        self._inference_dtype = torch.float16 if self.device.type == "cuda" else torch.float32
+        self._inference_dtype = torch.float32
+        if self.device.type == "cuda":
+            if hasattr(torch.cuda, "is_bf16_supported") and torch.cuda.is_bf16_supported():
+                self._inference_dtype = torch.bfloat16
+            else:
+                self._inference_dtype = torch.float16
         self.eval_model = cast(nn.Module, self.eval_model.to(dtype=self._inference_dtype))
         for p in self.eval_model.parameters():
             p.requires_grad_(False)
-        self._np_inference_dtype = np.float16 if self._inference_dtype == torch.float16 else np.float32
-        self._cache_out_dtype = (
-            torch.float16 if (C.EVAL.CACHE_USE_FP16 and self._inference_dtype == torch.float16) else torch.float32
-        )
+        if self._inference_dtype == torch.bfloat16:
+            self._np_inference_dtype = np.float32
+            self._cache_out_dtype = torch.float32
+        else:
+            self._np_inference_dtype = np.float16 if self._inference_dtype == torch.float16 else np.float32
+            self._cache_out_dtype = (
+                torch.float16 if (C.EVAL.CACHE_USE_FP16 and self._inference_dtype == torch.float16) else torch.float32
+            )
         self.cache_lock = threading.Lock()
         self._metrics_lock = threading.Lock()
         self._metrics: dict[str, float] = {
@@ -169,6 +178,8 @@ class BatchedEvaluator:
             ]
         )
         x = torch.from_numpy(x_np)
+        if torch.cuda.is_available() and x.device.type == "cpu":
+            x = x.pin_memory()
         x = x.to(self.device, non_blocking=True)
         return x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
 

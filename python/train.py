@@ -76,11 +76,24 @@ class Trainer:
                 self.log.warning("CUDA unavailable; falling back to CPU for training")
         self.device = device_obj
         self.metrics = MetricsReporter(C.LOG.METRICS_LOG_CSV_PATH)
+        if self.device.type == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            torch.backends.cudnn.benchmark = True
         net_any: Any = ChessNet().to(self.device)
         if C.TORCH.MODEL_CHANNELS_LAST:
-            self.model = net_any.to(memory_format=torch.channels_last)
-        else:
-            self.model = net_any
+            net_any = net_any.to(memory_format=torch.channels_last)
+        self.model = cast(torch.nn.Module, net_any)
+
+        compile_fn = getattr(torch, "compile", None)
+        self._model_compiled = False
+        if callable(compile_fn):
+            try:
+                self.model = cast(torch.nn.Module, compile_fn(self.model, mode="reduce-overhead"))
+                self._model_compiled = True
+                self.log.info("[AUTO    ] torch.compile enabled for training model")
+            except Exception as exc:
+                self.log.debug("torch.compile unavailable; proceeding without compile: %s", exc, exc_info=True)
 
         self.optimizer = build_optimizer(self.model)
 
@@ -102,11 +115,26 @@ class Trainer:
             restart_interval=restart_interval_steps,
             restart_decay=getattr(C.TRAIN, "LR_RESTART_DECAY", 1.0),
         )
+        self._autocast_device = "cuda" if self.device.type == "cuda" else "cpu"
+        cuda_bf16_supported = False
+        if self.device.type == "cuda" and hasattr(torch.cuda, "is_bf16_supported"):
+            try:
+                cuda_bf16_supported = bool(torch.cuda.is_bf16_supported())
+            except Exception:
+                cuda_bf16_supported = False
+        if self.device.type == "cuda" and cuda_bf16_supported:
+            self._autocast_dtype = torch.bfloat16
+        elif self.device.type == "cuda":
+            self._autocast_dtype = torch.float16
+        else:
+            self._autocast_dtype = torch.bfloat16
+
         self._amp_enabled = bool(C.TORCH.AMP_ENABLED and self.device.type == "cuda")
         self._scaler_device_type = (
             self.device.type if self.device.type in {"cuda", "cpu", "mps"} else "cuda"
         )
-        self.scaler = GradScaler(self._scaler_device_type, enabled=self._amp_enabled)
+        scaler_enabled = self._amp_enabled and self._autocast_dtype == torch.float16
+        self.scaler = GradScaler(self._scaler_device_type, enabled=scaler_enabled)
 
         self.evaluator = BatchedEvaluator(self.device)
         self._eval_batch_cap = int(C.EVAL.BATCH_SIZE_MAX)
