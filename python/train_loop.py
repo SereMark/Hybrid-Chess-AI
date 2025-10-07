@@ -634,8 +634,9 @@ def train_step(
         ]
         v_target = -v_target
     trainer.model.train()
-    autocast_device = "cuda" if trainer.device.type == "cuda" else "cpu"
-    autocast_dtype = torch.float16 if autocast_device == "cuda" else torch.bfloat16
+    autocast_device = getattr(trainer, "_autocast_device", "cuda" if trainer.device.type == "cuda" else "cpu")
+    default_dtype = torch.float16 if autocast_device == "cuda" else torch.bfloat16
+    autocast_dtype = getattr(trainer, "_autocast_dtype", default_dtype)
     with torch.autocast(
         device_type=autocast_device,
         dtype=autocast_dtype,
@@ -695,8 +696,18 @@ def train_step(
             - entropy_coef * entropy
         )
     trainer.optimizer.zero_grad(set_to_none=True)
-    trainer.scaler.scale(total_loss).backward()
-    trainer.scaler.unscale_(trainer.optimizer)
+    scaler_enabled = False
+    scaler_obj = getattr(trainer, "scaler", None)
+    if scaler_obj is not None:
+        try:
+            scaler_enabled = bool(scaler_obj.is_enabled())
+        except AttributeError:
+            scaler_enabled = bool(getattr(scaler_obj, "_enabled", False))
+    if scaler_enabled:
+        trainer.scaler.scale(total_loss).backward()
+        trainer.scaler.unscale_(trainer.optimizer)
+    else:
+        total_loss.backward()
     grad_total_norm = torch.nn.utils.clip_grad_norm_(trainer.model.parameters(), C.TRAIN.GRAD_CLIP_NORM)
     if torch.is_tensor(grad_total_norm):
         grad_finite = bool(torch.isfinite(grad_total_norm))
@@ -712,8 +723,11 @@ def train_step(
             trainer._grad_skip_count += 1
         return None
 
-    trainer.scaler.step(trainer.optimizer)
-    trainer.scaler.update()
+    if scaler_enabled:
+        trainer.scaler.step(trainer.optimizer)
+        trainer.scaler.update()
+    else:
+        trainer.optimizer.step()
     trainer.scheduler.step()
     if trainer.ema is not None:
         trainer.ema.update(trainer.model)
