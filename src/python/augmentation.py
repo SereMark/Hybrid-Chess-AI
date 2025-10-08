@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-import chesscore as ccore
 import numpy as np
 
 import config as C
+from . import encoder
 
 BOARD_SIZE = 8
 NSQUARES = 64
-PLANES_PER_POSITION = int(getattr(ccore, "PLANES_PER_POSITION", 14))
-HISTORY_LENGTH = int(getattr(ccore, "HISTORY_LENGTH", 8))
+PLANES_PER_POSITION = encoder.PLANES_PER_POSITION
+HISTORY_LENGTH = encoder.HISTORY_LENGTH
 POLICY_OUTPUT = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
 
 

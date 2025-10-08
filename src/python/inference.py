@@ -7,13 +7,13 @@ from collections import OrderedDict
 from contextlib import suppress
 from typing import Any, cast
 
-import chesscore as ccore
 import numpy as np
 import torch
 from torch import nn
 
 import config as C
 from network import BOARD_SIZE, INPUT_PLANES, POLICY_OUTPUT, ChessNet
+from . encoder import encode_position_with_history
 
 
 class BatchedEvaluator:

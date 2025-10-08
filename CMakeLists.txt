@@ -6,7 +6,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 
 find_package(pybind11 CONFIG REQUIRED)
-pybind11_add_module(chesscore core/chess.cpp core/mcts.cpp core/encoder.cpp core/replay_buffer.cpp core/bindings.cpp)
+pybind11_add_module(chesscore core/chess.cpp core/mcts.cpp core/bindings.cpp)
 set_target_properties(
     chesscore
     PROPERTIES

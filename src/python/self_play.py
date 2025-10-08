@@ -3,23 +3,24 @@ from __future__ import annotations
 import logging
 import math
 import threading
+from typing import Any, cast
 from collections import deque
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from numbers import Integral
-from typing import Any, cast
 
-import chesscore as ccore
 import numpy as np
 
 import config as C
 from utils import flip_fen_perspective, sanitize_fen
+from .replay_buffer import ReplayBuffer
+from . import encoder
 
 BOARD_SIZE = 8
 NSQUARES = 64
-PLANES_PER_POSITION = int(getattr(ccore, "PLANES_PER_POSITION", 14))
-HISTORY_LENGTH = int(getattr(ccore, "HISTORY_LENGTH", 8))
+PLANES_PER_POSITION = encoder.PLANES_PER_POSITION
+HISTORY_LENGTH = encoder.HISTORY_LENGTH
 POLICY_OUTPUT = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
 
 _MATERIAL_WEIGHTS = (1.0, 3.0, 3.0, 5.0, 9.0, 0.0)
@@ -257,7 +258,12 @@ class SelfPlayEngine:
         self.evaluator = evaluator
         total_planes = PLANES_PER_POSITION * HISTORY_LENGTH + 7
         self._total_planes = int(total_planes)
-        self._buf = ccore.ReplayBuffer(int(C.REPLAY.BUFFER_CAPACITY), int(total_planes), BOARD_SIZE, BOARD_SIZE)
+        self._buf = ReplayBuffer(
+            capacity=int(C.REPLAY.BUFFER_CAPACITY),
+            planes=int(total_planes),
+            height=BOARD_SIZE,
+            width=BOARD_SIZE,
+        )
         self.buffer_lock = threading.Lock()
         self.num_workers: int = int(C.SELFPLAY.NUM_WORKERS)
         self._enc_cache: dict[int, np.ndarray] = {}
@@ -702,7 +708,7 @@ class SelfPlayEngine:
                 enc_u8 = self._enc_cache.pop(key)
                 self._enc_cache[key] = enc_u8
             else:
-                enc = ccore.encode_position(pos_snapshot)
+                enc = encoder.encode_position(pos_snapshot)
                 enc_u8 = SelfPlayEngine.encode_u8(enc)
                 self._enc_cache[key] = enc_u8
                 if len(self._enc_cache) > self._enc_cache_cap:
@@ -972,11 +978,11 @@ class SelfPlayEngine:
 
     def clear_buffer(self) -> None:
         with self.buffer_lock:
-            self._buf = ccore.ReplayBuffer(
-                int(C.REPLAY.BUFFER_CAPACITY),
-                int(self._total_planes),
-                BOARD_SIZE,
-                BOARD_SIZE,
+            self._buf = ReplayBuffer(
+                capacity=int(C.REPLAY.BUFFER_CAPACITY),
+                planes=int(self._total_planes),
+                height=BOARD_SIZE,
+                width=BOARD_SIZE,
             )
         self._enc_cache.clear()
 
@@ -1048,15 +1054,15 @@ class SelfPlayEngine:
             balance = float(meta.get("adjudicated_balance", 0.0))
             aggregate.adjudicated_balance_total += balance
             aggregate.adjudicated_balance_abs_total += abs(balance)
-            if result == ccore.WHITE_WIN:
+            if result > 0:
                 aggregate.adjudicated_white += 1
-            elif result == ccore.BLACK_WIN:
+            elif result < 0:
                 aggregate.adjudicated_black += 1
             else:
                 aggregate.adjudicated_draw += 1
-        if result == ccore.WHITE_WIN:
+        if result > 0:
             aggregate.white_wins += 1
-        elif result == ccore.BLACK_WIN:
+        elif result < 0:
             aggregate.black_wins += 1
         else:
             if result == ccore.DRAW:
@@ -1069,9 +1075,9 @@ class SelfPlayEngine:
             aggregate.draws += 1
         if int(meta.get("curriculum_seed", 0)):
             aggregate.curriculum_games += 1
-            if result == ccore.WHITE_WIN:
+            if result > 0:
                 aggregate.curriculum_white_wins += 1
-            elif result == ccore.BLACK_WIN:
+            elif result < 0:
                 aggregate.curriculum_black_wins += 1
             else:
                 aggregate.curriculum_draws += 1
@@ -1082,7 +1088,7 @@ class SelfPlayEngine:
         aggregate.sims_last_sum += int(meta.get("sims_last", 0))
         if int(meta.get("value_trend_len", 0)) >= self.adjudicate_value_persist:
             aggregate.value_trend_hits += 1
-        if result in {ccore.WHITE_WIN, ccore.BLACK_WIN}:
+        if result not in {0}:
             aggregate.add_loss_sample(float(np.clip(terminal_eval_meta, -1.0, 1.0)))
 
     def sample_batch(
@@ -1093,13 +1099,11 @@ class SelfPlayEngine:
         with self.buffer_lock:
             if batch_size > int(self._buf.size):
                 return None
-            states_u8, idx_list, cnt_list, values_i8 = self._buf.sample(
-                int(batch_size), float(recent_ratio), float(C.SAMPLING.REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC)
+            states, indices_sparse, counts_sparse, values = self._buf.sample(
+                batch_size=int(batch_size),
+                recent_ratio=float(recent_ratio),
+                recent_window_frac=float(C.SAMPLING.REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC),
             )
-        states = [states_u8[i] for i in range(states_u8.shape[0])]
-        indices_sparse = [np.asarray(idx_list[i], dtype=np.int32) for i in range(len(idx_list))]
-        counts_sparse = [np.asarray(cnt_list[i], dtype=np.uint16) for i in range(len(cnt_list))]
-        values = [np.int8(values_i8[i]) for i in range(values_i8.shape[0])]
         return states, indices_sparse, counts_sparse, values
 
     def play_games(self, num_games: int) -> dict[str, Any]:
