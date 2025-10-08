@@ -63,7 +63,7 @@ struct Move {
   [[nodiscard]] Piece promotion() const noexcept {
     return Piece(data >> 12);
   }
-  bool operator==(const Move& o) const noexcept {
+  [[nodiscard]] bool operator==(const Move& o) const noexcept {
     return data == o.data;
   }
 };
