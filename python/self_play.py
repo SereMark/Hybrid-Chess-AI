@@ -1104,8 +1104,14 @@ class SelfPlayEngine:
 
     def play_games(self, num_games: int) -> dict[str, Any]:
         aggregate = _SelfPlayAggregate()
-        seeds = [int(np.random.randint(0, 2**63 - 1)) for _ in range(num_games)]
         deterministic = int(C.SEED) != 0
+        rng_seed = int(C.SEED) if deterministic else None
+        rng = np.random.default_rng(rng_seed)
+        if num_games > 0:
+            seeds_arr = rng.integers(0, 2**63, size=num_games, dtype=np.int64)
+        else:
+            seeds_arr = np.empty((0,), dtype=np.int64)
+        seeds = [int(seed) for seed in seeds_arr]
         pending: dict[int, tuple[int, int, list[tuple[np.ndarray, np.ndarray, np.ndarray]], bool, dict[str, int]]] = {}
         with ThreadPoolExecutor(max_workers=max(1, self.num_workers)) as ex:
             futures = {ex.submit(self.play_single_game, seeds[i]): i for i in range(num_games)}
