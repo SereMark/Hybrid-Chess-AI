@@ -5,11 +5,13 @@ project(chesscore LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
-set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
-set(CHESSCORE_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
+set(CHESSCORE_SRC_DIR "${PROJECT_SOURCE_DIR}/src/core")
+set(CHESSCORE_PYTHON_DIR "${PROJECT_SOURCE_DIR}/src/python")
+set(CHESSCORE_BUILD_RUNTIME_DIR "${PROJECT_BINARY_DIR}/python")
+set(CHESSCORE_BUILD_ARCHIVE_DIR "${PROJECT_BINARY_DIR}/lib")
+
 set(CHESSCORE_SOURCES
     "${CHESSCORE_SRC_DIR}/bindings.cpp"
     "${CHESSCORE_SRC_DIR}/chess.cpp"
@@ -25,10 +27,11 @@ target_include_directories(chesscore PRIVATE "${CHESSCORE_SRC_DIR}")
 target_compile_features(chesscore PRIVATE cxx_std_23)
 
 set_target_properties(chesscore PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/src/python"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/src/python"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/src/python"
+    RUNTIME_OUTPUT_DIRECTORY "${CHESSCORE_BUILD_RUNTIME_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY "${CHESSCORE_BUILD_RUNTIME_DIR}"
+    ARCHIVE_OUTPUT_DIRECTORY "${CHESSCORE_BUILD_ARCHIVE_DIR}"
     INTERPROCEDURAL_OPTIMIZATION TRUE
+    POSITION_INDEPENDENT_CODE ON
 )
 
 target_compile_definitions(chesscore PRIVATE
@@ -59,4 +62,10 @@ target_link_options(chesscore PRIVATE
     /guard:cf
 )
 
-set_property(TARGET chesscore PROPERTY POSITION_INDEPENDENT_CODE ON)
+add_custom_command(TARGET chesscore POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CHESSCORE_PYTHON_DIR}"
+    COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:chesscore>" "${CHESSCORE_PYTHON_DIR}"
+    COMMAND "${CMAKE_COMMAND}" -E rm -f
+        "${CHESSCORE_PYTHON_DIR}/chesscore.lib"
+        "${CHESSCORE_PYTHON_DIR}/chesscore.exp"
+)
