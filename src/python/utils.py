@@ -9,14 +9,18 @@ import socket
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 import psutil
 import torch
+from torch import nn
 
 import config as C
 
 __all__ = [
+    "prepare_model",
+    "select_autocast_dtype",
+    "select_inference_dtype",
     "MetricsReporter",
     "flip_fen_perspective",
     "sanitize_fen",
@@ -30,6 +34,52 @@ __all__ = [
 
 _CASTLING_ORDER = "KQkq"
 _FILES = "abcdefgh"
+
+
+def _cuda_supports_bf16() -> bool:
+    if not torch.cuda.is_available():
+        return False
+    checker = getattr(torch.cuda, "is_bf16_supported", None)
+    if not callable(checker):
+        return False
+    with contextlib.suppress(Exception):
+        return bool(checker())
+    return False
+
+
+def select_autocast_dtype(device: torch.device) -> torch.dtype:
+    if device.type != "cuda":
+        return torch.bfloat16
+    return torch.bfloat16 if _cuda_supports_bf16() else torch.float16
+
+
+def select_inference_dtype(
+    device: torch.device, *, cpu_dtype: torch.dtype = torch.float32
+) -> torch.dtype:
+    if device.type != "cuda":
+        return cpu_dtype
+    return select_autocast_dtype(device)
+
+
+def prepare_model(
+    model: nn.Module,
+    device: torch.device,
+    *,
+    channels_last: bool = False,
+    dtype: Optional[torch.dtype] = None,
+    eval_mode: bool = False,
+    freeze: bool = False,
+) -> nn.Module:
+    model = model.to(device)
+    if channels_last:
+        model = model.to(memory_format=torch.channels_last)
+    if dtype is not None:
+        model = model.to(dtype=dtype)
+    model = model.eval() if eval_mode else model.train()
+    if freeze:
+        for param in model.parameters():
+            param.requires_grad_(False)
+    return model
 
 
 def _flip_square(square: str) -> str:
@@ -308,15 +358,3 @@ def startup_summary(trainer: Any) -> str:
     return "\n".join(lines)
 
 
-__all__ = [
-    "sanitize_fen",
-    "flip_fen_perspective",
-    "iter_with_perspectives",
-    "MetricsReporter",
-    "format_time",
-    "format_si",
-    "format_gb",
-    "get_mem_info",
-    "get_sys_info",
-    "startup_summary",
-]
