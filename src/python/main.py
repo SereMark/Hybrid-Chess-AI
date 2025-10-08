@@ -119,9 +119,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         torch.use_deterministic_algorithms(True)
     torch.set_num_threads(threads_intra)
     torch.set_num_interop_threads(threads_inter)
-    logging.getLogger("hybridchess.runtime").info(
-        "Torch intra-op threads=%d inter-op threads=%d", threads_intra, threads_inter
-    )
+    logging.getLogger("hybridchess.runtime")
     _seed_everything(has_cuda)
     resume_flag = any(arg in {"--resume", "resume"} for arg in args)
     Trainer(resume=resume_flag).train()
