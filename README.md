@@ -21,7 +21,7 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 ## Build the C++ Core
 Run from **Developer PowerShell for VS 2022** so `cl.exe` is available:
 ```powershell
-cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 ```
 The tailored `CMakeLists.txt` emits a single `chesscore` wheel-ready module into `src/python` using AVX2, `/MP16`, and link-time code generation tuned for the 5800H.
