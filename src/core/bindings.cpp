@@ -1,7 +1,5 @@
 #include "chess.hpp"
-#include "encoder.hpp"
 #include "mcts.hpp"
-#include "replay_buffer.hpp"
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
@@ -191,64 +189,6 @@ PYBIND11_MODULE(chesscore, m) {
   m.def("encode_move_index", &mcts::encode_move_index);
 
   m.def(
-      "encode_position",
-      [](const chess::Position& pos) {
-        constexpr PySsize_t planes = static_cast<PySsize_t>(encoder::INPUT_PLANES);
-        constexpr PySsize_t H      = static_cast<PySsize_t>(chess::BOARD_SIZE);
-        constexpr PySsize_t W      = static_cast<PySsize_t>(chess::BOARD_SIZE);
-        py::array_t<float>  a({planes, H, W});
-        auto               info = a.request();
-        auto*              ptr  = static_cast<float*>(info.ptr);
-        {
-          py::gil_scoped_release rel;
-          encoder::encode_position_into(pos, ptr);
-        }
-        return a;
-      },
-      py::arg("position"));
-
-  m.def(
-      "encode_batch",
-      [](const std::vector<chess::Position>& positions) {
-        constexpr PySsize_t planes = static_cast<PySsize_t>(encoder::INPUT_PLANES);
-        constexpr PySsize_t H      = static_cast<PySsize_t>(chess::BOARD_SIZE);
-        constexpr PySsize_t W      = static_cast<PySsize_t>(chess::BOARD_SIZE);
-        const PySsize_t     B      = static_cast<PySsize_t>(positions.size());
-        py::array_t<float>  a({B, planes, H, W});
-        auto                info   = a.request();
-        auto*               ptr    = static_cast<float*>(info.ptr);
-        const size_t        stride = static_cast<size_t>(planes * H * W);
-        {
-          py::gil_scoped_release rel;
-          for (PySsize_t i = 0; i < B; ++i)
-            encoder::encode_position_into(positions[static_cast<size_t>(i)], ptr + stride * static_cast<size_t>(i));
-        }
-        return a;
-      },
-      py::arg("positions"));
-
-  m.def(
-      "encode_batch",
-      [](const std::vector<std::vector<chess::Position>>& histories) {
-        constexpr PySsize_t planes = static_cast<PySsize_t>(encoder::INPUT_PLANES);
-        constexpr PySsize_t H      = static_cast<PySsize_t>(chess::BOARD_SIZE);
-        constexpr PySsize_t W      = static_cast<PySsize_t>(chess::BOARD_SIZE);
-        const PySsize_t     B      = static_cast<PySsize_t>(histories.size());
-        py::array_t<float>  a({B, planes, H, W});
-        auto                info   = a.request();
-        auto*               ptr    = static_cast<float*>(info.ptr);
-        const size_t        stride = static_cast<size_t>(planes * H * W);
-        {
-          py::gil_scoped_release rel;
-          for (PySsize_t i = 0; i < B; ++i)
-            encoder::encode_position_with_history(histories[static_cast<size_t>(i)],
-                                                  ptr + stride * static_cast<size_t>(i));
-        }
-        return a;
-      },
-      py::arg("histories"));
-
-  m.def(
       "encode_move_indices_batch",
       [](const std::vector<std::vector<chess::Move>>& moves_lists) {
         py::list out;
@@ -264,9 +204,6 @@ PYBIND11_MODULE(chesscore, m) {
       },
       py::arg("moves_lists"));
 
-  m.attr("INPUT_PLANES")        = encoder::INPUT_PLANES;
-  m.attr("HISTORY_LENGTH")      = encoder::HISTORY_LENGTH;
-  m.attr("PLANES_PER_POSITION") = encoder::PLANES_PER_POSITION;
   m.attr("POLICY_SIZE")         = mcts::POLICY_SIZE;
 
   m.attr("WHITE")     = chess::WHITE;
@@ -279,72 +216,4 @@ PYBIND11_MODULE(chesscore, m) {
   m.def("square_str", [](int sq) { return sq_to_str(sq); }, py::arg("square"));
   m.def("uci_of_move", [](const chess::Move& mv) { return move_to_uci(mv); }, py::arg("move"));
 
-  py::class_<replaybuf::ReplayBuffer>(m, "ReplayBuffer")
-      .def(py::init<size_t, int, int, int>(), py::arg("capacity"), py::arg("planes"), py::arg("height"),
-           py::arg("width"))
-      .def("seed", &replaybuf::ReplayBuffer::seed, py::arg("seed"))
-      .def("clear", &replaybuf::ReplayBuffer::clear)
-      .def("set_capacity", &replaybuf::ReplayBuffer::set_capacity, py::arg("capacity"))
-      .def_property_readonly("capacity", &replaybuf::ReplayBuffer::capacity)
-      .def_property_readonly("size", &replaybuf::ReplayBuffer::size)
-      .def(
-          "push",
-          [](replaybuf::ReplayBuffer& buf, py::array_t<uint8_t, py::array::c_style | py::array::forcecast> state,
-             py::array_t<int32_t, py::array::c_style | py::array::forcecast>  idx,
-             py::array_t<uint16_t, py::array::c_style | py::array::forcecast> cnt, int8_t value) {
-            auto sinfo = state.request();
-            if (sinfo.ndim != 3)
-              throw py::value_error("state must be [P,H,W]");
-            const size_t state_bytes = static_cast<size_t>(sinfo.shape[0] * sinfo.shape[1] * sinfo.shape[2]);
-            auto         iinfo       = idx.request();
-            auto         cinfo       = cnt.request();
-            if (iinfo.ndim != 1 || cinfo.ndim != 1)
-              throw py::value_error("idx/cnt must be 1D");
-            if (cinfo.shape[0] != iinfo.shape[0])
-              throw py::value_error("idx and cnt length mismatch");
-            const uint8_t*  sp = static_cast<const uint8_t*>(sinfo.ptr);
-            const int32_t*  ip = static_cast<const int32_t*>(iinfo.ptr);
-            const uint16_t* cp = static_cast<const uint16_t*>(cinfo.ptr);
-            buf.push(sp, state_bytes, ip, static_cast<size_t>(iinfo.shape[0]), cp, static_cast<size_t>(cinfo.shape[0]),
-                     value);
-          },
-          py::arg("state"), py::arg("indices"), py::arg("counts"), py::arg("value"))
-      .def(
-          "sample",
-          [](replaybuf::ReplayBuffer& buf, size_t batch, double recent_ratio, double recent_window_frac) {
-            std::vector<uint8_t>  states;
-            std::vector<size_t>   state_off;
-            std::vector<int32_t>  idx;
-            std::vector<size_t>   idx_off;
-            std::vector<uint16_t> cnt;
-            std::vector<size_t>   cnt_off;
-            std::vector<int8_t>   val;
-            buf.sample(batch, recent_ratio, recent_window_frac, states, state_off, idx, idx_off, cnt, cnt_off, val);
-            const PySsize_t      B = static_cast<PySsize_t>(val.size());
-            const PySsize_t      P = static_cast<PySsize_t>(buf.planes());
-            const PySsize_t      H = static_cast<PySsize_t>(buf.height());
-            const PySsize_t      W = static_cast<PySsize_t>(buf.width());
-            py::array_t<uint8_t> a_states({B, P, H, W});
-            std::memcpy(a_states.request().ptr, states.data(), states.size());
-            py::list idx_list;
-            py::list cnt_list;
-            for (PySsize_t i = 0; i < B; ++i) {
-              const PySsize_t       i0 = static_cast<PySsize_t>(idx_off[static_cast<size_t>(i)]);
-              const PySsize_t       i1 = static_cast<PySsize_t>(idx_off[static_cast<size_t>(i + 1)]);
-              const PySsize_t       c0 = static_cast<PySsize_t>(cnt_off[static_cast<size_t>(i)]);
-              const PySsize_t       c1 = static_cast<PySsize_t>(cnt_off[static_cast<size_t>(i + 1)]);
-              py::array_t<int32_t>  ai(i1 - i0);
-              py::array_t<uint16_t> ac(c1 - c0);
-              if (i1 > i0)
-                std::memcpy(ai.request().ptr, idx.data() + i0, static_cast<size_t>(i1 - i0) * sizeof(int32_t));
-              if (c1 > c0)
-                std::memcpy(ac.request().ptr, cnt.data() + c0, static_cast<size_t>(c1 - c0) * sizeof(uint16_t));
-              idx_list.append(std::move(ai));
-              cnt_list.append(std::move(ac));
-            }
-            py::array_t<int8_t> a_val(B);
-            std::memcpy(a_val.request().ptr, val.data(), val.size());
-            return py::make_tuple(std::move(a_states), std::move(idx_list), std::move(cnt_list), std::move(a_val));
-          },
-          py::arg("batch_size"), py::arg("recent_ratio"), py::arg("recent_window_frac"));
 }
