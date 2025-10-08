@@ -1,3 +1,5 @@
+"""Batched inference helpers for evaluating neural network positions."""
+
 from __future__ import annotations
 
 import numbers
@@ -7,13 +9,15 @@ from collections import OrderedDict
 from contextlib import suppress
 from typing import Any, cast
 
+import chesscore as ccore
 import numpy as np
 import torch
 from torch import nn
 
 import config as C
 from network import BOARD_SIZE, INPUT_PLANES, POLICY_OUTPUT, ChessNet
-from . encoder import encode_position_with_history
+
+__all__ = ["BatchedEvaluator"]
 
 
 class BatchedEvaluator:
@@ -25,25 +29,38 @@ class BatchedEvaluator:
         if C.TORCH.EVAL_MODEL_CHANNELS_LAST:
             self.eval_model = cast(
                 nn.Module,
-                self.eval_model.to(memory_format=torch.channels_last),
+                cast(Any, self.eval_model).to(memory_format=torch.channels_last),
             )
         self.eval_model = self.eval_model.eval()
-        self._inference_dtype = torch.float32
+        self._inference_dtype: torch.dtype = torch.float32
         if self.device.type == "cuda":
-            if hasattr(torch.cuda, "is_bf16_supported") and torch.cuda.is_bf16_supported():
+            if (
+                hasattr(torch.cuda, "is_bf16_supported")
+                and torch.cuda.is_bf16_supported()
+            ):
                 self._inference_dtype = torch.bfloat16
             else:
                 self._inference_dtype = torch.float16
-        self.eval_model = cast(nn.Module, self.eval_model.to(dtype=self._inference_dtype))
+        self.eval_model = cast(
+            nn.Module, self.eval_model.to(dtype=self._inference_dtype)
+        )
         for p in self.eval_model.parameters():
             p.requires_grad_(False)
+        self._np_inference_dtype: np.dtype[Any]
+        self._cache_out_dtype: torch.dtype
         if self._inference_dtype == torch.bfloat16:
-            self._np_inference_dtype = np.float32
+            self._np_inference_dtype = np.dtype(np.float32)
             self._cache_out_dtype = torch.float32
         else:
-            self._np_inference_dtype = np.float16 if self._inference_dtype == torch.float16 else np.float32
+            self._np_inference_dtype = (
+                np.dtype(np.float16)
+                if self._inference_dtype == torch.float16
+                else np.dtype(np.float32)
+            )
             self._cache_out_dtype = (
-                torch.float16 if (C.EVAL.CACHE_USE_FP16 and self._inference_dtype == torch.float16) else torch.float32
+                torch.float16
+                if (C.EVAL.CACHE_USE_FP16 and self._inference_dtype == torch.float16)
+                else torch.float32
             )
         self.cache_lock = threading.Lock()
         self._metrics_lock = threading.Lock()
@@ -68,10 +85,14 @@ class BatchedEvaluator:
 
         self._req_cv = threading.Condition()
         self._req_queue: list[_EvalRequest] = []
-        self._coalesce_thread = threading.Thread(target=self._coalesce_loop, name="EvalCoalesce", daemon=True)
+        self._coalesce_thread = threading.Thread(
+            target=self._coalesce_loop, name="EvalCoalesce", daemon=True
+        )
         self._coalesce_thread.start()
 
-    def set_batching_params(self, batch_size_max: int | None = None, coalesce_ms: int | None = None) -> None:
+    def set_batching_params(
+        self, batch_size_max: int | None = None, coalesce_ms: int | None = None
+    ) -> None:
         if batch_size_max is not None:
             self._batch_size_cap = int(max(1, batch_size_max))
         if coalesce_ms is not None:
@@ -82,7 +103,10 @@ class BatchedEvaluator:
         with suppress(Exception), self._req_cv:
             self._req_cv.notify_all()
         with suppress(Exception):
-            if getattr(self, "_coalesce_thread", None) is not None and self._coalesce_thread.is_alive():
+            if (
+                getattr(self, "_coalesce_thread", None) is not None
+                and self._coalesce_thread.is_alive()
+            ):
                 self._coalesce_thread.join(timeout=1.0)
         with suppress(Exception):
             self._enc_cache.clear()
@@ -90,6 +114,7 @@ class BatchedEvaluator:
             self._val_cache.clear()
         with suppress(Exception):
             self._out_cache.clear()
+
     def set_cache_capacity(self, capacity: int) -> None:
         cap = int(max(0, capacity))
         self._enc_cache_cap = max(1, cap)
@@ -125,7 +150,7 @@ class BatchedEvaluator:
             if C.TORCH.EVAL_MODEL_CHANNELS_LAST:
                 new_model = cast(
                     nn.Module,
-                    new_model.to(memory_format=torch.channels_last),
+                    cast(Any, new_model).to(memory_format=torch.channels_last),
                 )
             with suppress(Exception):
                 self.eval_model = new_model
@@ -143,7 +168,9 @@ class BatchedEvaluator:
 
     def _encode_batch(self, positions: list[Any]) -> torch.Tensor:
         if not positions:
-            x = torch.zeros((0, INPUT_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=torch.float32)
+            x = torch.zeros(
+                (0, INPUT_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=torch.float32
+            )
             return x.to(self.device)
         encoded: list[np.ndarray | None] = [None] * len(positions)
         misses: list[tuple[int, Any]] = []
@@ -166,14 +193,16 @@ class BatchedEvaluator:
         with self.cache_lock:
             for i, k in enumerate(keys):
                 if k is not None:
-                    arr = encoded[i]
-                    if arr is not None:
-                        self._enc_cache[k] = arr
+                    maybe_arr = encoded[i]
+                    if maybe_arr is not None:
+                        self._enc_cache[k] = maybe_arr
                         while len(self._enc_cache) > self._enc_cache_cap:
                             self._enc_cache.popitem(last=False)
         x_np = np.stack(
             [
-                np.asarray(cast(np.ndarray, e), dtype=self._np_inference_dtype, order="C")
+                np.asarray(
+                    cast(np.ndarray, e), dtype=self._np_inference_dtype, order="C"
+                )
                 for e in encoded
             ]
         )
@@ -181,7 +210,11 @@ class BatchedEvaluator:
         if torch.cuda.is_available() and x.device.type == "cpu":
             x = x.pin_memory()
         x = x.to(self.device, non_blocking=True)
-        return x.contiguous(memory_format=torch.channels_last) if x.dim() == 4 else x.contiguous()
+        return (
+            x.contiguous(memory_format=torch.channels_last)
+            if x.dim() == 4
+            else x.contiguous()
+        )
 
     @staticmethod
     def _fuse_conv_bn_(conv: nn.Conv2d, bn: nn.BatchNorm2d) -> None:
@@ -190,7 +223,9 @@ class BatchedEvaluator:
         w = conv.weight.data
         bias = conv.bias
         if bias is None:
-            conv.bias = nn.Parameter(torch.zeros(w.size(0), device=w.device, dtype=w.dtype))
+            conv.bias = nn.Parameter(
+                torch.zeros(w.size(0), device=w.device, dtype=w.dtype)
+            )
             bias = conv.bias
         b = bias.data
         gamma = bn.weight.data
@@ -235,6 +270,7 @@ class BatchedEvaluator:
         with self.model_lock, torch.inference_mode():
             x = x.to(dtype=self._inference_dtype)
             return cast(tuple[torch.Tensor, torch.Tensor], self.eval_model(x))
+
     def _infer_positions_legal_direct(
         self, positions: list[Any], moves_per_position: list[list[Any]]
     ) -> tuple[list[np.ndarray], np.ndarray]:
@@ -247,15 +283,20 @@ class BatchedEvaluator:
         try:
             idx_lists_py = ccore.encode_move_indices_batch(moves_per_position)
             idx_lists: list[np.ndarray] = [
-                np.asarray(idx_lists_py[i], dtype=np.int64).reshape(-1) for i in range(n)
+                np.asarray(idx_lists_py[i], dtype=np.int64).reshape(-1)
+                for i in range(n)
             ]
         except Exception:
             idx_lists = [
-                np.asarray([int(ccore.encode_move_index(m)) for m in moves], dtype=np.int64).reshape(-1)
+                np.asarray(
+                    [int(ccore.encode_move_index(m)) for m in moves], dtype=np.int64
+                ).reshape(-1)
                 for moves in moves_per_position
             ]
 
-        probs_out: list[np.ndarray] = [np.zeros((0,), dtype=np.float32) for _ in range(n)]
+        probs_out: list[np.ndarray] = [
+            np.zeros((0,), dtype=np.float32) for _ in range(n)
+        ]
         values_out: list[float] = [0.0] * n
         hits: list[int] = []
         misses: list[int] = []
@@ -274,7 +315,9 @@ class BatchedEvaluator:
                         m = float(sel.max()) if sel.size > 0 else 0.0
                         ex = np.exp(sel - m)
                         s = float(ex.sum())
-                        probs_out[i] = (ex / (s if s > 0 else 1.0)).astype(np.float32, copy=False)
+                        probs_out[i] = (ex / (s if s > 0 else 1.0)).astype(
+                            np.float32, copy=False
+                        )
                     values_out[i] = float(v)
                     hits.append(i)
                 else:
@@ -287,15 +330,21 @@ class BatchedEvaluator:
             policy_logits = policy_out_t.float()
             policy_logits = policy_logits - policy_logits.amax(dim=1, keepdim=True)
 
-            lengths_miss = [int(np.asarray(idx_lists[i], dtype=np.int64).shape[0]) for i in misses]
+            lengths_miss = [
+                int(np.asarray(idx_lists[i], dtype=np.int64).shape[0]) for i in misses
+            ]
             Lmax = max(1, max(lengths_miss))
-            idx_padded = torch.full((len(misses), Lmax), -1, dtype=torch.long, device=self.device)
+            idx_padded = torch.full(
+                (len(misses), Lmax), -1, dtype=torch.long, device=self.device
+            )
             for j, i in enumerate(misses):
                 arr = np.asarray(idx_lists[i], dtype=np.int64)
                 if arr.size == 0:
                     continue
                 arr = np.where((arr >= 0) & (arr < POLICY_OUTPUT), arr, -1)
-                t = torch.from_numpy(arr).to(self.device, non_blocking=True, dtype=torch.long)
+                t = torch.from_numpy(arr).to(
+                    self.device, non_blocking=True, dtype=torch.long
+                )
                 idx_padded[j, : t.numel()] = t
             mask = idx_padded >= 0
             gather_idx = idx_padded.clamp_min(0)
@@ -371,7 +420,9 @@ class BatchedEvaluator:
                 else:
                     continue
                 total = batch[0].size
-                deadline = time.monotonic() + max(0.0, float(self._coalesce_ms) / 1000.0)
+                deadline = time.monotonic() + max(
+                    0.0, float(self._coalesce_ms) / 1000.0
+                )
                 while (total < self._batch_size_cap) and (time.monotonic() < deadline):
                     if self._req_queue:
                         if self._req_queue[0].size <= (self._batch_size_cap - total):
@@ -395,7 +446,9 @@ class BatchedEvaluator:
                     flat_pos.extend(r.positions)
                     flat_moves.extend(r.moves)
                     sizes.append(r.size)
-                pol_list, val_arr = self._infer_positions_legal_direct(flat_pos, flat_moves)
+                pol_list, val_arr = self._infer_positions_legal_direct(
+                    flat_pos, flat_moves
+                )
                 off = 0
                 for r, sz in zip(batch, sizes, strict=False):
                     r.out_pol = pol_list[off : off + sz]
@@ -404,7 +457,9 @@ class BatchedEvaluator:
                     off += sz
             except Exception:
                 for r in batch:
-                    r.out_pol = [np.zeros((0,), dtype=np.float32) for _ in range(r.size)]
+                    r.out_pol = [
+                        np.zeros((0,), dtype=np.float32) for _ in range(r.size)
+                    ]
                     r.out_val = np.zeros((r.size,), dtype=np.float32)
                     r.ev.set()
 
@@ -457,7 +512,9 @@ class BatchedEvaluator:
                         self._val_cache[key] = float(v)
                         while len(self._val_cache) > self._val_cache_cap:
                             self._val_cache.popitem(last=False)
-        return np.asarray([(0.0 if v is None else float(v)) for v in values], dtype=np.float32)
+        return np.asarray(
+            [(0.0 if v is None else float(v)) for v in values], dtype=np.float32
+        )
 
 
 class _EvalRequest:

@@ -1,4 +1,25 @@
+"""Structured configuration defaults for Hybrid Chess AI."""
+
+from __future__ import annotations
+
 from types import SimpleNamespace as _NS
+
+__all__ = [
+    "SEED",
+    "LOG",
+    "TORCH",
+    "DATA",
+    "MODEL",
+    "EVAL",
+    "SELFPLAY",
+    "REPLAY",
+    "SAMPLING",
+    "AUGMENT",
+    "MCTS",
+    "RESIGN",
+    "TRAIN",
+    "ARENA",
+]
 
 SEED = 0
 

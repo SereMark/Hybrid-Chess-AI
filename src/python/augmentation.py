@@ -1,17 +1,22 @@
+"""Data augmentation utilities for encoded chess positions."""
+
 from __future__ import annotations
 
 from typing import ClassVar
 
+import chesscore as ccore
 import numpy as np
 
 import config as C
-from . import encoder
+import encoder
 
 BOARD_SIZE = 8
 NSQUARES = 64
 PLANES_PER_POSITION = encoder.PLANES_PER_POSITION
 HISTORY_LENGTH = encoder.HISTORY_LENGTH
 POLICY_OUTPUT = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
+
+__all__ = ["Augment"]
 
 
 NUM_DIRECTIONS = 8
@@ -30,19 +35,25 @@ PMAP_PROMOS = [0, 2, 1]
 
 
 class Augment:
+    """Applies symmetry-based data augmentation to batched positions."""
+
     _policy_map_cache: ClassVar[dict[str, np.ndarray]] = {}
 
     @staticmethod
     def _policy_index_permutation(transform: str) -> np.ndarray:
         if transform in Augment._policy_map_cache:
             return Augment._policy_map_cache[transform]
-        assert POLICY_OUTPUT % NSQUARES == 0, "POLICY_OUTPUT must be divisible by NSQUARES"
+        assert (
+            POLICY_OUTPUT % NSQUARES == 0
+        ), "POLICY_OUTPUT must be divisible by NSQUARES"
         planes = POLICY_OUTPUT // NSQUARES
         required_planes = max(
             KNIGHT_PLANES_BASE + NUM_KNIGHT_DIRS,
             NSQUARES + PROMO_STRIDE * PROMO_CHOICES,
         )
-        base = np.arange(POLICY_OUTPUT, dtype=np.int32).reshape(planes, BOARD_SIZE, BOARD_SIZE)
+        base = np.arange(POLICY_OUTPUT, dtype=np.int32).reshape(
+            planes, BOARD_SIZE, BOARD_SIZE
+        )
         out = base
         if transform == "mirror":
             arr = base[:, :, ::-1]
@@ -51,10 +62,14 @@ class Augment:
                 dir_map = DIR_MAP_MIRROR
                 for d in range(NUM_DIRECTIONS):
                     for dist in range(DIR_MAX_DIST):
-                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[d * DIR_MAX_DIST + dist]
+                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[
+                            d * DIR_MAX_DIST + dist
+                        ]
                 knight_map = KMAP_MIRROR
                 for k in range(NUM_KNIGHT_DIRS):
-                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[KNIGHT_PLANES_BASE + k]
+                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[
+                        KNIGHT_PLANES_BASE + k
+                    ]
                 promo_map = PMAP_PROMOS
                 for promo in range(PROMO_CHOICES):
                     b = NSQUARES + promo * PROMO_STRIDE
@@ -62,7 +77,9 @@ class Augment:
                     out[b + promo_map[1]] = arr[b + 1]
                     out[b + promo_map[2]] = arr[b + 2]
             else:
-                Augment._policy_map_cache[transform] = np.arange(POLICY_OUTPUT, dtype=np.int32)
+                Augment._policy_map_cache[transform] = np.arange(
+                    POLICY_OUTPUT, dtype=np.int32
+                )
                 return Augment._policy_map_cache[transform]
         elif transform == "rot180":
             arr = base[:, ::-1, ::-1]
@@ -71,10 +88,14 @@ class Augment:
                 dir_map = DIR_MAP_ROT180
                 for d in range(NUM_DIRECTIONS):
                     for dist in range(DIR_MAX_DIST):
-                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[d * DIR_MAX_DIST + dist]
+                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[
+                            d * DIR_MAX_DIST + dist
+                        ]
                 knight_map = KMAP_ROT180
                 for k in range(NUM_KNIGHT_DIRS):
-                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[KNIGHT_PLANES_BASE + k]
+                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[
+                        KNIGHT_PLANES_BASE + k
+                    ]
                 promo_map = PMAP_PROMOS
                 for promo in range(PROMO_CHOICES):
                     b = NSQUARES + promo * PROMO_STRIDE
@@ -82,7 +103,9 @@ class Augment:
                     out[b + promo_map[1]] = arr[b + 1]
                     out[b + promo_map[2]] = arr[b + 2]
             else:
-                Augment._policy_map_cache[transform] = np.arange(POLICY_OUTPUT, dtype=np.int32)
+                Augment._policy_map_cache[transform] = np.arange(
+                    POLICY_OUTPUT, dtype=np.int32
+                )
                 return Augment._policy_map_cache[transform]
 
         elif transform == "vflip_cs":
@@ -92,12 +115,18 @@ class Augment:
                 dir_map = DIR_MAP_VFLIP_CS
                 for d in range(NUM_DIRECTIONS):
                     for dist in range(DIR_MAX_DIST):
-                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[d * DIR_MAX_DIST + dist]
+                        out[dir_map[d] * DIR_MAX_DIST + dist] = arr[
+                            d * DIR_MAX_DIST + dist
+                        ]
                 knight_map = KMAP_VFLIP_CS
                 for k in range(NUM_KNIGHT_DIRS):
-                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[KNIGHT_PLANES_BASE + k]
+                    out[KNIGHT_PLANES_BASE + knight_map[k]] = arr[
+                        KNIGHT_PLANES_BASE + k
+                    ]
             else:
-                Augment._policy_map_cache[transform] = np.arange(POLICY_OUTPUT, dtype=np.int32)
+                Augment._policy_map_cache[transform] = np.arange(
+                    POLICY_OUTPUT, dtype=np.int32
+                )
                 return Augment._policy_map_cache[transform]
         Augment._policy_map_cache[transform] = out.reshape(-1)
         return Augment._policy_map_cache[transform]
@@ -160,11 +189,13 @@ class Augment:
             tp = idx["turn_plane"]
             if tp < state_batch.shape[1]:
                 if np.issubdtype(state_batch.dtype, np.floating):
-                    one_val = 1.0
+                    one_val = np.array(1.0, dtype=state_batch.dtype)
                 else:
                     one_val = np.array(C.DATA.U8_SCALE, dtype=state_batch.dtype)
                 state_batch[:, tp] = one_val - state_batch[:, tp]
-            policy_batch = policy_batch[:, Augment._policy_index_permutation("vflip_cs")]
+            policy_batch = policy_batch[
+                :, Augment._policy_index_permutation("vflip_cs")
+            ]
             stm_swapped = True
         else:
             return states, policies, False

@@ -1,3 +1,5 @@
+"""Core training loop utilities."""
+
 from __future__ import annotations
 
 import math
@@ -12,10 +14,15 @@ import torch.nn.functional as F
 import config as C
 from utils import get_mem_info
 
+__all__ = ["run_training_iteration", "train_step"]
+
 
 def _entropy_coefficient(iteration: int) -> float:
     coef = 0.0
-    if C.TRAIN.LOSS_ENTROPY_COEF_INIT > 0 and iteration <= C.TRAIN.LOSS_ENTROPY_ANNEAL_ITERS:
+    if (
+        C.TRAIN.LOSS_ENTROPY_COEF_INIT > 0
+        and iteration <= C.TRAIN.LOSS_ENTROPY_ANNEAL_ITERS
+    ):
         coef = C.TRAIN.LOSS_ENTROPY_COEF_INIT * (
             1.0 - (iteration - 1) / max(1, C.TRAIN.LOSS_ENTROPY_ANNEAL_ITERS)
         )
@@ -57,27 +64,66 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
             trainer.selfplay_engine.resign_consecutive = 0
         else:
             ramp_start = int(getattr(C.RESIGN, "VALUE_THRESHOLD_RAMP_START", 0))
-            ramp_end = int(max(ramp_start + 1, getattr(C.RESIGN, "VALUE_THRESHOLD_RAMP_END", ramp_start + 1)))
-            init_thr = float(getattr(C.RESIGN, "VALUE_THRESHOLD_INIT", C.RESIGN.VALUE_THRESHOLD))
+            ramp_end = int(
+                max(
+                    ramp_start + 1,
+                    getattr(C.RESIGN, "VALUE_THRESHOLD_RAMP_END", ramp_start + 1),
+                )
+            )
+            init_thr = float(
+                getattr(C.RESIGN, "VALUE_THRESHOLD_INIT", C.RESIGN.VALUE_THRESHOLD)
+            )
             final_thr = float(getattr(C.RESIGN, "VALUE_THRESHOLD", init_thr))
-            thr_alpha = 0.0 if ramp_end <= ramp_start else float(
-                np.clip((trainer.iteration - ramp_start) / (ramp_end - ramp_start), 0.0, 1.0)
+            thr_alpha = (
+                0.0
+                if ramp_end <= ramp_start
+                else float(
+                    np.clip(
+                        (trainer.iteration - ramp_start) / (ramp_end - ramp_start),
+                        0.0,
+                        1.0,
+                    )
+                )
             )
             threshold = init_thr + thr_alpha * (final_thr - init_thr)
 
             window = getattr(trainer, "_resign_eval_losses", None)
-            target_pct = float(getattr(trainer, "_resign_target_pct", getattr(C.RESIGN, "TARGET_LOSS_VALUE_PCTL", 0.25)))
+            target_pct = float(
+                getattr(
+                    trainer,
+                    "_resign_target_pct",
+                    getattr(C.RESIGN, "TARGET_LOSS_VALUE_PCTL", 0.25),
+                )
+            )
             if window and len(window) >= 8:
                 sorted_losses = sorted(window)
-                idx = int(max(0, min(len(sorted_losses) - 1, math.floor(target_pct * (len(sorted_losses) - 1)))))
+                idx = int(
+                    max(
+                        0,
+                        min(
+                            len(sorted_losses) - 1,
+                            math.floor(target_pct * (len(sorted_losses) - 1)),
+                        ),
+                    )
+                )
                 dynamic_thr = float(sorted_losses[idx])
                 threshold = float(min(threshold, dynamic_thr))
 
             mp_start = int(max(0, getattr(C.RESIGN, "MIN_PLIES_INIT", 0)))
             mp_final = int(max(0, getattr(C.RESIGN, "MIN_PLIES_FINAL", mp_start)))
-            mp_end = int(max(ramp_start + 1, getattr(C.RESIGN, "MIN_PLIES_RAMP_END", ramp_end)))
-            mp_alpha = 0.0 if mp_end <= ramp_start else float(
-                np.clip((trainer.iteration - ramp_start) / (mp_end - ramp_start), 0.0, 1.0)
+            mp_end = int(
+                max(ramp_start + 1, getattr(C.RESIGN, "MIN_PLIES_RAMP_END", ramp_end))
+            )
+            mp_alpha = (
+                0.0
+                if mp_end <= ramp_start
+                else float(
+                    np.clip(
+                        (trainer.iteration - ramp_start) / (mp_end - ramp_start),
+                        0.0,
+                        1.0,
+                    )
+                )
             )
             min_plies = round(mp_start + mp_alpha * (mp_final - mp_start))
 
@@ -99,9 +145,17 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
         buffer_len = 0
         buffer_cap = 1
     buffer_fill = buffer_len / max(1, buffer_cap)
-    ratio_max = float(getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_RATIO_MAX", C.SAMPLING.TRAIN_RECENT_SAMPLE_RATIO))
+    ratio_max = float(
+        getattr(
+            C.SAMPLING,
+            "TRAIN_RECENT_SAMPLE_RATIO_MAX",
+            C.SAMPLING.TRAIN_RECENT_SAMPLE_RATIO,
+        )
+    )
     ratio_min = float(getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_RATIO_MIN", ratio_max))
-    decay_start = float(getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_BUFFER_DECAY_START", 0.6))
+    decay_start = float(
+        getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_BUFFER_DECAY_START", 0.6)
+    )
     decay_end = float(getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_BUFFER_DECAY_END", 1.0))
     decay_start = float(np.clip(decay_start, 0.0, 1.0))
     decay_end = float(np.clip(decay_end, decay_start + 1e-6, 1.0))
@@ -113,8 +167,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
         span = decay_end - decay_start
         alpha = (buffer_fill - decay_start) / max(1e-9, span)
         target_ratio = ratio_max - alpha * (ratio_max - ratio_min)
-        trainer._recent_sample_ratio = float(np.clip(target_ratio, ratio_min, ratio_max))
-
+        trainer._recent_sample_ratio = float(
+            np.clip(target_ratio, ratio_min, ratio_max)
+        )
 
     t0 = time.time()
     try:
@@ -178,7 +233,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     adjudicated_black = int(game_stats.get("adjudicated_black", 0))
     adjudicated_draw = int(game_stats.get("adjudicated_draw", 0))
     adjudicated_balance_total = float(game_stats.get("adjudicated_balance_total", 0.0))
-    adjudicated_balance_abs_total = float(game_stats.get("adjudicated_balance_abs_total", 0.0))
+    adjudicated_balance_abs_total = float(
+        game_stats.get("adjudicated_balance_abs_total", 0.0)
+    )
     color_delta = abs(white_start_pct - 50.0)
     color_tol = float(getattr(C.SELFPLAY, "COLOR_BALANCE_TOLERANCE_PCT", 5.0))
     color_window = getattr(trainer, "_color_window", None)
@@ -210,7 +267,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
             color_tol,
         )
 
-    imbalance_source_pct = window_white_pct if window_white_pct is not None else white_start_pct
+    imbalance_source_pct = (
+        window_white_pct if window_white_pct is not None else white_start_pct
+    )
     imbalance = (imbalance_source_pct - 50.0) / 100.0
     tol_ratio = color_tol / 100.0
     if abs(imbalance) <= tol_ratio:
@@ -221,8 +280,17 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     try:
         trainer.selfplay_engine.set_color_bias(target_prob_black)
     except Exception as exc:
-        trainer.log.debug("Failed to adjust color bias to %.3f: %s", target_prob_black, exc, exc_info=True)
-    bias_actual = float(game_stats.get("color_bias_prob_black", trainer.selfplay_engine.get_color_bias()))
+        trainer.log.debug(
+            "Failed to adjust color bias to %.3f: %s",
+            target_prob_black,
+            exc,
+            exc_info=True,
+        )
+    bias_actual = float(
+        game_stats.get(
+            "color_bias_prob_black", trainer.selfplay_engine.get_color_bias()
+        )
+    )
 
     eval_metrics = trainer.evaluator.get_metrics()
     requests_total = int(eval_metrics.get("requests_total", 0))
@@ -234,9 +302,15 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     delta_requests = int(requests_total - int(prev_metrics.get("requests_total", 0)))
     delta_hits = int(cache_hits_total - int(prev_metrics.get("cache_hits_total", 0)))
     delta_batches = int(batches_total - int(prev_metrics.get("batches_total", 0)))
-    delta_eval_positions = int(eval_positions_total - int(prev_metrics.get("eval_positions_total", 0)))
-    hit_rate = (100.0 * cache_hits_total / max(1, requests_total)) if requests_total else 0.0
-    hit_rate_d = (100.0 * delta_hits / max(1, delta_requests)) if delta_requests > 0 else 0.0
+    delta_eval_positions = int(
+        eval_positions_total - int(prev_metrics.get("eval_positions_total", 0))
+    )
+    hit_rate = (
+        (100.0 * cache_hits_total / max(1, requests_total)) if requests_total else 0.0
+    )
+    hit_rate_d = (
+        (100.0 * delta_hits / max(1, delta_requests)) if delta_requests > 0 else 0.0
+    )
     avg_batch_delta = 0.0
 
     try:
@@ -246,28 +320,42 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
             max_cap_allowed = int(
                 min(512, max(256, int(1024 * (trainer.device_total_gb / 12.0))))
             )
-            mem_now = get_mem_info(trainer._proc, trainer.device, trainer.device_total_gb)
-            reserved_frac = float(mem_now["reserved_gb"]) / max(1e-9, float(mem_now["total_gb"]))
-            if avg_batch_delta >= 0.90 * cap and cap < max_cap_allowed and reserved_frac < 0.90:
+            mem_now = get_mem_info(
+                trainer._proc, trainer.device, trainer.device_total_gb
+            )
+            reserved_frac = float(mem_now["reserved_gb"]) / max(
+                1e-9, float(mem_now["total_gb"])
+            )
+            if (
+                avg_batch_delta >= 0.90 * cap
+                and cap < max_cap_allowed
+                and reserved_frac < 0.90
+            ):
                 new_cap = int(min(max_cap_allowed, cap + 256))
                 if new_cap != cap:
                     trainer._eval_batch_cap = new_cap
                     trainer.evaluator.set_batching_params(batch_size_max=new_cap)
-                    trainer.log.info(f"[AUTO    ] eval_batch_size_max {cap} -> {new_cap}")
+                    trainer.log.info(
+                        f"[AUTO    ] eval_batch_size_max {cap} -> {new_cap}"
+                    )
             elif avg_batch_delta <= 0.25 * cap and trainer._eval_coalesce_ms > 4:
                 old_ms = int(trainer._eval_coalesce_ms)
                 new_ms = int(max(4, int(old_ms * 0.8)))
                 if new_ms != old_ms:
                     trainer._eval_coalesce_ms = new_ms
                     trainer.evaluator.set_batching_params(coalesce_ms=new_ms)
-                    trainer.log.info(f"[AUTO    ] eval_coalesce_ms {old_ms} -> {new_ms}")
+                    trainer.log.info(
+                        f"[AUTO    ] eval_coalesce_ms {old_ms} -> {new_ms}"
+                    )
             elif avg_batch_delta >= 0.80 * cap and trainer._eval_coalesce_ms < 36:
                 old_ms = int(trainer._eval_coalesce_ms)
                 new_ms = int(min(36, int(old_ms * 1.15 + 1)))
                 if new_ms != old_ms:
                     trainer._eval_coalesce_ms = new_ms
                     trainer.evaluator.set_batching_params(coalesce_ms=new_ms)
-                    trainer.log.info(f"[AUTO    ] eval_coalesce_ms {old_ms} -> {new_ms}")
+                    trainer.log.info(
+                        f"[AUTO    ] eval_coalesce_ms {old_ms} -> {new_ms}"
+                    )
     except Exception:
         pass
 
@@ -276,7 +364,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     stats["games_per_min"] = games_per_min
     stats["moves_per_sec"] = moves_per_sec
     stats["sp_terminal_eval_mean"] = float(game_stats.get("terminal_eval_mean", 0.0))
-    stats["sp_terminal_eval_abs_mean"] = float(game_stats.get("terminal_eval_abs_mean", 0.0))
+    stats["sp_terminal_eval_abs_mean"] = float(
+        game_stats.get("terminal_eval_abs_mean", 0.0)
+    )
     stats["sp_tempo_bonus_avg"] = float(game_stats.get("tempo_bonus_avg", 0.0))
     stats["sp_sims_avg"] = float(game_stats.get("sims_avg", 0.0))
     stats["sp_value_trend_hit_pct"] = float(game_stats.get("value_trend_hit_pct", 0.0))
@@ -318,7 +408,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     stats["sp_loop_bias_avg"] = loop_bias_avg
 
     loop_reset_threshold = float(getattr(C.SELFPLAY, "LOOP_AUTO_RESET_THRESHOLD", 0.0))
-    loop_cooldown_iters = int(max(0, getattr(C.SELFPLAY, "LOOP_AUTO_RESET_COOLDOWN", 0)))
+    loop_cooldown_iters = int(
+        max(0, getattr(C.SELFPLAY, "LOOP_AUTO_RESET_COOLDOWN", 0))
+    )
     current_loop_cooldown = max(0, getattr(trainer, "_loop_cooldown", 0))
     if loop_reset_threshold > 0.0 and loop_flag_pct >= loop_reset_threshold:
         if current_loop_cooldown == 0:
@@ -331,9 +423,17 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
                 trainer.selfplay_engine.clear_buffer()
                 buffer_reset = 1
             except Exception as exc:
-                trainer.log.debug("Replay buffer clear failed during loop reset: %s", exc, exc_info=True)
+                trainer.log.debug(
+                    "Replay buffer clear failed during loop reset: %s",
+                    exc,
+                    exc_info=True,
+                )
             trainer._recent_sample_ratio = float(
-                getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_RATIO", trainer._recent_sample_ratio)
+                getattr(
+                    C.SAMPLING,
+                    "TRAIN_RECENT_SAMPLE_RATIO",
+                    trainer._recent_sample_ratio,
+                )
             )
             trainer._loop_cooldown = loop_cooldown_iters
         else:
@@ -358,11 +458,32 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     stats["sp_adjudicated_white"] = adjudicated_white
     stats["sp_adjudicated_black"] = adjudicated_black
     stats["sp_adjudicated_draw"] = adjudicated_draw
-    term_total = max(1, term_nat + term_exh + term_resign + term_threefold + term_fifty + term_adjudicated + term_loop)
+    term_total = max(
+        1,
+        term_nat
+        + term_exh
+        + term_resign
+        + term_threefold
+        + term_fifty
+        + term_adjudicated
+        + term_loop,
+    )
     adjudicated_pct = 100.0 * adjudicated_games / max(1, games_count)
-    adjudicated_white_pct = 100.0 * adjudicated_white / max(1, adjudicated_games) if adjudicated_games else 0.0
-    adjudicated_black_pct = 100.0 * adjudicated_black / max(1, adjudicated_games) if adjudicated_games else 0.0
-    adjudicated_draw_pct = 100.0 * adjudicated_draw / max(1, adjudicated_games) if adjudicated_games else 0.0
+    adjudicated_white_pct = (
+        100.0 * adjudicated_white / max(1, adjudicated_games)
+        if adjudicated_games
+        else 0.0
+    )
+    adjudicated_black_pct = (
+        100.0 * adjudicated_black / max(1, adjudicated_games)
+        if adjudicated_games
+        else 0.0
+    )
+    adjudicated_draw_pct = (
+        100.0 * adjudicated_draw / max(1, adjudicated_games)
+        if adjudicated_games
+        else 0.0
+    )
     adjudicated_balance_mean = (
         adjudicated_balance_total / max(1, adjudicated_games)
         if adjudicated_games
@@ -393,7 +514,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     if hasattr(trainer, "_recent_len_window"):
         trainer._recent_len_window.append(float(avg_game_length))
         if len(trainer._recent_len_window) == trainer._recent_len_window.maxlen:
-            window_avg = sum(trainer._recent_len_window) / max(1, len(trainer._recent_len_window))
+            window_avg = sum(trainer._recent_len_window) / max(
+                1, len(trainer._recent_len_window)
+            )
             if C.RESIGN.ENABLED and window_avg < guard_min_len:
                 guard_cd = int(max(0, getattr(C.RESIGN, "GUARD_COOLDOWN_ITERS", 0)))
                 if guard_cd > 0 and trainer._resign_cooldown < guard_cd:
@@ -404,14 +527,22 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
                         trainer.selfplay_engine.clear_buffer()
                         buffer_reset = 1
                     except Exception as exc:
-                        trainer.log.debug("Replay buffer clear failed during resign guard: %s", exc, exc_info=True)
+                        trainer.log.debug(
+                            "Replay buffer clear failed during resign guard: %s",
+                            exc,
+                            exc_info=True,
+                        )
                     try:
                         trainer._recent_len_window.clear()
                         trainer._recent_sample_ratio = float(
                             getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_RATIO", 0.8)
                         )
                     except Exception as exc:
-                        trainer.log.debug("Unable to reset recent length window during resign guard: %s", exc, exc_info=True)
+                        trainer.log.debug(
+                            "Unable to reset recent length window during resign guard: %s",
+                            exc,
+                            exc_info=True,
+                        )
                     trainer.log.warning(
                         "[Resign  ] guard triggered; avg_len window %.2f < %.2f. Disabling resigns for %d iters",
                         window_avg,
@@ -420,7 +551,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
                     )
 
     stats["resign_status"] = resign_status
-    stats["resign_threshold"] = float(getattr(trainer, "_resign_threshold", C.RESIGN.VALUE_THRESHOLD))
+    stats["resign_threshold"] = float(
+        getattr(trainer, "_resign_threshold", C.RESIGN.VALUE_THRESHOLD)
+    )
     stats["resign_min_plies"] = int(getattr(trainer, "_resign_min_plies", 0))
     stats["resign_cooldown_iters"] = int(getattr(trainer, "_resign_cooldown", 0))
     stats["replay_reset"] = buffer_reset
@@ -436,7 +569,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     losses: list[tuple[torch.Tensor, torch.Tensor]] = []
     min_batch_samples = max(1, trainer.train_batch_size // 2)
     new_examples = int(game_stats.get("moves", 0))
-    target_train_samples = int(C.TRAIN.TARGET_TRAIN_SAMPLES_PER_NEW * max(1, new_examples))
+    target_train_samples = int(
+        C.TRAIN.TARGET_TRAIN_SAMPLES_PER_NEW * max(1, new_examples)
+    )
     num_steps = int(np.ceil(target_train_samples / max(1, trainer.train_batch_size)))
     num_steps = max(C.TRAIN.UPDATE_STEPS_MIN, min(C.TRAIN.UPDATE_STEPS_MAX, num_steps))
     samples_ratio = 0.0
@@ -459,7 +594,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
             continue
         states, indices_sparse, counts_sparse, values = batch
         try:
-            step_result = trainer.train_step((states, indices_sparse, counts_sparse, values))
+            step_result = trainer.train_step(
+                (states, indices_sparse, counts_sparse, values)
+            )
             if step_result is None:
                 continue
             policy_loss_t, value_loss_t, grad_norm_val, pred_entropy = step_result
@@ -480,17 +617,29 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
                 try:
                     torch.cuda.empty_cache()
                 except Exception as exc:
-                    trainer.log.debug("torch.cuda.empty_cache failed: %s", exc, exc_info=True)
+                    trainer.log.debug(
+                        "torch.cuda.empty_cache failed: %s", exc, exc_info=True
+                    )
                 try:
                     torch.cuda.reset_peak_memory_stats(trainer.device)
                 except Exception as exc:
-                    trainer.log.debug("reset_peak_memory_stats failed: %s", exc, exc_info=True)
+                    trainer.log.debug(
+                        "reset_peak_memory_stats failed: %s", exc, exc_info=True
+                    )
             break
 
     train_elapsed_s = time.time() - t1
     actual_update_steps = len(losses)
-    avg_policy_loss = float(torch.stack([pair[0] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
-    avg_value_loss = float(torch.stack([pair[1] for pair in losses]).mean().detach().cpu()) if losses else float("nan")
+    avg_policy_loss = (
+        float(torch.stack([pair[0] for pair in losses]).mean().detach().cpu())
+        if losses
+        else float("nan")
+    )
+    avg_value_loss = (
+        float(torch.stack([pair[1] for pair in losses]).mean().detach().cpu())
+        if losses
+        else float("nan")
+    )
     try:
         buffer_size = int(trainer.selfplay_engine.size())
         buffer_capacity2 = int(trainer.selfplay_engine.get_capacity())
@@ -499,7 +648,11 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
         buffer_capacity2 = 1
     buffer_pct2 = (buffer_size / buffer_capacity2) * 100
     batches_per_sec = (len(losses) / max(1e-9, train_elapsed_s)) if losses else 0.0
-    samples_per_sec = ((len(losses) * trainer.train_batch_size) / max(1e-9, train_elapsed_s)) if losses else 0.0
+    samples_per_sec = (
+        ((len(losses) * trainer.train_batch_size) / max(1e-9, train_elapsed_s))
+        if losses
+        else 0.0
+    )
     learning_rate = trainer.optimizer.param_groups[0]["lr"]
     avg_grad_norm = (grad_norm_sum / max(1, len(losses))) if losses else 0.0
     avg_entropy = (entropy_sum / max(1, len(losses))) if losses else 0.0
@@ -507,7 +660,9 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     sched_drift_pct = 0.0
     if C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST > 0:
         sched_drift_pct = (
-            100.0 * (actual_update_steps - C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST) / C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST
+            100.0
+            * (actual_update_steps - C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST)
+            / C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST
             if actual_update_steps > 0
             else 0.0
         )
@@ -575,18 +730,16 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
 
 
 def train_step(
-    trainer: Any, batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray], list[np.ndarray]]
+    trainer: Any,
+    batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray], list[np.ndarray]],
 ) -> tuple[torch.Tensor, torch.Tensor, float, float] | None:
     states_u8_list, indices_i32_list, counts_u16_list, values_i8_list = batch_data
     x_u8_np = np.stack(states_u8_list).astype(np.uint8, copy=False)
     x = torch.from_numpy(x_u8_np).to(trainer.device, non_blocking=True)
     v_i8_np = np.asarray(values_i8_list, dtype=np.int8)
-    v_target = (
-        torch.from_numpy(v_i8_np)
-        .to(trainer.device, non_blocking=True)
-        .to(dtype=torch.float32)
-        / float(C.DATA.VALUE_I8_SCALE)
-    )
+    v_target = torch.from_numpy(v_i8_np).to(trainer.device, non_blocking=True).to(
+        dtype=torch.float32
+    ) / float(C.DATA.VALUE_I8_SCALE)
     x = x.to(dtype=torch.float32) / float(C.DATA.U8_SCALE)
     x = x.contiguous(memory_format=torch.channels_last)
     if not hasattr(trainer, "_aug_mirror_idx"):
@@ -599,10 +752,18 @@ def train_step(
         feat_idx = _Aug._feature_plane_indices()
         _tp = feat_idx.get("turn_plane")
         trainer._turn_plane_idx = int(_tp if _tp is not None else int(x.shape[1]))
-        trainer._aug_mirror_idx = torch.tensor(mirror_idx, dtype=torch.long, device=trainer.device)
-        trainer._aug_rot180_idx = torch.tensor(rot180_idx, dtype=torch.long, device=trainer.device)
-        trainer._aug_vflip_idx = torch.tensor(vflip_idx, dtype=torch.long, device=trainer.device)
-        trainer._aug_vflip_plane_perm = torch.tensor(plane_perm, dtype=torch.long, device=trainer.device)
+        trainer._aug_mirror_idx = torch.tensor(
+            mirror_idx, dtype=torch.long, device=trainer.device
+        )
+        trainer._aug_rot180_idx = torch.tensor(
+            rot180_idx, dtype=torch.long, device=trainer.device
+        )
+        trainer._aug_vflip_idx = torch.tensor(
+            vflip_idx, dtype=torch.long, device=trainer.device
+        )
+        trainer._aug_vflip_plane_perm = torch.tensor(
+            plane_perm, dtype=torch.long, device=trainer.device
+        )
 
         def _inv_perm(perm: Sequence[int]) -> np.ndarray:
             perm_np = np.asarray(perm, dtype=np.int64)
@@ -617,12 +778,14 @@ def train_step(
     if np.random.rand() < C.AUGMENT.MIRROR_PROB:
         x = torch.flip(x, dims=[-1])
         indices_i32_list = [
-            trainer._aug_mirror_inv_np[np.asarray(idx, dtype=np.int64)].astype(np.int32) for idx in indices_i32_list
+            trainer._aug_mirror_inv_np[np.asarray(idx, dtype=np.int64)].astype(np.int32)
+            for idx in indices_i32_list
         ]
     if np.random.rand() < C.AUGMENT.ROT180_PROB:
         x = torch.flip(x, dims=[-1, -2])
         indices_i32_list = [
-            trainer._aug_rot180_inv_np[np.asarray(idx, dtype=np.int64)].astype(np.int32) for idx in indices_i32_list
+            trainer._aug_rot180_inv_np[np.asarray(idx, dtype=np.int64)].astype(np.int32)
+            for idx in indices_i32_list
         ]
     if np.random.rand() < C.AUGMENT.VFLIP_CS_PROB:
         x = torch.flip(x, dims=[-2])
@@ -630,11 +793,14 @@ def train_step(
         if 0 <= getattr(trainer, "_turn_plane_idx", x.shape[1]) < x.shape[1]:
             x[:, trainer._turn_plane_idx] = 1.0 - x[:, trainer._turn_plane_idx]
         indices_i32_list = [
-            trainer._aug_vflip_inv_np[np.asarray(idx, dtype=np.int64)].astype(np.int32) for idx in indices_i32_list
+            trainer._aug_vflip_inv_np[np.asarray(idx, dtype=np.int64)].astype(np.int32)
+            for idx in indices_i32_list
         ]
         v_target = -v_target
     trainer.model.train()
-    autocast_device = getattr(trainer, "_autocast_device", "cuda" if trainer.device.type == "cuda" else "cpu")
+    autocast_device = getattr(
+        trainer, "_autocast_device", "cuda" if trainer.device.type == "cuda" else "cpu"
+    )
     default_dtype = torch.float16 if autocast_device == "cuda" else torch.bfloat16
     autocast_dtype = getattr(trainer, "_autocast_dtype", default_dtype)
     with torch.autocast(
@@ -648,7 +814,9 @@ def train_step(
         rows_np_list: list[np.ndarray] = []
         cols_np_list: list[np.ndarray] = []
         cnts_np_list: list[np.ndarray] = []
-        for i, (idx_arr, cnt_arr) in enumerate(zip(indices_i32_list, counts_u16_list, strict=False)):
+        for i, (idx_arr, cnt_arr) in enumerate(
+            zip(indices_i32_list, counts_u16_list, strict=False)
+        ):
             idx_np = np.asarray(idx_arr, dtype=np.int64)
             cnt_np = np.asarray(cnt_arr, dtype=np.float32)
             if idx_np.size == 0:
@@ -663,32 +831,44 @@ def train_step(
             rows_np_list.append(np.full((idx_np.size,), i, dtype=np.int64))
         if rows_np_list:
             cols_cpu = torch.from_numpy(np.concatenate(cols_np_list, axis=0))
-            cnts_cpu = torch.from_numpy(np.concatenate(cnts_np_list, axis=0).astype(np.float32, copy=False))
+            cnts_cpu = torch.from_numpy(
+                np.concatenate(cnts_np_list, axis=0).astype(np.float32, copy=False)
+            )
             rows_cpu = torch.from_numpy(np.concatenate(rows_np_list, axis=0))
             cols = cols_cpu.to(trainer.device, non_blocking=True, dtype=torch.long)
             cnts = cnts_cpu.to(trainer.device, non_blocking=True, dtype=torch.float32)
             rows = rows_cpu.to(trainer.device, non_blocking=True, dtype=torch.long)
-            denom_rows = torch.zeros((x.shape[0],), device=trainer.device, dtype=torch.float32)
+            denom_rows = torch.zeros(
+                (x.shape[0],), device=trainer.device, dtype=torch.float32
+            )
             denom_rows.index_add_(0, rows, cnts)
             denom = denom_rows.index_select(0, rows).clamp_min(1e-9)
             weights = cnts / denom
             eps = float(C.TRAIN.LOSS_POLICY_LABEL_SMOOTH)
             if eps > 0.0:
                 ones = torch.ones_like(weights)
-                m_rows = torch.zeros((x.shape[0],), device=trainer.device, dtype=torch.float32)
+                m_rows = torch.zeros(
+                    (x.shape[0],), device=trainer.device, dtype=torch.float32
+                )
                 m_rows.index_add_(0, rows, ones)
                 m = m_rows.index_select(0, rows).clamp_min(1.0)
                 weights = (1.0 - eps) * weights + (eps / m)
             sel = log_probs[rows, cols]
             per_entry = -weights * sel
-            loss_rows = torch.zeros((x.shape[0],), device=trainer.device, dtype=torch.float32)
+            loss_rows = torch.zeros(
+                (x.shape[0],), device=trainer.device, dtype=torch.float32
+            )
             loss_rows.index_add_(0, rows, per_entry)
             policy_loss = loss_rows.mean()
         else:
             policy_loss = torch.tensor(0.0, device=trainer.device, dtype=torch.float32)
         value_loss = F.mse_loss(value_pred, v_target)
         entropy_coef = _entropy_coefficient(trainer.iteration)
-        entropy = (-(F.softmax(policy_logits, dim=1) * F.log_softmax(policy_logits, dim=1)).sum(dim=1)).mean()
+        entropy = (
+            -(
+                F.softmax(policy_logits, dim=1) * F.log_softmax(policy_logits, dim=1)
+            ).sum(dim=1)
+        ).mean()
         value_loss_weight = _value_loss_weight(trainer.iteration)
         total_loss = (
             C.TRAIN.LOSS_POLICY_WEIGHT * policy_loss
@@ -708,7 +888,9 @@ def train_step(
         trainer.scaler.unscale_(trainer.optimizer)
     else:
         total_loss.backward()
-    grad_total_norm = torch.nn.utils.clip_grad_norm_(trainer.model.parameters(), C.TRAIN.GRAD_CLIP_NORM)
+    grad_total_norm = torch.nn.utils.clip_grad_norm_(
+        trainer.model.parameters(), C.TRAIN.GRAD_CLIP_NORM
+    )
     if torch.is_tensor(grad_total_norm):
         grad_finite = bool(torch.isfinite(grad_total_norm))
         grad_value = float(grad_total_norm.detach().cpu())

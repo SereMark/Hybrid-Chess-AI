@@ -1,9 +1,14 @@
+"""Experience replay buffer for self-play training samples."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
 import numpy as np
+from numpy.typing import DTypeLike
+
+__all__ = ["ReplayBuffer"]
 
 
 @dataclass(slots=True)
@@ -14,6 +19,8 @@ class _Entry:
 
 
 class ReplayBuffer:
+    """Ring buffer storing encoded board states and sparse policy targets."""
+
     def __init__(self, capacity: int, planes: int, height: int, width: int) -> None:
         capacity = int(max(1, capacity))
         self._capacity = capacity
@@ -67,10 +74,14 @@ class ReplayBuffer:
     def _validate_state(self, state: np.ndarray) -> np.ndarray:
         arr = np.asarray(state, dtype=np.uint8)
         if arr.shape != self._state_shape:
-            raise ValueError(f"state shape {arr.shape} does not match {self._state_shape}")
+            raise ValueError(
+                f"state shape {arr.shape} does not match {self._state_shape}"
+            )
         return arr
 
-    def _validate_sparse(self, values: Iterable[int], *, dtype: np.dtype) -> np.ndarray:
+    def _validate_sparse(
+        self, values: Iterable[int], *, dtype: DTypeLike
+    ) -> np.ndarray:
         arr = np.asarray(values, dtype=dtype)
         if arr.ndim != 1:
             raise ValueError("sparse arrays must be 1D")
@@ -119,7 +130,9 @@ class ReplayBuffer:
             entry = self._entries[pos]
             if entry is None:
                 continue
-            new_entries[idx] = _Entry(entry.indices.copy(), entry.counts.copy(), np.int8(entry.value))
+            new_entries[idx] = _Entry(
+                entry.indices.copy(), entry.counts.copy(), np.int8(entry.value)
+            )
             new_values[idx] = np.int8(entry.value)
 
         self._capacity = capacity
@@ -158,11 +171,15 @@ class ReplayBuffer:
         picks: list[int] = []
         if recent_samples > 0 and recent_candidates:
             picks.extend(
-                self._rng.choice(recent_candidates, size=recent_samples, replace=True).tolist()
+                self._rng.choice(
+                    recent_candidates, size=recent_samples, replace=True
+                ).tolist()
             )
         if old_samples > 0:
             base = old_candidates if old_candidates else recent_candidates
-            picks.extend(self._rng.choice(base, size=old_samples, replace=True).tolist())
+            picks.extend(
+                self._rng.choice(base, size=old_samples, replace=True).tolist()
+            )
 
         self._rng.shuffle(picks)
 
