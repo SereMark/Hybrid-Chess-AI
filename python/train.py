@@ -87,16 +87,6 @@ class Trainer:
             net_any = net_any.to(memory_format=torch.channels_last)
         self.model = cast(torch.nn.Module, net_any)
 
-        compile_fn = getattr(torch, "compile", None)
-        self._model_compiled = False
-        if callable(compile_fn):
-            try:
-                self.model = cast(torch.nn.Module, compile_fn(self.model, mode="reduce-overhead"))
-                self._model_compiled = True
-                self.log.info("[AUTO    ] torch.compile enabled for training model")
-            except Exception as exc:
-                self.log.debug("torch.compile unavailable; proceeding without compile: %s", exc, exc_info=True)
-
         self.optimizer = build_optimizer(self.model)
 
         total_expected_train_steps = int(C.TRAIN.TOTAL_ITERATIONS * C.TRAIN.LR_SCHED_STEPS_PER_ITER_EST)
