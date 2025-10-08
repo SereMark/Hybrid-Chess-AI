@@ -1,3 +1,5 @@
+"""Utility helpers for logging, formatting, and FEN manipulation."""
+
 from __future__ import annotations
 
 import contextlib
@@ -13,6 +15,18 @@ import psutil
 import torch
 
 import config as C
+
+__all__ = [
+    "MetricsReporter",
+    "flip_fen_perspective",
+    "sanitize_fen",
+    "format_gb",
+    "format_si",
+    "format_time",
+    "get_mem_info",
+    "get_sys_info",
+    "startup_summary",
+]
 
 _CASTLING_ORDER = "KQkq"
 _FILES = "abcdefgh"
@@ -52,12 +66,13 @@ def sanitize_fen(fen: str) -> str:
     if len(parts) < 6:
         defaults = ["w", "-", "-", "0", "1"]
         parts += defaults[len(parts) - 1 :]
+    tail: list[str]
     if len(parts) > 6:
         head = parts[:6]
         tail = parts[6:]
     else:
         head = parts
-        tail: list[str] = []
+        tail = []
     if len(head) < 6:
         head += ["-"] * (6 - len(head))
         head[1] = "w"
@@ -113,9 +128,13 @@ def iter_with_perspectives(fens: Iterable[str]) -> list[str]:
 
 @dataclass(slots=True)
 class MetricsReporter:
+    """Append-only CSV reporter for structured metric rows."""
+
     csv_path: str
 
-    def append(self, row: Mapping[str, object], field_order: Sequence[str] | None = None) -> None:
+    def append(
+        self, row: Mapping[str, object], field_order: Sequence[str] | None = None
+    ) -> None:
         if not self.csv_path:
             return
 
@@ -124,7 +143,9 @@ class MetricsReporter:
             if directory:
                 os.makedirs(directory, exist_ok=True)
 
-            fieldnames = list(field_order) if field_order is not None else list(row.keys())
+            fieldnames = (
+                list(field_order) if field_order is not None else list(row.keys())
+            )
 
             write_header = not os.path.isfile(self.csv_path)
 
@@ -185,7 +206,9 @@ def format_gb(value: float, digits: int = 1) -> str:
     return f"{number:.{digits}f}G"
 
 
-def get_mem_info(proc: psutil.Process, device: torch.device, device_total_gb: float) -> dict[str, float]:
+def get_mem_info(
+    proc: psutil.Process, device: torch.device, device_total_gb: float
+) -> dict[str, float]:
     if device.type != "cuda":
         return {
             "allocated_gb": 0.0,
@@ -203,9 +226,12 @@ def get_mem_info(proc: psutil.Process, device: torch.device, device_total_gb: fl
 
 def get_sys_info(proc: psutil.Process) -> dict[str, float]:
     vmem = psutil.virtual_memory()
-    try:
-        load1, load5, load15 = os.getloadavg()
-    except Exception:
+    if hasattr(os, "getloadavg"):
+        try:
+            load1, load5, load15 = os.getloadavg()
+        except Exception:
+            load1 = load5 = load15 = 0.0
+    else:
         load1 = load5 = load15 = 0.0
     return {
         "cpu_sys_pct": float(psutil.cpu_percent(0.0)),
@@ -294,5 +320,3 @@ __all__ = [
     "get_sys_info",
     "startup_summary",
 ]
-
-

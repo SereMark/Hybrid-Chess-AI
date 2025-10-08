@@ -1,3 +1,5 @@
+"""Checkpoint persistence utilities for training state."""
+
 from __future__ import annotations
 
 import os
@@ -10,8 +12,11 @@ from torch.amp import GradScaler
 
 import config as C
 
+__all__ = ["save_checkpoint", "save_best_model", "try_resume"]
+
 
 def save_checkpoint(trainer: Any) -> None:
+    """Persist the trainer state to disk."""
     try:
         try:
             _dir = os.path.dirname(C.LOG.CHECKPOINT_FILE_PATH)
@@ -63,6 +68,7 @@ def save_checkpoint(trainer: Any) -> None:
 
 
 def save_best_model(trainer: Any) -> None:
+    """Persist the best-performing model snapshot."""
     try:
         try:
             _dir = os.path.dirname(C.LOG.BEST_MODEL_FILE_PATH)
@@ -85,6 +91,7 @@ def save_best_model(trainer: Any) -> None:
 
 
 def try_resume(trainer: Any) -> None:
+    """Restore trainer state from a previously saved checkpoint if present."""
     path = C.LOG.CHECKPOINT_FILE_PATH
     fallback = os.path.basename(path)
     if not os.path.isfile(path) and fallback and os.path.isfile(fallback):
@@ -110,7 +117,9 @@ def try_resume(trainer: Any) -> None:
             trainer.optimizer.load_state_dict(ckpt["optimizer"])
         if "scheduler" in ckpt:
             sd = ckpt["scheduler"]
-            trainer.scheduler.set_total_steps(int(sd.get("total", trainer.scheduler.total)))
+            trainer.scheduler.set_total_steps(
+                int(sd.get("total", trainer.scheduler.total))
+            )
             trainer.scheduler.t = int(sd.get("t", trainer.scheduler.t))
         if "scaler" in ckpt and isinstance(trainer.scaler, GradScaler):
             trainer.scaler.load_state_dict(ckpt["scaler"])

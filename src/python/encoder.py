@@ -1,3 +1,5 @@
+"""Lightweight numpy-based position encoding utilities."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,8 +13,18 @@ PLANES_PER_POSITION = 14
 HISTORY_LENGTH = 8
 INPUT_PLANES = HISTORY_LENGTH * PLANES_PER_POSITION + 7
 
-
 PIECE_NAMES = ("pawn", "knight", "bishop", "rook", "queen", "king")
+
+__all__ = [
+    "PositionState",
+    "BOARD_SIZE",
+    "NSQUARES",
+    "PLANES_PER_POSITION",
+    "HISTORY_LENGTH",
+    "INPUT_PLANES",
+    "encode_position_into",
+    "encode_position_with_history",
+]
 
 
 @dataclass(slots=True)
@@ -27,9 +39,10 @@ class PositionState:
 
 def encode_position_into(pos: PositionState, out: np.ndarray) -> None:
     out[...] = 0.0
-    area = NSQUARES
     for piece_idx, name in enumerate(PIECE_NAMES):
-        white_bb, black_bb = pos.boards.get(name, (np.zeros(NSQUARES, dtype=bool), np.zeros(NSQUARES, dtype=bool)))
+        white_bb, black_bb = pos.boards.get(
+            name, (np.zeros(NSQUARES, dtype=bool), np.zeros(NSQUARES, dtype=bool))
+        )
         plane_w = piece_idx * 2
         plane_b = plane_w + 1
         out[plane_w, white_bb] = 1.0
@@ -53,14 +66,18 @@ def encode_position_into(pos: PositionState, out: np.ndarray) -> None:
     out[castling_planes + 4, :] = min(1.0, pos.halfmove / 100.0)
 
 
-def encode_position_with_history(history: Sequence[PositionState], out: np.ndarray) -> None:
+def encode_position_with_history(
+    history: Sequence[PositionState], out: np.ndarray
+) -> None:
     out[...] = 0.0
     avail = min(HISTORY_LENGTH, len(history))
     for t in range(avail):
         pos = history[-1 - t]
         base = t * PLANES_PER_POSITION
         for piece_idx, name in enumerate(PIECE_NAMES):
-            white_bb, black_bb = pos.boards.get(name, (np.zeros(NSQUARES, dtype=bool), np.zeros(NSQUARES, dtype=bool)))
+            white_bb, black_bb = pos.boards.get(
+                name, (np.zeros(NSQUARES, dtype=bool), np.zeros(NSQUARES, dtype=bool))
+            )
             plane_w = base + piece_idx * 2
             plane_b = plane_w + 1
             out[plane_w, white_bb] = 1.0

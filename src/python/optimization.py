@@ -1,3 +1,5 @@
+"""Optimization primitives for Hybrid Chess AI training."""
+
 from __future__ import annotations
 
 from typing import Any, cast
@@ -6,6 +8,8 @@ import torch
 
 import config as C
 
+__all__ = ["build_optimizer", "WarmupCosine", "EMA"]
+
 
 def build_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
     decay: list[torch.nn.Parameter] = []
@@ -13,7 +17,11 @@ def build_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
-        if name.endswith(".bias") or "bn" in name.lower() or "batchnorm" in name.lower():
+        if (
+            name.endswith(".bias")
+            or "bn" in name.lower()
+            or "batchnorm" in name.lower()
+        ):
             nodecay.append(param)
         else:
             decay.append(param)
@@ -32,6 +40,8 @@ def build_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
 
 
 class WarmupCosine:
+    """Cosine learning-rate scheduler with linear warmup."""
+
     def __init__(
         self,
         optimizer: Any,
@@ -59,14 +69,18 @@ class WarmupCosine:
 
         if self.restart_steps <= 0:
             progress = min(1.0, (step - self.warm) / max(1, self.total - self.warm))
-            return self.final + (self.base - self.final) * 0.5 * (1.0 + _m.cos(_m.pi * progress))
+            return self.final + (self.base - self.final) * 0.5 * (
+                1.0 + _m.cos(_m.pi * progress)
+            )
 
         cycle_len = max(1, self.restart_steps)
         cycle_step = max(0, step - self.warm)
         cycle_index = cycle_step // cycle_len
         within_cycle = cycle_step % cycle_len
         cycle_progress = within_cycle / cycle_len
-        decay_scale = self.restart_decay**cycle_index if self.restart_decay > 0.0 else 0.0
+        decay_scale = (
+            self.restart_decay**cycle_index if self.restart_decay > 0.0 else 0.0
+        )
         peak = self.base * decay_scale
         trough = self.final * decay_scale
         return trough + (peak - trough) * 0.5 * (1.0 + _m.cos(_m.pi * cycle_progress))
@@ -88,6 +102,8 @@ class WarmupCosine:
 
 
 class EMA:
+    """Maintains an exponential moving average of model parameters."""
+
     def __init__(self, model: torch.nn.Module, decay: float | None = None) -> None:
         self.decay = float(C.TRAIN.EMA_DECAY if decay is None else decay)
         base = _unwrap_module(model)
@@ -107,6 +123,7 @@ class EMA:
     def copy_to(self, model: torch.nn.Module) -> None:
         base = _unwrap_module(model)
         base.load_state_dict(self.shadow, strict=True)
+
 
 def _unwrap_module(model: torch.nn.Module) -> torch.nn.Module:
     base = getattr(model, "_orig_mod", model)

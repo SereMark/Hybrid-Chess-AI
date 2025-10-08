@@ -1,6 +1,8 @@
+"""Arena evaluation utilities for gating candidate models."""
+
 from __future__ import annotations
 
-import datetime as _dt
+import datetime as dt
 import math
 from collections import Counter
 from collections.abc import Iterable, Sequence
@@ -8,13 +10,15 @@ from dataclasses import dataclass
 from numbers import Integral
 from typing import Any, cast
 
-import chesscore as _ccore
-import numpy as _np
+import chesscore as ccore
+import numpy as np
 import torch
 
 import config as C
-from utils import flip_fen_perspective, sanitize_fen
 from inference import BatchedEvaluator as _BatchedEval
+from utils import flip_fen_perspective, sanitize_fen
+
+__all__ = ["EloGater", "arena_match"]
 
 _DEFAULT_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 _FILE_NAMES = "abcdefgh"
@@ -24,10 +28,16 @@ _MATERIAL_WEIGHTS = (1.0, 3.0, 3.0, 5.0, 9.0, 0.0)
 
 _ARENA_CURRICULUM_FENS: tuple[str, ...] = tuple(
     sanitize_fen(str(fen))
-    for fen in getattr(C.ARENA, "CURRICULUM_FENS", getattr(C.SELFPLAY, "CURRICULUM_FENS", ()))
+    for fen in getattr(
+        C.ARENA, "CURRICULUM_FENS", getattr(C.SELFPLAY, "CURRICULUM_FENS", ())
+    )
 )
 _ARENA_CURRICULUM_PROB = float(
-    getattr(C.ARENA, "CURRICULUM_SAMPLE_PROB", getattr(C.SELFPLAY, "CURRICULUM_SAMPLE_PROB", 0.0))
+    getattr(
+        C.ARENA,
+        "CURRICULUM_SAMPLE_PROB",
+        getattr(C.SELFPLAY, "CURRICULUM_SAMPLE_PROB", 0.0),
+    )
 )
 
 
@@ -43,7 +53,7 @@ def _square_name(square: int) -> str:
     return f"{_FILE_NAMES[_square_file(square)]}{_square_rank(square) + 1}"
 
 
-def _piece_on(pos: _ccore.Position, square: int) -> tuple[_ccore.Color, int] | None:
+def _piece_on(pos: ccore.Position, square: int) -> tuple[ccore.Color, int] | None:
     mask = 1 << int(square)
     for idx, pair in enumerate(pos.pieces):
         try:
@@ -51,13 +61,13 @@ def _piece_on(pos: _ccore.Position, square: int) -> tuple[_ccore.Color, int] | N
         except Exception:
             continue
         if white_bb & mask:
-            return _ccore.Color.WHITE, idx
+            return ccore.Color.WHITE, idx
         if black_bb & mask:
-            return _ccore.Color.BLACK, idx
+            return ccore.Color.BLACK, idx
     return None
 
 
-def _match_move(moves: Iterable[_ccore.Move], uci: str) -> _ccore.Move | None:
+def _match_move(moves: Iterable[ccore.Move], uci: str) -> ccore.Move | None:
     for mv in moves:
         try:
             if str(mv) == uci:
@@ -68,10 +78,10 @@ def _match_move(moves: Iterable[_ccore.Move], uci: str) -> _ccore.Move | None:
 
 
 def _move_to_san(
-    pos: _ccore.Position,
-    move: _ccore.Move,
+    pos: ccore.Position,
+    move: ccore.Move,
     move_str: str,
-    legal_moves: list[_ccore.Move],
+    legal_moves: list[ccore.Move],
 ) -> str:
     from_sq = int(getattr(move, "from_square", 0))
     to_sq = int(getattr(move, "to_square", 0))
@@ -116,10 +126,16 @@ def _move_to_san(
             if other_color == mover_color and other_type == piece_type:
                 ambiguous_sources.append(int(getattr(other, "from_square", -1)))
         if ambiguous_sources:
-            same_file = any(_square_file(src) == _square_file(from_sq) for src in ambiguous_sources)
-            same_rank = any(_square_rank(src) == _square_rank(from_sq) for src in ambiguous_sources)
+            same_file = any(
+                _square_file(src) == _square_file(from_sq) for src in ambiguous_sources
+            )
+            same_rank = any(
+                _square_rank(src) == _square_rank(from_sq) for src in ambiguous_sources
+            )
             if same_file and same_rank:
-                san += _FILE_NAMES[_square_file(from_sq)] + str(_square_rank(from_sq) + 1)
+                san += _FILE_NAMES[_square_file(from_sq)] + str(
+                    _square_rank(from_sq) + 1
+                )
             elif same_file:
                 san += str(_square_rank(from_sq) + 1)
             elif same_rank:
@@ -129,15 +145,15 @@ def _move_to_san(
         if capture:
             san += "x"
         san += _square_name(to_sq)
-    next_pos = _ccore.Position(pos)
+    next_pos = ccore.Position(pos)
     try:
         next_pos.make_move(move)
     except Exception:
         return san
     result = next_pos.result()
     try:
-        if (mover_color == _ccore.Color.WHITE and result == _ccore.WHITE_WIN) or (
-            mover_color == _ccore.Color.BLACK and result == _ccore.BLACK_WIN
+        if (mover_color == ccore.Color.WHITE and result == ccore.WHITE_WIN) or (
+            mover_color == ccore.Color.BLACK and result == ccore.BLACK_WIN
         ):
             san += "#"
     except Exception:
@@ -146,7 +162,7 @@ def _move_to_san(
 
 
 def _moves_to_san(start_fen: str, moves: list[str]) -> list[str]:
-    position = _ccore.Position()
+    position = ccore.Position()
     try:
         if start_fen and start_fen != _DEFAULT_START_FEN:
             position.from_fen(start_fen)
@@ -172,7 +188,7 @@ def _moves_to_san(start_fen: str, moves: list[str]) -> list[str]:
     return san_moves
 
 
-def _material_balance(pos: _ccore.Position) -> float:
+def _material_balance(pos: ccore.Position) -> float:
     balance = 0.0
     pieces_obj = getattr(pos, "pieces", None)
     if pieces_obj is None:
@@ -201,7 +217,7 @@ def _material_balance(pos: _ccore.Position) -> float:
     return balance
 
 
-def _position_hash_key(pos: _ccore.Position) -> int | None:
+def _position_hash_key(pos: ccore.Position) -> int | None:
     key_attr = getattr(pos, "hash", None)
     try:
         raw = key_attr() if callable(key_attr) else key_attr
@@ -219,7 +235,6 @@ def _position_hash_key(pos: _ccore.Position) -> int | None:
     return None
 
 
-
 def arena_match(
     challenger: torch.nn.Module,
     incumbent: torch.nn.Module,
@@ -228,6 +243,7 @@ def arena_match(
     eval_cache_cap: int,
     batch_size_cap: int | None = None,
 ) -> tuple[float, int, int, int, dict[str, Any]]:
+    """Run an arena between challenger and incumbent networks and report metrics."""
     wins = draws = losses = 0
 
     with (
@@ -250,10 +266,10 @@ def arena_match(
             start_fen: str,
             _curriculum: bool,
         ) -> tuple[int, list[str], str]:
-            position = _ccore.Position()
+            position = ccore.Position()
             position.from_fen(start_fen)
             dirichlet_weight = float(C.ARENA.DIRICHLET_WEIGHT)
-            mcts_white = _ccore.MCTS(
+            mcts_white = ccore.MCTS(
                 C.ARENA.MCTS_EVAL_SIMULATIONS,
                 C.MCTS.C_PUCT,
                 C.MCTS.DIRICHLET_ALPHA,
@@ -261,7 +277,7 @@ def arena_match(
             )
             mcts_white.set_c_puct_params(C.MCTS.C_PUCT_BASE, C.MCTS.C_PUCT_INIT)
             mcts_white.set_fpu_reduction(C.MCTS.FPU_REDUCTION)
-            mcts_black = _ccore.MCTS(
+            mcts_black = ccore.MCTS(
                 C.ARENA.MCTS_EVAL_SIMULATIONS,
                 C.MCTS.C_PUCT,
                 C.MCTS.DIRICHLET_ALPHA,
@@ -271,19 +287,35 @@ def arena_match(
             mcts_black.set_fpu_reduction(C.MCTS.FPU_REDUCTION)
             ply = 0
             moves_uci: list[str] = []
-            max_plies = int(getattr(C.ARENA, "GAME_MAX_PLIES", C.SELFPLAY.GAME_MAX_PLIES))
-            resign_enabled = bool(getattr(C.ARENA, "RESIGN_ENABLE", getattr(C.RESIGN, "ENABLED", False)))
+            max_plies = int(
+                getattr(C.ARENA, "GAME_MAX_PLIES", C.SELFPLAY.GAME_MAX_PLIES)
+            )
+            resign_enabled = bool(
+                getattr(C.ARENA, "RESIGN_ENABLE", getattr(C.RESIGN, "ENABLED", False))
+            )
             resign_threshold = float(
-                getattr(C.ARENA, "RESIGN_VALUE_THRESHOLD", getattr(C.RESIGN, "VALUE_THRESHOLD", -0.35))
+                getattr(
+                    C.ARENA,
+                    "RESIGN_VALUE_THRESHOLD",
+                    getattr(C.RESIGN, "VALUE_THRESHOLD", -0.35),
+                )
             )
             resign_consecutive = int(
-                getattr(C.ARENA, "RESIGN_CONSECUTIVE", getattr(C.RESIGN, "CONSECUTIVE_PLIES", 3))
+                getattr(
+                    C.ARENA,
+                    "RESIGN_CONSECUTIVE",
+                    getattr(C.RESIGN, "CONSECUTIVE_PLIES", 3),
+                )
             )
             resign_playthrough = float(
-                getattr(C.ARENA, "RESIGN_PLAYTHROUGH_FRACTION", getattr(C.RESIGN, "PLAYTHROUGH_FRACTION", 0.0))
+                getattr(
+                    C.ARENA,
+                    "RESIGN_PLAYTHROUGH_FRACTION",
+                    getattr(C.RESIGN, "PLAYTHROUGH_FRACTION", 0.0),
+                )
             )
-            resign_counts = {_ccore.WHITE: 0, _ccore.BLACK: 0}
-            resign_rng = _np.random.default_rng()
+            resign_counts = {ccore.WHITE: 0, ccore.BLACK: 0}
+            resign_rng = np.random.default_rng()
             resign_eval_margin = float(
                 max(
                     0.0,
@@ -313,7 +345,7 @@ def arena_match(
             unique_hashes: set[int] = set()
             loop_alert_count = 0
 
-            def _record_position_state(pos: _ccore.Position) -> int:
+            def _record_position_state(pos: ccore.Position) -> int:
                 nonlocal loop_alert_count
                 key = _position_hash_key(pos)
                 if key is None:
@@ -346,42 +378,62 @@ def arena_match(
                     ),
                 )
             )
-            while position.result() == _ccore.ONGOING and ply < max_plies:
+            while position.result() == ccore.ONGOING and ply < max_plies:
                 current_key = _position_hash_key(position)
-                if current_key is not None and repetition_counts.get(current_key, 0) >= 3:
-                    forced_result = _ccore.DRAW
+                if (
+                    current_key is not None
+                    and repetition_counts.get(current_key, 0) >= 3
+                ):
+                    forced_result = ccore.DRAW
                     forced_reason = "threefold"
                     break
                 halfmove_clock = int(getattr(position, "halfmove_clock", 0))
                 if halfmove_clock >= 100:
-                    forced_result = _ccore.DRAW
+                    forced_result = ccore.DRAW
                     forced_reason = "fifty_move"
                     break
-                pos_snapshot = _ccore.Position(position)
-                evaluator_to_move = evaluator_white if pos_snapshot.turn == _ccore.WHITE else evaluator_black
+                pos_snapshot = ccore.Position(position)
+                evaluator_to_move = (
+                    evaluator_white
+                    if pos_snapshot.turn == ccore.WHITE
+                    else evaluator_black
+                )
                 if resign_enabled:
                     value_estimate: float | None
                     try:
-                        value_estimate = float(evaluator_to_move.infer_values([pos_snapshot])[0])
-                        if pos_snapshot.turn == _ccore.BLACK:
+                        value_estimate = float(
+                            evaluator_to_move.infer_values([pos_snapshot])[0]
+                        )
+                        if pos_snapshot.turn == ccore.BLACK:
                             value_estimate = -value_estimate
                     except Exception:
                         value_estimate = None
                     side = pos_snapshot.turn
-                    if value_estimate is not None and value_estimate <= resign_threshold:
+                    if (
+                        value_estimate is not None
+                        and value_estimate <= resign_threshold
+                    ):
                         resign_counts[side] = resign_counts.get(side, 0) + 1
                         if resign_counts[side] >= resign_consecutive:
                             if resign_rng.random() < resign_playthrough:
                                 resign_counts[side] = 0
                             else:
-                                forced_result = _ccore.BLACK_WIN if side == _ccore.WHITE else _ccore.WHITE_WIN
+                                forced_result = (
+                                    ccore.BLACK_WIN
+                                    if side == ccore.WHITE
+                                    else ccore.WHITE_WIN
+                                )
                                 forced_reason = "resign"
                                 break
                     else:
                         resign_counts[side] = 0
 
                     if value_estimate is not None:
-                        sign = (1 if value_estimate > 0 else -1) if abs(value_estimate) > 1e-6 else 0
+                        sign = (
+                            (1 if value_estimate > 0 else -1)
+                            if abs(value_estimate) > 1e-6
+                            else 0
+                        )
                         if sign != 0 and sign == trend_sign:
                             trend_count += 1
                         elif sign != 0:
@@ -394,12 +446,18 @@ def arena_match(
                             abs(value_estimate) >= resign_eval_margin
                             and trend_count >= resign_eval_persist
                         ):
-                            if value_estimate >= resign_eval_margin and pos_snapshot.turn == _ccore.BLACK:
-                                forced_result = _ccore.WHITE_WIN
+                            if (
+                                value_estimate >= resign_eval_margin
+                                and pos_snapshot.turn == ccore.BLACK
+                            ):
+                                forced_result = ccore.WHITE_WIN
                                 forced_reason = "resign"
                                 break
-                            if value_estimate <= -resign_eval_margin and pos_snapshot.turn == _ccore.WHITE:
-                                forced_result = _ccore.BLACK_WIN
+                            if (
+                                value_estimate <= -resign_eval_margin
+                                and pos_snapshot.turn == ccore.WHITE
+                            ):
+                                forced_result = ccore.BLACK_WIN
                                 forced_reason = "resign"
                                 break
                     else:
@@ -409,13 +467,17 @@ def arena_match(
                 white_batch_cap = int(
                     max(
                         1,
-                        getattr(evaluator_white, "batch_size_cap", C.EVAL.BATCH_SIZE_MAX),
+                        getattr(
+                            evaluator_white, "batch_size_cap", C.EVAL.BATCH_SIZE_MAX
+                        ),
                     )
                 )
                 black_batch_cap = int(
                     max(
                         1,
-                        getattr(evaluator_black, "batch_size_cap", C.EVAL.BATCH_SIZE_MAX),
+                        getattr(
+                            evaluator_black, "batch_size_cap", C.EVAL.BATCH_SIZE_MAX
+                        ),
                     )
                 )
                 visits = (
@@ -433,7 +495,7 @@ def arena_match(
                 )
                 if visits is None:
                     break
-                visit_counts = _np.asarray(visits, dtype=_np.float64)
+                visit_counts = np.asarray(visits, dtype=np.float64)
                 if visit_counts.size == 0:
                     break
                 legal_moves = position.legal_moves()
@@ -442,22 +504,24 @@ def arena_match(
                 if ply < C.ARENA.TEMP_MOVES:
                     temp = float(C.ARENA.TEMPERATURE)
                     if temp <= 0.0 + C.ARENA.OPENING_TEMPERATURE_EPS:
-                        idx = int(_np.argmax(visit_counts))
+                        idx = int(np.argmax(visit_counts))
                     else:
-                        v_pos = _np.maximum(visit_counts, 0.0)
+                        v_pos = np.maximum(visit_counts, 0.0)
                         s0 = v_pos.sum()
                         if s0 <= 0:
-                            idx = int(_np.argmax(visit_counts))
+                            idx = int(np.argmax(visit_counts))
                         else:
                             probs = v_pos ** (1.0 / temp)
                             s = probs.sum()
                             idx = (
-                                int(_np.argmax(visit_counts))
+                                int(np.argmax(visit_counts))
                                 if s <= 0
-                                else int(_np.random.choice(len(legal_moves), p=probs / s))
+                                else int(
+                                    np.random.choice(len(legal_moves), p=probs / s)
+                                )
                             )
                 else:
-                    idx = int(_np.argmax(visit_counts))
+                    idx = int(np.argmax(visit_counts))
                 mv = legal_moves[idx]
                 try:
                     mv_str = str(mv)
@@ -475,7 +539,7 @@ def arena_match(
                 hits_after_move = _record_position_state(position)
                 ply += 1
                 if hits_after_move >= 3:
-                    forced_result = _ccore.DRAW
+                    forced_result = ccore.DRAW
                     forced_reason = "threefold"
                     break
 
@@ -485,8 +549,8 @@ def arena_match(
                 final_reason = forced_reason or "forced"
             else:
                 current_result = position.result()
-                if current_result == _ccore.ONGOING:
-                    result_flag = _ccore.DRAW
+                if current_result == ccore.ONGOING:
+                    result_flag = ccore.DRAW
                     final_reason = "exhausted"
                     if (
                         adjudicate_enabled
@@ -495,33 +559,42 @@ def arena_match(
                     ):
                         balance = _material_balance(position)
                         if abs(balance) >= adjudicate_margin:
-                            result_flag = _ccore.WHITE_WIN if balance > 0 else _ccore.BLACK_WIN
+                            result_flag = (
+                                ccore.WHITE_WIN if balance > 0 else ccore.BLACK_WIN
+                            )
                             final_reason = "adjudicated"
                 else:
                     result_flag = current_result
                     final_reason = "natural"
 
             total_positions = max(1, ply + 1)
-            unique_ratio = len(unique_hashes) / total_positions if unique_hashes else 1.0
+            unique_ratio = (
+                len(unique_hashes) / total_positions if unique_hashes else 1.0
+            )
             loop_flag = False
             if loop_alert_count >= 2:
                 loop_flag = True
             if (
                 not loop_flag
                 and ply >= int(getattr(C.SELFPLAY, "LOOP_MIN_PLIES", 0))
-                and unique_ratio <= float(getattr(C.SELFPLAY, "LOOP_UNIQUE_RATIO_MAX", 0.0))
+                and unique_ratio
+                <= float(getattr(C.SELFPLAY, "LOOP_UNIQUE_RATIO_MAX", 0.0))
             ):
                 loop_flag = True
             if loop_flag:
-                if result_flag == _ccore.DRAW:
-                    loser_is_white = position.turn == _ccore.WHITE
-                    result_flag = _ccore.BLACK_WIN if loser_is_white else _ccore.WHITE_WIN
+                if result_flag == ccore.DRAW:
+                    loser_is_white = position.turn == ccore.WHITE
+                    result_flag = ccore.BLACK_WIN if loser_is_white else ccore.WHITE_WIN
                     final_reason = "loop_loss"
                 elif final_reason == "exhausted":
                     final_reason = "loop"
 
             reason_counter[final_reason] += 1
-            score_result = 1 if result_flag == _ccore.WHITE_WIN else (-1 if result_flag == _ccore.BLACK_WIN else 0)
+            score_result = (
+                1
+                if result_flag == ccore.WHITE_WIN
+                else (-1 if result_flag == ccore.BLACK_WIN else 0)
+            )
             return (
                 score_result,
                 moves_uci,
@@ -530,7 +603,7 @@ def arena_match(
 
         pair_count = max(1, C.ARENA.GAMES_PER_EVAL // C.ARENA.PAIRING_FACTOR)
         pgn_candidates: list[dict[str, object]] = []
-        rng = _np.random.default_rng()
+        rng = np.random.default_rng()
         random_opening_cap = int(getattr(C.ARENA, "OPENING_RANDOM_PLIES_MAX", 0))
         curriculum_total = 0
         curriculum_wins = 0
@@ -541,14 +614,16 @@ def arena_match(
                 use_curriculum = True
                 base_fen = str(rng.choice(_ARENA_CURRICULUM_FENS))
                 start_fen = (
-                    base_fen if float(rng.random()) < 0.5 else flip_fen_perspective(base_fen)
+                    base_fen
+                    if float(rng.random()) < 0.5
+                    else flip_fen_perspective(base_fen)
                 )
             else:
-                start_position = _ccore.Position()
+                start_position = ccore.Position()
                 if random_opening_cap > 0:
                     random_plies = int(rng.integers(0, random_opening_cap + 1))
                     for _ in range(random_plies):
-                        if start_position.result() != _ccore.ONGOING:
+                        if start_position.result() != ccore.ONGOING:
                             break
                         moves = start_position.legal_moves()
                         if not moves:
@@ -557,8 +632,12 @@ def arena_match(
                         start_position.make_move(moves[mv_idx])
                 start_fen = sanitize_fen(start_position.to_fen())
             start_fen = sanitize_fen(start_fen)
-            r1, mv1, reason1 = play(challenger_eval, incumbent_eval, start_fen, use_curriculum)
-            r2_raw, mv2, reason2 = play(incumbent_eval, challenger_eval, start_fen, use_curriculum)
+            r1, mv1, reason1 = play(
+                challenger_eval, incumbent_eval, start_fen, use_curriculum
+            )
+            r2_raw, mv2, reason2 = play(
+                incumbent_eval, challenger_eval, start_fen, use_curriculum
+            )
             r2 = -r2_raw
             pgn_candidates.append(
                 {
@@ -603,10 +682,11 @@ def arena_match(
 
     try:
         if C.LOG.ARENA_SAVE_PGN_ENABLE and pgn_candidates:
-            iso_date = _dt.datetime.now(_dt.UTC).strftime("%Y.%m.%d")
-            round_tag = _dt.datetime.now(_dt.UTC).strftime("%Y%m%d_%H%M%S")
+            iso_date = dt.datetime.now(dt.UTC).strftime("%Y.%m.%d")
+            round_tag = dt.datetime.now(dt.UTC).strftime("%Y%m%d_%H%M%S")
             try:
                 import os as _os
+
                 pgn_dir = str(C.LOG.ARENA_PGN_DIR)
                 if pgn_dir:
                     _os.makedirs(pgn_dir, exist_ok=True)
@@ -654,16 +734,23 @@ def arena_match(
                 return "1-0" if r > 0 else ("0-1" if r < 0 else "1/2-1/2")
 
             def has_promo(moves: list[str]) -> bool:
-                return any((len(m) >= 5 and m[-1] in ("q", "r", "b", "n")) for m in moves)
+                return any(
+                    (len(m) >= 5 and m[-1] in ("q", "r", "b", "n")) for m in moves
+                )
 
             promo: list[_PGNCandidate] = (
-                [g for g in pgn_candidates_typed if has_promo(g.moves)] if C.LOG.ARENA_SAVE_PGN_ON_PROMOTION else []
+                [g for g in pgn_candidates_typed if has_promo(g.moves)]
+                if C.LOG.ARENA_SAVE_PGN_ON_PROMOTION
+                else []
             )
             saved = 0
 
             def _important_reason(term: str) -> bool:
                 lowered = term.lower()
-                if any(keyword in lowered for keyword in ("resign", "mate", "natural", "stalemate")):
+                if any(
+                    keyword in lowered
+                    for keyword in ("resign", "mate", "natural", "stalemate")
+                ):
                     return True
                 return lowered not in {"draw", "exhausted"}
 
@@ -715,7 +802,11 @@ def arena_match(
             if not selection and pgn_candidates_typed:
                 selection.append(pgn_candidates_typed[0])
             for g in selection:
-                tag = "promo" if (C.LOG.ARENA_SAVE_PGN_ON_PROMOTION and g in promo) else "important"
+                tag = (
+                    "promo"
+                    if (C.LOG.ARENA_SAVE_PGN_ON_PROMOTION and g in promo)
+                    else "important"
+                )
                 write_game(g, tag)
     except Exception:
         pass
@@ -731,6 +822,8 @@ def arena_match(
 
 
 class EloGater:
+    """Tracks arena outcomes and decides whether to accept candidate models."""
+
     def __init__(
         self,
         *,
