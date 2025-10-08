@@ -172,7 +172,7 @@ void bind_position(py::module_& m) {
            "Load a position from a FEN string.")
       .def("to_fen", &chess::Position::to_fen, "Serialize the position to FEN.")
       .def("legal_moves",
-           [](const chess::Position& position) { return copy_moves(position.legal_moves()); },
+           [](chess::Position& position) { return copy_moves(position.legal_moves()); },
            "Return a list of legal moves from the current position.")
       .def("make_move", &chess::Position::make_move, py::arg("move"),
            "Apply a move and return the resulting game result.")
