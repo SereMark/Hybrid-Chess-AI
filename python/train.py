@@ -18,6 +18,8 @@ import config as C
 from arena import EloGater, arena_match
 from checkpoint import save_best_model, save_checkpoint, try_resume
 from inference import BatchedEvaluator
+from network import ChessNet
+from optimization import EMA, WarmupCosine, build_optimizer
 from utils import (
     MetricsReporter,
     format_gb,
