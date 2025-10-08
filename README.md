@@ -42,7 +42,7 @@ python -m pip install --upgrade pip
 Common packages used across both CPU and GPU builds:
 
 ```powershell
-pip install numpy psutil pybind11
+pip install numpy psutil pybind11 python-chess
 ```
 
 #### 4.1 PyTorch (choose one)
