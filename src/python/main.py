@@ -16,7 +16,7 @@ from trainer import Trainer
 __all__ = ["main"]
 
 _ENV_BASE_DEFAULTS = {
-    "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True,max_split_size_mb:192",
+    "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:False,max_split_size_mb:192",
     "CUDA_MODULE_LOADING": "LAZY",
     "CUDA_CACHE_MAXSIZE": "2147483648",
     "NVIDIA_TF32_OVERRIDE": "0",
