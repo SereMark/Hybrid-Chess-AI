@@ -655,6 +655,15 @@ class SelfPlayEngine:
             )
         )
 
+    @staticmethod
+    def _normalize_result(value: object) -> ccore.Result | None:
+        if isinstance(value, ccore.Result):
+            return value
+        try:
+            return ccore.Result(int(value))
+        except (TypeError, ValueError):
+            return None
+
     def _select_move_by_temperature(
         self,
         moves: list[Any],
@@ -693,14 +702,18 @@ class SelfPlayEngine:
     def _process_result(
         self,
         examples: list[tuple[np.ndarray, np.ndarray, np.ndarray]],
-        result: int,
+        result: ccore.Result | int,
         first_to_move_is_white: bool,
         value_offset: float = 0.0,
         termination: str | None = None,
     ) -> None:
-        if result == ccore.WHITE_WIN:
+        result_enum = SelfPlayEngine._normalize_result(result)
+        if result_enum is None:
+            self.log.warning("Self-play received unknown result %r; skipping record", result)
+            return
+        if result_enum == ccore.WHITE_WIN:
             base = 1.0
-        elif result == ccore.BLACK_WIN:
+        elif result_enum == ccore.BLACK_WIN:
             base = -1.0
         else:
             base = 0.0
@@ -718,7 +731,7 @@ class SelfPlayEngine:
 
     def play_single_game(self, seed: int | None = None) -> tuple[
         int,
-        int,
+        ccore.Result,
         list[tuple[np.ndarray, np.ndarray, np.ndarray]],
         bool,
         dict[str, object],
@@ -758,7 +771,7 @@ class SelfPlayEngine:
                 position = ccore.Position()
 
         resign_count = 0
-        forced_result: int | None = None
+        forced_result: ccore.Result | None = None
         termination_reason = "natural"
         mcts = ccore.MCTS(
             C.MCTS.TRAIN_SIMULATIONS_BASE,
@@ -1194,7 +1207,7 @@ class SelfPlayEngine:
 
         return (
             move_count,
-            int(final_result),
+            final_result,
             examples,
             True if first_to_move_is_white is None else bool(first_to_move_is_white),
             meta,
@@ -1228,13 +1241,17 @@ class SelfPlayEngine:
         aggregate: _SelfPlayAggregate,
         game_data: tuple[
             int,
-            int,
+            ccore.Result,
             list[tuple[np.ndarray, np.ndarray, np.ndarray]],
             bool,
             dict[str, object],
         ],
     ) -> None:
         move_count, result, examples, first_to_move_is_white, meta = game_data
+        result_enum = SelfPlayEngine._normalize_result(result)
+        if result_enum is None:
+            self.log.warning("Skipping aggregation for unknown result %r", result)
+            return
         meta = meta or {}
         value_shift = _coerce_float(meta.get("value_shift", 0.0))
         term_reason = str(meta.get("termination", "natural"))
@@ -1290,18 +1307,18 @@ class SelfPlayEngine:
             balance = _coerce_float(meta.get("adjudicated_balance", 0.0))
             aggregate.adjudicated_balance_total += balance
             aggregate.adjudicated_balance_abs_total += abs(balance)
-            if result > 0:
+            if result_enum == ccore.WHITE_WIN:
                 aggregate.adjudicated_white += 1
-            elif result < 0:
+            elif result_enum == ccore.BLACK_WIN:
                 aggregate.adjudicated_black += 1
             else:
                 aggregate.adjudicated_draw += 1
-        if result > 0:
+        if result_enum == ccore.WHITE_WIN:
             aggregate.white_wins += 1
-        elif result < 0:
+        elif result_enum == ccore.BLACK_WIN:
             aggregate.black_wins += 1
         else:
-            if result == ccore.DRAW:
+            if result_enum == ccore.DRAW:
                 if term_reason in {"exhausted", "fifty_move", "threefold"}:
                     aggregate.draws_cap += 1
                 else:
@@ -1311,9 +1328,9 @@ class SelfPlayEngine:
             aggregate.draws += 1
         if _coerce_int(meta.get("curriculum_seed", 0)):
             aggregate.curriculum_games += 1
-            if result > 0:
+            if result_enum == ccore.WHITE_WIN:
                 aggregate.curriculum_white_wins += 1
-            elif result < 0:
+            elif result_enum == ccore.BLACK_WIN:
                 aggregate.curriculum_black_wins += 1
             else:
                 aggregate.curriculum_draws += 1
@@ -1324,7 +1341,7 @@ class SelfPlayEngine:
         aggregate.sims_last_sum += _coerce_int(meta.get("sims_last", 0))
         if _coerce_int(meta.get("value_trend_len", 0)) >= self.adjudicate_value_persist:
             aggregate.value_trend_hits += 1
-        if result not in {0}:
+        if result_enum != ccore.ONGOING:
             aggregate.add_loss_sample(float(np.clip(terminal_eval_meta, -1.0, 1.0)))
 
     def sample_batch(
@@ -1359,7 +1376,7 @@ class SelfPlayEngine:
             int,
             tuple[
                 int,
-                int,
+                ccore.Result,
                 list[tuple[np.ndarray, np.ndarray, np.ndarray]],
                 bool,
                 dict[str, object],
