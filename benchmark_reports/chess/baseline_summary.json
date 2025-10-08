@@ -1,0 +1,326 @@
+[
+  {
+    "scenario": {
+      "name": "baseline_small",
+      "positions": 200,
+      "max_random_plies": 80,
+      "loops": 80,
+      "repetitions": 3,
+      "seed": 9001,
+      "description": "Random playout positions",
+      "mode": "random_positions"
+    },
+    "generated_at": "2025-10-08T14:49:14.894222+00:00",
+    "python_version": "3.13.8 (tags/v3.13.8:a15ae61, Oct  7 2025, 12:34:25) [MSC v.1944 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26100-SP0",
+    "dataset": {
+      "name": "baseline_small",
+      "positions": 200,
+      "loops": 80,
+      "repetitions": 3,
+      "move_statistics": {
+        "sample_size": 200,
+        "unique_positions": 200,
+        "min_moves": 0,
+        "max_moves": 52,
+        "mean_moves": 30.205,
+        "median_moves": 31.0,
+        "stdev_moves": 9.80272626421116,
+        "quartiles": [
+          25.0,
+          31.0,
+          37.0
+        ],
+        "stage_means": {
+          "opening": 25.6,
+          "middlegame": 31.448,
+          "endgame": 31.933333333333334
+        }
+      },
+      "correctness": {
+        "total_positions": 200,
+        "mismatch_count": 0,
+        "examples": []
+      },
+      "timings": {
+        "chesscore": {
+          "engine": "chesscore",
+          "loops": 80,
+          "positions": 16000,
+          "samples": [
+            {
+              "elapsed_s": 0.2316285999995671,
+              "total_moves": 483280
+            },
+            {
+              "elapsed_s": 0.23377239999990707,
+              "total_moves": 483280
+            },
+            {
+              "elapsed_s": 0.23107070000060048,
+              "total_moves": 483280
+            }
+          ],
+          "mean_s": 0.23215723333335822,
+          "stdev_s": 0.0014263189064019442,
+          "min_s": 0.23107070000060048,
+          "max_s": 0.23377239999990707,
+          "mean_positions_per_second": 68920.53812478641,
+          "min_positions_per_second": 68442.63907974749,
+          "max_positions_per_second": 69242.87674706668,
+          "mean_moves_per_second": 2081744.8540591737,
+          "min_moves_per_second": 2067309.9134037727,
+          "max_moves_per_second": 2091481.0921451491
+        },
+        "python-chess": {
+          "engine": "python-chess",
+          "loops": 80,
+          "positions": 16000,
+          "samples": [
+            {
+              "elapsed_s": 1.576275400000668,
+              "total_moves": 483280
+            },
+            {
+              "elapsed_s": 1.6167105000004085,
+              "total_moves": 483280
+            },
+            {
+              "elapsed_s": 1.5841349000002083,
+              "total_moves": 483280
+            }
+          ],
+          "mean_s": 1.5923736000004283,
+          "stdev_s": 0.02143960030568368,
+          "min_s": 1.576275400000668,
+          "max_s": 1.6167105000004085,
+          "mean_positions_per_second": 10049.099772081376,
+          "min_positions_per_second": 9896.638884943197,
+          "max_positions_per_second": 10150.510500889133,
+          "mean_moves_per_second": 303533.058615718,
+          "min_moves_per_second": 298927.97751970927,
+          "max_moves_per_second": 306596.1696793563
+        }
+      },
+      "extras": {
+        "description": "Random playout positions"
+      }
+    }
+  },
+  {
+    "scenario": {
+      "name": "baseline_medium",
+      "positions": 400,
+      "max_random_plies": 120,
+      "loops": 100,
+      "repetitions": 3,
+      "seed": 42,
+      "description": "Random playout positions",
+      "mode": "random_positions"
+    },
+    "generated_at": "2025-10-08T14:49:33.421359+00:00",
+    "python_version": "3.13.8 (tags/v3.13.8:a15ae61, Oct  7 2025, 12:34:25) [MSC v.1944 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26100-SP0",
+    "dataset": {
+      "name": "baseline_medium",
+      "positions": 400,
+      "loops": 100,
+      "repetitions": 3,
+      "move_statistics": {
+        "sample_size": 400,
+        "unique_positions": 395,
+        "min_moves": 0,
+        "max_moves": 54,
+        "mean_moves": 29.5,
+        "median_moves": 30.0,
+        "stdev_moves": 10.943921763193359,
+        "quartiles": [
+          24.0,
+          30.0,
+          36.0
+        ],
+        "stage_means": {
+          "opening": 21.836734693877553,
+          "middlegame": 32.08474576271186,
+          "endgame": 29.028735632183906
+        }
+      },
+      "correctness": {
+        "total_positions": 400,
+        "mismatch_count": 0,
+        "examples": []
+      },
+      "timings": {
+        "chesscore": {
+          "engine": "chesscore",
+          "loops": 100,
+          "positions": 40000,
+          "samples": [
+            {
+              "elapsed_s": 0.5854302999996435,
+              "total_moves": 1180000
+            },
+            {
+              "elapsed_s": 0.581648800000039,
+              "total_moves": 1180000
+            },
+            {
+              "elapsed_s": 0.583089700000528,
+              "total_moves": 1180000
+            }
+          ],
+          "mean_s": 0.5833896000000701,
+          "stdev_s": 0.0019085047993248844,
+          "min_s": 0.581648800000039,
+          "max_s": 0.5854302999996435,
+          "mean_positions_per_second": 68565.30383442505,
+          "min_positions_per_second": 68325.81094628065,
+          "max_positions_per_second": 68770.02067226359,
+          "mean_moves_per_second": 2022676.4631155392,
+          "min_moves_per_second": 2015611.422915279,
+          "max_moves_per_second": 2028715.6098317762
+        },
+        "python-chess": {
+          "engine": "python-chess",
+          "loops": 100,
+          "positions": 40000,
+          "samples": [
+            {
+              "elapsed_s": 3.775720900000124,
+              "total_moves": 1180000
+            },
+            {
+              "elapsed_s": 3.7043907000006584,
+              "total_moves": 1180000
+            },
+            {
+              "elapsed_s": 3.5721713000002637,
+              "total_moves": 1180000
+            }
+          ],
+          "mean_s": 3.6840943000003485,
+          "stdev_s": 0.10328149788202727,
+          "min_s": 3.5721713000002637,
+          "max_s": 3.775720900000124,
+          "mean_positions_per_second": 10863.223921339088,
+          "min_positions_per_second": 10594.003386213924,
+          "max_positions_per_second": 11197.671287487543,
+          "mean_moves_per_second": 320465.10567950306,
+          "min_moves_per_second": 312523.09989331075,
+          "max_moves_per_second": 330331.30298088246
+        }
+      },
+      "extras": {
+        "description": "Random playout positions"
+      }
+    }
+  },
+  {
+    "scenario": {
+      "name": "baseline_deep",
+      "positions": 600,
+      "max_random_plies": 200,
+      "loops": 150,
+      "repetitions": 3,
+      "seed": 1337,
+      "description": "Random playout positions",
+      "mode": "random_positions"
+    },
+    "generated_at": "2025-10-08T14:50:10.798802+00:00",
+    "python_version": "3.13.8 (tags/v3.13.8:a15ae61, Oct  7 2025, 12:34:25) [MSC v.1944 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26100-SP0",
+    "dataset": {
+      "name": "baseline_deep",
+      "positions": 600,
+      "loops": 150,
+      "repetitions": 3,
+      "move_statistics": {
+        "sample_size": 600,
+        "unique_positions": 597,
+        "min_moves": 0,
+        "max_moves": 55,
+        "mean_moves": 26.036666666666665,
+        "median_moves": 28.0,
+        "stdev_moves": 12.321323545466846,
+        "quartiles": [
+          19.0,
+          28.0,
+          35.0
+        ],
+        "stage_means": {
+          "opening": 22.976744186046513,
+          "middlegame": 30.39779005524862,
+          "endgame": 24.28723404255319
+        }
+      },
+      "correctness": {
+        "total_positions": 600,
+        "mismatch_count": 0,
+        "examples": []
+      },
+      "timings": {
+        "chesscore": {
+          "engine": "chesscore",
+          "loops": 150,
+          "positions": 90000,
+          "samples": [
+            {
+              "elapsed_s": 1.1612358000002132,
+              "total_moves": 2343300
+            },
+            {
+              "elapsed_s": 1.1643395000000965,
+              "total_moves": 2343300
+            },
+            {
+              "elapsed_s": 1.2163515000002008,
+              "total_moves": 2343300
+            }
+          ],
+          "mean_s": 1.1806422666668368,
+          "stdev_s": 0.030964015362429858,
+          "min_s": 1.1612358000002132,
+          "max_s": 1.2163515000002008,
+          "mean_positions_per_second": 76264.15036757402,
+          "min_positions_per_second": 73991.76964881051,
+          "max_positions_per_second": 77503.63879582724,
+          "mean_moves_per_second": 1985664.2617370689,
+          "min_moves_per_second": 1926499.0424228632,
+          "max_moves_per_second": 2017936.4087806884
+        },
+        "python-chess": {
+          "engine": "python-chess",
+          "loops": 150,
+          "positions": 90000,
+          "samples": [
+            {
+              "elapsed_s": 7.28010919999997,
+              "total_moves": 2343300
+            },
+            {
+              "elapsed_s": 7.350598699999864,
+              "total_moves": 2343300
+            },
+            {
+              "elapsed_s": 7.927164200000334,
+              "total_moves": 2343300
+            }
+          ],
+          "mean_s": 7.519290700000056,
+          "stdev_s": 0.35498279733589394,
+          "min_s": 7.28010919999997,
+          "max_s": 7.927164200000334,
+          "mean_positions_per_second": 11986.572996488476,
+          "min_positions_per_second": 11353.366440926782,
+          "max_positions_per_second": 12362.451925858526,
+          "mean_moves_per_second": 312090.40558523824,
+          "min_moves_per_second": 295603.8175669303,
+          "max_moves_per_second": 321877.0399762698
+        }
+      },
+      "extras": {
+        "description": "Random playout positions"
+      }
+    }
+  }
+]
