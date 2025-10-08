@@ -9,12 +9,12 @@ from collections import OrderedDict
 from contextlib import suppress
 from typing import Any, cast
 
-import chesscore as ccore
 import numpy as np
 import torch
 from torch import nn
 
 import config as C
+import encoder
 from network import BOARD_SIZE, INPUT_PLANES, POLICY_OUTPUT, ChessNet
 from utils import prepare_model, select_inference_dtype
 
@@ -175,7 +175,7 @@ class BatchedEvaluator:
                     misses.append((i, positions[i]))
         if misses:
             miss_pos = [p for _, p in misses]
-            miss_np = ccore.encode_batch(miss_pos)
+            miss_np = encoder.encode_batch(miss_pos)
             for j, (i, _) in enumerate(misses):
                 arr = miss_np[j].astype(self._np_inference_dtype, copy=False)
                 encoded[i] = arr
@@ -270,19 +270,10 @@ class BatchedEvaluator:
         with self._metrics_lock:
             self._metrics["requests_total"] += n
 
-        try:
-            idx_lists_py = ccore.encode_move_indices_batch(moves_per_position)
-            idx_lists: list[np.ndarray] = [
-                np.asarray(idx_lists_py[i], dtype=np.int64).reshape(-1)
-                for i in range(n)
-            ]
-        except Exception:
-            idx_lists = [
-                np.asarray(
-                    [int(ccore.encode_move_index(m)) for m in moves], dtype=np.int64
-                ).reshape(-1)
-                for moves in moves_per_position
-            ]
+        idx_lists = [
+            np.asarray(encoded, dtype=np.int64).reshape(-1)
+            for encoded in encoder.encode_move_indices_batch(moves_per_position)
+        ]
 
         probs_out: list[np.ndarray] = [
             np.zeros((0,), dtype=np.float32) for _ in range(n)

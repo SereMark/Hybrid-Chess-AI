@@ -24,10 +24,7 @@ class ReplayBuffer:
     def __init__(self, capacity: int, planes: int, height: int, width: int) -> None:
         capacity = int(max(1, capacity))
         self._capacity = capacity
-        self._planes = int(planes)
-        self._height = int(height)
-        self._width = int(width)
-        self._state_shape = (self._planes, self._height, self._width)
+        self._state_shape = (int(planes), int(height), int(width))
 
         self._states = np.zeros((capacity,) + self._state_shape, dtype=np.uint8)
         self._entries: list[_Entry | None] = [None] * capacity
@@ -45,18 +42,6 @@ class ReplayBuffer:
     def size(self) -> int:
         return self._size
 
-    @property
-    def planes(self) -> int:
-        return self._planes
-
-    @property
-    def height(self) -> int:
-        return self._height
-
-    @property
-    def width(self) -> int:
-        return self._width
-
     def seed(self, seed: int | np.random.SeedSequence | None) -> None:
         self._rng = np.random.default_rng(seed)
 
@@ -65,28 +50,6 @@ class ReplayBuffer:
         self._head = 0
         self._entries = [None] * self._capacity
 
-    def _ordered_positions(self) -> list[int]:
-        if self._size == 0:
-            return []
-        start = (self._head - self._size) % self._capacity
-        return [(start + i) % self._capacity for i in range(self._size)]
-
-    def _validate_state(self, state: np.ndarray) -> np.ndarray:
-        arr = np.asarray(state, dtype=np.uint8)
-        if arr.shape != self._state_shape:
-            raise ValueError(
-                f"state shape {arr.shape} does not match {self._state_shape}"
-            )
-        return arr
-
-    def _validate_sparse(
-        self, values: Iterable[int], *, dtype: DTypeLike
-    ) -> np.ndarray:
-        arr = np.asarray(values, dtype=dtype)
-        if arr.ndim != 1:
-            raise ValueError("sparse arrays must be 1D")
-        return arr
-
     def push(
         self,
         state: np.ndarray,
@@ -94,17 +57,15 @@ class ReplayBuffer:
         counts: Sequence[int] | np.ndarray,
         value: int | np.integer,
     ) -> None:
-        state_arr = self._validate_state(state)
+        pos = self._head
+        self._states[pos] = self._validate_state(state)
         idx_arr = self._validate_sparse(indices, dtype=np.int32)
         cnt_arr = self._validate_sparse(counts, dtype=np.uint16)
         if idx_arr.shape != cnt_arr.shape:
-            min_len = min(idx_arr.size, cnt_arr.size)
-            idx_arr = idx_arr[:min_len]
-            cnt_arr = cnt_arr[:min_len]
+            slc = slice(0, min(idx_arr.size, cnt_arr.size))
+            idx_arr = idx_arr[slc]
+            cnt_arr = cnt_arr[slc]
         value_i8 = np.int8(value)
-
-        pos = self._head
-        self._states[pos] = state_arr
         self._entries[pos] = _Entry(idx_arr.copy(), cnt_arr.copy(), value_i8)
         self._values[pos] = value_i8
 
@@ -160,9 +121,7 @@ class ReplayBuffer:
         recent_window = min(recent_window, self._size)
 
         recent_candidates = ordered[-recent_window:]
-        old_candidates = ordered[:-recent_window]
-        if not old_candidates:
-            old_candidates = recent_candidates
+        old_candidates = ordered[:-recent_window] or recent_candidates
 
         recent_samples = int(round(batch_size * float(recent_ratio)))
         recent_samples = max(0, min(recent_samples, batch_size))
@@ -176,9 +135,8 @@ class ReplayBuffer:
                 ).tolist()
             )
         if old_samples > 0:
-            base = old_candidates if old_candidates else recent_candidates
             picks.extend(
-                self._rng.choice(base, size=old_samples, replace=True).tolist()
+                self._rng.choice(old_candidates, size=old_samples, replace=True).tolist()
             )
 
         self._rng.shuffle(picks)
@@ -199,5 +157,23 @@ class ReplayBuffer:
 
         return states, idx_list, cnt_list, values
 
+    def _ordered_positions(self) -> list[int]:
+        if self._size == 0:
+            return []
+        start = (self._head - self._size) % self._capacity
+        return [(start + i) % self._capacity for i in range(self._size)]
 
-__all__ = ["ReplayBuffer"]
+    def _validate_state(self, state: np.ndarray) -> np.ndarray:
+        arr = np.asarray(state, dtype=np.uint8)
+        if arr.shape != self._state_shape:
+            raise ValueError(
+                f"state shape {arr.shape} does not match {self._state_shape}"
+            )
+        return arr
+
+    @staticmethod
+    def _validate_sparse(values: Iterable[int], *, dtype: DTypeLike) -> np.ndarray:
+        arr = np.asarray(values, dtype=dtype)
+        if arr.ndim != 1:
+            raise ValueError("sparse arrays must be 1D")
+        return arr

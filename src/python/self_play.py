@@ -19,6 +19,7 @@ import chesscore as ccore
 
 import config as C
 import encoder
+from encoder import POLICY_SIZE, encode_move_index
 from replay_buffer import ReplayBuffer
 from utils import flip_fen_perspective, sanitize_fen
 
@@ -28,7 +29,7 @@ BOARD_SIZE = 8
 NSQUARES = 64
 PLANES_PER_POSITION = encoder.PLANES_PER_POSITION
 HISTORY_LENGTH = encoder.HISTORY_LENGTH
-POLICY_OUTPUT = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
+POLICY_OUTPUT = POLICY_SIZE
 
 _MATERIAL_WEIGHTS = (1.0, 3.0, 3.0, 5.0, 9.0, 0.0)
 
@@ -890,7 +891,7 @@ class SelfPlayEngine:
             idx_list: list[int] = []
             cnt_list: list[int] = []
             for mv, vc in zip(moves, visit_counts, strict=False):
-                move_index = ccore.encode_move_index(mv)
+                move_index = encode_move_index(mv)
                 if (move_index is not None) and (0 <= int(move_index) < POLICY_OUTPUT):
                     c = min(int(vc), C.MCTS.VISIT_COUNT_CLAMP)
                     if c > 0:
@@ -1193,7 +1194,7 @@ class SelfPlayEngine:
 
         return (
             move_count,
-            final_result,
+            int(final_result),
             examples,
             True if first_to_move_is_white is None else bool(first_to_move_is_white),
             meta,
