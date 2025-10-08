@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import threading
+from pathlib import Path
 from typing import Any, cast
 from collections import deque
 from collections.abc import Sequence
@@ -66,6 +68,64 @@ _CURRICULUM_FENS: tuple[str, ...] = tuple(
 )
 
 
+def _resolve_project_root() -> Path:
+    resolved = Path(__file__).resolve()
+    try:
+        return resolved.parents[2]
+    except IndexError:
+        return resolved.parent
+
+
+def _load_opening_book_from_file(path_spec: object) -> tuple[list[tuple[Any, Any]], Path]:
+    if path_spec is None:
+        raise ValueError("Opening book path is not defined.")
+    if isinstance(path_spec, str):
+        path_text = path_spec.strip()
+        if not path_text:
+            raise ValueError("Opening book path is empty.")
+        path_candidate = Path(path_text)
+    else:
+        try:
+            path_candidate = Path(path_spec)
+        except TypeError as exc:
+            raise TypeError("Opening book path must be filesystem-compatible.") from exc
+    if not path_candidate.is_absolute():
+        path_candidate = _resolve_project_root() / path_candidate
+    path_candidate = path_candidate.resolve()
+    if not path_candidate.exists():
+        raise FileNotFoundError(f"Opening book file not found: {path_candidate}")
+    with path_candidate.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if isinstance(payload, dict):
+        entries_obj = payload.get("entries")
+        if entries_obj is None:
+            raise ValueError(
+                f"Opening book file {path_candidate} is missing the 'entries' field."
+            )
+    elif isinstance(payload, list):
+        entries_obj = payload
+    else:
+        raise ValueError(
+            f"Opening book file {path_candidate} must contain a list or dictionary."
+        )
+    normalized: list[tuple[Any, Any]] = []
+    for item in entries_obj:
+        if isinstance(item, dict):
+            fen = item.get("fen")
+            weight = item.get("weight", 1.0)
+        elif isinstance(item, (list, tuple)) and item:
+            fen = item[0]
+            weight = item[1] if len(item) > 1 else 1.0
+        else:
+            continue
+        normalized.append((fen, weight))
+    if not normalized:
+        raise ValueError(
+            f"Opening book file {path_candidate} contained no usable entries."
+        )
+    return normalized, path_candidate
+
+
 def _coerce_float(value: object, default: float = 0.0) -> float:
     if isinstance(value, (float, int)):
         return float(value)
@@ -98,11 +158,31 @@ def _build_opening_book() -> tuple[tuple[tuple[str, float], ...], float]:
     entries: list[tuple[str, float]] = []
     total_weight = 0.0
     raw_obj = getattr(C.SELFPLAY, "OPENING_BOOK", ())
+    loaded_from_file = False
+    book_source_path: Path | None = None
+    path_spec = getattr(C.SELFPLAY, "OPENING_BOOK_PATH", None)
+    try:
+        if isinstance(path_spec, str):
+            if path_spec.strip():
+                raw_obj, book_source_path = _load_opening_book_from_file(path_spec)
+                loaded_from_file = True
+        elif path_spec is not None and hasattr(path_spec, "__fspath__"):
+            raw_obj, book_source_path = _load_opening_book_from_file(path_spec)
+            loaded_from_file = True
+        elif isinstance(raw_obj, str) or hasattr(raw_obj, "__fspath__"):
+            raw_obj, book_source_path = _load_opening_book_from_file(raw_obj)
+            loaded_from_file = True
+    except Exception as exc:
+        raise RuntimeError(f"Failed to load opening book: {exc}") from exc
+
     candidates = tuple(raw_obj) if isinstance(raw_obj, (list, tuple)) else (raw_obj,)
     for raw in candidates:
         if raw in {None, ()}:
             continue
-        if isinstance(raw, (tuple, list)) and len(raw) >= 2:
+        if isinstance(raw, dict):
+            fen_raw = raw.get("fen")
+            weight_raw = raw.get("weight", 1.0)
+        elif isinstance(raw, (tuple, list)) and len(raw) >= 2:
             fen_raw, weight_raw = raw[0], raw[1]
         else:
             fen_raw, weight_raw = raw, 1.0
@@ -119,6 +199,11 @@ def _build_opening_book() -> tuple[tuple[tuple[str, float], ...], float]:
             continue
         entries.append((fen, weight))
         total_weight += weight
+    if loaded_from_file and not entries:
+        source = str(book_source_path) if book_source_path is not None else "<unknown>"
+        raise RuntimeError(
+            f"Opening book file {source} did not yield any usable positions."
+        )
     return tuple(entries), float(total_weight)
 
 

@@ -21,6 +21,7 @@ __all__ = [
     "ARENA",
 ]
 
+
 SEED = 0
 
 
@@ -42,10 +43,14 @@ LOG = _NS(
 TORCH = _NS(
     AMP_ENABLED=True,
     MATMUL_FLOAT32_PRECISION="medium",
-    THREADS_INTRA=1,
-    THREADS_INTER=1,
+    THREADS_INTRA=12,
+    THREADS_INTER=4,
     MODEL_CHANNELS_LAST=True,
     EVAL_MODEL_CHANNELS_LAST=True,
+    CUDNN_BENCHMARK=True,
+    CUDA_ALLOW_TF32=True,
+    CUDNN_ALLOW_TF32=True,
+    CUDA_ALLOW_FP16_REDUCED_REDUCTION=True,
 )
 
 
@@ -74,22 +79,14 @@ EVAL = _NS(
 
 
 SELFPLAY = _NS(
-    NUM_WORKERS=4,
+    NUM_WORKERS=10,
     GAME_MAX_PLIES=128,
     TEMP_MOVES=32,
     TEMP_HIGH=1.30,
     TEMP_LOW=0.60,
     DETERMINISTIC_TEMP_EPS=0.010,
     OPENING_RANDOM_PLIES_MAX=4,
-    OPENING_BOOK=(
-        ("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 3.0),
-        ("rnbqkbnr/pppp1ppp/8/4p3/3P4/2N5/PPP2PPP/R1BQKBNR b KQkq - 1 2", 1.5),
-        ("r1bqkbnr/pp1ppppp/2n5/2p5/3P4/2N2N2/PPP1PPPP/R1BQKB1R w KQkq - 2 4", 1.5),
-        ("rnbq1rk1/pp2bppp/2p1pn2/3p4/3P4/2P1PN2/PP1NBPPP/R1BQ1RK1 w - - 4 9", 1.0),
-        ("r4rk1/pp2bppp/2n1pn2/2bp4/3P4/1BPBPN2/PP3PPP/RN1QR1K1 w - - 6 16", 1.0),
-        ("8/pp3pk1/2p2np1/3p4/2PPp3/1P3P2/PBK2P1P/8 w - - 0 31", 0.8),
-        ("8/2p3kp/3p2p1/2pPp3/2P1P3/1P3KP1/6P1/8 w - - 0 41", 0.8),
-    ),
+    OPENING_BOOK_PATH="opening_book.json",
     COLOR_FLIP_PROB=0.55,
     COLOR_BALANCE_TOLERANCE_PCT=4.0,
     COLOR_BALANCE_WINDOW_ITERS=8,

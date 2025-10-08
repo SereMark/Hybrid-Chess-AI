@@ -16,6 +16,7 @@ from torch import nn
 
 import config as C
 from network import BOARD_SIZE, INPUT_PLANES, POLICY_OUTPUT, ChessNet
+from utils import prepare_model, select_inference_dtype
 
 __all__ = ["BatchedEvaluator"]
 
@@ -24,28 +25,15 @@ class BatchedEvaluator:
     def __init__(self, device: torch.device) -> None:
         self.device = device
         self.model_lock = threading.Lock()
-        model_any: Any = ChessNet().to(self.device)
-        self.eval_model: nn.Module = model_any
-        if C.TORCH.EVAL_MODEL_CHANNELS_LAST:
-            self.eval_model = cast(
-                nn.Module,
-                cast(Any, self.eval_model).to(memory_format=torch.channels_last),
-            )
-        self.eval_model = self.eval_model.eval()
-        self._inference_dtype: torch.dtype = torch.float32
-        if self.device.type == "cuda":
-            if (
-                hasattr(torch.cuda, "is_bf16_supported")
-                and torch.cuda.is_bf16_supported()
-            ):
-                self._inference_dtype = torch.bfloat16
-            else:
-                self._inference_dtype = torch.float16
-        self.eval_model = cast(
-            nn.Module, self.eval_model.to(dtype=self._inference_dtype)
+        self._inference_dtype: torch.dtype = select_inference_dtype(self.device)
+        self.eval_model: nn.Module = prepare_model(
+            ChessNet(),
+            self.device,
+            channels_last=C.TORCH.EVAL_MODEL_CHANNELS_LAST,
+            dtype=self._inference_dtype,
+            eval_mode=True,
+            freeze=True,
         )
-        for p in self.eval_model.parameters():
-            p.requires_grad_(False)
         self._np_inference_dtype: np.dtype[Any]
         self._cache_out_dtype: torch.dtype
         if self._inference_dtype == torch.bfloat16:
@@ -145,22 +133,24 @@ class BatchedEvaluator:
             if hasattr(base_obj, "module"):
                 base_obj = base_obj.module
             base = cast(nn.Module, base_obj)
-            new_model: nn.Module = ChessNet().to(self.device)
-            new_model.load_state_dict(base.state_dict(), strict=True)
-            if C.TORCH.EVAL_MODEL_CHANNELS_LAST:
-                new_model = cast(
-                    nn.Module,
-                    cast(Any, new_model).to(memory_format=torch.channels_last),
-                )
+            model = prepare_model(
+                ChessNet(),
+                self.device,
+                channels_last=C.TORCH.EVAL_MODEL_CHANNELS_LAST,
+            )
+            model.load_state_dict(base.state_dict(), strict=True)
+            self.eval_model = model
             with suppress(Exception):
-                self.eval_model = new_model
                 self._fuse_eval_model()
-                new_model = self.eval_model
-            new_model = cast(nn.Module, new_model.to(dtype=self._inference_dtype))
-            new_model.eval()
-            for p in new_model.parameters():
-                p.requires_grad_(False)
-            self.eval_model = new_model
+                model = self.eval_model
+            self.eval_model = prepare_model(
+                model,
+                self.device,
+                channels_last=C.TORCH.EVAL_MODEL_CHANNELS_LAST,
+                dtype=self._inference_dtype,
+                eval_mode=True,
+                freeze=True,
+            )
         with self.cache_lock:
             self._enc_cache.clear()
             self._val_cache.clear()

@@ -27,6 +27,8 @@ from utils import (
     format_gb,
     get_mem_info,
     get_sys_info,
+    prepare_model,
+    select_autocast_dtype,
     startup_summary,
 )
 from self_play import SelfPlayEngine
@@ -86,14 +88,14 @@ class Trainer:
                 self.log.warning("CUDA unavailable; falling back to CPU for training")
         self.device = device_obj
         self.metrics = MetricsReporter(C.LOG.METRICS_LOG_CSV_PATH)
-        if self.device.type == "cuda":
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
-            torch.backends.cudnn.benchmark = True
-        net_any: Any = ChessNet().to(self.device)
-        if C.TORCH.MODEL_CHANNELS_LAST:
-            net_any = net_any.to(memory_format=torch.channels_last)
-        self.model = cast(torch.nn.Module, net_any)
+        self.model = cast(
+            torch.nn.Module,
+            prepare_model(
+                ChessNet(),
+                self.device,
+                channels_last=C.TORCH.MODEL_CHANNELS_LAST,
+            ),
+        )
 
         self.optimizer = build_optimizer(self.model)
 
@@ -126,18 +128,7 @@ class Trainer:
             restart_decay=getattr(C.TRAIN, "LR_RESTART_DECAY", 1.0),
         )
         self._autocast_device = "cuda" if self.device.type == "cuda" else "cpu"
-        cuda_bf16_supported = False
-        if self.device.type == "cuda" and hasattr(torch.cuda, "is_bf16_supported"):
-            try:
-                cuda_bf16_supported = bool(torch.cuda.is_bf16_supported())
-            except Exception:
-                cuda_bf16_supported = False
-        if self.device.type == "cuda" and cuda_bf16_supported:
-            self._autocast_dtype = torch.bfloat16
-        elif self.device.type == "cuda":
-            self._autocast_dtype = torch.float16
-        else:
-            self._autocast_dtype = torch.bfloat16
+        self._autocast_dtype = select_autocast_dtype(self.device)
 
         self._amp_enabled = bool(C.TORCH.AMP_ENABLED and self.device.type == "cuda")
         self._scaler_device_type = (
@@ -281,10 +272,15 @@ class Trainer:
         return startup_summary(self)
 
     def _clone_model(self) -> torch.nn.Module:
-        clone = ChessNet().to(self.device)
+        clone = prepare_model(
+            ChessNet(),
+            self.device,
+            channels_last=C.TORCH.MODEL_CHANNELS_LAST,
+            eval_mode=True,
+            freeze=True,
+        )
         src = _unwrap_module(self.model)
         clone.load_state_dict(src.state_dict(), strict=True)
-        clone.eval()
         return clone
 
     def _sync_selfplay_evaluator(self) -> None:
