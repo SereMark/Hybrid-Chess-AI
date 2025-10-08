@@ -16,6 +16,8 @@ set(CHESSCORE_SOURCES
     "${CHESSCORE_SRC_DIR}/mcts.cpp"
 )
 
+set(pybind11_DIR "$ENV{VIRTUAL_ENV}/Lib/site-packages/pybind11/share/cmake/pybind11" CACHE PATH "" FORCE)
+set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 CONFIG REQUIRED)
 
 pybind11_add_module(chesscore ${CHESSCORE_SOURCES})
