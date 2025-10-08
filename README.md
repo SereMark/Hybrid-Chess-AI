@@ -72,11 +72,12 @@ If `CUDA available` is `False` despite having a GPU, double-check that you insta
 Run the following from the project root **inside a Developer PowerShell for VS 2022 window** (so `cl.exe` is on `PATH`):
 
 ```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+$pybind11Dir = python -c "import pybind11, pathlib; print(pathlib.Path(pybind11.__file__).parent / 'share' / 'cmake' / 'pybind11')"
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -Dpybind11_DIR="$pybind11Dir"
 cmake --build build --config Release
 ```
 
-This produces `python\Release\chesscore.cp313-win_amd64.pyd`, the compiled extension consumed by Python.
+If CMake still warns about `FindPythonInterp`, you can silence it by adding `set(PYBIND11_FINDPYTHON ON)` before `find_package(pybind11)` in `CMakeLists.txt`. The build output goes to `python\Release\chesscore.cp313-win_amd64.pyd`, the module imported by Python.
 
 ### 6. Configure Runtime Paths
 
