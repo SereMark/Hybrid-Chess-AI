@@ -109,6 +109,12 @@ class BatchedEvaluator:
         self._val_cache_cap = max(1, cap)
         self._out_cache_cap = max(1, cap)
 
+    def clear_caches(self) -> None:
+        with self.cache_lock:
+            self._enc_cache.clear()
+            self._val_cache.clear()
+            self._out_cache.clear()
+
     @property
     def cache_capacity(self) -> int:
         return int(self._enc_cache_cap)

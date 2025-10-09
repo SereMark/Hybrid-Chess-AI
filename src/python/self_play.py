@@ -62,6 +62,12 @@ SELFPLAY_LOOP_UNIQUE_RATIO_MAX = float(
 SELFPLAY_LOOP_PENALTY = float(
     np.clip(getattr(C.SELFPLAY, "LOOP_PENALTY_VALUE", 0.0), 0.0, 0.5)
 )
+SELFPLAY_LOOP_AUTO_RESET_THRESHOLD = float(
+    max(0.0, getattr(C.SELFPLAY, "LOOP_AUTO_RESET_THRESHOLD", 0.0))
+)
+SELFPLAY_LOOP_AUTO_RESET_COOLDOWN = int(
+    max(0, getattr(C.SELFPLAY, "LOOP_AUTO_RESET_COOLDOWN", 0))
+)
 
 _CURRICULUM_PROB = float(getattr(C.SELFPLAY, "CURRICULUM_SAMPLE_PROB", 0.0))
 _CURRICULUM_FENS: tuple[str, ...] = tuple(
@@ -509,6 +515,12 @@ class SelfPlayEngine:
             "loop": loop_dup,
             "loop_loss": loop_dup,
         }
+        self._loop_auto_reset_threshold = float(SELFPLAY_LOOP_AUTO_RESET_THRESHOLD)
+        self._loop_auto_reset_cooldown = int(
+            max(0, SELFPLAY_LOOP_AUTO_RESET_COOLDOWN)
+        )
+        self._loop_auto_reset_timer = 0
+        self._loop_auto_reset_count = 0
 
     def set_num_workers(self, n: int) -> None:
         self.num_workers = int(max(1, n))
@@ -728,6 +740,56 @@ class SelfPlayEngine:
                 value_i8 = SelfPlayEngine.encode_value_i8(target_value)
                 for _ in range(dup_factor):
                     self._buf.push(position_u8, idx_i32, counts_u16, value_i8)
+
+    def _maybe_handle_loop_auto_reset(self, stats: dict[str, Any]) -> bool:
+        threshold = float(self._loop_auto_reset_threshold)
+        if self._loop_auto_reset_timer > 0:
+            self._loop_auto_reset_timer = max(0, self._loop_auto_reset_timer - 1)
+        if threshold <= 0.0:
+            stats["loop_auto_reset_cooldown"] = self._loop_auto_reset_timer
+            stats["loop_auto_reset_threshold"] = threshold
+            stats["loop_auto_reset_count"] = self._loop_auto_reset_count
+            return False
+        total_games = max(1, int(stats.get("games", 0)))
+        loop_games = int(stats.get("loop_flag_games", 0))
+        loop_pct = 100.0 * loop_games / total_games if total_games else 0.0
+        triggered = False
+        if (
+            loop_games > 0
+            and loop_pct >= threshold
+            and self._loop_auto_reset_timer == 0
+        ):
+            triggered = True
+            self._loop_auto_reset_count += 1
+            self._loop_auto_reset_timer = int(self._loop_auto_reset_cooldown)
+            try:
+                self._enc_cache.clear()
+            except Exception:
+                self.log.debug(
+                    "Failed to clear encode cache during loop reset", exc_info=True
+                )
+            if hasattr(self.evaluator, "clear_caches"):
+                try:
+                    self.evaluator.clear_caches()
+                except Exception:
+                    self.log.debug(
+                        "Failed to clear evaluator caches during loop reset",
+                        exc_info=True,
+                    )
+            self._color_bias = self._color_flip_prob_base
+            stats["loop_auto_reset_reason"] = "loop_pct"
+            stats["loop_auto_reset_pct"] = loop_pct
+            self.log.info(
+                "[SelfPlay] loop surge %.1f%% >= %.1f%%; caches reset (cooldown=%d)",
+                loop_pct,
+                threshold,
+                self._loop_auto_reset_cooldown,
+            )
+        stats["loop_auto_reset_cooldown"] = self._loop_auto_reset_timer
+        stats["loop_auto_reset_threshold"] = threshold
+        stats["loop_auto_reset_count"] = self._loop_auto_reset_count
+        stats.setdefault("loop_auto_reset_pct", 0.0)
+        return triggered
 
     def play_single_game(self, seed: int | None = None) -> tuple[
         int,
@@ -1413,6 +1475,8 @@ class SelfPlayEngine:
             adjudicate_margin=adjudicate_margin,
             adjudicate_min_plies=adjudicate_min_plies,
         )
+        loop_reset = self._maybe_handle_loop_auto_reset(stats)
+        stats["loop_auto_reset"] = 1 if loop_reset else 0
         for tmp_key in (
             "unique_positions_total",
             "unique_ratio_total",
