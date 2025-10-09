@@ -289,16 +289,20 @@ class BatchedEvaluator:
                     pol_logits_np, v = self._out_cache.pop(k)
                     self._out_cache[k] = (pol_logits_np, v)
                     idx_arr = np.asarray(idx_lists[i], dtype=np.int64)
+                    probs = np.zeros(idx_arr.shape[0], dtype=np.float32)
                     valid = (idx_arr >= 0) & (idx_arr < POLICY_OUTPUT)
-                    idx_arr = idx_arr[valid]
-                    if idx_arr.size > 0:
-                        sel = pol_logits_np[idx_arr].astype(np.float32, copy=False)
+                    if np.any(valid):
+                        sel = pol_logits_np[idx_arr[valid]].astype(
+                            np.float32, copy=False
+                        )
                         m = float(sel.max()) if sel.size > 0 else 0.0
                         ex = np.exp(sel - m)
                         s = float(ex.sum())
-                        probs_out[i] = (ex / (s if s > 0 else 1.0)).astype(
+                        probs_valid = (ex / (s if s > 0 else 1.0)).astype(
                             np.float32, copy=False
                         )
+                        probs[valid] = probs_valid
+                    probs_out[i] = probs
                     values_out[i] = float(v)
                     hits.append(i)
                 else:
