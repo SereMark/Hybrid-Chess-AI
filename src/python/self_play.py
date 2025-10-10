@@ -746,13 +746,23 @@ class SelfPlayEngine:
         threshold = float(self._loop_auto_reset_threshold)
         if self._loop_auto_reset_timer > 0:
             self._loop_auto_reset_timer = max(0, self._loop_auto_reset_timer - 1)
+        buffer_cleared = 0
+        reason = ""
         if threshold <= 0.0:
             stats["loop_auto_reset_cooldown"] = self._loop_auto_reset_timer
             stats["loop_auto_reset_threshold"] = threshold
             stats["loop_auto_reset_count"] = self._loop_auto_reset_count
+            stats["loop_auto_reset_pct"] = 0.0
+            stats["loop_auto_reset_buffer"] = buffer_cleared
+            stats["loop_auto_reset_reason"] = reason
             return False
         total_games = max(1, int(stats.get("games", 0)))
-        loop_games = int(stats.get("loop_games", stats.get("loop_alert_games", stats.get("loop_flag_games", 0))))
+        loop_games = int(
+            stats.get(
+                "loop_games",
+                stats.get("loop_alert_games", stats.get("loop_flag_games", 0)),
+            )
+        )
         loop_pct = 100.0 * loop_games / total_games if total_games else 0.0
         triggered = False
         if (
@@ -761,6 +771,7 @@ class SelfPlayEngine:
             and self._loop_auto_reset_timer == 0
         ):
             triggered = True
+            reason = "loop_pct"
             self._loop_auto_reset_count += 1
             self._loop_auto_reset_timer = int(self._loop_auto_reset_cooldown)
             try:
@@ -777,8 +788,14 @@ class SelfPlayEngine:
                         "Failed to clear evaluator caches during loop reset",
                         exc_info=True,
                     )
+            try:
+                self.clear_buffer()
+                buffer_cleared = 1
+            except Exception:
+                self.log.debug(
+                    "Failed to clear replay buffer during loop reset", exc_info=True
+                )
             self._color_bias = self._color_flip_prob_base
-            stats["loop_auto_reset_reason"] = "loop_pct"
             stats["loop_auto_reset_pct"] = loop_pct
             self.log.info(
                 "[SelfPlay] loop surge %.1f%% >= %.1f%%; caches reset (cooldown=%d)",
@@ -790,6 +807,8 @@ class SelfPlayEngine:
         stats["loop_auto_reset_threshold"] = threshold
         stats["loop_auto_reset_count"] = self._loop_auto_reset_count
         stats["loop_auto_reset_pct"] = loop_pct
+        stats["loop_auto_reset_buffer"] = buffer_cleared
+        stats["loop_auto_reset_reason"] = reason
         return triggered
 
     def play_single_game(self, seed: int | None = None) -> tuple[
