@@ -393,7 +393,7 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     stats["sp_threefold_pct"] = threefold_pct
     stats["sp_threefold_games"] = threefold_games
     stats["sp_threefold_draws"] = threefold_draws
-    loop_games = int(game_stats.get("loop_alert_games", 0))
+    loop_games = int(game_stats.get("loop_games", game_stats.get("loop_alert_games", 0)))
     loop_alerts = int(game_stats.get("loop_alerts_total", 0))
     loop_flag_games = int(game_stats.get("loop_flag_games", 0))
     loop_flag_pct = float(game_stats.get("loop_flag_pct", 0.0))

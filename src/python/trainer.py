@@ -719,6 +719,10 @@ class Trainer:
             sp_loop_flag_pct = float(iter_stats.get("sp_loop_flag_pct", 0.0))
             sp_loop_unique_pct = float(iter_stats.get("sp_loop_unique_ratio_pct", 0.0))
             sp_loop_bias_avg = float(iter_stats.get("sp_loop_bias_avg", 0.0))
+            sp_loop_auto_reset = int(iter_stats.get("sp_loop_auto_reset", 0))
+            sp_loop_reset_count = int(iter_stats.get("sp_loop_reset_count", 0))
+            sp_loop_reset_cd = int(iter_stats.get("sp_loop_reset_cooldown", 0))
+            sp_loop_reset_pct = float(iter_stats.get("sp_loop_reset_pct", 0.0))
             sp_eval_mean = float(iter_stats.get("sp_terminal_eval_mean", 0.0))
             sp_eval_abs = float(iter_stats.get("sp_terminal_eval_abs_mean", 0.0))
             sp_tempo_bonus = float(iter_stats.get("sp_tempo_bonus_avg", 0.0))
@@ -774,6 +778,7 @@ class Trainer:
             )
             sp_loop_line = (
                 f"           loop={sp_loop_pct:.0f}% flag={sp_loop_flag_pct:.0f}% uniq={sp_loop_unique_pct:.0f}% bias={sp_loop_bias_avg:+.2f} "
+                f"reset={sp_loop_auto_reset}/{sp_loop_reset_count} cd={sp_loop_reset_cd} pct={sp_loop_reset_pct:.0f}% "
                 f"nat/adj/res={sp_term_nat_pct:.0f}/{sp_term_adj_pct:.0f}/{sp_term_resign_pct:.0f}% loopTerm={sp_term_loop_pct:.0f}% eval={sp_eval_mean:.2f}±{sp_eval_abs:.2f} "
                 f"sims={sp_sims:.0f} tempo={sp_tempo_bonus:.3f} lossEval={sp_loss_eval_mean:.2f}/{sp_loss_eval_p25:.2f} trend={sp_value_trend:.1f}% "
                 f"curr={sp_curriculum_games}({sp_curriculum_pct:.0f}%) time={sp_time:.1f}s"
@@ -896,6 +901,11 @@ class Trainer:
                         "sp_loop_flag_pct",
                         "sp_loop_unique_ratio_pct",
                         "sp_loop_bias_avg",
+                        "sp_loop_auto_reset",
+                        "sp_loop_reset_count",
+                        "sp_loop_reset_cooldown",
+                        "sp_loop_reset_threshold",
+                        "sp_loop_reset_pct",
                         "sp_value_trend_hit_pct",
                         "sp_loss_eval_mean",
                         "sp_loss_eval_p05",
@@ -1142,6 +1152,21 @@ class Trainer:
                         ),
                         "sp_loop_bias_avg": float(
                             iter_stats.get("sp_loop_bias_avg", 0.0)
+                        ),
+                        "sp_loop_auto_reset": int(
+                            iter_stats.get("sp_loop_auto_reset", 0)
+                        ),
+                        "sp_loop_reset_count": int(
+                            iter_stats.get("sp_loop_reset_count", 0)
+                        ),
+                        "sp_loop_reset_cooldown": int(
+                            iter_stats.get("sp_loop_reset_cooldown", 0)
+                        ),
+                        "sp_loop_reset_threshold": float(
+                            iter_stats.get("sp_loop_reset_threshold", 0.0)
+                        ),
+                        "sp_loop_reset_pct": float(
+                            iter_stats.get("sp_loop_reset_pct", 0.0)
                         ),
                         "sp_value_trend_hit_pct": float(
                             iter_stats.get("sp_value_trend_hit_pct", 0.0)
@@ -1434,3 +1459,4 @@ class Trainer:
                     self.log.debug(
                         "Failed to append metrics row: %s", exc, exc_info=True
                     )
+

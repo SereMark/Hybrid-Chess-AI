@@ -730,7 +730,8 @@ class SelfPlayEngine:
         else:
             base = 0.0
         dup_factor = int(self._dup_weights.get(str(termination or "").lower(), 1))
-        dup_factor = max(1, dup_factor)
+        if dup_factor <= 0:
+            return
         with self.buffer_lock:
             for ply_index, (position_u8, idx_i32, counts_u16) in enumerate(examples):
                 stm_is_white = ((ply_index % 2) == 0) == bool(first_to_move_is_white)
@@ -751,7 +752,7 @@ class SelfPlayEngine:
             stats["loop_auto_reset_count"] = self._loop_auto_reset_count
             return False
         total_games = max(1, int(stats.get("games", 0)))
-        loop_games = int(stats.get("loop_flag_games", 0))
+        loop_games = int(stats.get("loop_games", stats.get("loop_alert_games", stats.get("loop_flag_games", 0))))
         loop_pct = 100.0 * loop_games / total_games if total_games else 0.0
         triggered = False
         if (
@@ -788,7 +789,7 @@ class SelfPlayEngine:
         stats["loop_auto_reset_cooldown"] = self._loop_auto_reset_timer
         stats["loop_auto_reset_threshold"] = threshold
         stats["loop_auto_reset_count"] = self._loop_auto_reset_count
-        stats.setdefault("loop_auto_reset_pct", 0.0)
+        stats["loop_auto_reset_pct"] = loop_pct
         return triggered
 
     def play_single_game(self, seed: int | None = None) -> tuple[
