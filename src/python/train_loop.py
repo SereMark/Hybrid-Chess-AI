@@ -412,6 +412,8 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
     loop_reset_cooldown = int(game_stats.get("loop_auto_reset_cooldown", 0))
     loop_reset_threshold = float(game_stats.get("loop_auto_reset_threshold", 0.0))
     loop_reset_pct = float(game_stats.get("loop_auto_reset_pct", 0.0))
+    loop_reset_buffer = int(game_stats.get("loop_auto_reset_buffer", 0))
+    loop_reset_reason = str(game_stats.get("loop_auto_reset_reason", ""))
     if loop_auto_reset:
         trainer.log.info(
             "[SelfPlay] loop auto-reset triggered (count=%d, cooldown=%d, pct=%.1f)",
@@ -424,11 +426,15 @@ def run_training_iteration(trainer: Any) -> dict[str, int | float | str]:
             float(getattr(C.SAMPLING, "TRAIN_RECENT_SAMPLE_RATIO", trainer._recent_sample_ratio)),
         )
     trainer._loop_cooldown = loop_reset_cooldown
+    if loop_reset_buffer:
+        buffer_reset = max(buffer_reset, loop_reset_buffer)
     stats["sp_loop_auto_reset"] = loop_auto_reset
     stats["sp_loop_reset_count"] = loop_reset_count
     stats["sp_loop_reset_cooldown"] = loop_reset_cooldown
     stats["sp_loop_reset_threshold"] = loop_reset_threshold
     stats["sp_loop_reset_pct"] = loop_reset_pct
+    stats["sp_loop_reset_buffer"] = loop_reset_buffer
+    stats["sp_loop_reset_reason"] = loop_reset_reason
 
     stats["sp_curriculum_games"] = curriculum_games
     stats["sp_curriculum_pct"] = 100.0 * curriculum_games / max(1, games_count)
