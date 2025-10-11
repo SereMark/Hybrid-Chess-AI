@@ -1,0 +1,46 @@
+[tool.black]
+line-length = 120
+target-version = ["py313"]
+skip-string-normalization = true
+extend-exclude = '''
+/(
+    build|
+    dist|
+    logs|
+    checkpoints|
+    runs|
+    __pycache__|
+    \.venv|
+    .+\.egg-info
+)/
+'''
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = [
+    "build",
+    "dist",
+    "logs",
+    "checkpoints",
+    "runs",
+    "__pycache__",
+    ".venv",
+    "tools",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.format]
+quote-style = "preserve"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.13"
+files = ["src/python", "tests"]
+ignore_missing_imports = true
+allow_redefinition = true
+warn_unused_configs = true
+pretty = true
+

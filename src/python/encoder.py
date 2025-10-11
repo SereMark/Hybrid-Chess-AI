@@ -6,8 +6,8 @@ import numbers
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Sequence, Tuple
 
-import numpy as np
 import chesscore as ccore
+import numpy as np
 
 BOARD_SIZE = 8
 NSQUARES = BOARD_SIZE * BOARD_SIZE

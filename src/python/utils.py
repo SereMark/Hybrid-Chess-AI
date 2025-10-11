@@ -4,18 +4,19 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import json
 import os
-import socket
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 
+import config as C
+import numpy as np
 import psutil
 import torch
 from torch import nn
-
-import config as C
 
 __all__ = [
     "prepare_model",
@@ -53,9 +54,7 @@ def select_autocast_dtype(device: torch.device) -> torch.dtype:
     return torch.bfloat16 if _cuda_supports_bf16() else torch.float16
 
 
-def select_inference_dtype(
-    device: torch.device, *, cpu_dtype: torch.dtype = torch.float32
-) -> torch.dtype:
+def select_inference_dtype(device: torch.device, *, cpu_dtype: torch.dtype = torch.float32) -> torch.dtype:
     if device.type != "cuda":
         return cpu_dtype
     return select_autocast_dtype(device)
@@ -72,7 +71,9 @@ def prepare_model(
 ) -> nn.Module:
     model = model.to(device)
     if channels_last:
-        model = model.to(memory_format=torch.channels_last)
+        for module in model.modules():
+            if isinstance(module, torch.nn.Conv2d):
+                module.weight.data = module.weight.data.to(memory_format=torch.channels_last)
     if dtype is not None:
         model = model.to(dtype=dtype)
     model = model.eval() if eval_mode else model.train()
@@ -176,15 +177,38 @@ def iter_with_perspectives(fens: Iterable[str]) -> list[str]:
     return out
 
 
+def _json_safe(value: object) -> object:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, Path):
+        return value.as_posix()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(val) for key, val in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_json_safe(item) for item in value]
+    return str(value)
+
+
 @dataclass(slots=True)
 class MetricsReporter:
-    """Append-only CSV reporter for structured metric rows."""
+    """Append-only reporter writing both CSV and JSONL metrics."""
 
     csv_path: str
+    jsonl_path: str | None = None
 
-    def append(
-        self, row: Mapping[str, object], field_order: Sequence[str] | None = None
-    ) -> None:
+    def append(self, row: Mapping[str, object], field_order: Sequence[str] | None = None) -> None:
+        self._append_csv(row, field_order)
+        self._append_jsonl(row)
+
+    def append_json(self, row: Mapping[str, object]) -> None:
+        """Record an event solely in the JSONL stream (no CSV impact)."""
+        self._append_jsonl(row)
+
+    def _append_csv(self, row: Mapping[str, object], field_order: Sequence[str] | None) -> None:
         if not self.csv_path:
             return
 
@@ -193,24 +217,8 @@ class MetricsReporter:
             if directory:
                 os.makedirs(directory, exist_ok=True)
 
-            fieldnames = (
-                list(field_order) if field_order is not None else list(row.keys())
-            )
-
+            fieldnames = list(field_order) if field_order is not None else list(row.keys())
             write_header = not os.path.isfile(self.csv_path)
-
-            if not write_header:
-                try:
-                    with open(self.csv_path, newline="", encoding="utf-8") as existing:
-                        reader = csv.reader(existing)
-                        header = next(reader, [])
-                    if list(header) != fieldnames:
-                        backup_path = self.csv_path + ".bak"
-                        with contextlib.suppress(Exception):
-                            os.replace(self.csv_path, backup_path)
-                        write_header = True
-                except Exception:
-                    write_header = True
 
             with open(self.csv_path, "a", newline="", encoding="utf-8") as handle:
                 writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -218,7 +226,21 @@ class MetricsReporter:
                     writer.writeheader()
                 writer.writerow(row)
         except Exception as exc:
-            print(f"[MetricsReporter] Failed to append row: {exc}")
+            raise RuntimeError("Failed to append metrics row") from exc
+
+    def _append_jsonl(self, row: Mapping[str, object]) -> None:
+        if not self.jsonl_path:
+            return
+        try:
+            directory = os.path.dirname(self.jsonl_path)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
+            safe_row = {str(key): _json_safe(value) for key, value in row.items()}
+            with open(self.jsonl_path, "a", encoding="utf-8") as handle:
+                json.dump(safe_row, handle, separators=(",", ":"))
+                handle.write("\n")
+        except Exception as exc:
+            raise RuntimeError("Failed to append metrics JSONL row") from exc
 
 
 def format_time(seconds: float) -> str:
@@ -256,26 +278,33 @@ def format_gb(value: float, digits: int = 1) -> str:
     return f"{number:.{digits}f}G"
 
 
-def get_mem_info(
-    proc: psutil.Process, device: torch.device, device_total_gb: float
-) -> dict[str, float]:
+def get_mem_info(proc: psutil.Process, device: torch.device, device_total_gb: float) -> dict[str, float]:
+    info = proc.memory_full_info()
+    rss = info.rss / 1024**3
+    vms = getattr(info, "vms", info.rss) / 1024**3
+    uss = getattr(info, "uss", info.rss) / 1024**3
     if device.type != "cuda":
         return {
             "allocated_gb": 0.0,
             "reserved_gb": 0.0,
             "total_gb": float(device_total_gb),
-            "rss_gb": proc.memory_info().rss / 1024**3,
+            "rss_gb": rss,
+            "vms_gb": vms,
+            "uss_gb": uss,
         }
     return {
         "allocated_gb": torch.cuda.memory_allocated(device) / 1024**3,
         "reserved_gb": torch.cuda.memory_reserved(device) / 1024**3,
         "total_gb": float(device_total_gb),
-        "rss_gb": proc.memory_info().rss / 1024**3,
+        "rss_gb": rss,
+        "vms_gb": vms,
+        "uss_gb": uss,
     }
 
 
 def get_sys_info(proc: psutil.Process) -> dict[str, float]:
     vmem = psutil.virtual_memory()
+    swap = psutil.swap_memory()
     if hasattr(os, "getloadavg"):
         try:
             load1, load5, load15 = os.getloadavg()
@@ -284,11 +313,12 @@ def get_sys_info(proc: psutil.Process) -> dict[str, float]:
     else:
         load1 = load5 = load15 = 0.0
     return {
-        "cpu_sys_pct": float(psutil.cpu_percent(0.0)),
-        "cpu_proc_pct": float(proc.cpu_percent(0.0)),
+        "cpu_sys_pct": float(psutil.cpu_percent(interval=None)),
+        "cpu_proc_pct": float(proc.cpu_percent(interval=None)),
         "ram_used_gb": float(vmem.used) / 1024**3,
         "ram_total_gb": float(vmem.total) / 1024**3,
         "ram_pct": float(vmem.percent),
+        "swap_pct": float(swap.percent),
         "load1": float(load1),
         "load5": float(load5),
         "load15": float(load15),
@@ -297,64 +327,41 @@ def get_sys_info(proc: psutil.Process) -> dict[str, float]:
 
 def startup_summary(trainer: Any) -> str:
     has_cuda = bool(trainer.device.type == "cuda" and torch.cuda.is_available())
-    amp_enabled = bool(getattr(trainer, "_amp_enabled", C.TORCH.AMP_ENABLED))
+    amp_enabled = bool(getattr(trainer, "_amp_enabled", C.TORCH.amp_enabled))
     autocast_mode = "fp16" if amp_enabled else "off"
     total_params_m = sum(p.numel() for p in trainer.model.parameters()) / 1e6
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    settings = getattr(trainer, "settings", None)
-    if settings is not None:
-        total_iterations = settings.training.total_iterations
-        games_per_iter = settings.training.games_per_iteration
-        batch_size = settings.training.batch_size
-        lr_init = settings.training.lr_init
-        lr_final = settings.training.lr_final
-        selfplay_workers = settings.selfplay.num_workers
-        sims_start = settings.mcts.train_simulations_base
-        sims_end = settings.mcts.train_simulations_min
-        max_plies = settings.selfplay.game_max_plies
-        adj_margin = settings.selfplay.adjudicate_margin_start
-        adj_min_plies = settings.selfplay.adjudicate_min_start
-        dirichlet_late = getattr(C.SELFPLAY, "DIRICHLET_WEIGHT_LATE", 0.0)
-        temp_moves = settings.selfplay.temp_moves
-        arena_every = settings.arena.eval_every_iters
-        arena_games = settings.arena.games_per_eval
-        arena_margin = settings.arena.gate_baseline_margin
-        csv_path = settings.logging.csv_path
-    else:
-        total_iterations = C.TRAIN.TOTAL_ITERATIONS
-        games_per_iter = C.TRAIN.GAMES_PER_ITER
-        batch_size = C.TRAIN.BATCH_SIZE
-        lr_init = C.TRAIN.LR_INIT
-        lr_final = C.TRAIN.LR_FINAL
-        selfplay_workers = C.SELFPLAY.NUM_WORKERS
-        sims_start = C.MCTS.TRAIN_SIMULATIONS_BASE
-        sims_end = C.MCTS.TRAIN_SIMULATIONS_MIN
-        max_plies = C.SELFPLAY.GAME_MAX_PLIES
-        adj_margin = getattr(C.SELFPLAY, "ADJUDICATE_MATERIAL_MARGIN", 0.0)
-        adj_min_plies = getattr(C.SELFPLAY, "ADJUDICATE_MIN_PLIES", 0)
-        dirichlet_late = getattr(C.SELFPLAY, "DIRICHLET_WEIGHT_LATE", 0.0)
-        temp_moves = C.SELFPLAY.TEMP_MOVES
-        arena_every = C.ARENA.EVAL_EVERY_ITERS
-        arena_games = C.ARENA.GAMES_PER_EVAL
-        arena_margin = C.ARENA.GATE_BASELINE_MARGIN
-        csv_path = C.LOG.METRICS_LOG_CSV_PATH
+    device_name = getattr(trainer, "device_name", str(trainer.device))
     lines = [
-        "=" * 68,
-        "Hybrid Chess AI Training",
-        "=" * 68,
-        f"start   : {timestamp} | host={socket.gethostname()} | pid={os.getpid()}",
-        f"device  : {trainer.device} ({trainer.device_name}) | cuda={'yes' if has_cuda else 'no'} | autocast={autocast_mode}",
-        f"model   : {total_params_m:.1f}M params ({C.MODEL.BLOCKS} blocks, {C.MODEL.CHANNELS} ch) | replay={C.REPLAY.BUFFER_CAPACITY:,}",
-        f"selfplay: workers={selfplay_workers} sims={sims_start}->{sims_end} max_plies={max_plies}"
-        f" adj={'on' if getattr(C.SELFPLAY, 'ADJUDICATE_ENABLED', False) else 'off'}"
-        f" margin={adj_margin} min_plies={adj_min_plies}"
-        f" dir_late={dirichlet_late:.2f} temp_moves={temp_moves}",
-        f"train   : iters={total_iterations} games/iter={games_per_iter} batch={batch_size} lr={lr_init:.2e}->{lr_final:.2e}",
-        f"arena   : every {arena_every} iters | games={arena_games} | gate margin={arena_margin}",
-        f"logging : csv={csv_path}",
-        "=" * 68,
-        "",
+        f"[{timestamp}] Hybrid Chess AI training",
+        f"device={device_name} ({trainer.device}) cuda={'yes' if has_cuda else 'no'} autocast={autocast_mode} "
+        f"params={total_params_m:.2f}M replay={C.REPLAY.capacity:,}",
+        " ".join(
+            [
+                f"train iters={C.TRAIN.total_iterations}",
+                f"games/iter={C.TRAIN.games_per_iter}",
+                f"batch={trainer.train_batch_size}",
+                f"lr={C.TRAIN.learning_rate_init:.2e}->{C.TRAIN.learning_rate_final:.2e}",
+                f"grad_clip={C.TRAIN.grad_clip_norm}",
+            ]
+        ),
+        " ".join(
+            [
+                f"self-play workers={C.SELFPLAY.num_workers}",
+                f"sims={C.MCTS.train_simulations}->{C.MCTS.train_simulations_min}",
+                f"temp_moves={C.SELFPLAY.temperature_moves}",
+                f"max_plies={C.SELFPLAY.game_max_plies}",
+                f"adjudication_margin={C.SELFPLAY.adjudication_value_margin}",
+            ]
+        ),
+        " ".join(
+            [
+                f"arena every={C.ARENA.eval_every_iters}",
+                f"games={C.ARENA.games_per_eval}",
+                f"gate_baseline={C.ARENA.gate_baseline_p:.3f}",
+                f"margin={C.ARENA.gate_margin:.3f}",
+            ]
+        ),
+        f"metrics_csv={getattr(getattr(trainer, 'metrics', None), 'csv_path', '')}",
     ]
-    return "\n".join(lines)
-
-
+    return " | ".join(lines)

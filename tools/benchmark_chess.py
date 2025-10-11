@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import platform
 import random
@@ -668,6 +669,9 @@ def main() -> None:
     parser.add_argument("--output-markdown", type=Path,
                         default=Path("benchmark_reports") / "benchmark_summary.md",
                         help="Path for the Markdown report (default: benchmark_reports/benchmark_summary.md)")
+    parser.add_argument("--output-csv", type=Path,
+                        default=Path("benchmark_reports") / "benchmark_summary.csv",
+                        help="Path for the CSV timing summary")
     args = parser.parse_args()
 
     positions_list = list(args.positions) if args.positions else list(DEFAULT_POSITIONS)
@@ -777,6 +781,31 @@ def main() -> None:
         md_sections = [render_markdown_report(report) for report in reports]
         args.output_markdown.write_text("\n\n".join(md_sections))
         print(f"Wrote Markdown report to {args.output_markdown}")
+
+    if args.output_csv:
+        args.output_csv.parent.mkdir(parents=True, exist_ok=True)
+        csv_rows: List[Dict[str, object]] = []
+        for report in reports:
+            scenario = report["scenario"]
+            timings = report["dataset"]["timings"]
+            correctness = report["dataset"]["correctness"]
+            csv_rows.append(
+                {
+                    "scenario": scenario["name"],
+                    "positions": scenario["positions"],
+                    "loops": scenario["loops"],
+                    "repetitions": scenario["repetitions"],
+                    "mismatches": correctness["mismatch_count"],
+                    "chesscore_time": timings["chesscore"]["mean_s"],
+                    "python_time": timings["python-chess"]["mean_s"],
+                    "speedup": timings["python-chess"]["mean_s"] / timings["chesscore"]["mean_s"] if timings["chesscore"]["mean_s"] > 0 else float("inf"),
+                }
+            )
+        with args.output_csv.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(csv_rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(csv_rows)
+        print(f"Wrote CSV summary to {args.output_csv}")
 
     if any(report["dataset"]["correctness"]["mismatch_count"] > 0 for report in reports):
         raise SystemExit(1)

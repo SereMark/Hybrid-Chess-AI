@@ -1,8 +1,18 @@
-"""Structured configuration defaults for Hybrid Chess AI."""
+"""Training configuration for the Hybrid Chess AI project."""
 
 from __future__ import annotations
 
-from types import SimpleNamespace as _NS
+import contextlib
+import copy
+import os
+from dataclasses import dataclass, field, fields, is_dataclass, replace
+from pathlib import Path
+from typing import Any, Iterable, Mapping, Tuple, cast
+
+try:
+    import yaml  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    yaml = None
 
 __all__ = [
     "SEED",
@@ -19,264 +29,381 @@ __all__ = [
     "RESIGN",
     "TRAIN",
     "ARENA",
+    "MANAGER",
+    "snapshot",
+    "reset",
+    "load_file",
+    "load_override",
 ]
 
 
-SEED = 0
+SEED: int = 0
 
 
-LOG = _NS(
-    LEVEL="INFO",
-    CUDA_EMPTY_CACHE_EVERY_ITERS=120,
-    CHECKPOINT_SAVE_EVERY_ITERS=16,
-    CHECKPOINT_FILE_PATH="checkpoints/checkpoint.pt",
-    BEST_MODEL_FILE_PATH="checkpoints/best_model.pt",
-    METRICS_LOG_CSV_ENABLE=True,
-    METRICS_LOG_CSV_PATH="logs/training_log.csv",
-    ARENA_SAVE_PGN_ENABLE=True,
-    ARENA_SAVE_PGN_ON_PROMOTION=True,
-    ARENA_SAVE_PGN_SAMPLES_PER_ROUND=2,
-    ARENA_PGN_DIR="logs",
+@dataclass(frozen=True)
+class LoggingConfig:
+    """Filesystem and console settings for long running experiments."""
+
+    level: str = "INFO"  # Global logging verbosity for console output.
+    runs_dir: str = "runs"  # Root directory for run artifacts.
+    archive_checkpoints: bool = True  # Keep timestamped checkpoint archives per run.
+    checkpoint_interval_iters: int = 16  # Save model every N training iterations.
+    empty_cache_interval_iters: int = 120  # Optional CUDA cache flush cadence.
+    metrics_csv_enable: bool = True  # Append training rows to CSV when True.
+
+
+@dataclass(frozen=True)
+class TorchConfig:
+    """Runtime directives influencing PyTorch backend behaviour."""
+
+    amp_enabled: bool = True  # Enable automatic mixed precision when CUDA is used.
+    matmul_float32_precision: str = "medium"  # torch.set_float32_matmul_precision().
+    threads_intra: int = 0  # Override for intra-op threads; 0 derives from CPU count.
+    threads_inter: int = 0  # Override for inter-op threads; 0 derives from CPU count.
+    model_channels_last: bool = True  # Store training model tensors in NHWC layout.
+    eval_model_channels_last: bool = True  # Same for evaluation-only models.
+    cudnn_benchmark: bool = True  # Allow cuDNN to autotune kernel selection.
+    cuda_allow_tf32: bool = True  # Permit TensorFloat-32 on supported hardware.
+    cudnn_allow_tf32: bool = True  # Toggle TF32 kernels inside cuDNN.
+    cuda_allow_fp16_reduced_reduction: bool = True  # Optimise mixed precision sums.
+
+
+@dataclass(frozen=True)
+class DataConfig:
+    """Numeric conventions when encoding board states and targets."""
+
+    u8_scale: float = 255.0  # Divisor applied when normalising uint8 feature planes.
+    value_i8_scale: float = 127.0  # Scale factor for signed int8 value targets.
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    """Neural network architecture hyperparameters."""
+
+    blocks: int = 5  # Number of residual tower blocks.
+    channels: int = 96  # Channel width of each convolution.
+    value_conv_channels: int = 12  # Channels in the value head convolution.
+    value_hidden_dim: int = 320  # Width of the value head fully-connected layer.
+
+
+@dataclass(frozen=True)
+class EvalConfig:
+    """Inference batching and caching settings."""
+
+    batch_size_max: int = 192  # Maximum positions per evaluation batch.
+    coalesce_ms: int = 20  # Milliseconds to wait for batching self-play requests.
+    cache_capacity: int = 512  # Shared inference cache size (positions).
+    arena_cache_capacity: int = 512  # Cache capacity reserved for arena runs.
+    encode_cache_capacity: int = 16_000  # Cached encoded positions for self-play reuse.
+    value_cache_capacity: int = 40_000  # Cached scalar evaluations.
+    use_fp16_cache: bool = True  # Store cached logits in half precision where legal.
+
+
+DEFAULT_CURRICULUM_FENS: Tuple[str, ...] = (
+    "r1bq1rk1/pppp1ppp/2n2n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 7",
+    "r2q1rk1/pp3ppp/2n1pn2/2bp4/3P4/2P1PN2/PP1N1PPP/R1BQ1RK1 b - - 0 10",
+    "2r2rk1/1bqn1ppp/p2ppn2/1p6/3NP3/1BN1B3/PPP2PPP/2KR3R w - - 0 13",
+    "r1bq1rk1/ppp1bppp/2nppn2/8/2B1P3/2NP1N2/PPPQ1PPP/R1B2RK1 w - - 0 9",
+    "2rq1rk1/pp2bppp/2n1pn2/2bp4/2P5/1PNPB3/PB2NPPP/R2Q1RK1 w - - 0 11",
 )
 
 
-TORCH = _NS(
-    AMP_ENABLED=True,
-    MATMUL_FLOAT32_PRECISION="medium",
-    THREADS_INTRA=6,
-    THREADS_INTER=1,
-    MODEL_CHANNELS_LAST=True,
-    EVAL_MODEL_CHANNELS_LAST=True,
-    CUDNN_BENCHMARK=True,
-    CUDA_ALLOW_TF32=True,
-    CUDNN_ALLOW_TF32=True,
-    CUDA_ALLOW_FP16_REDUCED_REDUCTION=True,
-)
+@dataclass(frozen=True)
+class CurriculumConfig:
+    """Optional curriculum to bias self-play openings."""
+
+    sample_probability: float = 0.30  # Probability of using a curriculum FEN.
+    fens: Tuple[str, ...] = field(default_factory=lambda: DEFAULT_CURRICULUM_FENS)
 
 
-DATA = _NS(
-    U8_SCALE=255.0,
-    VALUE_I8_SCALE=127.0,
-)
+@dataclass(frozen=True)
+class SelfPlayConfig:
+    """Parameters controlling self-play data generation."""
+
+    num_workers: int = 2  # Parallel game workers launched per iteration.
+    game_max_plies: int = 90  # Hard cap on plies to avoid runaway games.
+    temperature_moves: int = 40  # Use high temperature for the opening N moves.
+    temperature_high: float = 1.60  # Exploration temperature for early moves.
+    temperature_low: float = 0.65  # Cooler temperature once the game progresses.
+    deterministic_temp_eps: float = 0.01  # Temperature floor for deterministic play.
+    opening_book_path: str | None = "opening_book.json"  # Path to the JSON opening book.
+    curriculum: CurriculumConfig = field(default_factory=CurriculumConfig)  # Optional curriculum settings.
+    opening_random_moves: int = 2  # Number of plies forced to random moves to diversify.
+    adjudication_enabled: bool = True  # Permit early endings once conditions are met.
+    adjudication_min_plies: int = 55  # Require this many plies before adjudication.
+    adjudication_value_margin: float = 0.08  # Value threshold to call the result.
+    adjudication_persist_plies: int = 6  # Persistent advantage length before ending.
+    adjudication_material_margin: float = 3.0  # Material threshold (in pawns) to call the result.
 
 
-MODEL = _NS(
-    BLOCKS=5,
-    CHANNELS=96,
-    VALUE_CONV_CHANNELS=12,
-    VALUE_HIDDEN_DIM=320,
-)
+@dataclass(frozen=True)
+class ReplayConfig:
+    """Replay buffer sizing."""
+
+    capacity: int = 8_000  # Number of games stored before overwriting oldest data.
 
 
-EVAL = _NS(
-    COALESCE_MS=26,
-    WORKER_JOIN_TIMEOUT_S=0.15,
-    BATCH_SIZE_MAX=224,
-    CACHE_USE_FP16=True,
-    CACHE_CAPACITY=1_024,
-    ARENA_CACHE_CAPACITY=768,
-)
+@dataclass(frozen=True)
+class SamplingConfig:
+    """Batch sampling policy for mixing fresh and historical games."""
+
+    recent_ratio: float = 0.65  # Target fraction of samples drawn from recent games.
+    recent_ratio_min: float = 0.55  # Lower bound on recent sample fraction.
+    recent_ratio_max: float = 0.75  # Upper bound on recent sample fraction.
+    recent_window_frac: float = 0.25  # Fraction of buffer considered "recent".
 
 
-SELFPLAY = _NS(
-    NUM_WORKERS=3,
-    GAME_MAX_PLIES=128,
-    TEMP_MOVES=32,
-    TEMP_HIGH=1.30,
-    TEMP_LOW=0.60,
-    DETERMINISTIC_TEMP_EPS=0.010,
-    OPENING_RANDOM_PLIES_MAX=4,
-    OPENING_BOOK_PATH="opening_book.json",
-    COLOR_FLIP_PROB=0.55,
-    COLOR_BALANCE_TOLERANCE_PCT=3.0,
-    COLOR_BALANCE_WINDOW_ITERS=6,
-    ADJUDICATE_ENABLED=True,
-    ADJUDICATE_MATERIAL_MARGIN=5.5,
-    ADJUDICATE_MIN_PLIES=150,
-    ADJUDICATE_MARGIN_START=7.0,
-    ADJUDICATE_MARGIN_END=4.5,
-    ADJUDICATE_MARGIN_DECAY_ITER=640,
-    ADJUDICATE_MIN_PLIES_START=180,
-    ADJUDICATE_MIN_PLIES_END=140,
-    ADJUDICATE_MIN_PLIES_DECAY_ITER=640,
-    ADJUDICATE_VALUE_MARGIN_START=0.55,
-    ADJUDICATE_VALUE_MARGIN_END=0.36,
-    ADJUDICATE_VALUE_DECAY_ITER=640,
-    ADJUDICATE_VALUE_PERSIST_PLIES=6,
-    EXHAUSTION_VALUE_SCALE=0.16,
-    EXHAUSTION_VALUE_MAX=0.45,
-    ENDGAME_SIM_MOVES=72,
-    ENDGAME_SIM_FACTOR=1.8,
-    ENDGAME_MATERIAL_TRIGGER=8.0,
-    CURRICULUM_SAMPLE_PROB=0.50,
-    ENCODE_CACHE_CAP=2_000,
-    CURRICULUM_FENS=(
-        "1nbqkbnr/rp1pp3/2p5/pN4pp/2B1p2P/1P4P1/P1PP1P2/R1BQK1NR w KQk - 0 9",
-        "rnbqkb1r/ppp1p1pp/3p1n2/5p2/7P/4PP2/PPPPK1P1/RNBQ1BNR b kq - 1 4",
-        "rnbq1b1r/pp1kppp1/2p5/7p/2P3nP/5PP1/PP1PP3/RNBQK1NR b KQ - 0 6",
-        "rn1qkb1r/1bppp2p/7n/p4pp1/p5P1/R2P1P2/1PPKP2P/1NBQ1BNR b kq - 1 8",
-        "2r2rk1/pp2bpp1/2n1pn1p/3p4/3P4/1BPBPN2/PP3PPP/2RQ1RK1 w - - 4 18",
-        "6k1/5ppp/8/8/8/5PPP/6K1/7Q w - - 0 1",
-        "7k/6pp/8/8/8/6PP/5P2/7K b - - 0 1",
-        "8/5k2/8/8/3R4/6K1/8/8 w - - 0 1",
-        "4k3/8/8/8/8/8/2r5/4K3 w - - 0 1",
-        "6k1/5ppp/8/8/8/5PPP/6K1/7b b - - 0 1",
-        "8/1p6/2b5/3p1kp1/3P4/1BP3P1/6K1/8 w - - 0 1",
-        "6k1/5pp1/1p3b1p/8/5B2/2P3PP/5PK1/8 w - - 0 1",
-        "8/5p2/5k1p/8/8/5P1P/5P2/6K1 b - - 0 1",
-        "8/6p1/4k3/8/6K1/8/5PP1/8 b - - 0 1",
-    ),
-    REPETITION_NOISE_COUNT=1,
-    REPETITION_NOISE_WINDOW=64,
-    REPETITION_AVOID_TOP_K=3,
-    REPETITION_AVOID_SCALE=0.35,
-    REPETITION_TEMP_BOOST=1.70,
-    LOOP_MIN_PLIES=96,
-    LOOP_UNIQUE_RATIO_MAX=0.65,
-    LOOP_PENALTY_VALUE=0.20,
-    LOOP_AUTO_RESET_THRESHOLD=24.0,
-    LOOP_AUTO_RESET_COOLDOWN=4,
-)
+@dataclass(frozen=True)
+class AugmentConfig:
+    """Symmetry-based data augmentation options."""
 
-REPLAY = _NS(
-    BUFFER_CAPACITY=14_000,
-)
-
-SAMPLING = _NS(
-    REPLAY_SNAPSHOT_RECENT_WINDOW_FRAC=0.24,
-    REPLAY_SNAPSHOT_RECENT_RATIO_DEFAULT=0.65,
-    TRAIN_RECENT_SAMPLE_RATIO=0.68,
-    TRAIN_RECENT_SAMPLE_RATIO_MIN=0.55,
-    TRAIN_RECENT_SAMPLE_RATIO_MAX=0.75,
-    TRAIN_RECENT_SAMPLE_BUFFER_DECAY_START=0.35,
-    TRAIN_RECENT_SAMPLE_BUFFER_DECAY_END=0.85,
-)
-
-AUGMENT = _NS(
-    MIRROR_PROB=0.50,
-    ROT180_PROB=0.25,
-    VFLIP_CS_PROB=0.25,
-)
+    mirror_prob: float = 0.50  # Probability of mirroring positions left-right.
+    rot180_prob: float = 0.25  # Probability of rotating the board 180 degrees.
+    vflip_prob: float = 0.25  # Probability of flipping ranks and swapping colours.
 
 
-MCTS = _NS(
-    TRAIN_SIMULATIONS_BASE=96,
-    TRAIN_SIMULATIONS_MIN=40,
-    TRAIN_SIM_DECAY_MOVE_INTERVAL=24,
-    C_PUCT=1.35,
-    C_PUCT_BASE=19652.0,
-    C_PUCT_INIT=1.55,
-    DIRICHLET_ALPHA=0.40,
-    DIRICHLET_WEIGHT=0.30,
-    FPU_REDUCTION=0.11,
-    VISIT_COUNT_CLAMP=65535,
-)
+@dataclass(frozen=True)
+class MCTSConfig:
+    """Monte-Carlo Tree Search hyperparameters."""
+
+    train_simulations: int = 96  # Simulations at the start of a self-play game.
+    train_simulations_min: int = 32  # Minimum simulations in late-game decay.
+    train_sim_decay_move_interval: int = 24  # Reduce sims every N moves.
+    c_puct: float = 1.35  # Exploration constant.
+    c_puct_base: float = 19652.0  # Base term for dynamic exploration schedule.
+    c_puct_init: float = 1.55  # Initial exploration weight.
+    dirichlet_alpha: float = 0.40  # Dirichlet noise concentration at the root.
+    dirichlet_weight: float = 0.30  # Fraction of Dirichlet noise mixed into priors.
+    fpu_reduction: float = 0.11  # First-play urgency reduction against visit count.
+    visit_count_clamp: int = 65535  # Upper bound for visit counts (safety guard).
 
 
-RESIGN = _NS(
-    ENABLED=True,
-    VALUE_THRESHOLD=-0.15,
-    VALUE_THRESHOLD_INIT=-0.11,
-    VALUE_THRESHOLD_RAMP_START=16,
-    VALUE_THRESHOLD_RAMP_END=110,
-    MIN_PLIES_INIT=52,
-    MIN_PLIES_FINAL=20,
-    MIN_PLIES_RAMP_END=110,
-    CONSECUTIVE_PLIES=3,
-    CONSECUTIVE_MIN=2,
-    PLAYTHROUGH_FRACTION=0.18,
-    DISABLE_UNTIL_ITERS=16,
-    GUARD_MIN_AVG_LEN=112.0,
-    GUARD_WINDOW_ITERS=16,
-    GUARD_COOLDOWN_ITERS=24,
-    TARGET_LOSS_VALUE_PCTL=0.18,
-    TARGET_WINDOW_GAMES=512,
-    EVAL_MARGIN=0.18,
-    EVAL_PERSIST_PLIES=3,
-)
+@dataclass(frozen=True)
+class ResignConfig:
+    """Automatic resignation policy tuned for reproducibility."""
+
+    enabled: bool = True  # Allow the engine to resign games during self-play.
+    value_threshold: float = -0.05  # Value head threshold to trigger resignation.
+    min_plies: int = 22  # Wait this many plies before resigning.
+    cooldown_iters: int = 4  # Hold-off period after disabling resignation.
+    consecutive_required: int = 2  # Number of consecutive moves below the threshold.
+    playthrough_fraction: float = 0.15  # Fraction of resignable games forced to finish.
 
 
-TRAIN = _NS(
-    LR_INIT=7.5e-4,
-    LR_WARMUP_STEPS=720,
-    LR_FINAL=3.0e-4,
-    LR_SCHED_STEPS_PER_ITER_EST=60,
-    LR_SCHED_DRIFT_ADJUST_THRESHOLD=15.0,
-    WEIGHT_DECAY=1.5e-4,
-    MOMENTUM=0.9,
-    GRAD_CLIP_NORM=1.35,
-    LOSS_POLICY_WEIGHT=1.0,
-    LOSS_VALUE_WEIGHT=0.90,
-    LOSS_VALUE_WEIGHT_LATE=1.10,
-    LOSS_VALUE_WEIGHT_SWITCH_ITER=120,
-    LOSS_POLICY_LABEL_SMOOTH=0.015,
-    LOSS_ENTROPY_COEF_INIT=3.0e-4,
-    LOSS_ENTROPY_ANNEAL_ITERS=256,
-    LOSS_ENTROPY_COEF_MIN=2.0e-4,
-    EMA_ENABLED=True,
-    EMA_DECAY=0.9995,
-    TOTAL_ITERATIONS=768,
-    GAMES_PER_ITER=48,
-    TARGET_TRAIN_SAMPLES_PER_NEW=0.75,
-    UPDATE_STEPS_MIN=24,
-    UPDATE_STEPS_MAX=96,
-    BATCH_SIZE_MIN=192,
-    BATCH_SIZE_MAX=224,
-    BATCH_SIZE=224,
-    LR_RESTART_INTERVAL_ITERS=96,
-    LR_RESTART_DECAY=0.9,
-)
+@dataclass(frozen=True)
+class TrainConfig:
+    """End-to-end training loop schedule."""
+
+    total_iterations: int = 768  # Overall training iterations for a full run.
+    games_per_iter: int = 48  # Self-play games generated each iteration.
+    batch_size: int = 160  # Primary training batch size (adjusted on CPU fallback).
+    batch_size_min: int = 128  # Lower bound when adapting to resource pressure.
+    batch_size_max: int = 192  # Upper bound guarding against OOM.
+    learning_rate_init: float = 7.5e-4  # Initial LR when warmup begins.
+    learning_rate_final: float = 3.0e-4  # Target LR after cosine decay.
+    learning_rate_warmup_steps: int = 720  # Linear warmup duration in optimiser steps.
+    lr_steps_per_iter_estimate: int = 60  # Expected optimiser steps per iteration.
+    lr_restart_interval_iters: int = 0  # Cosine restart interval (0 disables restarts).
+    lr_restart_decay: float = 1.0  # Scale applied when a restart occurs.
+    weight_decay: float = 1.5e-4  # L2 regularisation strength.
+    momentum: float = 0.90  # SGD momentum.
+    grad_clip_norm: float = 1.35  # Gradient norm clipping value.
+    loss_policy_weight: float = 1.0  # Weight applied to policy loss.
+    loss_value_weight: float = 1.0  # Weight applied to value loss.
+    loss_policy_label_smooth: float = 0.015  # Label smoothing factor for policy head.
+    loss_entropy_coef: float = 3.0e-4  # Initial entropy regularisation strength.
+    loss_entropy_iters: int = 256  # Iterations over which entropy is annealed.
+    loss_entropy_min_coef: float = 2.0e-4  # Floor for entropy regularisation.
+    ema_enabled: bool = True  # Maintain an exponential moving average of weights.
+    ema_decay: float = 0.9995  # EMA decay factor.
+    samples_per_new_game: float = 0.60  # Ratio of fresh samples relative to new games.
+    update_steps_min: int = 24  # Minimum optimiser steps per iteration.
+    update_steps_max: int = 60  # Maximum optimiser steps per iteration.
 
 
-ARENA = _NS(
-    MCTS_EVAL_SIMULATIONS=320,
-    EVAL_EVERY_ITERS=8,
-    GAMES_PER_EVAL=32,
-    TEMPERATURE=0.50,
-    TEMP_MOVES=16,
-    DIRICHLET_WEIGHT=0.08,
-    OPENING_RANDOM_PLIES_MAX=4,
-    OPENING_TEMPERATURE_EPS=1e-6,
-    DRAW_SCORE=0.50,
-    GATE_DRAW_WEIGHT=0.40,
-    GATE_BASELINE_P=0.500,
-    GATE_BASELINE_MARGIN=0.004,
-    GATE_Z_EARLY=0.75,
-    GATE_Z_LATE=0.95,
-    GATE_Z_SWITCH_ITER=220,
-    GATE_MIN_GAMES=64,
-    GATE_DECISIVE_SECONDARY=True,
-    GATE_MIN_DECISIVES=10,
-    GATE_FORCE_DECISIVE=False,
-    GAME_MAX_PLIES=176,
-    RESIGN_ENABLE=False,
-    RESIGN_CONSECUTIVE=2,
-    RESIGN_VALUE_THRESHOLD=-0.05,
-    RESIGN_PLAYTHROUGH_FRACTION=0.05,
-    RESIGN_EVAL_MARGIN=0.16,
-    RESIGN_EVAL_PERSIST_PLIES=2,
-    ADJUDICATE_ENABLED=True,
-    ADJUDICATE_MATERIAL_MARGIN=4.0,
-    ADJUDICATE_MIN_PLIES=128,
-    COUNT_ADJUDICATED_AS_NATURAL=True,
-    CANDIDATE_MAX_ROUNDS=4,
-    CANDIDATE_MAX_GAMES=200,
-    PAIRING_FACTOR=2,
-    GATE_EPS=1e-9,
-    GATE_MIN_NATURAL_PCT=0.12,
-    CURRICULUM_SAMPLE_PROB=0.25,
-    CURRICULUM_MIN_WINS=3,
-    CURRICULUM_MIN_DECISIVES=3,
-    CURRICULUM_FENS=(
-        "1nbqkbnr/rp1pp3/2p5/pN4pp/2B1p2P/1P4P1/P1PP1P2/R1BQK1NR w KQk - 0 9",
-        "rnbqkb1r/ppp1p1pp/3p1n2/5p2/7P/4PP2/PPPPK1P1/RNBQ1BNR b kq - 1 4",
-        "rnbq1b1r/pp1kppp1/2p5/7p/2P3nP/5PP1/PP1PP3/RNBQK1NR b KQ - 0 6",
-        "rn1qkb1r/1bppp2p/7n/p4pp1/p5P1/R2P1P2/1PPKP2P/1NBQ1BNR b kq - 1 8",
-        "2r2rk1/pp2bpp1/2n1pn1p/3p4/3P4/1BPBPN2/PP3PPP/2RQ1RK1 w - - 4 18",
-    ),
-)
+@dataclass(frozen=True)
+class ArenaConfig:
+    """Evaluation and gating schedule."""
 
-SAMPLING.NATURAL_DUPLICATE_WEIGHT = 4
-SAMPLING.EXHAUST_DUPLICATE_WEIGHT = 1
-SAMPLING.ADJUDICATED_DUPLICATE_WEIGHT = 1
-SAMPLING.LOOP_DUPLICATE_WEIGHT = 0
+    eval_every_iters: int = 8  # Frequency of arena evaluations.
+    games_per_eval: int = 12  # Games played per arena round.
+    mcts_simulations: int = 160  # MCTS simulations during evaluation games.
+    temperature: float = 0.40  # Arena temperature for early moves.
+    temperature_moves: int = 12  # Number of plies to apply temperature to.
+    draw_score: float = 0.50  # Score assigned to a draw for Elo style gating.
+    gate_baseline_p: float = 0.500  # Baseline win probability requirement.
+    gate_margin: float = 0.004  # Minimum margin over baseline to accept candidate.
+    gate_min_games: int = 12  # Minimum games before considering acceptance.
+    gate_min_decisive: int = 4  # Require this many decisive results for confidence.
+    gate_draw_weight: float = 0.40  # Weight of draws when computing acceptance score.
+    max_game_plies: int = 110  # Safety cap on game length during evaluation.
+    resign_enable: bool = False  # Disable arena resignations for unbiased scoring.
+
+
+LOG = LoggingConfig()
+TORCH = TorchConfig()
+DATA = DataConfig()
+MODEL = ModelConfig()
+EVAL = EvalConfig()
+SELFPLAY = SelfPlayConfig()
+REPLAY = ReplayConfig()
+SAMPLING = SamplingConfig()
+AUGMENT = AugmentConfig()
+MCTS = MCTSConfig()
+RESIGN = ResignConfig()
+TRAIN = TrainConfig()
+ARENA = ArenaConfig()
+
+
+def _apply_override(target: Any, overrides: Any) -> Any:
+    if is_dataclass(target) and not isinstance(target, type) and isinstance(overrides, Mapping):
+        updates: dict[str, Any] = {}
+        for f in fields(target):  # type: ignore[arg-type]
+            if f.name not in overrides:
+                continue
+            current = getattr(target, f.name)
+            updates[f.name] = _apply_override(current, overrides[f.name])
+        if updates:
+            return replace(cast(Any, target), **updates)
+        return target
+    return overrides
+
+
+def _clone(value: Any) -> Any:
+    if is_dataclass(value) and not isinstance(value, type):
+        return replace(value)
+    return copy.deepcopy(value)
+
+
+def _normalise_key(key: str) -> str:
+    return key.upper()
+
+
+def _load_payload_from_path(path: Path) -> Mapping[str, Any]:
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    if path.suffix.lower() not in {".yaml", ".yml"}:
+        raise ValueError(f"Unsupported configuration format: {path.suffix}")
+    if yaml is None:
+        raise RuntimeError("PyYAML is required. Install it with 'pip install pyyaml'.")
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise TypeError(f"Configuration in {path} must be a mapping")
+    return payload
+
+
+class ConfigManager:
+    """Manages hierarchical configuration state and file overrides."""
+
+    def __init__(self, defaults: Mapping[str, Any]) -> None:
+        self._defaults = {k: _clone(v) for k, v in defaults.items()}
+        self._state = {k: _clone(v) for k, v in defaults.items()}
+
+    def reset(self) -> Mapping[str, Any]:
+        self._state = {k: _clone(v) for k, v in self._defaults.items()}
+        _update_module_state(self._state)
+        return self.snapshot()
+
+    def load_mapping(self, payload: Mapping[str, Any], *, replace: bool = False) -> Mapping[str, Any]:
+        base = self._defaults if replace else self._state
+        state = {k: _clone(v) for k, v in base.items()}
+        for key, value in payload.items():
+            key_norm = _normalise_key(str(key))
+            current = state.get(key_norm)
+            if key_norm == "SEED":
+                with contextlib.suppress(Exception):
+                    state[key_norm] = int(value)
+                continue
+            if current is None:
+                state[key_norm] = value
+            else:
+                state[key_norm] = _apply_override(current, value)
+        self._state = state
+        _update_module_state(self._state)
+        return self.snapshot()
+
+    def load_file(self, path: str | os.PathLike[str], *, replace: bool = False) -> Mapping[str, Any]:
+        payload = _load_payload_from_path(Path(path))
+        return self.load_mapping(payload, replace=replace)
+
+    def load_files(self, paths: Iterable[str | os.PathLike[str]]) -> Mapping[str, Any]:
+        snapshot: Mapping[str, Any] = self.snapshot()
+        for idx, path in enumerate(paths):
+            snapshot = self.load_file(path, replace=(idx == 0))
+        return snapshot
+
+    def snapshot(self) -> Mapping[str, Any]:
+        return {k: _clone(v) for k, v in self._state.items()}
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for key, value in self._state.items():
+            if is_dataclass(value) and not isinstance(value, type):
+                from dataclasses import asdict
+
+                out[key] = asdict(value)
+            else:
+                out[key] = _clone(value)
+        return out
+
+    def apply_environment(self) -> None:
+        env_vars = ["HYBRID_CHESS_CONFIG"]
+        paths: list[str] = []
+        for var in env_vars:
+            raw = os.environ.get(var)
+            if not raw:
+                continue
+            for chunk in raw.split(os.pathsep):
+                candidate = chunk.strip()
+                if candidate:
+                    paths.append(candidate)
+        for path in paths:
+            try:
+                self.load_file(path)
+            except FileNotFoundError:
+                continue
+
+
+def _update_module_state(state: Mapping[str, Any]) -> None:
+    globals().update(state)
+
+
+DEFAULTS: dict[str, Any] = {
+    "SEED": SEED,
+    "LOG": LOG,
+    "TORCH": TORCH,
+    "DATA": DATA,
+    "MODEL": MODEL,
+    "EVAL": EVAL,
+    "SELFPLAY": SELFPLAY,
+    "REPLAY": REPLAY,
+    "SAMPLING": SAMPLING,
+    "AUGMENT": AUGMENT,
+    "MCTS": MCTS,
+    "RESIGN": RESIGN,
+    "TRAIN": TRAIN,
+    "ARENA": ARENA,
+}
+
+
+MANAGER = ConfigManager(DEFAULTS)
+
+
+def snapshot() -> Mapping[str, Any]:
+    return MANAGER.snapshot()
+
+
+def reset() -> Mapping[str, Any]:
+    return MANAGER.reset()
+
+
+def load_override(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    return MANAGER.load_mapping(payload)
+
+
+def load_file(path: str | os.PathLike[str], *, replace: bool = False) -> Mapping[str, Any]:
+    return MANAGER.load_file(path, replace=replace)
+
+
+MANAGER.apply_environment()
+_update_module_state(MANAGER.snapshot())

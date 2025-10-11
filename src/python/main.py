@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import argparse
+import json
 import logging
 import os
 import sys
 from typing import Sequence, Tuple
 
+import config as C
 import numpy as np
 import torch
-
-import config as C
 from trainer import Trainer
 
 __all__ = ["main"]
@@ -24,16 +25,67 @@ _ENV_BASE_DEFAULTS = {
 }
 
 
+def _parse_args(args: Sequence[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Hybrid Chess AI training entrypoint")
+    parser.add_argument(
+        "--config",
+        "-c",
+        action="append",
+        dest="configs",
+        default=[],
+        help="Path to a base configuration file (YAML or JSON). Can be specified multiple times.",
+    )
+    parser.add_argument(
+        "--override",
+        "-o",
+        action="append",
+        dest="overrides",
+        default=[],
+        help="Additional configuration override files applied after base configs.",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume training from the most recent checkpoint.",
+    )
+    parser.add_argument(
+        "--dry-config",
+        action="store_true",
+        help="Load configuration files and print the merged snapshot without starting training.",
+    )
+    return parser.parse_args(list(args))
+
+
+def _apply_cli_configs(parsed: argparse.Namespace) -> None:
+    loaded: list[str] = []
+    for idx, path in enumerate(parsed.configs):
+        try:
+            C.load_file(path, replace=(idx == 0))
+            loaded.append(str(path))
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logging.getLogger("hybridchess.runtime").error("Failed to load config %s: %s", path, exc)
+            raise
+    for path in parsed.overrides:
+        try:
+            C.load_file(path)
+            loaded.append(str(path))
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logging.getLogger("hybridchess.runtime").error("Failed to load override %s: %s", path, exc)
+            raise
+    if loaded:
+        logging.getLogger("hybridchess.runtime").info("Loaded configuration overlays: %s", ", ".join(loaded))
+
+
 def _resolve_thread_settings() -> Tuple[int, int]:
     logical = os.cpu_count() or 1
-    if getattr(C.TORCH, "THREADS_INTRA", 0) > 0:
-        intra = int(C.TORCH.THREADS_INTRA)
+    if C.TORCH.threads_intra > 0:
+        intra = int(C.TORCH.threads_intra)
     else:
         intra = logical - 4 if logical >= 12 else logical - 2 if logical > 4 else logical
     intra = max(1, min(intra, logical))
 
-    if getattr(C.TORCH, "THREADS_INTER", 0) > 0:
-        inter = int(C.TORCH.THREADS_INTER)
+    if C.TORCH.threads_inter > 0:
+        inter = int(C.TORCH.threads_inter)
     else:
         inter = max(1, min(4, logical // 4 or 1))
     inter = max(1, min(inter, logical))
@@ -56,18 +108,14 @@ def _apply_environment_defaults(threads_intra: int, threads_inter: int) -> None:
 
 
 def _configure_logging() -> int:
-    log_level = getattr(logging, str(C.LOG.LEVEL).upper(), logging.INFO)
+    log_level = getattr(logging, str(C.LOG.level).upper(), logging.INFO)
     root = logging.getLogger()
     root.setLevel(log_level)
     for handler in list(root.handlers):
         root.removeHandler(handler)
     stdout_handler = logging.StreamHandler(stream=sys.stdout)
     stdout_handler.setLevel(log_level)
-    stdout_handler.setFormatter(
-        logging.Formatter(
-            fmt="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
-        )
-    )
+    stdout_handler.setFormatter(logging.Formatter(fmt="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"))
     root.addHandler(stdout_handler)
     return log_level
 
@@ -85,33 +133,38 @@ def _seed_everything(has_cuda: bool) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = list(argv if argv is not None else sys.argv[1:])
+    raw_args = list(argv if argv is not None else sys.argv[1:])
+    parsed = _parse_args(raw_args)
+    _apply_cli_configs(parsed)
+    if parsed.dry_config:
+        print(json.dumps(C.MANAGER.to_dict(), indent=2))
+        return 0
     threads_intra, threads_inter = _resolve_thread_settings()
     _apply_environment_defaults(threads_intra, threads_inter)
     _configure_logging()
     has_cuda = torch.cuda.is_available()
     trainer_log = logging.getLogger("hybridchess.trainer")
     if has_cuda:
-        torch.set_float32_matmul_precision(C.TORCH.MATMUL_FLOAT32_PRECISION)
+        torch.set_float32_matmul_precision(C.TORCH.matmul_float32_precision)
         _set_backend_flag(
             torch.backends.cuda.matmul,
             "allow_tf32",
-            bool(getattr(C.TORCH, "CUDA_ALLOW_TF32", False)),
+            bool(C.TORCH.cuda_allow_tf32),
         )
         _set_backend_flag(
             torch.backends.cudnn,
             "allow_tf32",
-            bool(getattr(C.TORCH, "CUDNN_ALLOW_TF32", False)),
+            bool(C.TORCH.cudnn_allow_tf32),
         )
         _set_backend_flag(
             torch.backends.cuda.matmul,
             "allow_fp16_reduced_precision_reduction",
-            bool(getattr(C.TORCH, "CUDA_ALLOW_FP16_REDUCED_REDUCTION", True)),
+            bool(C.TORCH.cuda_allow_fp16_reduced_reduction),
         )
         _set_backend_flag(
             torch.backends.cudnn,
             "benchmark",
-            bool(getattr(C.TORCH, "CUDNN_BENCHMARK", True)),
+            bool(C.TORCH.cudnn_benchmark),
         )
     else:
         trainer_log.warning("CUDA unavailable; running training in CPU mode")
@@ -121,8 +174,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     torch.set_num_interop_threads(threads_inter)
     logging.getLogger("hybridchess.runtime")
     _seed_everything(has_cuda)
-    resume_flag = any(arg in {"--resume", "resume"} for arg in args)
-    Trainer(resume=resume_flag).train()
+    Trainer(resume=parsed.resume).train()
     return 0
 
 

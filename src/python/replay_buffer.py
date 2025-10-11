@@ -91,9 +91,7 @@ class ReplayBuffer:
             entry = self._entries[pos]
             if entry is None:
                 continue
-            new_entries[idx] = _Entry(
-                entry.indices.copy(), entry.counts.copy(), np.int8(entry.value)
-            )
+            new_entries[idx] = _Entry(entry.indices.copy(), entry.counts.copy(), np.int8(entry.value))
             new_values[idx] = np.int8(entry.value)
 
         self._capacity = capacity
@@ -129,15 +127,9 @@ class ReplayBuffer:
 
         picks: list[int] = []
         if recent_samples > 0 and recent_candidates:
-            picks.extend(
-                self._rng.choice(
-                    recent_candidates, size=recent_samples, replace=True
-                ).tolist()
-            )
+            picks.extend(self._rng.choice(recent_candidates, size=recent_samples, replace=True).tolist())
         if old_samples > 0:
-            picks.extend(
-                self._rng.choice(old_candidates, size=old_samples, replace=True).tolist()
-            )
+            picks.extend(self._rng.choice(old_candidates, size=old_samples, replace=True).tolist())
 
         self._rng.shuffle(picks)
 
@@ -166,9 +158,7 @@ class ReplayBuffer:
     def _validate_state(self, state: np.ndarray) -> np.ndarray:
         arr = np.asarray(state, dtype=np.uint8)
         if arr.shape != self._state_shape:
-            raise ValueError(
-                f"state shape {arr.shape} does not match {self._state_shape}"
-            )
+            raise ValueError(f"state shape {arr.shape} does not match {self._state_shape}")
         return arr
 
     @staticmethod

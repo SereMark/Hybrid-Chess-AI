@@ -1,0 +1,46 @@
+MODEL:
+  blocks: 5
+  channels: 88
+TORCH:
+  threads_intra: 12
+  threads_inter: 2
+SELFPLAY:
+  num_workers: 2
+  game_max_plies: 82
+  temperature_moves: 36
+  adjudication_enabled: true
+  adjudication_min_plies: 64
+  adjudication_value_margin: 0.12
+  adjudication_persist_plies: 8
+  opening_random_moves: 2
+MCTS:
+  train_simulations: 72
+  train_simulations_min: 40
+  train_sim_decay_move_interval: 24
+TRAIN:
+  total_iterations: 480
+  games_per_iter: 28
+  batch_size: 128
+  batch_size_min: 96
+  batch_size_max: 160
+  samples_per_new_game: 0.55
+  update_steps_min: 18
+  update_steps_max: 44
+  learning_rate_init: 0.0007
+  learning_rate_final: 0.00032
+ARENA:
+  eval_every_iters: 16
+  games_per_eval: 20
+  mcts_simulations: 128
+  temperature: 0.6
+  temperature_moves: 20
+  gate_margin: 0.005
+  gate_min_decisive: 1
+  resign_enable: true
+  max_game_plies: 140
+LOG:
+  checkpoint_interval_iters: 24
+  empty_cache_interval_iters: 96
+RESIGN:
+  min_plies: 32
+  playthrough_fraction: 0.25

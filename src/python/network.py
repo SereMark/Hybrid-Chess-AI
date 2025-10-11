@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import chesscore as ccore
+import config as C
 import torch
 import torch.nn.functional as F
 from torch import nn
-
-import config as C
 
 BOARD_SIZE: int = 8
 NSQUARES: int = 64
@@ -44,32 +43,24 @@ class ResidualBlock(nn.Module):
 class ChessNet(nn.Module):
     """ResNet-style policy and value network for chess."""
 
-    def __init__(
-        self, num_blocks: int | None = None, channels: int | None = None
-    ) -> None:
+    def __init__(self, num_blocks: int | None = None, channels: int | None = None) -> None:
         super().__init__()
-        num_blocks = int(num_blocks if num_blocks is not None else C.MODEL.BLOCKS)
-        channels = int(channels if channels is not None else C.MODEL.CHANNELS)
+        num_blocks = int(num_blocks if num_blocks is not None else C.MODEL.blocks)
+        channels = int(channels if channels is not None else C.MODEL.channels)
         policy_planes = POLICY_OUTPUT // NSQUARES
 
         self.conv_in = nn.Conv2d(INPUT_PLANES, channels, 3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(channels)
-        self.residual_stack = nn.Sequential(
-            *[ResidualBlock(channels) for _ in range(num_blocks)]
-        )
+        self.residual_stack = nn.Sequential(*[ResidualBlock(channels) for _ in range(num_blocks)])
 
         self.policy_conv = nn.Conv2d(channels, policy_planes, 1, bias=False)
         self.policy_bn = nn.BatchNorm2d(policy_planes)
         self.policy_fc = nn.Linear(policy_planes * NSQUARES, POLICY_OUTPUT)
 
-        self.value_conv = nn.Conv2d(
-            channels, C.MODEL.VALUE_CONV_CHANNELS, 1, bias=False
-        )
-        self.value_bn = nn.BatchNorm2d(C.MODEL.VALUE_CONV_CHANNELS)
-        self.value_fc1 = nn.Linear(
-            C.MODEL.VALUE_CONV_CHANNELS * NSQUARES, C.MODEL.VALUE_HIDDEN_DIM
-        )
-        self.value_fc2 = nn.Linear(C.MODEL.VALUE_HIDDEN_DIM, 1)
+        self.value_conv = nn.Conv2d(channels, C.MODEL.value_conv_channels, 1, bias=False)
+        self.value_bn = nn.BatchNorm2d(C.MODEL.value_conv_channels)
+        self.value_fc1 = nn.Linear(C.MODEL.value_conv_channels * NSQUARES, C.MODEL.value_hidden_dim)
+        self.value_fc2 = nn.Linear(C.MODEL.value_hidden_dim, 1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
