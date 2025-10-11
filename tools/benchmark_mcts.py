@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 import platform
@@ -275,12 +276,137 @@ def benchmark_python_mcts(fens: Sequence[str], scenario: MCTSScenario) -> float:
     return time.perf_counter() - start
 
 
+def _move_key(move: ccore.Move) -> str:
+    try:
+        return ccore.uci_of_move(move)
+    except AttributeError:
+        # Fallback to encoded identifier if UCI helper is not available
+        return f"{move.to_square}_{move.from_square}_{move.promotion}"
+
+
+def _collect_visit_distribution_cpp(
+    engine: ccore.MCTS, fen: str, scenario: MCTSScenario
+) -> tuple[dict[str, float], dict[str, int]]:
+    engine.reset_tree()
+    position = ccore.Position()
+    position.from_fen(fen)
+    moves = list(position.legal_moves())
+    if not moves:
+        return {}, {}
+    counts = engine.search_batched_legal(position, uniform_evaluator_batched, scenario.max_batch)
+    if len(counts) != len(moves):
+        return {}, {}
+    total = float(sum(counts))
+    if total <= 0.0:
+        return {}, {_move_key(move): int(count) for move, count in zip(moves, counts, strict=False)}
+    dist = {
+        _move_key(move): count / total
+        for move, count in zip(moves, counts, strict=False)
+    }
+    raw = {_move_key(move): int(count) for move, count in zip(moves, counts, strict=False)}
+    return dist, raw
+
+
+def _collect_visit_distribution_python(
+    engine: PythonMCTS, fen: str, scenario: MCTSScenario
+) -> tuple[dict[str, float], dict[str, int]]:
+    engine.reset()
+    position = ccore.Position()
+    position.from_fen(fen)
+    moves = list(position.legal_moves())
+    if not moves:
+        return {}, {}
+    counts = engine.search_batched_legal(position, uniform_evaluator_single, scenario.max_batch)
+    if len(counts) != len(moves):
+        return {}, {}
+    total = float(sum(counts))
+    if total <= 0.0:
+        return {}, {_move_key(move): int(count) for move, count in zip(moves, counts, strict=False)}
+    dist = {
+        _move_key(move): count / total
+        for move, count in zip(moves, counts, strict=False)
+    }
+    raw = {_move_key(move): int(count) for move, count in zip(moves, counts, strict=False)}
+    return dist, raw
+
+
+def _top_move(distribution: dict[str, float]) -> str | None:
+    if not distribution:
+        return None
+    return max(distribution.items(), key=lambda item: item[1])[0]
+
+
+def compute_alignment_metrics(
+    fens: Sequence[str], scenario: MCTSScenario, sample_size: int = 64
+) -> dict[str, object]:
+    if not fens:
+        return {
+            "positions_checked": 0,
+            "mean_l1": 0.0,
+            "max_l1": 0.0,
+            "top_match_pct": 100.0,
+            "examples": [],
+        }
+
+    cpp_engine = ccore.MCTS(scenario.simulations)
+    py_engine = PythonMCTS(simulations=scenario.simulations)
+
+    l1_distances: List[float] = []
+    top_matches = 0
+    evaluated = 0
+    examples: List[dict[str, object]] = []
+
+    limit = min(sample_size, len(fens))
+    for fen in fens[:limit]:
+        cpp_dist, _ = _collect_visit_distribution_cpp(cpp_engine, fen, scenario)
+        py_dist, _ = _collect_visit_distribution_python(py_engine, fen, scenario)
+        if not cpp_dist or not py_dist:
+            continue
+        all_moves = set(cpp_dist) | set(py_dist)
+        l1 = sum(abs(cpp_dist.get(move, 0.0) - py_dist.get(move, 0.0)) for move in all_moves)
+        l1_distances.append(l1)
+        evaluated += 1
+        top_cpp = _top_move(cpp_dist)
+        top_py = _top_move(py_dist)
+        if top_cpp == top_py:
+            top_matches += 1
+        if len(examples) < 5 and (top_cpp != top_py or l1 > 0.2):
+            examples.append(
+                {
+                    "fen": fen,
+                    "l1_distance": l1,
+                    "top_cpp": top_cpp,
+                    "top_python": top_py,
+                }
+            )
+
+    if evaluated == 0:
+        return {
+            "positions_checked": 0,
+            "mean_l1": 0.0,
+            "max_l1": 0.0,
+            "top_match_pct": 100.0,
+            "examples": [],
+        }
+
+    mean_l1 = float(statistics.fmean(l1_distances))
+    max_l1 = float(max(l1_distances))
+    top_match_pct = 100.0 * top_matches / evaluated
+    return {
+        "positions_checked": evaluated,
+        "mean_l1": mean_l1,
+        "max_l1": max_l1,
+        "top_match_pct": top_match_pct,
+        "examples": examples,
+    }
+
+
 def build_markdown_report(reports: List[Dict[str, object]]) -> str:
     lines: List[str] = []
     for report in reports:
         scenario = report["scenario"]
         stats = report["stats"]
-        lines.append(f"# MCTS Benchmark Report — {scenario['name']}")
+        lines.append(f"# MCTS Benchmark Report - {scenario['name']}")
         lines.append("")
         lines.append(f"Generated: {report['generated_at']}")
         lines.append(f"Python: {report['python_version']}")
@@ -306,6 +432,22 @@ def build_markdown_report(reports: List[Dict[str, object]]) -> str:
         lines.append(f"- Positions per second (C++): {cpp['positions_per_second']:.0f}")
         lines.append(f"- Positions per second (Python): {py['positions_per_second']:.0f}")
         lines.append("")
+        alignment = report.get("alignment")
+        if alignment:
+            lines.append("## Alignment")
+            lines.append("")
+            lines.append(f"- Positions checked: {alignment.get('positions_checked', 0)}")
+            lines.append(f"- Mean L1 distance: {alignment.get('mean_l1', 0.0):.4f}")
+            lines.append(f"- Max L1 distance: {alignment.get('max_l1', 0.0):.4f}")
+            lines.append(f"- Top move agreement: {alignment.get('top_match_pct', 0.0):.1f}%")
+            examples = alignment.get("examples", [])
+            if examples:
+                lines.append("- Example disagreements:")
+                for example in examples:
+                    lines.append(f"  - FEN: `{example['fen']}` (L1={example['l1_distance']:.3f})")
+                    lines.append(f"    C++ top move: {example.get('top_cpp', 'n/a')}")
+                    lines.append(f"    Python top move: {example.get('top_python', 'n/a')}")
+            lines.append("")
     return "\n".join(lines)
 
 
@@ -333,6 +475,11 @@ def main() -> None:
     parser.add_argument("--output-markdown", type=Path,
                         default=Path("benchmark_reports") / "mcts" / "mcts_summary.md",
                         help="Path for Markdown report")
+    parser.add_argument("--output-csv", type=Path,
+                        default=Path("benchmark_reports") / "mcts" / "mcts_summary.csv",
+                        help="Path for CSV timing summary")
+    parser.add_argument("--alignment-sample", type=int, default=64,
+                        help="Number of positions to sample when comparing visit distributions")
     args = parser.parse_args()
 
     positions_list = list(args.positions) if args.positions else DEFAULT_POSITIONS
@@ -370,6 +517,7 @@ def main() -> None:
             raise SystemExit("Scenario parameters must be positive (plies can be zero or greater).")
 
     reports: List[Dict[str, object]] = []
+    csv_rows: List[Dict[str, object]] = []
     for scenario in scenarios:
         fens = generate_random_fens(scenario.positions, scenario.max_random_plies, scenario.seed)
         cpp_times: List[float] = []
@@ -389,6 +537,7 @@ def main() -> None:
                 "positions_per_second": scenario.positions / python_time if python_time > 0 else float("inf"),
             },
         }
+        alignment = compute_alignment_metrics(fens, scenario, sample_size=args.alignment_sample)
         reports.append(
             {
                 "scenario": scenario.to_dict(),
@@ -396,6 +545,24 @@ def main() -> None:
                 "python_version": sys.version,
                 "platform": platform.platform(),
                 "stats": stats,
+                "alignment": alignment,
+            }
+        )
+        csv_rows.append(
+            {
+                "scenario": scenario.name,
+                "positions": scenario.positions,
+                "max_random_plies": scenario.max_random_plies,
+                "simulations": scenario.simulations,
+                "max_batch": scenario.max_batch,
+                "repetitions": scenario.repetitions,
+                "cpp_time_s": cpp_time,
+                "python_time_s": python_time,
+                "cpp_positions_per_s": stats["cpp"]["positions_per_second"],
+                "python_positions_per_s": stats["python"]["positions_per_second"],
+                "speedup_cpp_over_python": python_time / cpp_time if cpp_time > 0 else float("inf"),
+                "alignment_mean_l1": alignment.get("mean_l1", 0.0),
+                "alignment_top_match_pct": alignment.get("top_match_pct", 0.0),
             }
         )
 
@@ -403,6 +570,12 @@ def main() -> None:
     args.output_json.write_text(json.dumps(reports, indent=2))
     if args.output_markdown:
         args.output_markdown.write_text(build_markdown_report(reports))
+    if args.output_csv and csv_rows:
+        args.output_csv.parent.mkdir(parents=True, exist_ok=True)
+        with args.output_csv.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(csv_rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(csv_rows)
 
 
 if __name__ == "__main__":
