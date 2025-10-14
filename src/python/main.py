@@ -1,14 +1,3 @@
-"""CLI entrypoint for Hybrid Chess AI training.
-
-Responsibilities:
-- Parse CLI args
-- Load layered YAML configs
-- Configure logging
-- Set CPU threading and env defaults
-- Configure PyTorch backends (CUDA/TF32/cuDNN)
-- Apply seeding and determinism
-- Launch Trainer.train()
-"""
 from __future__ import annotations
 
 import argparse
@@ -23,8 +12,6 @@ import torch
 import config as C
 from checkpoint import save_checkpoint
 from trainer import Trainer
-
-__all__ = ["main"]
 
 RLOG = logging.getLogger("hybridchess.runtime")
 TLOG = logging.getLogger("hybridchess.trainer")

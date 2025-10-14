@@ -1,4 +1,3 @@
-"""Batched inference with caching and request coalescing."""
 from __future__ import annotations
 
 import numbers
@@ -16,9 +15,6 @@ import config as C
 import encoder
 from network import BOARD_SIZE, INPUT_PLANES, POLICY_OUTPUT, ChessNet
 from utils import prepare_model, select_inference_dtype
-
-__all__ = ["BatchedEvaluator"]
-
 
 class BatchedEvaluator:
     """Thread-safe evaluator with encode/output caches and soft batching."""

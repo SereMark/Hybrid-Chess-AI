@@ -1,4 +1,3 @@
-"""Utility helpers for logging, formatting, metrics, and FEN manipulation."""
 from __future__ import annotations
 
 import contextlib
@@ -15,17 +14,6 @@ import config as C
 import numpy as np
 import torch
 from torch import nn
-
-__all__ = [
-    "prepare_model",
-    "select_autocast_dtype",
-    "select_inference_dtype",
-    "MetricsReporter",
-    "flip_fen_perspective",
-    "sanitize_fen",
-    "format_time",
-    "startup_summary",
-]
 
 _CASTLING_ORDER = "KQkq"
 _FILES = "abcdefgh"

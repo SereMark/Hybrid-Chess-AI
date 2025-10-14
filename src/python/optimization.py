@@ -1,13 +1,9 @@
-"""Optimization primitives for Hybrid Chess AI training."""
 from __future__ import annotations
 
 from typing import Any, cast
 
 import torch
 import config as C
-
-__all__ = ["build_optimizer", "WarmupCosine", "EMA"]
-
 
 def build_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
     """SGD with per-parameter weight decay (exclude biases and norms)."""

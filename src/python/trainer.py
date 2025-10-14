@@ -1,4 +1,3 @@
-"""Training orchestration for Hybrid Chess AI."""
 from __future__ import annotations
 
 import contextlib
@@ -26,9 +25,6 @@ from utils import (
     select_autocast_dtype,
     startup_summary,
 )
-
-__all__ = ["Trainer"]
-
 
 @dataclass(slots=True)
 class GateHistory:

@@ -1,4 +1,3 @@
-"""Data augmentation utilities for encoded chess positions."""
 from __future__ import annotations
 
 from typing import ClassVar
@@ -13,8 +12,6 @@ NSQUARES = 64
 PLANES_PER_POSITION = encoder.PLANES_PER_POSITION
 HISTORY_LENGTH = encoder.HISTORY_LENGTH
 POLICY_OUTPUT = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
-
-__all__ = ["Augment"]
 
 # Directional plane layouts
 NUM_DIR = 8

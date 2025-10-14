@@ -1,4 +1,3 @@
-"""Checkpoint persistence utilities for training state."""
 from __future__ import annotations
 
 import json
@@ -13,9 +12,6 @@ import torch
 from torch.amp import GradScaler
 
 import config as C
-
-__all__ = ["save_checkpoint", "save_best_model", "try_resume", "get_run_root"]
-
 
 def _timestamped_path(base_path: str, iteration: int | None = None) -> str:
     stem, ext = os.path.splitext(base_path)

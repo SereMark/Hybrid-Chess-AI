@@ -1,4 +1,3 @@
-"""Neural network for Hybrid Chess AI."""
 from __future__ import annotations
 
 import chesscore as ccore
@@ -11,9 +10,6 @@ BOARD_SIZE: int = 8
 NSQUARES: int = 64
 INPUT_PLANES: int = int(getattr(ccore, "INPUT_PLANES", 14 * 8 + 7))
 POLICY_OUTPUT: int = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
-
-__all__ = ["BOARD_SIZE", "NSQUARES", "INPUT_PLANES", "POLICY_OUTPUT", "ResidualBlock", "ChessNet"]
-
 
 class ResidualBlock(nn.Module):
     """2×Conv3x3 + BN + ReLU with skip."""

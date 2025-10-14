@@ -1,10 +1,3 @@
-"""AlphaZero-style self-play generating training data for the replay buffer.
-
-Flow:
-1) Run N parallel games with the current network via BatchedEvaluator.
-2) For each move, run MCTS with batched NN calls and record visit-count targets.
-3) On termination (natural/resign/adjudicated/exhausted) push (state, policy, value) to the buffer.
-"""
 from __future__ import annotations
 
 import json
@@ -23,8 +16,6 @@ import chesscore as ccore
 from encoder import POLICY_SIZE, encode_move_index
 from replay_buffer import ReplayBuffer
 from utils import flip_fen_perspective, sanitize_fen
-
-__all__ = ["SelfPlayEngine"]
 
 DEFAULT_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 _MATERIAL_WEIGHTS = (1.0, 3.0, 3.0, 5.0, 9.0, 0.0)  # P,N,B,R,Q,K

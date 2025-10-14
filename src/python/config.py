@@ -1,4 +1,3 @@
-"""Training configuration for the Hybrid Chess AI project."""
 from __future__ import annotations
 
 import contextlib
@@ -12,28 +11,6 @@ try:
     import yaml
 except Exception:
     yaml = None
-
-__all__ = [
-    "SEED",
-    "LOG",
-    "TORCH",
-    "DATA",
-    "MODEL",
-    "EVAL",
-    "SELFPLAY",
-    "REPLAY",
-    "SAMPLING",
-    "AUGMENT",
-    "MCTS",
-    "RESIGN",
-    "TRAIN",
-    "ARENA",
-    "MANAGER",
-    "snapshot",
-    "reset",
-    "load_file",
-    "load_override",
-]
 
 SEED: int = 0
 

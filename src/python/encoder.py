@@ -1,4 +1,3 @@
-"""NumPy encoders for positions and moves."""
 from __future__ import annotations
 
 import numbers
@@ -17,21 +16,6 @@ POLICY_PLANES = 73
 POLICY_SIZE = POLICY_PLANES * NSQUARES
 
 PIECE_NAMES = ("pawn", "knight", "bishop", "rook", "queen", "king")
-
-__all__ = [
-    "PositionState",
-    "BOARD_SIZE",
-    "NSQUARES",
-    "PLANES_PER_POSITION",
-    "HISTORY_LENGTH",
-    "INPUT_PLANES",
-    "encode_position",
-    "encode_batch",
-    "POLICY_SIZE",
-    "encode_move_index",
-    "encode_move_indices_batch",
-]
-
 
 @dataclass(slots=True)
 class PositionState:

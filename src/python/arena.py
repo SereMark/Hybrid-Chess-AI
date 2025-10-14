@@ -1,4 +1,3 @@
-"""Evaluation arena for candidate gating."""
 from __future__ import annotations
 
 import time
@@ -11,7 +10,6 @@ import numpy as np
 import chesscore as ccore
 import config as C
 
-__all__ = ["ArenaResult", "play_match"]
 
 DEFAULT_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 

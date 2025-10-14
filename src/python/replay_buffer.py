@@ -1,8 +1,3 @@
-"""Experience replay buffer for self-play training samples.
-
-Stores (state_u8, sparse_policy_indices, sparse_policy_counts, value_i8) in a ring.
-Provides recent/old-biased sampling for the trainer.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,9 +5,6 @@ from typing import Iterable, Sequence
 
 import numpy as np
 from numpy.typing import DTypeLike
-
-__all__ = ["ReplayBuffer"]
-
 
 @dataclass(slots=True)
 class _Entry:

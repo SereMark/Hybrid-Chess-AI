@@ -1,4 +1,3 @@
-"""Core training iteration utilities."""
 from __future__ import annotations
 
 import time
@@ -8,9 +7,6 @@ import config as C
 import numpy as np
 import torch
 import torch.nn.functional as F
-
-__all__ = ["run_training_iteration", "train_step"]
-
 
 # ---------- schedules
 
