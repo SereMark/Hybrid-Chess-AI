@@ -13,6 +13,8 @@ SELFPLAY:
   adjudication_value_margin: 0.12
   adjudication_persist_plies: 8
   opening_random_moves: 2
+REPLAY:
+  capacity: 32000
 MCTS:
   train_simulations: 128
   train_simulations_min: 96
