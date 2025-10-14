@@ -14,7 +14,9 @@ SELFPLAY:
   adjudication_persist_plies: 8
   opening_random_moves: 2
 REPLAY:
-  capacity: 32000
+  capacity: 21000
+RESIGN:
+  resign_enable: false
 MCTS:
   train_simulations: 128
   train_simulations_min: 96
@@ -32,13 +34,13 @@ TRAIN:
   learning_rate_final: 0.00032
 ARENA:
   eval_every_iters: 16
-  games_per_eval: 100
+  games_per_eval: 64
   mcts_simulations: 128
   temperature: 0.6
   temperature_moves: 20
   gate_margin: 0.005
   gate_min_decisive: 1
-  resign_enable: true
+  resign_enable: false
   max_game_plies: 140
 LOG:
   checkpoint_interval_iters: 24
