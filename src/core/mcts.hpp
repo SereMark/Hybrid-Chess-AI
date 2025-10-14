@@ -8,6 +8,7 @@
 #include <vector>
 
 namespace mcts {
+
 constexpr float POLICY_EPSILON    = 1e-8f;
 constexpr float DIRICHLET_EPSILON = 1e-10f;
 constexpr int   POLICY_SIZE       = 73 * 64;
@@ -27,8 +28,8 @@ struct alignas(32) Node {
 };
 
 class NodePool {
-  std::vector<Node>       nodes_;
-  size_t                  used_            = 0;
+  std::vector<Node> nodes_;
+  size_t            used_ = 0;
   static constexpr size_t kDefaultCapacity = 500000;
 
 public:
@@ -45,32 +46,24 @@ public:
   MCTS(int simulations = 800, float c_puct = 1.0f, float dirichlet_alpha = 0.3f, float dirichlet_weight = 0.25f);
 
   using EvalLegalBatchFn =
-      std::function<void(const std::vector<chess::Position>&, const std::vector<std::vector<chess::Move>>&,
-                         std::vector<std::vector<float>>&, std::vector<float>&)>;
+      std::function<void(const std::vector<chess::Position>&,
+                         const std::vector<std::vector<chess::Move>>&,
+                         std::vector<std::vector<float>>&,
+                         std::vector<float>&)>;
 
-  std::vector<int> search_batched_legal(const chess::Position& position, const EvalLegalBatchFn& eval_fn,
+  std::vector<int> search_batched_legal(const chess::Position& position,
+                                        const EvalLegalBatchFn& eval_fn,
                                         int max_batch = 64);
 
   void reset_tree();
   void advance_root(const chess::Position& new_position, const chess::Move& played_move);
 
-  void set_simulations(int s) {
-    simulations_ = s;
-  }
-  void set_c_puct(float c) {
-    c_puct_ = c;
-  }
-  void set_dirichlet_params(float a, float w) {
-    dirichlet_alpha_  = a;
-    dirichlet_weight_ = w;
-  }
+  void set_simulations(int s) { simulations_ = s; }
+  void set_c_puct(float c) { c_puct_ = c; }
+  void set_dirichlet_params(float a, float w) { dirichlet_alpha_ = a; dirichlet_weight_ = w; }
   void set_c_puct_params(float base, float init);
-  void set_fpu_reduction(float f) {
-    fpu_reduction_ = f;
-  }
-  void seed(uint64_t s) {
-    rng_.seed(static_cast<unsigned long long>(s));
-  }
+  void set_fpu_reduction(float f) { fpu_reduction_ = f; }
+  void seed(uint64_t s) { rng_.seed(static_cast<unsigned long long>(s)); }
 
 private:
   int   simulations_;
@@ -98,4 +91,5 @@ private:
   void  add_dirichlet_noise(Node* node);
   bool  ensure_root(const chess::Position& position);
 };
-} // namespace mcts
+
+}  // namespace mcts

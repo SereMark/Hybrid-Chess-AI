@@ -1,5 +1,4 @@
 """Core training iteration utilities."""
-
 from __future__ import annotations
 
 import time
@@ -13,35 +12,39 @@ import torch.nn.functional as F
 __all__ = ["run_training_iteration", "train_step"]
 
 
+# ---------- schedules
+
 def _entropy_coefficient(iteration: int) -> float:
-    coef_start = float(C.TRAIN.loss_entropy_coef)
-    coef_min = float(C.TRAIN.loss_entropy_min_coef)
+    """Linear anneal from start -> min over loss_entropy_iters."""
+    start = float(C.TRAIN.loss_entropy_coef)
+    floor = float(C.TRAIN.loss_entropy_min_coef)
     horizon = max(1, int(C.TRAIN.loss_entropy_iters))
     if iteration <= horizon:
-        progress = (iteration - 1) / horizon
-        coef = coef_start - progress * (coef_start - coef_min)
-    else:
-        coef = coef_min
-    return float(max(coef, coef_min))
+        t = (iteration - 1) / horizon
+        return max(floor, start + t * (floor - start))
+    return floor
 
 
-def _recent_sample_ratio(buffer_fill: float) -> float:
+def _recent_sample_ratio() -> float:
+    """Clamp target recent ratio to configured bounds."""
     base = float(C.SAMPLING.recent_ratio)
-    low = float(C.SAMPLING.recent_ratio_min)
-    high = float(C.SAMPLING.recent_ratio_max)
-    return float(np.clip(base, low, high))
+    lo = float(C.SAMPLING.recent_ratio_min)
+    hi = float(C.SAMPLING.recent_ratio_max)
+    return float(np.clip(base, lo, hi))
 
+
+# ---------- public API
 
 def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
-    """Execute one training iteration for the supplied trainer."""
-    buffer_capacity = max(1, trainer.selfplay_engine.get_capacity())
-    buffer_size = trainer.selfplay_engine.size()
-    buffer_fill = buffer_size / buffer_capacity
+    """Execute one training iteration."""
+    buf_capacity = max(1, trainer.selfplay_engine.get_capacity())
+    buf_size = trainer.selfplay_engine.size()
+    buf_fill = buf_size / buf_capacity
 
-    recent_ratio = _recent_sample_ratio(buffer_fill)
+    recent_ratio = _recent_sample_ratio()
     recent_window = float(np.clip(C.SAMPLING.recent_window_frac, 0.0, 1.0))
 
-    resign_status = "enabled"
+    # Resignation policy
     if not C.RESIGN.enabled:
         trainer.selfplay_engine.enable_resign(False)
         trainer.selfplay_engine.resign_consecutive = 0
@@ -54,14 +57,17 @@ def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
         trainer.selfplay_engine.enable_resign(True)
         trainer.selfplay_engine.set_resign_params(C.RESIGN.value_threshold, C.RESIGN.min_plies)
         trainer.selfplay_engine.resign_consecutive = int(max(1, C.RESIGN.consecutive_required))
+        resign_status = "enabled"
 
     trainer.selfplay_engine.update_adjudication(trainer.iteration)
 
-    t_sp = time.time()
+    # Self-play
+    t0 = time.time()
     sp_stats = trainer.selfplay_engine.play_games(C.TRAIN.games_per_iter)
-    selfplay_time = time.time() - t_sp
-
+    selfplay_time = time.time() - t0
     games_generated = int(sp_stats.get("games", 0))
+
+    # Planned optimiser steps this iteration
     batches_target = max(
         int(C.TRAIN.update_steps_min),
         min(
@@ -70,13 +76,14 @@ def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
         ),
     )
 
+    # Training
     policy_losses: list[float] = []
     value_losses: list[float] = []
     entropies: list[float] = []
     grad_norms: list[float] = []
 
     optimizer_steps = 0
-    t_train = time.time()
+    t1 = time.time()
     for _ in range(batches_target):
         batch = trainer.selfplay_engine.sample_batch(trainer.train_batch_size, recent_ratio, recent_window)
         if not batch[0]:
@@ -84,63 +91,57 @@ def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
         result = train_step(trainer, batch)
         if result is None:
             continue
-        policy_loss, value_loss, grad_norm, entropy = result
-        policy_losses.append(float(policy_loss))
-        value_losses.append(float(value_loss))
-        grad_norms.append(float(grad_norm))
-        entropies.append(float(entropy))
+        p_loss, v_loss, g_norm, entr = result
+        policy_losses.append(p_loss)
+        value_losses.append(v_loss)
+        grad_norms.append(g_norm)
+        entropies.append(entr)
         optimizer_steps += 1
+    train_time = time.time() - t1
 
-    train_time = time.time() - t_train
+    # Aggregates
     if optimizer_steps == 0:
-        avg_policy_loss = 0.0
-        avg_value_loss = 0.0
-        avg_entropy = 0.0
-        avg_grad = 0.0
-        std_policy_loss = 0.0
-        std_value_loss = 0.0
-        std_entropy = 0.0
-        std_grad = 0.0
+        avgP = avgV = avgE = avgG = stdP = stdV = stdE = stdG = 0.0
     else:
-        avg_policy_loss = float(np.mean(policy_losses))
-        avg_value_loss = float(np.mean(value_losses))
-        avg_entropy = float(np.mean(entropies))
-        avg_grad = float(np.mean(grad_norms))
-        std_policy_loss = float(np.std(policy_losses, ddof=0))
-        std_value_loss = float(np.std(value_losses, ddof=0))
-        std_entropy = float(np.std(entropies, ddof=0))
-        std_grad = float(np.std(grad_norms, ddof=0))
+        avgP = float(np.mean(policy_losses))
+        avgV = float(np.mean(value_losses))
+        avgE = float(np.mean(entropies))
+        avgG = float(np.mean(grad_norms))
+        stdP = float(np.std(policy_losses, ddof=0))
+        stdV = float(np.std(value_losses, ddof=0))
+        stdE = float(np.std(entropies, ddof=0))
+        stdG = float(np.std(grad_norms, ddof=0))
 
-    current_lr = float(trainer.optimizer.param_groups[0]["lr"])
-    entropy_coef = _entropy_coefficient(trainer.iteration)
+    lr = float(trainer.optimizer.param_groups[0]["lr"])
+    ent_coef = _entropy_coefficient(trainer.iteration)
     train_samples = optimizer_steps * trainer.train_batch_size
-    samples_per_sec = train_samples / train_time if train_time > 0 and train_samples > 0 else 0.0
+    sps = train_samples / train_time if train_time > 0 and train_samples > 0 else 0.0
 
     return {
         "train_steps_planned": batches_target,
         "train_steps_actual": optimizer_steps,
         "optimizer_steps": optimizer_steps,
         "train_samples": train_samples,
-        "policy_loss": avg_policy_loss,
-        "policy_loss_std": std_policy_loss,
-        "value_loss": avg_value_loss,
-        "value_loss_std": std_value_loss,
-        "entropy": avg_entropy,
-        "entropy_std": std_entropy,
-        "avg_grad_norm": avg_grad,
-        "grad_norm_std": std_grad,
-        "entropy_coef": entropy_coef,
-        "learning_rate": current_lr,
+        "policy_loss": avgP,
+        "policy_loss_std": stdP,
+        "value_loss": avgV,
+        "value_loss_std": stdV,
+        "entropy": avgE,
+        "entropy_std": stdE,
+        "avg_grad_norm": avgG,
+        "grad_norm_std": stdG,
+        "entropy_coef": ent_coef,
+        "learning_rate": lr,
         "train_time_s": train_time,
         "selfplay_time_s": selfplay_time,
-        "buffer_percent": buffer_fill * 100.0,
+        "buffer_percent": buf_fill * 100.0,
         "train_recent_pct": recent_ratio * 100.0,
-        "buffer_size": buffer_size,
-        "buffer_capacity": buffer_capacity,
+        "buffer_size": buf_size,
+        "buffer_capacity": buf_capacity,
         "resign_status": resign_status,
         "resign_threshold": trainer.selfplay_engine.resign_threshold,
         "resign_min_plies": trainer.selfplay_engine.resign_min_plies,
-        "samples_per_sec": samples_per_sec,
+        "samples_per_sec": sps,
         "selfplay_stats": sp_stats,
     }
 
@@ -148,44 +149,46 @@ def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
 def train_step(
     trainer: Any,
     batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray], list[np.ndarray]],
-) -> tuple[torch.Tensor, torch.Tensor, float, float] | None:
+) -> tuple[float, float, float, float] | None:
+    """Single optimiser step. Returns (policy_loss, value_loss, grad_norm, entropy) as floats."""
     states_u8, indices_i32, counts_u16, values_i8 = batch_data
     if not states_u8:
         return None
 
+    # Inputs
     x_u8 = np.stack(states_u8).astype(np.uint8, copy=False)
-    x = torch.from_numpy(x_u8).to(trainer.device, non_blocking=True)
-    x = x.to(dtype=torch.float32) / float(C.DATA.u8_scale)
-    x = x.contiguous(memory_format=torch.channels_last)
+    x = torch.from_numpy(x_u8).to(trainer.device, non_blocking=True).to(dtype=torch.float32)
+    x = (x / float(C.DATA.u8_scale)).contiguous(memory_format=torch.channels_last)
 
     v_i8 = np.asarray(values_i8, dtype=np.int8)
-    v_target = torch.from_numpy(v_i8).to(trainer.device, non_blocking=True).to(dtype=torch.float32) / float(
-        C.DATA.value_i8_scale
-    )
+    v_target = torch.from_numpy(v_i8).to(trainer.device, non_blocking=True).to(dtype=torch.float32)
+    v_target = v_target / float(C.DATA.value_i8_scale)
 
+    # One-time augmentation setup on trainer
     if not hasattr(trainer, "_aug_mirror_idx"):
         from augmentation import Augment as _Aug
-
-        mirror_idx = _Aug._policy_index_permutation("mirror")
-        rot_idx = _Aug._policy_index_permutation("rot180")
-        vflip_idx = _Aug._policy_index_permutation("vflip_cs")
-        plane_perm = _Aug._vflip_cs_plane_permutation(x.shape[1])
-        feat_idx = _Aug._feature_plane_indices()
-        trainer._turn_plane_idx = int(feat_idx.get("turn_plane", x.shape[1]))
-        trainer._aug_mirror_idx = torch.tensor(mirror_idx, dtype=torch.long, device=trainer.device)
-        trainer._aug_rot_idx = torch.tensor(rot_idx, dtype=torch.long, device=trainer.device)
-        trainer._aug_vflip_idx = torch.tensor(vflip_idx, dtype=torch.long, device=trainer.device)
-        trainer._aug_plane_perm = torch.tensor(plane_perm, dtype=torch.long, device=trainer.device)
 
         def _invert(perm: np.ndarray) -> np.ndarray:
             out = np.empty_like(perm, dtype=np.int64)
             out[perm.astype(np.int64)] = np.arange(perm.size, dtype=np.int64)
             return out
 
+        mirror_idx = _Aug._policy_index_permutation("mirror")
+        rot_idx = _Aug._policy_index_permutation("rot180")
+        vflip_idx = _Aug._policy_index_permutation("vflip_cs")
+        plane_perm = _Aug._vflip_cs_plane_permutation(x.shape[1])
+        feat_idx = _Aug._feature_plane_indices()
+
+        trainer._turn_plane_idx = int(feat_idx.get("turn_plane", x.shape[1]))
+        trainer._aug_mirror_idx = torch.tensor(mirror_idx, dtype=torch.long, device=trainer.device)
+        trainer._aug_rot_idx = torch.tensor(rot_idx, dtype=torch.long, device=trainer.device)
+        trainer._aug_vflip_idx = torch.tensor(vflip_idx, dtype=torch.long, device=trainer.device)
+        trainer._aug_plane_perm = torch.tensor(plane_perm, dtype=torch.long, device=trainer.device)
         trainer._aug_mirror_inv = _invert(mirror_idx)
         trainer._aug_rot_inv = _invert(rot_idx)
         trainer._aug_vflip_inv = _invert(vflip_idx)
 
+    # Stochastic spatial+policy augmentations
     if np.random.rand() < C.AUGMENT.mirror_prob:
         x = torch.flip(x, dims=[-1])
         indices_i32 = [trainer._aug_mirror_inv[np.asarray(idx, dtype=np.int64)].astype(np.int32) for idx in indices_i32]
@@ -200,18 +203,16 @@ def train_step(
         indices_i32 = [trainer._aug_vflip_inv[np.asarray(idx, dtype=np.int64)].astype(np.int32) for idx in indices_i32]
         v_target = -v_target
 
+    # Forward + losses (AMP aware)
     trainer.model.train()
     autocast_device = "cuda" if trainer.device.type == "cuda" else "cpu"
     autocast_dtype = getattr(trainer, "_autocast_dtype", torch.float16)
-    with torch.autocast(
-        device_type=autocast_device,
-        dtype=autocast_dtype,
-        enabled=getattr(trainer, "_amp_enabled", False),
-    ):
+    with torch.autocast(device_type=autocast_device, dtype=autocast_dtype, enabled=getattr(trainer, "_amp_enabled", False)):
         policy_logits, value_pred = trainer.model(x)
         value_pred = value_pred.squeeze(-1)
         log_probs = F.log_softmax(policy_logits, dim=1)
 
+        # Sparse cross-entropy via indexed rows/cols with counts as weights
         rows_np: list[np.ndarray] = []
         cols_np: list[np.ndarray] = []
         cnts_np: list[np.ndarray] = []
@@ -233,17 +234,19 @@ def train_step(
             cols = torch.from_numpy(np.concatenate(cols_np)).to(trainer.device, non_blocking=True, dtype=torch.long)
             cnts = torch.from_numpy(np.concatenate(cnts_np)).to(trainer.device, non_blocking=True, dtype=torch.float32)
             rows = torch.from_numpy(np.concatenate(rows_np)).to(trainer.device, non_blocking=True, dtype=torch.long)
+
             denom_rows = torch.zeros((x.shape[0],), device=trainer.device, dtype=torch.float32)
             denom_rows.index_add_(0, rows, cnts)
             denom = denom_rows.index_select(0, rows).clamp_min(1e-9)
             weights = cnts / denom
+
             eps = float(max(0.0, C.TRAIN.loss_policy_label_smooth))
             if eps > 0.0:
                 m_rows = torch.zeros((x.shape[0],), device=trainer.device, dtype=torch.float32)
-                ones = torch.ones_like(weights)
-                m_rows.index_add_(0, rows, ones)
+                m_rows.index_add_(0, rows, torch.ones_like(weights))
                 m = m_rows.index_select(0, rows).clamp_min(1.0)
                 weights = (1.0 - eps) * weights + (eps / m)
+
             selected = log_probs[rows, cols]
             per_entry = -weights * selected
             loss_rows = torch.zeros((x.shape[0],), device=trainer.device, dtype=torch.float32)
@@ -261,11 +264,12 @@ def train_step(
             - _entropy_coefficient(trainer.iteration) * entropy
         )
 
+    # Backward + step (AMP aware)
     trainer.optimizer.zero_grad(set_to_none=True)
     scaler = getattr(trainer, "scaler", None)
     scaler_enabled = bool(scaler is not None and scaler.is_enabled())
 
-    if scaler_enabled and scaler is not None:
+    if scaler_enabled:
         scaler.scale(total_loss).backward()
         scaler.unscale_(trainer.optimizer)
     else:
@@ -275,12 +279,12 @@ def train_step(
 
     if torch.isnan(grad_total) or torch.isinf(grad_total):
         trainer.optimizer.zero_grad(set_to_none=True)
-        if scaler_enabled and scaler is not None:
-            scaler.update()
+        if scaler_enabled:
+            scaler.update()  # keep scaler moving even if step is skipped
         trainer.scheduler.step()
         return None
 
-    if scaler_enabled and scaler is not None:
+    if scaler_enabled:
         scaler.step(trainer.optimizer)
         scaler.update()
     else:
@@ -290,5 +294,9 @@ def train_step(
     if getattr(trainer, "ema", None) is not None:
         trainer.ema.update(trainer.model)
 
-    grad_value = float(grad_total.detach().cpu())
-    return policy_loss.detach(), value_loss.detach(), grad_value, float(entropy.detach().cpu())
+    return (
+        float(policy_loss.detach()),
+        float(value_loss.detach()),
+        float(grad_total.detach().cpu()),
+        float(entropy.detach().cpu()),
+    )

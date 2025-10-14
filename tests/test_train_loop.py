@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 import config as C
+import numpy as np
 import torch
 from train_loop import run_training_iteration
 
@@ -27,14 +28,14 @@ class DummySelfPlay:
     def sample_batch(self, batch_size: int, recent_ratio: float, recent_window: float):
         return ([], [], [], [])
 
-    def enable_resign(self, enabled: bool) -> None:  # noqa: ARG002
+    def enable_resign(self, enabled: bool) -> None:
         return None
 
     def set_resign_params(self, threshold: float, min_plies: int) -> None:
         self.resign_threshold = threshold
         self.resign_min_plies = min_plies
 
-    def update_adjudication(self, iteration: int) -> None:  # noqa: ARG002
+    def update_adjudication(self, iteration: int) -> None:
         return None
 
 
@@ -54,28 +55,23 @@ class DummyTrainer:
 
 
 def test_run_training_iteration_handles_no_batches(monkeypatch) -> None:
-    trainer = DummyTrainer()
+    tr = DummyTrainer()
     monkeypatch.setattr(type(C.TRAIN), "update_steps_min", 1, raising=False)
-    stats = run_training_iteration(trainer)
+    stats = run_training_iteration(tr)
     assert stats["train_steps_actual"] == 0
+    assert 0.0 <= stats["entropy_coef"] <= C.TRAIN.loss_entropy_coef
 
 
 def test_run_training_iteration_sets_resign_params(monkeypatch) -> None:
-    trainer = DummyTrainer()
-    trainer.iteration = C.RESIGN.cooldown_iters
+    tr = DummyTrainer()
+    tr.iteration = C.RESIGN.cooldown_iters
     monkeypatch.setattr(
         C,
         "RESIGN",
-        replace(
-            C.RESIGN,
-            enabled=True,
-            value_threshold=-0.5,
-            min_plies=10,
-            cooldown_iters=0,
-        ),
+        replace(C.RESIGN, enabled=True, value_threshold=-0.5, min_plies=10, cooldown_iters=0),
         raising=False,
     )
-    stats = run_training_iteration(trainer)
-    assert trainer.selfplay_engine.resign_threshold == -0.5
-    assert trainer.selfplay_engine.resign_min_plies == 10
+    stats = run_training_iteration(tr)
+    assert tr.selfplay_engine.resign_threshold == -0.5
+    assert tr.selfplay_engine.resign_min_plies == 10
     assert "selfplay_stats" in stats

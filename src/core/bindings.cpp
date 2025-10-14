@@ -30,20 +30,11 @@ std::string move_to_uci(const chess::Move& move) {
   std::ostringstream oss;
   oss << square_to_string(move.from()) << square_to_string(move.to());
   switch (move.promotion()) {
-  case chess::KNIGHT:
-    oss << 'n';
-    break;
-  case chess::BISHOP:
-    oss << 'b';
-    break;
-  case chess::ROOK:
-    oss << 'r';
-    break;
-  case chess::QUEEN:
-    oss << 'q';
-    break;
-  default:
-    break;
+    case chess::KNIGHT: oss << 'n'; break;
+    case chess::BISHOP: oss << 'b'; break;
+    case chess::ROOK:   oss << 'r'; break;
+    case chess::QUEEN:  oss << 'q'; break;
+    default: break;
   }
   return oss.str();
 }
@@ -56,8 +47,8 @@ py::tuple piece_bitboards_as_tuple(const chess::Position& position) {
   py::tuple outer(6);
   for (int p = 0; p < 6; ++p) {
     const auto piece = static_cast<chess::Piece>(p);
-    outer[p]         = py::make_tuple(position.get_pieces(piece, chess::WHITE),
-                                      position.get_pieces(piece, chess::BLACK));
+    outer[p] = py::make_tuple(position.get_pieces(piece, chess::WHITE),
+                              position.get_pieces(piece, chess::BLACK));
   }
   return outer;
 }
@@ -73,18 +64,19 @@ public:
     py::gil_scoped_acquire guard;
 
     py::list moves_py;
+    moves_py.attr("reserve")(static_cast<py::ssize_t>(moves.size()));
     for (const auto& mv : moves) {
       moves_py.append(py::cast(mv));
     }
 
     py::object result = fn_(positions, moves_py);
-    auto       tuple  = result.cast<py::tuple>();
+    auto tuple = result.cast<py::tuple>();
     if (tuple.size() != 2) {
       throw py::value_error("evaluator must return a tuple of (policies, values)");
     }
 
-    const auto      batch_size = static_cast<py::ssize_t>(positions.size());
-    py::sequence    pol_seq    = tuple[0].cast<py::sequence>();
+    const auto batch_size = static_cast<py::ssize_t>(positions.size());
+    py::sequence pol_seq = tuple[0].cast<py::sequence>();
     py::array_t<float, py::array::c_style | py::array::forcecast> val_arr =
         tuple[1].cast<py::array_t<float, py::array::c_style | py::array::forcecast>>();
 
@@ -96,21 +88,23 @@ public:
     if (val_info.ndim != 1 || val_info.shape[0] != batch_size) {
       throw py::value_error("values must be a 1D array matching the batch size");
     }
-
     const float* value_ptr = static_cast<const float*>(val_info.ptr);
     values.assign(value_ptr, value_ptr + static_cast<size_t>(batch_size));
 
     policies.clear();
     policies.reserve(static_cast<size_t>(batch_size));
     for (py::ssize_t i = 0; i < batch_size; ++i) {
-      auto arr =
-          pol_seq[i].cast<py::array_t<float, py::array::c_style | py::array::forcecast>>();
+      auto arr = pol_seq[i].cast<py::array_t<float, py::array::c_style | py::array::forcecast>>();
       auto arr_info = arr.request();
       if (arr_info.ndim != 1) {
         throw py::value_error("each policy vector must be one-dimensional");
       }
+      const size_t count = static_cast<size_t>(arr_info.shape[0]);
+      const size_t expected = moves[static_cast<size_t>(i)].size();
+      if (count != expected) {
+        throw py::value_error("policy length must equal number of legal moves for each position");
+      }
       const float* policy_ptr = static_cast<const float*>(arr_info.ptr);
-      const auto   count      = static_cast<size_t>(arr_info.shape[0]);
       policies.emplace_back(policy_ptr, policy_ptr + count);
     }
   }
@@ -129,7 +123,9 @@ void bind_enums(py::module_& m) {
       .value("KING", chess::KING)
       .value("NONE", chess::PIECE_NONE);
 
-  py::enum_<chess::Color>(m, "Color").value("WHITE", chess::WHITE).value("BLACK", chess::BLACK);
+  py::enum_<chess::Color>(m, "Color")
+      .value("WHITE", chess::WHITE)
+      .value("BLACK", chess::BLACK);
 
   py::enum_<chess::Result>(m, "Result")
       .value("ONGOING", chess::ONGOING)
@@ -147,16 +143,15 @@ void bind_move(py::module_& m) {
       .def_property_readonly("from_square", &chess::Move::from)
       .def_property_readonly("to_square", &chess::Move::to)
       .def_property_readonly("promotion", &chess::Move::promotion)
-      .def("__repr__",
-           [](const chess::Move& move) {
-             std::string repr = "Move(" + square_to_string(move.from()) + "->" +
-                                square_to_string(move.to());
-             if (move.promotion() != chess::PIECE_NONE) {
-               repr += ", promo=" + std::to_string(static_cast<int>(move.promotion()));
-             }
-             repr += ")";
-             return repr;
-           })
+      .def("__repr__", [](const chess::Move& move) {
+        std::string repr = "Move(" + square_to_string(move.from()) + "->" +
+                           square_to_string(move.to());
+        if (move.promotion() != chess::PIECE_NONE) {
+          repr += ", promo=" + std::to_string(static_cast<int>(move.promotion()));
+        }
+        repr += ")";
+        return repr;
+      })
       .def("__str__", &move_to_uci)
       .def("__int__", [](const chess::Move& move) { return static_cast<int>(move.data); })
       .def("__hash__", [](const chess::Move& move) { return py::hash(py::int_(move.data)); })
@@ -191,12 +186,13 @@ void bind_position(py::module_& m) {
         return "Position(" + position.to_fen() + ")";
       })
       .def("__str__", &chess::Position::to_fen)
-      .def(py::pickle([](const chess::Position& position) { return position.to_fen(); },
-                      [](const std::string& fen) {
-                        chess::Position position;
-                        position.from_fen(fen);
-                        return position;
-                      }));
+      .def(py::pickle(
+          [](const chess::Position& position) { return position.to_fen(); },
+          [](const std::string& fen) {
+            chess::Position position;
+            position.from_fen(fen);
+            return position;
+          }));
 }
 
 void bind_mcts(py::module_& m) {
@@ -225,18 +221,18 @@ void bind_mcts(py::module_& m) {
 }
 
 void bind_utilities(py::module_& m) {
-  m.def(
-      "encode_move_index", &mcts::encode_move_index, py::arg("move"),
-      "Encode a move into an index compatible with network policy outputs.");
+  m.def("encode_move_index", &mcts::encode_move_index, py::arg("move"),
+        "Encode a move into an index compatible with network policy outputs.");
 
   m.def(
       "encode_move_indices_batch",
       [](const std::vector<std::vector<chess::Move>>& moves_lists) {
         py::list result;
+        result.attr("reserve")(static_cast<py::ssize_t>(moves_lists.size()));
         for (const auto& moves : moves_lists) {
           py::array_t<int32_t> encoded(static_cast<py::ssize_t>(moves.size()));
-          auto                 info = encoded.request();
-          auto*                data = static_cast<int32_t*>(info.ptr);
+          auto info = encoded.request();
+          auto* data = static_cast<int32_t*>(info.ptr);
           for (size_t i = 0; i < moves.size(); ++i) {
             data[i] = mcts::encode_move_index(moves[i]);
           }
@@ -244,20 +240,25 @@ void bind_utilities(py::module_& m) {
         }
         return result;
       },
-      py::arg("moves_lists"), "Vectorised helper that encodes a batch of legal move lists.");
+      py::arg("moves_lists"),
+      "Vectorised helper that encodes a batch of legal move lists.");
 
   m.def("uci_of_move", &move_to_uci, py::arg("move"), "Convert a move to UCI notation.");
 
+  // Export constants used by Python.
   m.attr("POLICY_SIZE") = mcts::POLICY_SIZE;
-  m.attr("WHITE")       = chess::WHITE;
-  m.attr("BLACK")       = chess::BLACK;
-  m.attr("ONGOING")     = chess::ONGOING;
-  m.attr("WHITE_WIN")   = chess::WHITE_WIN;
-  m.attr("BLACK_WIN")   = chess::BLACK_WIN;
-  m.attr("DRAW")        = chess::DRAW;
+  m.attr("BOARD_SIZE")  = chess::BOARD_SIZE;
+  m.attr("NSQUARES")    = chess::NSQUARES;
+
+  m.attr("WHITE")     = chess::WHITE;
+  m.attr("BLACK")     = chess::BLACK;
+  m.attr("ONGOING")   = chess::ONGOING;
+  m.attr("WHITE_WIN") = chess::WHITE_WIN;
+  m.attr("BLACK_WIN") = chess::BLACK_WIN;
+  m.attr("DRAW")      = chess::DRAW;
 }
 
-} // namespace
+}  // namespace
 
 PYBIND11_MODULE(chesscore, m) {
   m.doc() = kModuleDoc;

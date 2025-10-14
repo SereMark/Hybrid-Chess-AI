@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -10,31 +9,44 @@ import statistics
 import sys
 import time
 from collections import Counter
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Sequence, Tuple
+from typing import Callable, Iterable, Sequence
 
-TEMPLATE_SCENARIOS: Dict[str, List[dict]] = {
-    "baseline": [
-        {"name": "baseline_small", "positions": 200, "max_random_plies": 80, "loops": 80, "repetitions": 3, "seed": 9001},
-        {"name": "baseline_medium", "positions": 400, "max_random_plies": 120, "loops": 100, "repetitions": 3, "seed": 42},
-        {"name": "baseline_deep", "positions": 600, "max_random_plies": 200, "loops": 150, "repetitions": 3, "seed": 1337},
-    ],
-    "quick": [
-        {"name": "quick_small", "positions": 100, "max_random_plies": 60, "loops": 40, "repetitions": 2, "seed": 2025}
-    ],
-}
+# --------------------------------------------------------------------------- sys.path
+REPO_ROOT = Path(__file__).resolve().parents[1]
+_CANDIDATE_EXT_DIRS = [
+    REPO_ROOT / "build" / "python" / "Release",
+    REPO_ROOT / "build" / "python" / "Debug",
+    REPO_ROOT / "build" / "python",
+    REPO_ROOT / "src" / "python",
+]
+for p in _CANDIDATE_EXT_DIRS:
+    if p.exists():
+        s = str(p)
+        if s not in sys.path:
+            sys.path.insert(0, s)
+
+try:
+    import chesscore as ccore  # type: ignore
+except ImportError as exc:
+    tried = ", ".join(str(p) for p in _CANDIDATE_EXT_DIRS)
+    raise SystemExit(
+        "Failed to import chesscore. Build the extension with CMake and ensure one of these is on PYTHONPATH: "
+        f"{tried}"
+    ) from exc
+
+try:
+    import chess  # python-chess
+except ImportError as exc:
+    raise SystemExit("Missing dependency: python-chess (pip install python-chess)") from exc
+
+# --------------------------------------------------------------------------- helpers
 
 
-def dataclass_to_dict(obj) -> dict:
-    if hasattr(obj, "__dataclass_fields__"):
-        return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
-    if isinstance(obj, dict):
-        return {k: dataclass_to_dict(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [dataclass_to_dict(v) for v in obj]
-    return obj
+def dataclass_to_dict(obj: object) -> dict:
+    return json.loads(json.dumps(asdict(obj)))
 
 
 def render_markdown_report(report: dict) -> str:
@@ -42,7 +54,7 @@ def render_markdown_report(report: dict) -> str:
     timings = dataset["timings"]
     move_stats = dataset["move_statistics"]
     correctness = dataset["correctness"]
-    lines: List[str] = []
+    lines: list[str] = []
     lines.append("# Chess Engine Benchmark Report")
     lines.append("")
     lines.append(f"Generated: {report['generated_at']}")
@@ -64,7 +76,8 @@ def render_markdown_report(report: dict) -> str:
     lines.append(f"- Min / Max: {move_stats['min_moves']} / {move_stats['max_moves']}")
     lines.append(f"- Std Dev: {move_stats['stdev_moves']:.2f}")
     lines.append(
-        f"- Quartiles (Q1 / Q2 / Q3): {move_stats['quartiles'][0]:.2f} / {move_stats['quartiles'][1]:.2f} / {move_stats['quartiles'][2]:.2f}"
+        f"- Quartiles (Q1 / Q2 / Q3): "
+        f"{move_stats['quartiles'][0]:.2f} / {move_stats['quartiles'][1]:.2f} / {move_stats['quartiles'][2]:.2f}"
     )
     lines.append("")
     lines.append("## Correctness")
@@ -90,12 +103,11 @@ def render_markdown_report(report: dict) -> str:
         lines.append(f"- Mean time: {summary['mean_s']:.4f} s")
         lines.append(f"- Std Dev: {summary['stdev_s']:.4f} s")
         lines.append(f"- Min / Max: {summary['min_s']:.4f} / {summary['max_s']:.4f} s")
-        lines.append(
-            f"- Mean positions per second: {summary['mean_positions_per_second']:.0f}"
-        )
+        lines.append(f"- Mean positions per second: {summary['mean_positions_per_second']:.0f}")
         lines.append(f"- Mean moves per second: {summary['mean_moves_per_second']:.0f}")
         lines.append("")
     return "\n".join(lines)
+
 
 @dataclass(frozen=True)
 class TimingSample:
@@ -108,7 +120,7 @@ class TimingSummary:
     engine: str
     loops: int
     positions: int
-    samples: List[TimingSample]
+    samples: list[TimingSample]
     mean_s: float
     stdev_s: float
     min_s: float
@@ -125,7 +137,7 @@ class TimingSummary:
 class CorrectnessReport:
     total_positions: int
     mismatch_count: int
-    examples: List[Dict[str, object]]
+    examples: list[dict[str, object]]
 
 
 @dataclass(frozen=True)
@@ -137,8 +149,8 @@ class MoveStatistics:
     mean_moves: float
     median_moves: float
     stdev_moves: float
-    quartiles: Tuple[float, float, float]
-    stage_means: Dict[str, float]
+    quartiles: tuple[float, float, float]
+    stage_means: dict[str, float]
 
 
 @dataclass(frozen=True)
@@ -165,8 +177,8 @@ class GameAggregate:
     avg_captures: float
     avg_promotions: float
     avg_checks: float
-    result_counts: Dict[str, int]
-    termination_counts: Dict[str, int]
+    result_counts: dict[str, int]
+    termination_counts: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -177,8 +189,8 @@ class DatasetReport:
     repetitions: int
     move_statistics: MoveStatistics
     correctness: CorrectnessReport
-    timings: Dict[str, TimingSummary]
-    extras: Dict[str, object]
+    timings: dict[str, TimingSummary]
+    extras: dict[str, object]
 
 
 @dataclass(frozen=True)
@@ -192,7 +204,7 @@ class BenchmarkScenario:
     description: str = "Random playout positions"
     mode: str = "random_positions"
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "name": self.name,
             "positions": self.positions,
@@ -205,37 +217,21 @@ class BenchmarkScenario:
         }
 
 
-ROOT = Path(__file__).resolve().parent
-PYTHON_DIR = ROOT / "python"
-PYTHON_RELEASE_DIR = PYTHON_DIR / "Release"
+TEMPLATE_SCENARIOS: dict[str, list[dict]] = {
+    "baseline": [
+        {"name": "baseline_small", "positions": 200, "max_random_plies": 80, "loops": 80, "repetitions": 3, "seed": 9001},
+        {"name": "baseline_medium", "positions": 400, "max_random_plies": 120, "loops": 100, "repetitions": 3, "seed": 42},
+        {"name": "baseline_deep", "positions": 600, "max_random_plies": 200, "loops": 150, "repetitions": 3, "seed": 1337},
+    ],
+    "quick": [
+        {"name": "quick_small", "positions": 100, "max_random_plies": 60, "loops": 40, "repetitions": 2, "seed": 2025}
+    ],
+}
+
+# --------------------------------------------------------------------------- core utils
 
 
-def _ensure_sys_path() -> None:
-    for candidate in (PYTHON_RELEASE_DIR, PYTHON_DIR):
-        candidate_str = str(candidate)
-        if candidate_str not in sys.path:
-            sys.path.insert(0, candidate_str)
-
-
-_ensure_sys_path()
-
-
-try:
-    import chesscore as ccore
-except ImportError as exc:
-    raise SystemExit(
-        "Failed to import chesscore. Ensure the extension is built and PYTHONPATH includes"
-        f" '{PYTHON_DIR}' and '{PYTHON_RELEASE_DIR}'."
-    ) from exc
-
-
-try:
-    import chess
-except ImportError as exc:
-    raise SystemExit("Missing dependency: python-chess (pip install python-chess)") from exc
-
-
-def generate_random_positions(count: int, max_random_plies: int, seed: int) -> List[str]:
+def generate_random_positions(count: int, max_random_plies: int, seed: int) -> list[str]:
     rng = random.Random(seed)
     fens: list[str] = []
     for _ in range(count):
@@ -250,18 +246,17 @@ def generate_random_positions(count: int, max_random_plies: int, seed: int) -> L
     return fens
 
 
-def moves_to_uci(moves: Iterable[chess.Move]) -> List[str]:
+def moves_to_uci(moves: Iterable[chess.Move]) -> list[str]:
     return sorted(move.uci() for move in moves)
 
 
-def chesscore_moves_to_uci(moves: Sequence[ccore.Move]) -> List[str]:
+def chesscore_moves_to_uci(moves: Sequence[ccore.Move]) -> list[str]:
     return sorted(ccore.uci_of_move(move) for move in moves)
 
 
 def verify_correctness(fens: Sequence[str], *, limit: int | None = None) -> list[dict[str, object]]:
     discrepancies: list[dict[str, object]] = []
     pos = ccore.Position()
-    count = 0
     for fen in fens:
         pos.from_fen(fen)
         ccore_moves = chesscore_moves_to_uci(pos.legal_moves())
@@ -277,7 +272,6 @@ def verify_correctness(fens: Sequence[str], *, limit: int | None = None) -> list
             )
             if limit is not None and len(discrepancies) >= limit:
                 break
-        count += 1
     return discrepancies
 
 
@@ -317,14 +311,13 @@ def classify_stage(board: chess.Board) -> str:
 
 
 def collect_move_statistics(fens: Sequence[str]) -> MoveStatistics:
-    counts: List[int] = []
-    stage_buckets: Dict[str, List[int]] = {"opening": [], "middlegame": [], "endgame": []}
+    counts: list[int] = []
+    stage_buckets: dict[str, list[int]] = {"opening": [], "middlegame": [], "endgame": []}
     for fen in fens:
         board = chess.Board(fen)
         num_moves = sum(1 for _ in board.legal_moves)
         counts.append(num_moves)
-        stage = classify_stage(board)
-        stage_buckets.setdefault(stage, []).append(num_moves)
+        stage_buckets.setdefault(classify_stage(board), []).append(num_moves)
     sample_size = len(counts)
     unique_positions = len(set(fens))
     if sample_size == 0:
@@ -337,19 +330,16 @@ def collect_move_statistics(fens: Sequence[str]) -> MoveStatistics:
             median_moves=0.0,
             stdev_moves=0.0,
             quartiles=(0.0, 0.0, 0.0),
-            stage_means={key: 0.0 for key in stage_buckets},
+            stage_means={k: 0.0 for k in stage_buckets},
         )
     mean_moves = statistics.fmean(counts)
     median_moves = statistics.median(counts)
     stdev_moves = statistics.stdev(counts) if sample_size > 1 else 0.0
     if sample_size >= 2:
-        quartile_values = statistics.quantiles(counts, n=4, method="inclusive")
-        q1, q2, q3 = quartile_values
+        q1, q2, q3 = statistics.quantiles(counts, n=4, method="inclusive")
     else:
         q1 = q2 = q3 = float(counts[0])
-    stage_means = {
-        stage: (statistics.fmean(vals) if vals else 0.0) for stage, vals in stage_buckets.items()
-    }
+    stage_means = {k: (statistics.fmean(v) if v else 0.0) for k, v in stage_buckets.items()}
     return MoveStatistics(
         sample_size=sample_size,
         unique_positions=unique_positions,
@@ -379,7 +369,7 @@ def build_timing_summary(
     loops: int,
     repetitions: int,
 ) -> TimingSummary:
-    samples: List[TimingSample] = []
+    samples: list[TimingSample] = []
     for _ in range(max(1, repetitions)):
         elapsed, total_moves = bench_fn(fens, loops)
         samples.append(TimingSample(elapsed_s=elapsed, total_moves=total_moves))
@@ -390,7 +380,7 @@ def build_timing_summary(
     min_s = min(elapsed_values)
     max_s = max(elapsed_values)
     pos_rates = [positions / s if s > 0 else float("inf") for s in elapsed_values]
-    move_rates = [sample.total_moves / sample.elapsed_s if sample.elapsed_s > 0 else float("inf") for sample in samples]
+    move_rates = [s.total_moves / s.elapsed_s if s.elapsed_s > 0 else float("inf") for s in samples]
     return TimingSummary(
         engine=engine,
         loops=loops,
@@ -445,7 +435,6 @@ def aggregate_games(metrics: Sequence[SingleGameMetrics]) -> GameAggregate:
     captures = [m.captures for m in metrics]
     promotions = [m.promotions for m in metrics]
     checks = [m.checks_given for m in metrics]
-
     result_counts = Counter(m.result for m in metrics)
     termination_counts = Counter(m.termination for m in metrics)
     finished_games = sum(1 for m in metrics if m.finished)
@@ -467,18 +456,15 @@ def aggregate_games(metrics: Sequence[SingleGameMetrics]) -> GameAggregate:
 
 def simulate_random_games(
     num_games: int, max_plies: int, seed: int
-) -> tuple[List[str], List[SingleGameMetrics], GameAggregate, List[Dict[str, object]]]:
+) -> tuple[list[str], list[SingleGameMetrics], GameAggregate, list[dict[str, object]]]:
     rng = random.Random(seed)
-    fens: List[str] = []
-    metrics: List[SingleGameMetrics] = []
-    mismatches: List[Dict[str, object]] = []
+    fens: list[str] = []
+    metrics: list[SingleGameMetrics] = []
+    mismatches: list[dict[str, object]] = []
     for game_index in range(num_games):
         board = chess.Board()
         pos = ccore.Position()
-        captures = 0
-        promotions = 0
-        checks = 0
-        plies_played = 0
+        captures = promotions = checks = plies_played = 0
         finished = False
         for ply in range(1, max_plies + 1):
             legal_moves = list(board.legal_moves)
@@ -534,14 +520,14 @@ def simulate_random_games(
 
 def read_pgn_games(
     pgn_texts: Sequence[str],
-) -> tuple[List[str], List[str], List[SingleGameMetrics], GameAggregate, List[Dict[str, object]], List[Dict[str, str]]]:
+) -> tuple[list[str], list[str], list[SingleGameMetrics], GameAggregate, list[dict[str, object]], list[dict[str, str]]]:
     import io
 
-    fens: List[str] = []
-    played_fens: List[str] = []
-    metrics: List[SingleGameMetrics] = []
-    mismatches: List[Dict[str, object]] = []
-    meta: List[Dict[str, str]] = []
+    fens: list[str] = []
+    played_fens: list[str] = []
+    metrics: list[SingleGameMetrics] = []
+    mismatches: list[dict[str, object]] = []
+    meta: list[dict[str, str]] = []
     for game_index, pgn_text in enumerate(pgn_texts):
         handle = io.StringIO(pgn_text)
         game = chess.pgn.read_game(handle)
@@ -556,9 +542,7 @@ def read_pgn_games(
         else:
             board = chess.Board()
             pos = ccore.Position()
-        captures = 0
-        promotions = 0
-        checks = 0
+        captures = promotions = checks = 0
         plies_played = 0
         for move in game.mainline_moves():
             fen_before = board.fen()
@@ -611,7 +595,7 @@ def build_dataset(
     loops: int,
     repetitions: int,
     description: str,
-    extra_payload: Dict[str, object] | None = None,
+    extra_payload: dict[str, object] | None = None,
     precomputed_move_stats: MoveStatistics | None = None,
     precomputed_correctness: CorrectnessReport | None = None,
 ) -> DatasetReport:
@@ -636,9 +620,7 @@ def build_dataset(
 
 
 def format_rate(count: int, elapsed: float) -> str:
-    if elapsed <= 0.0:
-        return "∞"
-    return f"{count / elapsed:,.0f} per second"
+    return "∞" if elapsed <= 0.0 else f"{count / elapsed:,.0f} per second"
 
 
 DEFAULT_POSITIONS = [200]
@@ -647,31 +629,36 @@ DEFAULT_LOOPS = [50]
 DEFAULT_REPETITIONS = [3]
 DEFAULT_SEEDS = [2025]
 
+# --------------------------------------------------------------------------- cli
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--positions", type=int, nargs="*", default=None,
-                        help="Number of random FENs per scenario")
-    parser.add_argument("--max-random-plies", type=int, nargs="*", default=None,
-                        help="Upper bound on random plies per scenario")
-    parser.add_argument("--loops", type=int, nargs="*", default=None,
-                        help="Benchmark loops per scenario")
-    parser.add_argument("--repetitions", type=int, nargs="*", default=None,
-                        help="Timing repetitions per scenario")
-    parser.add_argument("--seeds", type=int, nargs="*", default=None,
-                        help="Seeds to use for random position generation")
-    parser.add_argument("--scenario-name", type=str, default="random",
-                        help="Base name for ad-hoc scenarios")
-    parser.add_argument("--template", choices=sorted(TEMPLATE_SCENARIOS.keys()),
-                        help="Use a preset suite of scenarios")
-    parser.add_argument("--output-json", type=Path, default=Path("benchmark_reports") / "benchmark_summary.json",
-                        help="Path for the JSON report (default: benchmark_reports/benchmark_summary.json)")
-    parser.add_argument("--output-markdown", type=Path,
-                        default=Path("benchmark_reports") / "benchmark_summary.md",
-                        help="Path for the Markdown report (default: benchmark_reports/benchmark_summary.md)")
-    parser.add_argument("--output-csv", type=Path,
-                        default=Path("benchmark_reports") / "benchmark_summary.csv",
-                        help="Path for the CSV timing summary")
+    parser.add_argument("--positions", type=int, nargs="*", default=None, help="Number of random FENs per scenario")
+    parser.add_argument("--max-random-plies", type=int, nargs="*", default=None, help="Upper bound on random plies")
+    parser.add_argument("--loops", type=int, nargs="*", default=None, help="Benchmark loops per scenario")
+    parser.add_argument("--repetitions", type=int, nargs="*", default=None, help="Timing repetitions per scenario")
+    parser.add_argument("--seeds", type=int, nargs="*", default=None, help="Seeds to use for random position generation")
+    parser.add_argument("--scenario-name", type=str, default="random", help="Base name for ad-hoc scenarios")
+    parser.add_argument("--template", choices=sorted(TEMPLATE_SCENARIOS.keys()), help="Use a preset suite of scenarios")
+    parser.add_argument(
+        "--output-json",
+        type=Path,
+        default=Path("benchmark_reports") / "benchmark_summary.json",
+        help="Path for the JSON report",
+    )
+    parser.add_argument(
+        "--output-markdown",
+        type=Path,
+        default=Path("benchmark_reports") / "benchmark_summary.md",
+        help="Path for the Markdown report",
+    )
+    parser.add_argument(
+        "--output-csv",
+        type=Path,
+        default=Path("benchmark_reports") / "benchmark_summary.csv",
+        help="Path for the CSV timing summary",
+    )
     args = parser.parse_args()
 
     positions_list = list(args.positions) if args.positions else list(DEFAULT_POSITIONS)
@@ -690,14 +677,16 @@ def main() -> None:
         raw_scenarios = []
         max_len = max(len(positions_list), len(maxplies_list), len(loops_list), len(reps_list), len(seeds_list))
         for idx in range(max_len):
-            raw_scenarios.append({
-                "name": f"{args.scenario_name}_{idx}" if max_len > 1 else args.scenario_name,
-                "positions": positions_list[idx % len(positions_list)],
-                "max_random_plies": maxplies_list[idx % len(maxplies_list)],
-                "loops": loops_list[idx % len(loops_list)],
-                "repetitions": reps_list[idx % len(reps_list)],
-                "seed": seeds_list[idx % len(seeds_list)],
-            })
+            raw_scenarios.append(
+                {
+                    "name": f"{args.scenario_name}_{idx}" if max_len > 1 else args.scenario_name,
+                    "positions": positions_list[idx % len(positions_list)],
+                    "max_random_plies": maxplies_list[idx % len(maxplies_list)],
+                    "loops": loops_list[idx % len(loops_list)],
+                    "repetitions": reps_list[idx % len(reps_list)],
+                    "seed": seeds_list[idx % len(seeds_list)],
+                }
+            )
 
     if any(cfg["positions"] <= 0 for cfg in raw_scenarios):
         raise SystemExit("--positions must all be positive")
@@ -710,20 +699,17 @@ def main() -> None:
 
     scenarios = [BenchmarkScenario(**cfg) for cfg in raw_scenarios]
 
-    reports: List[Dict[str, object]] = []
+    reports: list[dict[str, object]] = []
     for scenario in scenarios:
         fens = generate_random_positions(scenario.positions, scenario.max_random_plies, scenario.seed)
-        print(
-            f"[{scenario.name}] Generated {len(fens)} positions with up to {scenario.max_random_plies} random plies"
-            f" (seed={scenario.seed})."
-        )
+        print(f"[{scenario.name}] Generated {len(fens)} positions up to {scenario.max_random_plies} plies (seed={scenario.seed}).")
 
         correctness = make_correctness_report(fens, example_limit=10)
         discrepancies = correctness.examples
         if discrepancies:
-            print(f"[{scenario.name}] Correctness check: {correctness.mismatch_count} mismatches detected!")
+            print(f"[{scenario.name}] Correctness: {correctness.mismatch_count} mismatches.")
             for idx, mismatch in enumerate(discrepancies[:5], start=1):
-                print(f"  [{scenario.name} #{idx}] FEN: {mismatch['fen']}")
+                print(f"  [{idx}] FEN: {mismatch['fen']}")
                 extra = mismatch["extra_in_chesscore"]
                 missing = mismatch["missing_in_chesscore"]
                 if extra:
@@ -731,27 +717,25 @@ def main() -> None:
                 if missing:
                     print(f"      Missing in chesscore: {', '.join(missing)}")
             if len(discrepancies) > 5:
-                print(f"  ...and {len(discrepancies) - 5} more mismatches.")
+                print(f"  ...and {len(discrepancies) - 5} more.")
         else:
-            print(f"[{scenario.name}] Correctness check: all positions matched.")
+            print(f"[{scenario.name}] Correctness: all positions matched.")
 
         positions_evaluated = len(fens) * scenario.loops
-
         chesscore_time, chesscore_moves = benchmark_chesscore(fens, scenario.loops)
         python_time, python_moves = benchmark_python_chess(fens, scenario.loops)
 
         print("\nPerformance (legal move generation):")
         print(
-            f"  chesscore      : {chesscore_time:.3f} s"
-            f" for {positions_evaluated:,} positions, {chesscore_moves:,} moves -> {format_rate(positions_evaluated, chesscore_time)}"
+            f"  chesscore    : {chesscore_time:.3f} s for {positions_evaluated:,} positions, "
+            f"{chesscore_moves:,} moves -> {format_rate(positions_evaluated, chesscore_time)}"
         )
         print(
-            f"  python-chess   : {python_time:.3f} s"
-            f" for {positions_evaluated:,} positions, {python_moves:,} moves -> {format_rate(positions_evaluated, python_time)}"
+            f"  python-chess : {python_time:.3f} s for {positions_evaluated:,} positions, "
+            f"{python_moves:,} moves -> {format_rate(positions_evaluated, python_time)}"
         )
-
         if chesscore_time > 0 and python_time > 0:
-            print(f"  Speedup        : {python_time / chesscore_time:.2f}x (python-chess / chesscore)")
+            print(f"  Speedup      : {python_time / chesscore_time:.2f}x (python-chess / chesscore)")
 
         dataset = build_dataset(
             scenario.name,
@@ -779,12 +763,13 @@ def main() -> None:
 
     if args.output_markdown:
         md_sections = [render_markdown_report(report) for report in reports]
+        args.output_markdown.parent.mkdir(parents=True, exist_ok=True)
         args.output_markdown.write_text("\n\n".join(md_sections))
         print(f"Wrote Markdown report to {args.output_markdown}")
 
     if args.output_csv:
         args.output_csv.parent.mkdir(parents=True, exist_ok=True)
-        csv_rows: List[Dict[str, object]] = []
+        csv_rows: list[dict[str, object]] = []
         for report in reports:
             scenario = report["scenario"]
             timings = report["dataset"]["timings"]
@@ -798,7 +783,11 @@ def main() -> None:
                     "mismatches": correctness["mismatch_count"],
                     "chesscore_time": timings["chesscore"]["mean_s"],
                     "python_time": timings["python-chess"]["mean_s"],
-                    "speedup": timings["python-chess"]["mean_s"] / timings["chesscore"]["mean_s"] if timings["chesscore"]["mean_s"] > 0 else float("inf"),
+                    "speedup": (
+                        timings["python-chess"]["mean_s"] / timings["chesscore"]["mean_s"]
+                        if timings["chesscore"]["mean_s"] > 0
+                        else float("inf")
+                    ),
                 }
             )
         with args.output_csv.open("w", newline="", encoding="utf-8") as handle:
@@ -813,5 +802,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

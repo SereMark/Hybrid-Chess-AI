@@ -1,41 +1,36 @@
 """Optimization primitives for Hybrid Chess AI training."""
-
 from __future__ import annotations
 
 from typing import Any, cast
 
-import config as C
 import torch
+import config as C
 
 __all__ = ["build_optimizer", "WarmupCosine", "EMA"]
 
 
 def build_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
+    """SGD with per-parameter weight decay (exclude biases and norms)."""
     decay: list[torch.nn.Parameter] = []
     nodecay: list[torch.nn.Parameter] = []
-    for name, param in model.named_parameters():
-        if not param.requires_grad:
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
             continue
         if name.endswith(".bias") or "bn" in name.lower() or "batchnorm" in name.lower():
-            nodecay.append(param)
+            nodecay.append(p)
         else:
-            decay.append(param)
-
-    optimizer = torch.optim.SGD(
-        [
-            {"params": decay, "weight_decay": C.TRAIN.weight_decay},
-            {"params": nodecay, "weight_decay": 0.0},
-        ],
+            decay.append(p)
+    return torch.optim.SGD(
+        [{"params": decay, "weight_decay": C.TRAIN.weight_decay}, {"params": nodecay, "weight_decay": 0.0}],
         lr=C.TRAIN.learning_rate_init,
         momentum=C.TRAIN.momentum,
         nesterov=True,
         foreach=True,
     )
-    return optimizer
 
 
 class WarmupCosine:
-    """Cosine learning-rate scheduler with linear warmup."""
+    """Cosine LR schedule with linear warmup and optional restarts."""
 
     def __init__(
         self,
@@ -57,24 +52,23 @@ class WarmupCosine:
         self.t = 0
 
     def _lr_at(self, step: int) -> float:
-        import math as _m
+        import math as m
 
         if step <= self.warm:
             return self.base * (step / max(1, self.warm))
 
         if self.restart_steps <= 0:
-            progress = min(1.0, (step - self.warm) / max(1, self.total - self.warm))
-            return self.final + (self.base - self.final) * 0.5 * (1.0 + _m.cos(_m.pi * progress))
+            prog = min(1.0, (step - self.warm) / max(1, self.total - self.warm))
+            return self.final + (self.base - self.final) * 0.5 * (1.0 + m.cos(m.pi * prog))
 
-        cycle_len = max(1, self.restart_steps)
-        cycle_step = max(0, step - self.warm)
-        cycle_index = cycle_step // cycle_len
-        within_cycle = cycle_step % cycle_len
-        cycle_progress = within_cycle / cycle_len
-        decay_scale = self.restart_decay**cycle_index if self.restart_decay > 0.0 else 0.0
-        peak = self.base * decay_scale
-        trough = self.final * decay_scale
-        return trough + (peak - trough) * 0.5 * (1.0 + _m.cos(_m.pi * cycle_progress))
+        cycle = max(1, self.restart_steps)
+        idx = max(0, step - self.warm)
+        cyc_i, within = divmod(idx, cycle)
+        prog = within / cycle
+        decay = self.restart_decay**cyc_i if self.restart_decay > 0.0 else 0.0
+        peak = self.base * decay
+        trough = self.final * decay
+        return trough + (peak - trough) * 0.5 * (1.0 + m.cos(m.pi * prog))
 
     def step(self) -> None:
         self.t += 1
@@ -83,8 +77,7 @@ class WarmupCosine:
             pg["lr"] = lr
 
     def peek_next_lr(self) -> float:
-        t_next = self.t + 1
-        return self._lr_at(t_next)
+        return self._lr_at(self.t + 1)
 
     def set_total_steps(self, total_steps: int) -> None:
         self.total = max(self.t + 1, int(total_steps))
@@ -93,16 +86,16 @@ class WarmupCosine:
 
 
 class EMA:
-    """Maintains an exponential moving average of model parameters."""
+    """Exponential moving average of model parameters."""
 
     def __init__(self, model: torch.nn.Module, decay: float | None = None) -> None:
         self.decay = float(C.TRAIN.ema_decay if decay is None else decay)
-        base = _unwrap_module(model)
+        base = _unwrap(model)
         self.shadow = {k: v.detach().clone() for k, v in base.state_dict().items()}
 
     @torch.no_grad()
     def update(self, model: torch.nn.Module) -> None:
-        base = _unwrap_module(model)
+        base = _unwrap(model)
         for k, v in base.state_dict().items():
             if not torch.is_floating_point(v):
                 self.shadow[k] = v.detach().clone()
@@ -112,11 +105,10 @@ class EMA:
             self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1.0 - self.decay)
 
     def copy_to(self, model: torch.nn.Module) -> None:
-        base = _unwrap_module(model)
-        base.load_state_dict(self.shadow, strict=True)
+        _unwrap(model).load_state_dict(self.shadow, strict=True)
 
 
-def _unwrap_module(model: torch.nn.Module) -> torch.nn.Module:
+def _unwrap(model: torch.nn.Module) -> torch.nn.Module:
     base = getattr(model, "_orig_mod", model)
     if hasattr(base, "module"):
         base = base.module

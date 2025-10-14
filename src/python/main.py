@@ -1,82 +1,97 @@
-"""CLI entrypoint for training the Hybrid Chess AI network."""
+"""CLI entrypoint for Hybrid Chess AI training.
 
+Responsibilities:
+- Parse CLI args
+- Load layered YAML configs
+- Configure logging
+- Set CPU threading and env defaults
+- Configure PyTorch backends (CUDA/TF32/cuDNN)
+- Apply seeding and determinism
+- Launch Trainer.train()
+"""
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import sys
-from typing import Sequence, Tuple
+from typing import Sequence
 
-import config as C
 import numpy as np
 import torch
+
+import config as C
+from checkpoint import save_checkpoint
 from trainer import Trainer
 
 __all__ = ["main"]
 
-_ENV_BASE_DEFAULTS = {
-    "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:False,max_split_size_mb:192",
-    "CUDA_MODULE_LOADING": "LAZY",
-    "CUDA_CACHE_MAXSIZE": "2147483648",
-    "NVIDIA_TF32_OVERRIDE": "0",
-    "CUDA_DEVICE_MAX_CONNECTIONS": "32",
-}
+RLOG = logging.getLogger("hybridchess.runtime")
+TLOG = logging.getLogger("hybridchess.trainer")
 
 
 def _parse_args(args: Sequence[str]) -> argparse.Namespace:
+    """Define CLI and parse arguments."""
     parser = argparse.ArgumentParser(description="Hybrid Chess AI training entrypoint")
     parser.add_argument(
-        "--config",
         "-c",
+        "--config",
         action="append",
         dest="configs",
         default=[],
-        help="Path to a base configuration file (YAML or JSON). Can be specified multiple times.",
+        help="Base configuration file(s), YAML. First replaces defaults; later ones overlay.",
     )
     parser.add_argument(
-        "--override",
         "-o",
+        "--override",
         action="append",
         dest="overrides",
         default=[],
-        help="Additional configuration override files applied after base configs.",
+        help="Override configuration file(s), applied after all base configs.",
     )
     parser.add_argument(
         "--resume",
         action="store_true",
         help="Resume training from the most recent checkpoint.",
     )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help="Device string for torch (e.g. 'cuda', 'cuda:0', 'cpu').",
+    )
     return parser.parse_args(list(args))
 
 
 def _apply_cli_configs(parsed: argparse.Namespace) -> None:
+    """Load base configs in order, then apply overrides."""
     loaded: list[str] = []
     for idx, path in enumerate(parsed.configs):
         try:
             C.load_file(path, replace=(idx == 0))
             loaded.append(str(path))
-        except Exception as exc:  # pragma: no cover - defensive logging
-            logging.getLogger("hybridchess.runtime").error("Failed to load config %s: %s", path, exc)
+        except Exception as exc:
+            RLOG.error("Failed to load config %s: %s", path, exc)
             raise
     for path in parsed.overrides:
         try:
             C.load_file(path)
             loaded.append(str(path))
-        except Exception as exc:  # pragma: no cover - defensive logging
-            logging.getLogger("hybridchess.runtime").error("Failed to load override %s: %s", path, exc)
+        except Exception as exc:
+            RLOG.error("Failed to load override %s: %s", path, exc)
             raise
     if loaded:
-        logging.getLogger("hybridchess.runtime").info("Loaded configuration overlays: %s", ", ".join(loaded))
+        RLOG.info("Loaded configuration overlays: %s", ", ".join(loaded))
 
 
-def _resolve_thread_settings() -> Tuple[int, int]:
+def _resolve_thread_settings() -> tuple[int, int]:
+    """Derive intra- and inter-op thread counts from CPU logical cores and config hints."""
     logical = os.cpu_count() or 1
+
     if C.TORCH.threads_intra > 0:
         intra = int(C.TORCH.threads_intra)
     else:
-        intra = logical - 4 if logical >= 12 else logical - 2 if logical > 4 else logical
+        intra = logical - 4 if logical >= 12 else (logical - 2 if logical > 4 else logical)
     intra = max(1, min(intra, logical))
 
     if C.TORCH.threads_inter > 0:
@@ -84,38 +99,40 @@ def _resolve_thread_settings() -> Tuple[int, int]:
     else:
         inter = max(1, min(4, logical // 4 or 1))
     inter = max(1, min(inter, logical))
+
     return intra, inter
 
 
-def _set_backend_flag(module: object, attr: str, value: bool) -> None:
-    if hasattr(module, attr):
-        setattr(module, attr, value)
-
-
-def _apply_environment_defaults(threads_intra: int, threads_inter: int) -> None:
-    env_defaults = dict(_ENV_BASE_DEFAULTS)
-    env_defaults["OMP_NUM_THREADS"] = str(threads_intra)
-    env_defaults["MKL_NUM_THREADS"] = str(max(1, min(threads_intra, threads_inter * 2)))
-    for key, value in env_defaults.items():
-        os.environ.setdefault(key, value)
-    if C.SEED != 0:
+def _apply_environment_defaults(threads_intra: int, threads_inter: int, deterministic: bool) -> None:
+    """Set minimal env defaults without overriding user-provided values."""
+    os.environ.setdefault("OMP_NUM_THREADS", str(threads_intra))
+    os.environ.setdefault("MKL_NUM_THREADS", str(max(1, min(threads_intra, threads_inter * 2))))
+    if deterministic:
         os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 
 def _configure_logging() -> int:
-    log_level = getattr(logging, str(C.LOG.level).upper(), logging.INFO)
+    """Install a single stdout handler at the configured level."""
+    level = getattr(logging, str(C.LOG.level).upper(), logging.INFO)
     root = logging.getLogger()
-    root.setLevel(log_level)
-    for handler in list(root.handlers):
-        root.removeHandler(handler)
-    stdout_handler = logging.StreamHandler(stream=sys.stdout)
-    stdout_handler.setLevel(log_level)
-    stdout_handler.setFormatter(logging.Formatter(fmt="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"))
-    root.addHandler(stdout_handler)
-    return log_level
+    root.setLevel(level)
+    for h in list(root.handlers):
+        root.removeHandler(h)
+    handler = logging.StreamHandler(stream=sys.stdout)
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter(fmt="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"))
+    root.addHandler(handler)
+    return level
+
+
+def _set_backend_flag(module: object, attr: str, value: bool) -> None:
+    """Assign module.attr = value only if the attribute exists (PyTorch-version-safe)."""
+    if hasattr(module, attr):
+        setattr(module, attr, value)
 
 
 def _seed_everything(has_cuda: bool) -> None:
+    """Seed Python, NumPy, and PyTorch when SEED != 0."""
     if C.SEED == 0:
         return
     import random as _py_random
@@ -127,48 +144,66 @@ def _seed_everything(has_cuda: bool) -> None:
         torch.cuda.manual_seed_all(C.SEED)
 
 
+def _configure_torch_backends(has_cuda: bool) -> None:
+    """Set math precision and backend toggles according to config."""
+    # Always apply matmul precision hint
+    torch.set_float32_matmul_precision(C.TORCH.matmul_float32_precision)
+    if not has_cuda:
+        TLOG.warning("CUDA unavailable; training will run on CPU")
+        return
+    _set_backend_flag(torch.backends.cuda.matmul, "allow_tf32", bool(C.TORCH.cuda_allow_tf32))
+    _set_backend_flag(torch.backends.cudnn, "allow_tf32", bool(C.TORCH.cudnn_allow_tf32))
+    _set_backend_flag(
+        torch.backends.cuda.matmul,
+        "allow_fp16_reduced_precision_reduction",
+        bool(C.TORCH.cuda_allow_fp16_reduced_reduction),
+    )
+    _set_backend_flag(torch.backends.cudnn, "benchmark", bool(C.TORCH.cudnn_benchmark))
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    raw_args = list(argv if argv is not None else sys.argv[1:])
-    parsed = _parse_args(raw_args)
-    _apply_cli_configs(parsed)
-    threads_intra, threads_inter = _resolve_thread_settings()
-    _apply_environment_defaults(threads_intra, threads_inter)
+    """Orchestrate setup and start training."""
+    args = list(argv if argv is not None else sys.argv[1:])
+
+    # Configure logging early so config-load errors are visible
     _configure_logging()
+    parsed = _parse_args(args)
+    _apply_cli_configs(parsed)
+    # Reconfigure to reflect LOG.level from configs
+    _configure_logging()
+
+    # Determinism preference: explicit flag wins, otherwise seed!=0 implies deterministic
+    det_cfg = getattr(C.TORCH, "deterministic", None)
+    deterministic = bool(det_cfg is True or (det_cfg is None and C.SEED != 0))
+
+    intra, inter = _resolve_thread_settings()
+    _apply_environment_defaults(intra, inter, deterministic)
+
     has_cuda = torch.cuda.is_available()
-    trainer_log = logging.getLogger("hybridchess.trainer")
-    if has_cuda:
-        torch.set_float32_matmul_precision(C.TORCH.matmul_float32_precision)
-        _set_backend_flag(
-            torch.backends.cuda.matmul,
-            "allow_tf32",
-            bool(C.TORCH.cuda_allow_tf32),
-        )
-        _set_backend_flag(
-            torch.backends.cudnn,
-            "allow_tf32",
-            bool(C.TORCH.cudnn_allow_tf32),
-        )
-        _set_backend_flag(
-            torch.backends.cuda.matmul,
-            "allow_fp16_reduced_precision_reduction",
-            bool(C.TORCH.cuda_allow_fp16_reduced_reduction),
-        )
-        _set_backend_flag(
-            torch.backends.cudnn,
-            "benchmark",
-            bool(C.TORCH.cudnn_benchmark),
-        )
-    else:
-        trainer_log.warning("CUDA unavailable; running training in CPU mode")
-    if C.SEED != 0:
+    _configure_torch_backends(has_cuda)
+
+    if deterministic:
         torch.use_deterministic_algorithms(True)
-    torch.set_num_threads(threads_intra)
-    torch.set_num_interop_threads(threads_inter)
-    logging.getLogger("hybridchess.runtime")
+
+    torch.set_num_threads(intra)
+    torch.set_num_interop_threads(inter)
+
     _seed_everything(has_cuda)
-    Trainer(resume=parsed.resume).train()
+
+    trainer = Trainer(device=parsed.device, resume=parsed.resume)
+    try:
+        trainer.train()
+    except KeyboardInterrupt:
+        TLOG.warning("Interrupted; saving checkpoint")
+        save_checkpoint(trainer)
+        return 130
+    finally:
+        with contextlib.suppress(Exception):
+            trainer.close()
     return 0
 
 
 if __name__ == "__main__":
+    import contextlib
+
     raise SystemExit(main())

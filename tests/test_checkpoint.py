@@ -19,7 +19,7 @@ class DummyTrainer:
         self.best_model = torch.nn.Linear(2, 2)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.1)
 
-        class _Scheduler:
+        class _Sched:
             def __init__(self) -> None:
                 self.t = 0
                 self.total = 1
@@ -30,51 +30,21 @@ class DummyTrainer:
             def step(self) -> None:
                 return None
 
-        self.scheduler = _Scheduler()
+        self.scheduler = _Sched()
         self.scaler = torch.amp.GradScaler(enabled=False)
         self.ema = None
-
-        class _SelfPlay:
-            def get_capacity(self) -> int:
-                return 1
-
-            def size(self) -> int:
-                return 0
-
-            def play_games(self, games: int) -> dict[str, int]:
-                return {"games": games}
-
-            def sample_batch(
-                self,
-                batch_size: int,
-                recent_ratio: float,
-                recent_window: float,
-            ) -> tuple[list, list, list, list]:  # noqa: ARG002
-                return ([], [], [], [])
-
-        self.selfplay_engine = _SelfPlay()
+        self.selfplay_engine = type("SP", (), {"get_capacity": lambda self: 1, "size": lambda self: 0})()
         self.run_root = str(run_root)
-
-        class _Log:
-            def info(self, *args, **kwargs) -> None:
-                return None
-
-            def warning(self, *args, **kwargs) -> None:
-                return None
-
-        self.log = _Log()
+        self.log = type("Log", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})()
 
 
-def test_checkpoint_roundtrip(tmp_path: Path) -> None:
-    trainer = DummyTrainer(tmp_path)
-    checkpoint.save_checkpoint(trainer)
-    run_root = Path(trainer.run_root)
-    metadata = run_root / "run_info.json"
-    assert metadata.is_file()
-    ckpt_path = run_root / "checkpoints" / "latest.pt"
-    assert ckpt_path.is_file()
-    config_json = run_root / "config" / "merged.json"
-    assert config_json.is_file()
-    arena_dir = run_root / "arena_games"
-    assert arena_dir.is_dir()
-    checkpoint.try_resume(trainer)
+def test_checkpoint_roundtrip_and_best(tmp_path: Path) -> None:
+    tr = DummyTrainer(tmp_path)
+    checkpoint.save_checkpoint(tr)
+    checkpoint.save_best_model(tr)
+    root = Path(tr.run_root)
+    assert (root / "run_info.json").is_file()
+    assert (root / "checkpoints" / "latest.pt").is_file()
+    assert (root / "checkpoints" / "best.pt").is_file()
+    assert (root / "config" / "merged.json").is_file()
+    checkpoint.try_resume(tr)

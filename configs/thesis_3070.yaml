@@ -1,9 +1,30 @@
+# Tuned for Ryzen 7 5800H (8C/16T), Laptop RTX 3070 8GB, 16GB RAM.
+
 MODEL:
   blocks: 5
   channels: 88
+
 TORCH:
   threads_intra: 12
   threads_inter: 2
+  amp_enabled: true
+  model_channels_last: true
+  eval_model_channels_last: true
+  matmul_float32_precision: high
+  cuda_allow_tf32: true
+  cudnn_allow_tf32: true
+  cuda_allow_fp16_reduced_reduction: true
+  cudnn_benchmark: true
+  deterministic: false
+
+EVAL:
+  batch_size_max: 192
+  coalesce_ms: 3
+  cache_capacity: 20000          # policy+value cache
+  value_cache_capacity: 20000
+  encode_cache_capacity: 6000
+  use_fp16_cache: true
+
 SELFPLAY:
   num_workers: 4
   game_max_plies: 100
@@ -13,38 +34,62 @@ SELFPLAY:
   adjudication_value_margin: 0.12
   adjudication_persist_plies: 8
   opening_random_moves: 2
+
 REPLAY:
   capacity: 21000
+
 RESIGN:
-  resign_enable: false
+  enabled: false
+  min_plies: 32
+  playthrough_fraction: 0.25
+
 MCTS:
   train_simulations: 100
   train_simulations_min: 96
   train_sim_decay_move_interval: 24
+  c_puct: 1.0
+  c_puct_base: 19652
+  c_puct_init: 1.25
+  fpu_reduction: 0.15
+  dirichlet_alpha: 0.3
+  dirichlet_weight: 0.25
+  visit_count_clamp: 65535
+
 TRAIN:
   total_iterations: 100
   games_per_iter: 100
-  batch_size: 100
+  batch_size: 112
   batch_size_min: 96
   batch_size_max: 128
   samples_per_new_game: 0.55
-  update_steps_min: 18
-  update_steps_max: 44
+  update_steps_min: 20
+  update_steps_max: 48
   learning_rate_init: 0.0007
   learning_rate_final: 0.00032
+  learning_rate_warmup_steps: 1000
+  lr_steps_per_iter_estimate: 40
+  lr_restart_interval_iters: 0
+  lr_restart_decay: 1.0
+  weight_decay: 1.0e-4
+  momentum: 0.9
+  grad_clip_norm: 1.0
+  ema_enabled: true
+  ema_decay: 0.999
+
 ARENA:
   eval_every_iters: 16
   games_per_eval: 64
   mcts_simulations: 128
   temperature: 0.6
   temperature_moves: 20
+  gate_baseline_p: 0.50
   gate_margin: 0.005
+  gate_min_games: 32
   gate_min_decisive: 1
   resign_enable: false
   max_game_plies: 140
+
 LOG:
   checkpoint_interval_iters: 24
   empty_cache_interval_iters: 96
-RESIGN:
-  min_plies: 32
-  playthrough_fraction: 0.25
+  metrics_csv_enable: true

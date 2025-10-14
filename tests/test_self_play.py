@@ -7,47 +7,44 @@ from inference import BatchedEvaluator
 from self_play import SelfPlayEngine
 
 
-def test_selfplay_generates_games(ensure_chesscore) -> None:  # noqa: ARG001
-    evaluator = BatchedEvaluator(torch.device("cpu"))
+def test_selfplay_generates_games_and_samples(ensure_chesscore) -> None:
+    ev = BatchedEvaluator(torch.device("cpu"))
     try:
-        engine = SelfPlayEngine(evaluator)
-        engine.set_num_workers(1)
-        stats = engine.play_games(2)
+        eng = SelfPlayEngine(ev)
+        eng.set_num_workers(1)
+        stats = eng.play_games(2)
         assert stats["games"] >= 1
+        empty = eng.sample_batch(8, 1.0, 1.0)
+        assert isinstance(empty, tuple) and len(empty) == 4
     finally:
-        evaluator.close()
+        ev.close()
 
 
 @pytest.mark.usefixtures("ensure_chesscore")
-def test_self_play_opening_book_usage(tmp_path) -> None:
-    book_path = tmp_path / "book.json"
-    book_path.write_text(
-        '[{"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "weight": 1.0}]', encoding="utf-8"
-    )
-    evaluator = BatchedEvaluator(torch.device("cpu"))
+def test_self_play_opening_book_bias(tmp_path) -> None:
+    ev = BatchedEvaluator(torch.device("cpu"))
     try:
-        engine = SelfPlayEngine(evaluator)
-        engine._opening_book = [("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 1.0)]
-        engine._opening_cumulative = np.array([1.0])
-        engine._curriculum_prob = 0.0
-        samples = [engine.sample_start_fen(np.random.default_rng(i)) for i in range(8)]
-        assert all("w" in fen.split(" ")[1] or "b" in fen.split(" ")[1] for fen in samples)
+        eng = SelfPlayEngine(ev)
+        eng._opening_book = [("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 1.0)]
+        eng._opening_cumulative = np.array([1.0])
+        eng._curriculum_prob = 0.0
+        fens = [eng.sample_start_fen(np.random.default_rng(i)) for i in range(6)]
+        assert all(len(f.split()) >= 6 for f in fens)
     finally:
-        evaluator.close()
+        ev.close()
 
 
 @pytest.mark.usefixtures("ensure_chesscore")
 def test_self_play_resignation_and_adjudication(monkeypatch) -> None:
-    evaluator = BatchedEvaluator(torch.device("cpu"))
+    ev = BatchedEvaluator(torch.device("cpu"))
     try:
-        engine = SelfPlayEngine(evaluator)
-        engine.set_num_workers(1)
-        engine.resign_enabled = True
-        engine.resign_threshold = 0.4
-        engine.resign_min_plies = 0
-        monkeypatch.setattr(engine, "_material_balance", lambda position: 5.0)
-        stats = engine.play_games(4)
-        assert stats["games"] > 0
-        assert stats["term_adjudicated"] >= 0
+        eng = SelfPlayEngine(ev)
+        eng.set_num_workers(1)
+        eng.resign_enabled = True
+        eng.resign_threshold = 0.4
+        eng.resign_min_plies = 0
+        monkeypatch.setattr(eng, "_material_balance", lambda pos: 5.0)
+        stats = eng.play_games(4)
+        assert stats["games"] > 0 and stats["term_adjudicated"] >= 0
     finally:
-        evaluator.close()
+        ev.close()

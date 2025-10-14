@@ -1,7 +1,7 @@
 """Training orchestration for Hybrid Chess AI."""
-
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 from dataclasses import dataclass, field
@@ -32,8 +32,7 @@ __all__ = ["Trainer"]
 
 @dataclass(slots=True)
 class GateHistory:
-    """Lightweight record keeping for arena evaluations."""
-
+    """Lightweight record of arena evaluations."""
     last: ArenaResult | None = None
     accepted: int = 0
     rejected: int = 0
@@ -41,12 +40,13 @@ class GateHistory:
 
 
 class Trainer:
-    """Coordinates neural network training, self-play, evaluation, and gating."""
+    """Coordinates training, self-play, evaluation, and gating."""
 
     def __init__(self, device: str | None = None, resume: bool = False) -> None:
         self.log = logging.getLogger("hybridchess.trainer")
         self.device = self._resolve_device(device)
         self.device_name = self._device_name()
+
         self.model = prepare_model(
             ChessNet(),
             self.device,
@@ -56,9 +56,11 @@ class Trainer:
 
         total_steps = int(C.TRAIN.total_iterations * C.TRAIN.lr_steps_per_iter_estimate)
         warmup_steps = int(min(max(1, C.TRAIN.learning_rate_warmup_steps), max(1, total_steps - 1)))
-        restart_steps = 0
-        if C.TRAIN.lr_restart_interval_iters > 0:
-            restart_steps = int(max(1, C.TRAIN.lr_restart_interval_iters * C.TRAIN.lr_steps_per_iter_estimate))
+        restart_steps = (
+            int(max(1, C.TRAIN.lr_restart_interval_iters * C.TRAIN.lr_steps_per_iter_estimate))
+            if C.TRAIN.lr_restart_interval_iters > 0
+            else 0
+        )
 
         self.scheduler = WarmupCosine(
             self.optimizer,
@@ -72,18 +74,10 @@ class Trainer:
 
         self._amp_enabled = bool(C.TORCH.amp_enabled and self.device.type == "cuda")
         self._autocast_dtype = select_autocast_dtype(self.device)
-        scaler: GradScaler | None = None
-        try:
-            scaler = GradScaler(enabled=self._amp_enabled)
-        except TypeError:
-            scaler = GradScaler(enabled=self._amp_enabled)
-        self.scaler = scaler
+        self.scaler = GradScaler(enabled=self._amp_enabled)
 
         self.evaluator = BatchedEvaluator(self.device)
-        self.evaluator.set_batching_params(
-            batch_size_max=C.EVAL.batch_size_max,
-            coalesce_ms=C.EVAL.coalesce_ms,
-        )
+        self.evaluator.set_batching_params(batch_size_max=C.EVAL.batch_size_max, coalesce_ms=C.EVAL.coalesce_ms)
         self.evaluator.set_cache_capacity(
             C.EVAL.cache_capacity,
             value_capacity=C.EVAL.value_cache_capacity,
@@ -99,13 +93,8 @@ class Trainer:
             resumed_root = Path(get_run_root(self))
             if resumed_root != initial_root:
                 self._configure_run_paths(resumed_root)
-        self.metrics.append_json(
-            {
-                "event": "startup",
-                "timestamp": time.time(),
-                "run_root": self.run_root,
-            }
-        )
+
+        self.metrics.append_json({"event": "startup", "timestamp": time.time(), "run_root": self.run_root})
 
         self.ema: EMA | None = EMA(self.model) if C.TRAIN.ema_enabled else None
         self.best_model = self._clone_model()
@@ -129,39 +118,45 @@ class Trainer:
 
     # ------------------------------------------------------------------ public API
     def train(self) -> None:
-        max_iters = int(C.TRAIN.total_iterations)
-        while self.iteration < max_iters:
-            stats = run_training_iteration(self)
-            self.iteration += 1
-            sp_raw = stats.get("selfplay_stats")
-            if isinstance(sp_raw, dict):
-                self.total_games += int(float(sp_raw.get("games", 0)))
-            self._sync_selfplay_evaluator()
-            arena_result = None
-            if self._should_run_arena():
-                arena_result = self._run_arena()
-            self._log_iteration(stats, arena_result)
-            self._write_metrics(stats, arena_result)
-            self._maybe_checkpoint()
-            self._maybe_flush_cuda_cache()
-        self.log.info("Training completed after %s iterations.", self.iteration)
+        try:
+            max_iters = int(C.TRAIN.total_iterations)
+            while self.iteration < max_iters:
+                stats = run_training_iteration(self)
+                self.iteration += 1
+
+                sp_raw = stats.get("selfplay_stats")
+                if isinstance(sp_raw, dict):
+                    self.total_games += int(float(sp_raw.get("games", 0)))
+
+                self._sync_selfplay_evaluator()
+
+                arena_result = self._run_arena() if self._should_run_arena() else None
+
+                self._log_iteration(stats, arena_result)
+                self._write_metrics(stats, arena_result)
+                self._maybe_checkpoint()
+                self._maybe_flush_cuda_cache()
+
+            self.log.info("Training completed after %s iterations.", self.iteration)
+        finally:
+            self.close()
+
+    def close(self) -> None:
+        with contextlib.suppress(Exception):
+            self.evaluator.close()
 
     # ------------------------------------------------------------------ helpers
     def _resolve_device(self, override: str | None) -> torch.device:
         if override:
-            device = torch.device(override)
-        else:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        if device.type != "cuda":
-            self.log.warning("CUDA unavailable; training will run on CPU")
-        return device
+            return torch.device(override)
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def _device_name(self) -> str:
         if self.device.type != "cuda":
             return "CPU"
         try:
-            index = self.device.index if self.device.index is not None else torch.cuda.current_device()
-            return torch.cuda.get_device_name(index)
+            idx = self.device.index if self.device.index is not None else torch.cuda.current_device()
+            return torch.cuda.get_device_name(idx)
         except Exception:
             return "cuda"
 
@@ -193,20 +188,34 @@ class Trainer:
         model.eval()
         return model
 
+    def _make_eval(self, net: torch.nn.Module, cache_cap: int) -> BatchedEvaluator:
+        ev = BatchedEvaluator(self.device)
+        ev.refresh_from(net)
+        ev.set_batching_params(batch_size_max=C.EVAL.batch_size_max, coalesce_ms=C.EVAL.coalesce_ms)
+        ev.set_cache_capacity(
+            cache_cap,
+            value_capacity=min(8_000, C.EVAL.value_cache_capacity),
+            encode_capacity=min(8_000, C.EVAL.encode_cache_capacity),
+        )
+        ev.clear_caches()
+        return ev
+
     def _configure_run_paths(self, root: Path) -> None:
         resolved = Path(root).resolve()
         resolved.mkdir(parents=True, exist_ok=True)
         self.run_root = resolved
-        checkpoints_dir = resolved / "checkpoints"
-        checkpoints_dir.mkdir(parents=True, exist_ok=True)
+
+        (resolved / "checkpoints").mkdir(parents=True, exist_ok=True)
         metrics_dir = resolved / "metrics"
         metrics_dir.mkdir(parents=True, exist_ok=True)
         arena_dir = resolved / "arena_games"
         arena_dir.mkdir(parents=True, exist_ok=True)
         self.arena_dir = arena_dir
-        metrics_jsonl = metrics_dir / "training.jsonl"
-        metrics_csv = metrics_dir / "training.csv"
-        self.metrics = MetricsReporter(str(metrics_csv), jsonl_path=str(metrics_jsonl))
+
+        self.metrics = MetricsReporter(
+            str(metrics_dir / "training.csv"),
+            jsonl_path=str(metrics_dir / "training.jsonl"),
+        )
 
     def _run_arena(self) -> ArenaResult:
         candidate_model = self._candidate_eval_model()
@@ -214,42 +223,17 @@ class Trainer:
         baseline_model.load_state_dict(self.best_model.state_dict(), strict=True)
         baseline_model.eval()
 
-        candidate_eval = BatchedEvaluator(self.device)
-        candidate_eval.refresh_from(candidate_model)
-        candidate_eval.set_batching_params(
-            batch_size_max=C.EVAL.batch_size_max,
-            coalesce_ms=C.EVAL.coalesce_ms,
-        )
-        candidate_eval.set_cache_capacity(
-            min(256, C.EVAL.cache_capacity),
-            value_capacity=min(8_000, C.EVAL.value_cache_capacity),
-            encode_capacity=min(8_000, C.EVAL.encode_cache_capacity),
-        )
-        candidate_eval.clear_caches()
+        candidate_eval = self._make_eval(candidate_model, cache_cap=min(256, C.EVAL.cache_capacity))
+        baseline_eval = self._make_eval(baseline_model, cache_cap=min(256, C.EVAL.cache_capacity))
 
-        baseline_eval = BatchedEvaluator(self.device)
-        baseline_eval.refresh_from(baseline_model)
-        baseline_eval.set_batching_params(
-            batch_size_max=C.EVAL.batch_size_max,
-            coalesce_ms=C.EVAL.coalesce_ms,
-        )
-        baseline_eval.set_cache_capacity(
-            min(256, C.EVAL.cache_capacity),
-            value_capacity=min(8_000, C.EVAL.value_cache_capacity),
-            encode_capacity=min(8_000, C.EVAL.encode_cache_capacity),
-        )
-        baseline_eval.clear_caches()
-
-        pgn_dir = self.arena_dir
-        label = f"iter{self.iteration:04d}"
         result = play_match(
             candidate_eval,
             baseline_eval,
             games=C.ARENA.games_per_eval,
             seed=int(self._arena_rng.integers(0, np.iinfo(np.int64).max)),
             start_fen_fn=self.selfplay_engine.sample_start_fen,
-            pgn_dir=pgn_dir,
-            label=label,
+            pgn_dir=self.arena_dir,
+            label=f"iter{self.iteration:04d}",
         )
 
         decisive_games = result.candidate_wins + result.baseline_wins
@@ -257,18 +241,25 @@ class Trainer:
         min_decisive = int(C.ARENA.gate_min_decisive)
         required = C.ARENA.gate_baseline_p + C.ARENA.gate_margin
         score = result.score_pct / 100.0
-        accept = result.games >= max(1, min_games) and decisive_games >= max(1, min_decisive) and score >= required
+
+        accept = (
+            result.games >= max(1, min_games)
+            and decisive_games >= max(1, min_decisive)
+            and score >= required
+        )
 
         if accept:
             self.best_model.load_state_dict(candidate_model.state_dict(), strict=True)
             save_best_model(self)
-            decision = "accept"
             self.gate.accepted += 1
+            decision = "accept"
         else:
-            decision = "reject"
             self.gate.rejected += 1
+            decision = "reject"
+
         result.notes.append(decision)
         self.gate.last = result
+
         candidate_eval.close()
         baseline_eval.close()
         if torch.cuda.is_available():
@@ -277,28 +268,19 @@ class Trainer:
 
     def _should_run_arena(self) -> bool:
         every = int(max(1, C.ARENA.eval_every_iters))
-        if every <= 0:
-            return False
         return self.iteration % every == 0
 
     def _maybe_checkpoint(self) -> None:
-        if C.LOG.checkpoint_interval_iters <= 0:
-            return
-        if self.iteration % C.LOG.checkpoint_interval_iters == 0:
+        if C.LOG.checkpoint_interval_iters > 0 and self.iteration % C.LOG.checkpoint_interval_iters == 0:
             save_checkpoint(self)
 
     def _maybe_flush_cuda_cache(self) -> None:
-        if self.device.type != "cuda":
-            return
-        interval = int(C.LOG.empty_cache_interval_iters)
-        if interval > 0 and self.iteration % interval == 0:
-            torch.cuda.empty_cache()
+        if self.device.type == "cuda":
+            interval = int(C.LOG.empty_cache_interval_iters)
+            if interval > 0 and self.iteration % interval == 0:
+                torch.cuda.empty_cache()
 
-    def _log_iteration(
-        self,
-        stats: dict[str, float | int | str],
-        arena_result: ArenaResult | None,
-    ) -> None:
+    def _log_iteration(self, stats: dict[str, float | int | str], arena_result: ArenaResult | None) -> None:
         sp_raw = stats.get("selfplay_stats")
         sp = cast(dict[str, float | int | str], sp_raw if isinstance(sp_raw, dict) else {})
         games = max(1, int(float(sp.get("games", 0))))
@@ -341,11 +323,7 @@ class Trainer:
         self.log.info(arena_line)
         self.log.info("")
 
-    def _write_metrics(
-        self,
-        stats: dict[str, float | int | str],
-        arena_result: ArenaResult | None,
-    ) -> None:
+    def _write_metrics(self, stats: dict[str, float | int | str], arena_result: ArenaResult | None) -> None:
         if not C.LOG.metrics_csv_enable or not self.metrics.csv_path:
             return
         elapsed = time.time() - self.start_time
@@ -391,5 +369,4 @@ class Trainer:
             "arena_elapsed_s": float(arena_result.elapsed_s) if arena_result else 0.0,
             "arena_decision": arena_result.notes[0] if arena_result else "skipped",
         }
-        field_order = list(row.keys())
-        self.metrics.append(row, field_order=field_order)
+        self.metrics.append(row, field_order=list(row.keys()))

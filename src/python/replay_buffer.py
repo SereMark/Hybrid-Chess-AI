@@ -1,5 +1,8 @@
-"""Experience replay buffer for self-play training samples."""
+"""Experience replay buffer for self-play training samples.
 
+Stores (state_u8, sparse_policy_indices, sparse_policy_counts, value_i8) in a ring.
+Provides recent/old-biased sampling for the trainer.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,13 +16,13 @@ __all__ = ["ReplayBuffer"]
 
 @dataclass(slots=True)
 class _Entry:
-    indices: np.ndarray
-    counts: np.ndarray
-    value: np.int8
+    indices: np.ndarray  # int32, shape [K]
+    counts: np.ndarray   # uint16, shape [K]
+    value: np.int8       # scalar
 
 
 class ReplayBuffer:
-    """Ring buffer storing encoded board states and sparse policy targets."""
+    """Fixed-capacity ring buffer with recent-biased sampling."""
 
     def __init__(self, capacity: int, planes: int, height: int, width: int) -> None:
         capacity = int(max(1, capacity))
@@ -28,11 +31,13 @@ class ReplayBuffer:
 
         self._states = np.zeros((capacity,) + self._state_shape, dtype=np.uint8)
         self._entries: list[_Entry | None] = [None] * capacity
-        self._values = np.zeros((capacity,), dtype=np.int8)
+        self._values = np.zeros((capacity,), dtype=np.int8)  # convenience mirror
 
         self._size = 0
         self._head = 0
         self._rng = np.random.default_rng(seed=0xC0FFEE)
+
+    # ---------- properties
 
     @property
     def capacity(self) -> int:
@@ -42,6 +47,8 @@ class ReplayBuffer:
     def size(self) -> int:
         return self._size
 
+    # ---------- control
+
     def seed(self, seed: int | np.random.SeedSequence | None) -> None:
         self._rng = np.random.default_rng(seed)
 
@@ -50,6 +57,8 @@ class ReplayBuffer:
         self._head = 0
         self._entries = [None] * self._capacity
 
+    # ---------- mutation
+
     def push(
         self,
         state: np.ndarray,
@@ -57,14 +66,17 @@ class ReplayBuffer:
         counts: Sequence[int] | np.ndarray,
         value: int | np.integer,
     ) -> None:
+        """Insert one sample. Truncates to the common length of indices/counts."""
         pos = self._head
         self._states[pos] = self._validate_state(state)
+
         idx_arr = self._validate_sparse(indices, dtype=np.int32)
         cnt_arr = self._validate_sparse(counts, dtype=np.uint16)
         if idx_arr.shape != cnt_arr.shape:
-            slc = slice(0, min(idx_arr.size, cnt_arr.size))
-            idx_arr = idx_arr[slc]
-            cnt_arr = cnt_arr[slc]
+            n = min(idx_arr.size, cnt_arr.size)
+            idx_arr = idx_arr[:n]
+            cnt_arr = cnt_arr[:n]
+
         value_i8 = np.int8(value)
         self._entries[pos] = _Entry(idx_arr.copy(), cnt_arr.copy(), value_i8)
         self._values[pos] = value_i8
@@ -74,6 +86,7 @@ class ReplayBuffer:
             self._size += 1
 
     def set_capacity(self, capacity: int) -> None:
+        """Resize buffer, keeping the most recent items."""
         capacity = int(max(1, capacity))
         if capacity == self._capacity:
             return
@@ -86,13 +99,12 @@ class ReplayBuffer:
         new_entries: list[_Entry | None] = [None] * capacity
         new_values = np.zeros((capacity,), dtype=np.int8)
 
-        for idx, pos in enumerate(positions):
-            new_states[idx] = self._states[pos]
+        for i, pos in enumerate(positions):
+            new_states[i] = self._states[pos]
             entry = self._entries[pos]
-            if entry is None:
-                continue
-            new_entries[idx] = _Entry(entry.indices.copy(), entry.counts.copy(), np.int8(entry.value))
-            new_values[idx] = np.int8(entry.value)
+            if entry is not None:
+                new_entries[i] = _Entry(entry.indices.copy(), entry.counts.copy(), np.int8(entry.value))
+                new_values[i] = np.int8(entry.value)
 
         self._capacity = capacity
         self._states = new_states
@@ -101,12 +113,18 @@ class ReplayBuffer:
         self._size = keep
         self._head = keep % capacity
 
+    # ---------- sampling
+
     def sample(
         self,
         batch_size: int,
         recent_ratio: float,
         recent_window_frac: float,
     ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray], list[np.int8]]:
+        """Return lists of states, indices, counts, values.
+
+        Sampler mixes recent and older items. Duplicates allowed (sampling with replacement).
+        """
         if self._size == 0:
             return ([], [], [], [])
 
@@ -115,8 +133,7 @@ class ReplayBuffer:
             return ([], [], [], [])
 
         ordered = self._ordered_positions()
-        recent_window = max(1, int(round(self._size * float(recent_window_frac))))
-        recent_window = min(recent_window, self._size)
+        recent_window = min(max(1, int(round(self._size * float(recent_window_frac)))), self._size)
 
         recent_candidates = ordered[-recent_window:]
         old_candidates = ordered[:-recent_window] or recent_candidates
@@ -126,11 +143,10 @@ class ReplayBuffer:
         old_samples = batch_size - recent_samples
 
         picks: list[int] = []
-        if recent_samples > 0 and recent_candidates:
-            picks.extend(self._rng.choice(recent_candidates, size=recent_samples, replace=True).tolist())
+        if recent_samples > 0:
+            picks += self._rng.choice(recent_candidates, size=recent_samples, replace=True).tolist()
         if old_samples > 0:
-            picks.extend(self._rng.choice(old_candidates, size=old_samples, replace=True).tolist())
-
+            picks += self._rng.choice(old_candidates, size=old_samples, replace=True).tolist()
         self._rng.shuffle(picks)
 
         states: list[np.ndarray] = []
@@ -148,6 +164,8 @@ class ReplayBuffer:
             values.append(np.int8(entry.value))
 
         return states, idx_list, cnt_list, values
+
+    # ---------- internals
 
     def _ordered_positions(self) -> list[int]:
         if self._size == 0:

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -13,20 +12,34 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Sequence, Tuple
+from typing import Callable, Sequence
 
-ROOT = Path(__file__).resolve().parents[1]
-PYTHON_DIR = ROOT / "python"
-PYTHON_RELEASE_DIR = PYTHON_DIR / "Release"
+# --------------------------------------------------------------------------- sys.path
+REPO_ROOT = Path(__file__).resolve().parents[1]
+_CANDIDATE_EXT_DIRS = [
+    REPO_ROOT / "build" / "python" / "Release",
+    REPO_ROOT / "build" / "python" / "Debug",
+    REPO_ROOT / "build" / "python",
+    REPO_ROOT / "src" / "python",
+]
+for p in _CANDIDATE_EXT_DIRS:
+    if p.exists():
+        s = str(p)
+        if s not in sys.path:
+            sys.path.insert(0, s)
 
-for candidate in (PYTHON_RELEASE_DIR, PYTHON_DIR):
-    candidate_str = str(candidate)
-    if candidate_str not in sys.path:
-        sys.path.insert(0, candidate_str)
+import chess as pychess  # noqa: E402
+import chess.pgn  # noqa: E402
+try:
+    import chesscore as ccore  # type: ignore  # noqa: E402
+except ImportError as exc:  # pragma: no cover
+    tried = ", ".join(str(p) for p in _CANDIDATE_EXT_DIRS)
+    raise SystemExit(
+        "Failed to import chesscore. Build the extension with CMake and ensure one of these is on PYTHONPATH: "
+        f"{tried}"
+    ) from exc
 
-import chess as pychess
-import chesscore as ccore
-
+# --------------------------------------------------------------------------- defaults
 
 DEFAULT_POSITIONS = [200]
 DEFAULT_MAX_PLIES = [80]
@@ -47,7 +60,7 @@ class MCTSScenario:
     seed: int
     description: str = "Random playout positions"
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "name": self.name,
             "positions": self.positions,
@@ -60,57 +73,23 @@ class MCTSScenario:
         }
 
 
-TEMPLATE_SCENARIOS: Dict[str, List[Dict[str, object]]] = {
+TEMPLATE_SCENARIOS: dict[str, list[dict[str, object]]] = {
     "baseline": [
-        {
-            "name": "mcts_small",
-            "positions": 200,
-            "max_random_plies": 80,
-            "simulations": 256,
-            "max_batch": 32,
-            "repetitions": 3,
-            "seed": 9001,
-            "description": "Random playout positions (small)",
-        },
-        {
-            "name": "mcts_medium",
-            "positions": 400,
-            "max_random_plies": 120,
-            "simulations": 384,
-            "max_batch": 48,
-            "repetitions": 3,
-            "seed": 42,
-            "description": "Random playout positions (medium)",
-        },
-        {
-            "name": "mcts_deep",
-            "positions": 600,
-            "max_random_plies": 200,
-            "simulations": 512,
-            "max_batch": 64,
-            "repetitions": 3,
-            "seed": 1337,
-            "description": "Random playout positions (deep)",
-        },
+        {"name": "mcts_small", "positions": 200, "max_random_plies": 80, "simulations": 256, "max_batch": 32, "repetitions": 3, "seed": 9001, "description": "Random playout positions (small)"},
+        {"name": "mcts_medium", "positions": 400, "max_random_plies": 120, "simulations": 384, "max_batch": 48, "repetitions": 3, "seed": 42, "description": "Random playout positions (medium)"},
+        {"name": "mcts_deep", "positions": 600, "max_random_plies": 200, "simulations": 512, "max_batch": 64, "repetitions": 3, "seed": 1337, "description": "Random playout positions (deep)"},
     ],
     "quick": [
-        {
-            "name": "mcts_quick",
-            "positions": 100,
-            "max_random_plies": 60,
-            "simulations": 128,
-            "max_batch": 16,
-            "repetitions": 2,
-            "seed": 2025,
-            "description": "Quick diagnostic",
-        }
+        {"name": "mcts_quick", "positions": 100, "max_random_plies": 60, "simulations": 128, "max_batch": 16, "repetitions": 2, "seed": 2025, "description": "Quick diagnostic"}
     ],
 }
 
+# --------------------------------------------------------------------------- generators
 
-def generate_random_fens(count: int, max_random_plies: int, seed: int) -> List[str]:
+
+def generate_random_fens(count: int, max_random_plies: int, seed: int) -> list[str]:
     rng = random.Random(seed)
-    fens: List[str] = []
+    fens: list[str] = []
     for _ in range(count):
         board = pychess.Board()
         plies = rng.randint(0, max_random_plies)
@@ -125,39 +104,50 @@ def generate_random_fens(count: int, max_random_plies: int, seed: int) -> List[s
     return fens
 
 
-def uniform_evaluator_single(position: ccore.Position) -> Tuple[List[float], float]:
+def uniform_evaluator_single(position: ccore.Position) -> tuple[list[float], float]:
     moves = position.legal_moves()
-    count = len(moves)
-    if count == 0:
+    n = len(moves)
+    if n == 0:
         return [], 0.0
-    prior = 1.0 / count
-    return [prior] * count, 0.0
+    p = 1.0 / n
+    return [p] * n, 0.0
 
 
-def uniform_evaluator_batched(positions: Sequence[ccore.Position], moves_lists: Sequence[Sequence[ccore.Move]]) -> Tuple[List[List[float]], List[float]]:
-    policies: List[List[float]] = []
-    values: List[float] = []
+def uniform_evaluator_batched(
+    positions: Sequence[ccore.Position], moves_lists: Sequence[Sequence[ccore.Move]]
+) -> tuple[list[list[float]], list[float]]:
+    policies: list[list[float]] = []
+    values: list[float] = []
     for moves in moves_lists:
-        count = len(moves)
-        if count == 0:
-            policies.append([])
-        else:
-            prior = 1.0 / count
-            policies.append([prior] * count)
+        n = len(moves)
+        policies.append([] if n == 0 else [1.0 / n] * n)
         values.append(0.0)
     return policies, values
+
+
+@dataclass
+class PythonNode:
+    move_ids: list[int]
+    moves: list[ccore.Move]
+    moves_by_id: dict[int, ccore.Move]
+    priors: dict[int, float]
+    visits: dict[int, int]
+    values: dict[int, float]
+    total_visits: int = 0
 
 
 class PythonMCTS:
     def __init__(self, simulations: int = 256, c_puct: float = 1.5) -> None:
         self.simulations = simulations
         self.c_puct = c_puct
-        self.nodes: Dict[int, "PythonNode"] = {}
+        self.nodes: dict[int, PythonNode] = {}
 
     def reset(self) -> None:
         self.nodes.clear()
 
-    def search_batched_legal(self, position: ccore.Position, evaluator: Callable[[ccore.Position], Tuple[List[float], float]], max_batch: int) -> List[int]:
+    def search_batched_legal(
+        self, position: ccore.Position, evaluator: Callable[[ccore.Position], tuple[list[float], float]], max_batch: int
+    ) -> list[int]:
         root_copy = ccore.Position(position)
         root_turn = root_copy.turn
         for _ in range(self.simulations):
@@ -165,11 +155,13 @@ class PythonMCTS:
         root_node = self.nodes.get(root_copy.hash)
         if not root_node:
             return []
-        return [root_node.visits[move_id] for move_id in root_node.move_ids]
+        return [root_node.visits[mid] for mid in root_node.move_ids]
 
-    def _simulate(self, root_position: ccore.Position, root_turn: int, evaluator: Callable[[ccore.Position], Tuple[List[float], float]]) -> None:
+    def _simulate(
+        self, root_position: ccore.Position, root_turn: int, evaluator: Callable[[ccore.Position], tuple[list[float], float]]
+    ) -> None:
         position = ccore.Position(root_position)
-        nodes_path: List[Tuple["PythonNode", int]] = []
+        nodes_path: list[tuple[PythonNode, int]] = []
         current_turn = root_turn
         while True:
             node, leaf_value, created = self._get_or_create_node(position, evaluator)
@@ -190,56 +182,54 @@ class PythonMCTS:
                 break
         self._backpropagate(nodes_path, value)
 
-    def _get_or_create_node(self, position: ccore.Position, evaluator: Callable[[ccore.Position], Tuple[List[float], float]]) -> Tuple["PythonNode", float, bool]:
+    def _get_or_create_node(
+        self, position: ccore.Position, evaluator: Callable[[ccore.Position], tuple[list[float], float]]
+    ) -> tuple[PythonNode, float, bool]:
         key = position.hash
         node = self.nodes.get(key)
         if node is not None:
             return node, 0.0, False
         moves = position.legal_moves()
         priors, value = evaluator(position)
-        move_ids = [move.to_square * 64 + move.from_square for move in moves]
-        visits = {move_id: 0 for move_id in move_ids}
-        values = {move_id: 0.0 for move_id in move_ids}
-        priors_map = {move_id: priors[idx] if idx < len(priors) else 0.0 for idx, move_id in enumerate(move_ids)}
-        node = PythonNode(move_ids=move_ids, moves=[m for m in moves], moves_by_id={mid: m for mid, m in zip(move_ids, moves)},
-                          priors=priors_map, visits=visits, values=values, total_visits=0)
+        move_ids = [m.to_square * 64 + m.from_square for m in moves]
+        visits = {mid: 0 for mid in move_ids}
+        values = {mid: 0.0 for mid in move_ids}
+        priors_map = {mid: (priors[i] if i < len(priors) else 0.0) for i, mid in enumerate(move_ids)}
+        node = PythonNode(
+            move_ids=move_ids,
+            moves=list(moves),
+            moves_by_id={mid: m for mid, m in zip(move_ids, moves, strict=False)},
+            priors=priors_map,
+            visits=visits,
+            values=values,
+            total_visits=0,
+        )
         self.nodes[key] = node
         return node, value, True
 
-    def _select_move(self, node: "PythonNode") -> int:
+    def _select_move(self, node: PythonNode) -> int:
         best_score = -float("inf")
         best_move = node.move_ids[0]
         total = max(node.total_visits, 1)
         sqrt_total = math.sqrt(total)
-        for move_id in node.move_ids:
-            n = node.visits[move_id]
-            w = node.values[move_id]
+        for mid in node.move_ids:
+            n = node.visits[mid]
+            w = node.values[mid]
             q = w / n if n > 0 else 0.0
-            p = node.priors.get(move_id, 0.0)
+            p = node.priors.get(mid, 0.0)
             u = self.c_puct * p * sqrt_total / (1 + n)
-            score = q + u
-            if score > best_score:
-                best_score = score
-                best_move = move_id
+            sc = q + u
+            if sc > best_score:
+                best_score = sc
+                best_move = mid
         return best_move
 
-    def _backpropagate(self, path: List[Tuple["PythonNode", int]], value: float) -> None:
-        for node, move_id in reversed(path):
-            node.visits[move_id] += 1
-            node.values[move_id] += value
+    def _backpropagate(self, path: list[tuple[PythonNode, int]], value: float) -> None:
+        for node, mid in reversed(path):
+            node.visits[mid] += 1
+            node.values[mid] += value
             node.total_visits += 1
             value = -value
-
-
-@dataclass
-class PythonNode:
-    move_ids: List[int]
-    moves: List[ccore.Move]
-    moves_by_id: Dict[int, ccore.Move]
-    priors: Dict[int, float]
-    visits: Dict[int, int]
-    values: Dict[int, float]
-    total_visits: int = 0
 
 
 def terminal_value(result: ccore.Result, root_turn: int) -> float:
@@ -280,7 +270,6 @@ def _move_key(move: ccore.Move) -> str:
     try:
         return ccore.uci_of_move(move)
     except AttributeError:
-        # Fallback to encoded identifier if UCI helper is not available
         return f"{move.to_square}_{move.from_square}_{move.promotion}"
 
 
@@ -298,12 +287,9 @@ def _collect_visit_distribution_cpp(
         return {}, {}
     total = float(sum(counts))
     if total <= 0.0:
-        return {}, {_move_key(move): int(count) for move, count in zip(moves, counts, strict=False)}
-    dist = {
-        _move_key(move): count / total
-        for move, count in zip(moves, counts, strict=False)
-    }
-    raw = {_move_key(move): int(count) for move, count in zip(moves, counts, strict=False)}
+        return {}, {_move_key(m): int(c) for m, c in zip(moves, counts, strict=False)}
+    dist = {_move_key(m): c / total for m, c in zip(moves, counts, strict=False)}
+    raw = {_move_key(m): int(c) for m, c in zip(moves, counts, strict=False)}
     return dist, raw
 
 
@@ -321,12 +307,9 @@ def _collect_visit_distribution_python(
         return {}, {}
     total = float(sum(counts))
     if total <= 0.0:
-        return {}, {_move_key(move): int(count) for move, count in zip(moves, counts, strict=False)}
-    dist = {
-        _move_key(move): count / total
-        for move, count in zip(moves, counts, strict=False)
-    }
-    raw = {_move_key(move): int(count) for move, count in zip(moves, counts, strict=False)}
+        return {}, {_move_key(m): int(c) for m, c in zip(moves, counts, strict=False)}
+    dist = {_move_key(m): c / total for m, c in zip(moves, counts, strict=False)}
+    raw = {_move_key(m): int(c) for m, c in zip(moves, counts, strict=False)}
     return dist, raw
 
 
@@ -336,26 +319,15 @@ def _top_move(distribution: dict[str, float]) -> str | None:
     return max(distribution.items(), key=lambda item: item[1])[0]
 
 
-def compute_alignment_metrics(
-    fens: Sequence[str], scenario: MCTSScenario, sample_size: int = 64
-) -> dict[str, object]:
+def compute_alignment_metrics(fens: Sequence[str], scenario: MCTSScenario, sample_size: int = 64) -> dict[str, object]:
     if not fens:
-        return {
-            "positions_checked": 0,
-            "mean_l1": 0.0,
-            "max_l1": 0.0,
-            "top_match_pct": 100.0,
-            "examples": [],
-        }
-
+        return {"positions_checked": 0, "mean_l1": 0.0, "max_l1": 0.0, "top_match_pct": 100.0, "examples": []}
     cpp_engine = ccore.MCTS(scenario.simulations)
     py_engine = PythonMCTS(simulations=scenario.simulations)
-
-    l1_distances: List[float] = []
+    l1_distances: list[float] = []
     top_matches = 0
     evaluated = 0
-    examples: List[dict[str, object]] = []
-
+    examples: list[dict[str, object]] = []
     limit = min(sample_size, len(fens))
     for fen in fens[:limit]:
         cpp_dist, _ = _collect_visit_distribution_cpp(cpp_engine, fen, scenario)
@@ -363,46 +335,23 @@ def compute_alignment_metrics(
         if not cpp_dist or not py_dist:
             continue
         all_moves = set(cpp_dist) | set(py_dist)
-        l1 = sum(abs(cpp_dist.get(move, 0.0) - py_dist.get(move, 0.0)) for move in all_moves)
+        l1 = sum(abs(cpp_dist.get(m, 0.0) - py_dist.get(m, 0.0)) for m in all_moves)
         l1_distances.append(l1)
         evaluated += 1
-        top_cpp = _top_move(cpp_dist)
-        top_py = _top_move(py_dist)
-        if top_cpp == top_py:
+        if _top_move(cpp_dist) == _top_move(py_dist):
             top_matches += 1
-        if len(examples) < 5 and (top_cpp != top_py or l1 > 0.2):
-            examples.append(
-                {
-                    "fen": fen,
-                    "l1_distance": l1,
-                    "top_cpp": top_cpp,
-                    "top_python": top_py,
-                }
-            )
-
+        if len(examples) < 5 and (l1 > 0.2 or _top_move(cpp_dist) != _top_move(py_dist)):
+            examples.append({"fen": fen, "l1_distance": l1, "top_cpp": _top_move(cpp_dist), "top_python": _top_move(py_dist)})
     if evaluated == 0:
-        return {
-            "positions_checked": 0,
-            "mean_l1": 0.0,
-            "max_l1": 0.0,
-            "top_match_pct": 100.0,
-            "examples": [],
-        }
-
+        return {"positions_checked": 0, "mean_l1": 0.0, "max_l1": 0.0, "top_match_pct": 100.0, "examples": []}
     mean_l1 = float(statistics.fmean(l1_distances))
     max_l1 = float(max(l1_distances))
     top_match_pct = 100.0 * top_matches / evaluated
-    return {
-        "positions_checked": evaluated,
-        "mean_l1": mean_l1,
-        "max_l1": max_l1,
-        "top_match_pct": top_match_pct,
-        "examples": examples,
-    }
+    return {"positions_checked": evaluated, "mean_l1": mean_l1, "max_l1": max_l1, "top_match_pct": top_match_pct, "examples": examples}
 
 
-def build_markdown_report(reports: List[Dict[str, object]]) -> str:
-    lines: List[str] = []
+def build_markdown_report(reports: list[dict[str, object]]) -> str:
+    lines: list[str] = []
     for report in reports:
         scenario = report["scenario"]
         stats = report["stats"]
@@ -428,7 +377,8 @@ def build_markdown_report(reports: List[Dict[str, object]]) -> str:
         py = stats["python"]
         lines.append(f"- C++ MCTS time: {cpp['time_seconds']:.4f} s")
         lines.append(f"- Python MCTS time: {py['time_seconds']:.4f} s")
-        lines.append(f"- Speedup (cpp/python): {py['time_seconds'] / cpp['time_seconds']:.2f}x")
+        if cpp["time_seconds"] > 0:
+            lines.append(f"- Speedup (cpp/python): {py['time_seconds'] / cpp['time_seconds']:.2f}x")
         lines.append(f"- Positions per second (C++): {cpp['positions_per_second']:.0f}")
         lines.append(f"- Positions per second (Python): {py['positions_per_second']:.0f}")
         lines.append("")
@@ -450,36 +400,29 @@ def build_markdown_report(reports: List[Dict[str, object]]) -> str:
             lines.append("")
     return "\n".join(lines)
 
+# --------------------------------------------------------------------------- cli
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--positions", type=int, nargs="*", default=None,
-                        help="Number of random FENs per scenario")
-    parser.add_argument("--max-random-plies", type=int, nargs="*", default=None,
-                        help="Upper bound on random plies per scenario")
-    parser.add_argument("--simulations", type=int, nargs="*", default=None,
-                        help="Simulation count per scenario")
-    parser.add_argument("--max-batch", type=int, nargs="*", default=None,
-                        help="Max batch size for C++ MCTS")
-    parser.add_argument("--repetitions", type=int, nargs="*", default=None,
-                        help="Timing repetitions per scenario")
-    parser.add_argument("--seeds", type=int, nargs="*", default=None,
-                        help="Seeds for random position generation")
-    parser.add_argument("--scenario-name", type=str, default="mcts",
-                        help="Base name for ad-hoc scenarios")
-    parser.add_argument("--template", choices=sorted(TEMPLATE_SCENARIOS.keys()),
-                        help="Use a preset scenario suite")
-    parser.add_argument("--output-json", type=Path,
-                        default=Path("benchmark_reports") / "mcts" / "mcts_summary.json",
-                        help="Path for JSON report")
-    parser.add_argument("--output-markdown", type=Path,
-                        default=Path("benchmark_reports") / "mcts" / "mcts_summary.md",
-                        help="Path for Markdown report")
-    parser.add_argument("--output-csv", type=Path,
-                        default=Path("benchmark_reports") / "mcts" / "mcts_summary.csv",
-                        help="Path for CSV timing summary")
-    parser.add_argument("--alignment-sample", type=int, default=64,
-                        help="Number of positions to sample when comparing visit distributions")
+    parser.add_argument("--positions", type=int, nargs="*", default=None, help="Number of random FENs per scenario")
+    parser.add_argument("--max-random-plies", type=int, nargs="*", default=None, help="Upper bound on random plies")
+    parser.add_argument("--simulations", type=int, nargs="*", default=None, help="Simulation count per scenario")
+    parser.add_argument("--max-batch", type=int, nargs="*", default=None, help="Max batch size for C++ MCTS")
+    parser.add_argument("--repetitions", type=int, nargs="*", default=None, help="Timing repetitions per scenario")
+    parser.add_argument("--seeds", type=int, nargs="*", default=None, help="Seeds for random position generation")
+    parser.add_argument("--scenario-name", type=str, default="mcts", help="Base name for ad-hoc scenarios")
+    parser.add_argument("--template", choices=sorted(TEMPLATE_SCENARIOS.keys()), help="Use a preset scenario suite")
+    parser.add_argument(
+        "--output-json", type=Path, default=Path("benchmark_reports") / "mcts" / "mcts_summary.json", help="Path for JSON report"
+    )
+    parser.add_argument(
+        "--output-markdown", type=Path, default=Path("benchmark_reports") / "mcts" / "mcts_summary.md", help="Path for Markdown report"
+    )
+    parser.add_argument(
+        "--output-csv", type=Path, default=Path("benchmark_reports") / "mcts" / "mcts_summary.csv", help="Path for CSV timing summary"
+    )
+    parser.add_argument("--alignment-sample", type=int, default=64, help="Positions sampled for visit distribution alignment")
     args = parser.parse_args()
 
     positions_list = list(args.positions) if args.positions else DEFAULT_POSITIONS
@@ -490,52 +433,54 @@ def main() -> None:
     seeds_list = list(args.seeds) if args.seeds else DEFAULT_SEEDS
 
     if args.template:
-        if args.positions or args.max_random_plies or args.simulations or args.max_batch or args.repetitions or args.seeds:
+        if any([args.positions, args.max_random_plies, args.simulations, args.max_batch, args.repetitions, args.seeds]):
             raise SystemExit("When --template is used, omit manual scenario arguments.")
         raw = TEMPLATE_SCENARIOS[args.template]
     else:
         if not positions_list:
             raise SystemExit("Provide at least one --positions value or use --template.")
-        length = max(len(positions_list), len(maxplies_list), len(simulations_list), len(max_batch_list), len(repetitions_list), len(seeds_list))
+        length = max(
+            len(positions_list),
+            len(maxplies_list),
+            len(simulations_list),
+            len(max_batch_list),
+            len(repetitions_list),
+            len(seeds_list),
+        )
         raw = []
         for idx in range(length):
-            raw.append({
-                "name": f"{args.scenario_name}_{idx}" if length > 1 else args.scenario_name,
-                "positions": positions_list[idx % len(positions_list)],
-                "max_random_plies": maxplies_list[idx % len(maxplies_list)],
-                "simulations": simulations_list[idx % len(simulations_list)],
-                "max_batch": max_batch_list[idx % len(max_batch_list)],
-                "repetitions": repetitions_list[idx % len(repetitions_list)],
-                "seed": seeds_list[idx % len(seeds_list)],
-                "description": "Random playout positions",
-            })
+            raw.append(
+                {
+                    "name": f"{args.scenario_name}_{idx}" if length > 1 else args.scenario_name,
+                    "positions": positions_list[idx % len(positions_list)],
+                    "max_random_plies": maxplies_list[idx % len(maxplies_list)],
+                    "simulations": simulations_list[idx % len(simulations_list)],
+                    "max_batch": max_batch_list[idx % len(max_batch_list)],
+                    "repetitions": repetitions_list[idx % len(repetitions_list)],
+                    "seed": seeds_list[idx % len(seeds_list)],
+                    "description": "Random playout positions",
+                }
+            )
 
     scenarios = [MCTSScenario(**cfg) for cfg in raw]
-
-    for scenario in scenarios:
-        if scenario.positions <= 0 or scenario.max_random_plies < 0 or scenario.simulations <= 0 or scenario.repetitions <= 0 or scenario.max_batch <= 0:
+    for s in scenarios:
+        if s.positions <= 0 or s.max_random_plies < 0 or s.simulations <= 0 or s.repetitions <= 0 or s.max_batch <= 0:
             raise SystemExit("Scenario parameters must be positive (plies can be zero or greater).")
 
-    reports: List[Dict[str, object]] = []
-    csv_rows: List[Dict[str, object]] = []
+    reports: list[dict[str, object]] = []
+    csv_rows: list[dict[str, object]] = []
     for scenario in scenarios:
         fens = generate_random_fens(scenario.positions, scenario.max_random_plies, scenario.seed)
-        cpp_times: List[float] = []
-        python_times: List[float] = []
+        cpp_times: list[float] = []
+        python_times: list[float] = []
         for _ in range(scenario.repetitions):
             cpp_times.append(benchmark_cpp_mcts(fens, scenario))
             python_times.append(benchmark_python_mcts(fens, scenario))
         cpp_time = statistics.fmean(cpp_times)
         python_time = statistics.fmean(python_times)
         stats = {
-            "cpp": {
-                "time_seconds": cpp_time,
-                "positions_per_second": scenario.positions / cpp_time if cpp_time > 0 else float("inf"),
-            },
-            "python": {
-                "time_seconds": python_time,
-                "positions_per_second": scenario.positions / python_time if python_time > 0 else float("inf"),
-            },
+            "cpp": {"time_seconds": cpp_time, "positions_per_second": scenario.positions / cpp_time if cpp_time > 0 else float("inf")},
+            "python": {"time_seconds": python_time, "positions_per_second": scenario.positions / python_time if python_time > 0 else float("inf")},
         }
         alignment = compute_alignment_metrics(fens, scenario, sample_size=args.alignment_sample)
         reports.append(
@@ -560,7 +505,7 @@ def main() -> None:
                 "python_time_s": python_time,
                 "cpp_positions_per_s": stats["cpp"]["positions_per_second"],
                 "python_positions_per_s": stats["python"]["positions_per_second"],
-                "speedup_cpp_over_python": python_time / cpp_time if cpp_time > 0 else float("inf"),
+                "speedup_cpp_over_python": (python_time / cpp_time) if cpp_time > 0 else float("inf"),
                 "alignment_mean_l1": alignment.get("mean_l1", 0.0),
                 "alignment_top_match_pct": alignment.get("top_match_pct", 0.0),
             }
@@ -569,6 +514,7 @@ def main() -> None:
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(reports, indent=2))
     if args.output_markdown:
+        args.output_markdown.parent.mkdir(parents=True, exist_ok=True)
         args.output_markdown.write_text(build_markdown_report(reports))
     if args.output_csv and csv_rows:
         args.output_csv.parent.mkdir(parents=True, exist_ok=True)

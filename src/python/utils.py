@@ -1,5 +1,4 @@
-"""Utility helpers for logging, formatting, and FEN manipulation."""
-
+"""Utility helpers for logging, formatting, metrics, and FEN manipulation."""
 from __future__ import annotations
 
 import contextlib
@@ -73,8 +72,8 @@ def prepare_model(
         model = model.to(dtype=dtype)
     model = model.eval() if eval_mode else model.train()
     if freeze:
-        for param in model.parameters():
-            param.requires_grad_(False)
+        for p in model.parameters():
+            p.requires_grad_(False)
     return model
 
 
@@ -109,54 +108,55 @@ def _swap_castling_rights(rights: str) -> str:
 
 def sanitize_fen(fen: str) -> str:
     parts = fen.strip().split()
-    if len(parts) < 6:
-        defaults = ["w", "-", "-", "0", "1"]
-        parts += defaults[len(parts) - 1 :]
-    tail: list[str]
-    if len(parts) > 6:
-        head = parts[:6]
-        tail = parts[6:]
-    else:
-        head = parts
-        tail = []
-    if len(head) < 6:
-        head += ["-"] * (6 - len(head))
-        head[1] = "w"
-        head[4] = "0"
-        head[5] = "1"
-    sanitized = " ".join(head)
-    if tail:
-        sanitized = " ".join([sanitized, *tail])
-    return sanitized
+    board = parts[0] if len(parts) > 0 else "8/8/8/8/8/8/8/8"
+    side = parts[1] if len(parts) > 1 else "w"
+    castling = parts[2] if len(parts) > 2 else "-"
+    ep = parts[3] if len(parts) > 3 else "-"
+    halfmove = parts[4] if len(parts) > 4 else "0"
+    fullmove = parts[5] if len(parts) > 5 else "1"
+    return " ".join([board, side, castling, ep, halfmove, fullmove] + parts[6:])
+
+
+def _revrow(row: str) -> str:
+    # expand digits to cells
+    cells: list[str] = []
+    for ch in row:
+        if ch.isdigit():
+            cells.extend(["1"] * int(ch))
+        else:
+            cells.append(ch)
+    # reverse and swap case of pieces
+    cells = [c.swapcase() if c.isalpha() else c for c in cells[::-1]]
+    # recompress digits
+    out: list[str] = []
+    run = 0
+    for c in cells:
+        if c == "1":
+            run += 1
+        else:
+            if run:
+                out.append(str(run))
+                run = 0
+            out.append(c)
+    if run:
+        out.append(str(run))
+    return "".join(out)
 
 
 def flip_fen_perspective(fen: str) -> str:
     board, side, castling, ep, halfmove, fullmove, *rest = sanitize_fen(fen).split()
     rows = board.split("/")
-    flipped_rows: list[str] = []
-    for row in reversed(rows):
-        new_row_chars: list[str] = []
-        for ch in row:
-            if ch.isdigit():
-                new_row_chars.append(ch)
-            elif ch.isalpha():
-                new_row_chars.append(ch.swapcase())
-            else:
-                new_row_chars.append(ch)
-        flipped_rows.append("".join(new_row_chars))
-    flipped_board = "/".join(flipped_rows)
+    flipped_board = "/".join(_revrow(r) for r in rows[::-1])
     flipped_side = "b" if side.lower() == "w" else "w"
     flipped_castling = _swap_castling_rights(castling)
     flipped_ep = _flip_square(ep)
-    flipped_fullmove = fullmove
-    flipped_halfmove = halfmove
     components: list[str] = [
         flipped_board,
         flipped_side,
         flipped_castling,
         flipped_ep,
-        flipped_halfmove,
-        flipped_fullmove,
+        halfmove,
+        fullmove,
     ]
     if rest:
         components.extend(rest)
@@ -182,16 +182,15 @@ def _json_safe(value: object) -> object:
     if isinstance(value, np.ndarray):
         return value.tolist()
     if isinstance(value, Mapping):
-        return {str(key): _json_safe(val) for key, val in value.items()}
+        return {str(k): _json_safe(v) for k, v in value.items()}
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        return [_json_safe(item) for item in value]
+        return [_json_safe(x) for x in value]
     return str(value)
 
 
 @dataclass(slots=True)
 class MetricsReporter:
-    """Append-only reporter writing both CSV and JSONL metrics."""
-
+    """Append-only reporter writing CSV and optional JSONL."""
     csv_path: str
     jsonl_path: str | None = None
 
@@ -200,23 +199,19 @@ class MetricsReporter:
         self._append_jsonl(row)
 
     def append_json(self, row: Mapping[str, object]) -> None:
-        """Record an event solely in the JSONL stream (no CSV impact)."""
         self._append_jsonl(row)
 
     def _append_csv(self, row: Mapping[str, object], field_order: Sequence[str] | None) -> None:
         if not self.csv_path:
             return
-
         try:
             directory = os.path.dirname(self.csv_path)
             if directory:
                 os.makedirs(directory, exist_ok=True)
-
             fieldnames = list(field_order) if field_order is not None else list(row.keys())
             write_header = not os.path.isfile(self.csv_path)
-
-            with open(self.csv_path, "a", newline="", encoding="utf-8") as handle:
-                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            with open(self.csv_path, "a", newline="", encoding="utf-8") as h:
+                writer = csv.DictWriter(h, fieldnames=fieldnames)
                 if write_header:
                     writer.writeheader()
                 writer.writerow(row)
@@ -230,34 +225,34 @@ class MetricsReporter:
             directory = os.path.dirname(self.jsonl_path)
             if directory:
                 os.makedirs(directory, exist_ok=True)
-            safe_row = {str(key): _json_safe(value) for key, value in row.items()}
-            with open(self.jsonl_path, "a", encoding="utf-8") as handle:
-                json.dump(safe_row, handle, separators=(",", ":"))
-                handle.write("\n")
+            safe_row = {str(k): _json_safe(v) for k, v in row.items()}
+            with open(self.jsonl_path, "a", encoding="utf-8") as h:
+                json.dump(safe_row, h, separators=(",", ":"))
+                h.write("\n")
         except Exception as exc:
             raise RuntimeError("Failed to append metrics JSONL row") from exc
 
 
 def format_time(seconds: float) -> str:
-    value = float(seconds)
-    if value < 60:
-        return f"{value:.1f}s"
-    if value < 3600:
-        return f"{value / 60:.1f}m"
-    return f"{value / 3600:.1f}h"
+    v = float(seconds)
+    if v < 60:
+        return f"{v:.1f}s"
+    if v < 3600:
+        return f"{v / 60:.1f}m"
+    return f"{v / 3600:.1f}h"
 
 
 def startup_summary(trainer: Any) -> str:
     has_cuda = bool(trainer.device.type == "cuda" and torch.cuda.is_available())
     amp_enabled = bool(getattr(trainer, "_amp_enabled", C.TORCH.amp_enabled))
     autocast_mode = "fp16" if amp_enabled else "off"
-    total_params_m = sum(p.numel() for p in trainer.model.parameters()) / 1e6
+    params_m = sum(p.numel() for p in trainer.model.parameters()) / 1e6
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     device_name = getattr(trainer, "device_name", str(trainer.device))
     lines = [
         f"[{timestamp}] Hybrid Chess AI training",
         f"device={device_name} ({trainer.device}) cuda={'yes' if has_cuda else 'no'} autocast={autocast_mode} "
-        f"params={total_params_m:.2f}M replay={C.REPLAY.capacity:,}",
+        f"params={params_m:.2f}M replay={C.REPLAY.capacity:,}",
         " ".join(
             [
                 f"train iters={C.TRAIN.total_iterations}",

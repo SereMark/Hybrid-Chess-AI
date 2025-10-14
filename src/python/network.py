@@ -1,5 +1,4 @@
-"""Neural network architecture definition for Hybrid Chess AI."""
-
+"""Neural network for Hybrid Chess AI."""
 from __future__ import annotations
 
 import chesscore as ccore
@@ -13,18 +12,11 @@ NSQUARES: int = 64
 INPUT_PLANES: int = int(getattr(ccore, "INPUT_PLANES", 14 * 8 + 7))
 POLICY_OUTPUT: int = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
 
-__all__ = [
-    "BOARD_SIZE",
-    "NSQUARES",
-    "INPUT_PLANES",
-    "POLICY_OUTPUT",
-    "ResidualBlock",
-    "ChessNet",
-]
+__all__ = ["BOARD_SIZE", "NSQUARES", "INPUT_PLANES", "POLICY_OUTPUT", "ResidualBlock", "ChessNet"]
 
 
 class ResidualBlock(nn.Module):
-    """Two-layer residual block with BatchNorm and ReLU activations."""
+    """2×Conv3x3 + BN + ReLU with skip."""
 
     def __init__(self, channels: int) -> None:
         super().__init__()
@@ -33,34 +25,38 @@ class ResidualBlock(nn.Module):
         self.conv2 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(channels)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        skip = x
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # NCHW
+        s = x
         x = F.relu(self.bn1(self.conv1(x)))
         x = self.bn2(self.conv2(x))
-        return F.relu(x + skip)
+        return F.relu(x + s)
 
 
 class ChessNet(nn.Module):
-    """ResNet-style policy and value network for chess."""
+    """ResNet-style policy+value head."""
 
     def __init__(self, num_blocks: int | None = None, channels: int | None = None) -> None:
         super().__init__()
-        num_blocks = int(num_blocks if num_blocks is not None else C.MODEL.blocks)
-        channels = int(channels if channels is not None else C.MODEL.channels)
-        policy_planes = POLICY_OUTPUT // NSQUARES
+        b = int(C.MODEL.blocks if num_blocks is None else num_blocks)
+        c = int(C.MODEL.channels if channels is None else channels)
+        pplanes = POLICY_OUTPUT // NSQUARES
 
-        self.conv_in = nn.Conv2d(INPUT_PLANES, channels, 3, padding=1, bias=False)
-        self.bn_in = nn.BatchNorm2d(channels)
-        self.residual_stack = nn.Sequential(*[ResidualBlock(channels) for _ in range(num_blocks)])
+        self.conv_in = nn.Conv2d(INPUT_PLANES, c, 3, padding=1, bias=False)
+        self.bn_in = nn.BatchNorm2d(c)
+        self.residual_stack = nn.Sequential(*[ResidualBlock(c) for _ in range(b)])
 
-        self.policy_conv = nn.Conv2d(channels, policy_planes, 1, bias=False)
-        self.policy_bn = nn.BatchNorm2d(policy_planes)
-        self.policy_fc = nn.Linear(policy_planes * NSQUARES, POLICY_OUTPUT)
+        # Policy head
+        self.policy_conv = nn.Conv2d(c, pplanes, 1, bias=False)
+        self.policy_bn = nn.BatchNorm2d(pplanes)
+        self.policy_fc = nn.Linear(pplanes * NSQUARES, POLICY_OUTPUT)
 
-        self.value_conv = nn.Conv2d(channels, C.MODEL.value_conv_channels, 1, bias=False)
-        self.value_bn = nn.BatchNorm2d(C.MODEL.value_conv_channels)
-        self.value_fc1 = nn.Linear(C.MODEL.value_conv_channels * NSQUARES, C.MODEL.value_hidden_dim)
-        self.value_fc2 = nn.Linear(C.MODEL.value_hidden_dim, 1)
+        # Value head
+        vch = int(C.MODEL.value_conv_channels)
+        vhid = int(C.MODEL.value_hidden_dim)
+        self.value_conv = nn.Conv2d(c, vch, 1, bias=False)
+        self.value_bn = nn.BatchNorm2d(vch)
+        self.value_fc1 = nn.Linear(vch * NSQUARES, vhid)
+        self.value_fc2 = nn.Linear(vhid, 1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -68,21 +64,19 @@ class ChessNet(nn.Module):
             elif isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
+                    nn.init.zeros_(m.bias)
             elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         x = F.relu(self.bn_in(self.conv_in(x)))
         x = self.residual_stack(x)
 
-        policy_logits = F.relu(self.policy_bn(self.policy_conv(x)))
-        policy_logits = policy_logits.flatten(1)
-        policy_logits = self.policy_fc(policy_logits)
+        p = F.relu(self.policy_bn(self.policy_conv(x))).flatten(1)
+        policy_logits = self.policy_fc(p)
 
-        value = F.relu(self.value_bn(self.value_conv(x)))
-        value = value.flatten(1)
-        value = F.relu(self.value_fc1(value))
-        value = torch.tanh(self.value_fc2(value)).squeeze(-1)
+        v = F.relu(self.value_bn(self.value_conv(x))).flatten(1)
+        v = F.relu(self.value_fc1(v))
+        value = torch.tanh(self.value_fc2(v)).squeeze(-1)
         return policy_logits, value

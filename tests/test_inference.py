@@ -5,15 +5,31 @@ import torch
 from inference import BatchedEvaluator
 
 
-def test_batched_evaluator_caches(ensure_chesscore) -> None:  # noqa: ARG001
-    evaluator = BatchedEvaluator(torch.device("cpu"))
+def test_batched_evaluator_caches_and_metrics(ensure_chesscore) -> None:
+    ev = BatchedEvaluator(torch.device("cpu"))
     try:
-        position = ensure_chesscore.Position()
-        moves = list(position.legal_moves())
-        pol_list, values = evaluator.infer_positions_legal([position], [moves])
-        assert len(pol_list) == 1
-        assert values.shape == (1,)
-        pol_list2, values2 = evaluator.infer_positions_legal([position], [moves])
-        np.testing.assert_almost_equal(values, values2)
+        pos = ensure_chesscore.Position()
+        moves = list(pos.legal_moves())
+        pol1, val1 = ev.infer_positions_legal([pos], [moves])
+        assert len(pol1) == 1 and val1.shape == (1,)
+        m1 = ev.get_metrics()
+        pol2, val2 = ev.infer_positions_legal([pos], [moves])
+        np.testing.assert_allclose(val1, val2)
+        m2 = ev.get_metrics()
+        assert m2["cache_hits_total"] >= m1["cache_hits_total"]
     finally:
-        evaluator.close()
+        ev.close()
+
+
+def test_batched_evaluator_refresh_clears_caches(ensure_chesscore) -> None:
+    ev = BatchedEvaluator(torch.device("cpu"))
+    try:
+        pos = ensure_chesscore.Position()
+        _ = ev.infer_values([pos])
+        before = ev.get_metrics()["cache_misses_total"]
+        ev.refresh_from(ev.eval_model)  # no-op weights, but clears caches
+        _ = ev.infer_values([pos])
+        after = ev.get_metrics()["cache_misses_total"]
+        assert after >= before + 1
+    finally:
+        ev.close()
