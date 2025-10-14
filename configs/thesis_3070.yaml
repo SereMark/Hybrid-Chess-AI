@@ -18,15 +18,15 @@ REPLAY:
 RESIGN:
   resign_enable: false
 MCTS:
-  train_simulations: 128
+  train_simulations: 100
   train_simulations_min: 96
   train_sim_decay_move_interval: 24
 TRAIN:
   total_iterations: 100
-  games_per_iter: 128
-  batch_size: 128
+  games_per_iter: 100
+  batch_size: 100
   batch_size_min: 96
-  batch_size_max: 160
+  batch_size_max: 128
   samples_per_new_game: 0.55
   update_steps_min: 18
   update_steps_max: 44
