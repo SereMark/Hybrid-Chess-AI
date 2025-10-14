@@ -1,6 +1,5 @@
 # Core numerical stack
 numpy
-psutil
 
 # Deep learning backend (CPU baseline; reinstall with CUDA wheel per README)
 torch==2.8.0

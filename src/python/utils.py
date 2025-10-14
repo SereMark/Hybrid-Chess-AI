@@ -14,7 +14,6 @@ from typing import Any, Optional
 
 import config as C
 import numpy as np
-import psutil
 import torch
 from torch import nn
 
@@ -25,11 +24,7 @@ __all__ = [
     "MetricsReporter",
     "flip_fen_perspective",
     "sanitize_fen",
-    "format_gb",
-    "format_si",
     "format_time",
-    "get_mem_info",
-    "get_sys_info",
     "startup_summary",
 ]
 
@@ -250,79 +245,6 @@ def format_time(seconds: float) -> str:
     if value < 3600:
         return f"{value / 60:.1f}m"
     return f"{value / 3600:.1f}h"
-
-
-def format_si(value: int | float, digits: int = 1) -> str:
-    try:
-        number = float(value)
-    except Exception:
-        return str(value)
-    sign = "-" if number < 0 else ""
-    number = abs(number)
-    if number >= 1_000_000_000:
-        return f"{sign}{number / 1_000_000_000:.{digits}f}B"
-    if number >= 1_000_000:
-        return f"{sign}{number / 1_000_000:.{digits}f}M"
-    if number >= 1_000:
-        return f"{sign}{number / 1_000:.{digits}f}k"
-    if digits <= 0:
-        return f"{sign}{int(number)}"
-    return f"{sign}{number:.{digits}f}"
-
-
-def format_gb(value: float, digits: int = 1) -> str:
-    try:
-        number = float(value)
-    except Exception:
-        return str(value)
-    return f"{number:.{digits}f}G"
-
-
-def get_mem_info(proc: psutil.Process, device: torch.device, device_total_gb: float) -> dict[str, float]:
-    info = proc.memory_full_info()
-    rss = info.rss / 1024**3
-    vms = getattr(info, "vms", info.rss) / 1024**3
-    uss = getattr(info, "uss", info.rss) / 1024**3
-    if device.type != "cuda":
-        return {
-            "allocated_gb": 0.0,
-            "reserved_gb": 0.0,
-            "total_gb": float(device_total_gb),
-            "rss_gb": rss,
-            "vms_gb": vms,
-            "uss_gb": uss,
-        }
-    return {
-        "allocated_gb": torch.cuda.memory_allocated(device) / 1024**3,
-        "reserved_gb": torch.cuda.memory_reserved(device) / 1024**3,
-        "total_gb": float(device_total_gb),
-        "rss_gb": rss,
-        "vms_gb": vms,
-        "uss_gb": uss,
-    }
-
-
-def get_sys_info(proc: psutil.Process) -> dict[str, float]:
-    vmem = psutil.virtual_memory()
-    swap = psutil.swap_memory()
-    if hasattr(os, "getloadavg"):
-        try:
-            load1, load5, load15 = os.getloadavg()
-        except Exception:
-            load1 = load5 = load15 = 0.0
-    else:
-        load1 = load5 = load15 = 0.0
-    return {
-        "cpu_sys_pct": float(psutil.cpu_percent(interval=None)),
-        "cpu_proc_pct": float(proc.cpu_percent(interval=None)),
-        "ram_used_gb": float(vmem.used) / 1024**3,
-        "ram_total_gb": float(vmem.total) / 1024**3,
-        "ram_pct": float(vmem.percent),
-        "swap_pct": float(swap.percent),
-        "load1": float(load1),
-        "load5": float(load5),
-        "load15": float(load15),
-    }
 
 
 def startup_summary(trainer: Any) -> str:

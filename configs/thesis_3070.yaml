@@ -5,8 +5,8 @@ TORCH:
   threads_intra: 12
   threads_inter: 2
 SELFPLAY:
-  num_workers: 2
-  game_max_plies: 82
+  num_workers: 4
+  game_max_plies: 100
   temperature_moves: 36
   adjudication_enabled: true
   adjudication_min_plies: 64
@@ -14,12 +14,12 @@ SELFPLAY:
   adjudication_persist_plies: 8
   opening_random_moves: 2
 MCTS:
-  train_simulations: 72
-  train_simulations_min: 40
+  train_simulations: 128
+  train_simulations_min: 96
   train_sim_decay_move_interval: 24
 TRAIN:
-  total_iterations: 480
-  games_per_iter: 28
+  total_iterations: 100
+  games_per_iter: 128
   batch_size: 128
   batch_size_min: 96
   batch_size_max: 160
@@ -30,7 +30,7 @@ TRAIN:
   learning_rate_final: 0.00032
 ARENA:
   eval_every_iters: 16
-  games_per_eval: 20
+  games_per_eval: 100
   mcts_simulations: 128
   temperature: 0.6
   temperature_moves: 20

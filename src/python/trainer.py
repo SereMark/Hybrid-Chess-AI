@@ -10,7 +10,6 @@ from typing import cast
 
 import config as C
 import numpy as np
-import psutil
 import torch
 from arena import ArenaResult, play_match
 from checkpoint import get_run_root, save_best_model, save_checkpoint, try_resume
@@ -22,10 +21,7 @@ from torch.amp import GradScaler
 from train_loop import run_training_iteration
 from utils import (
     MetricsReporter,
-    format_gb,
     format_time,
-    get_mem_info,
-    get_sys_info,
     prepare_model,
     select_autocast_dtype,
     startup_summary,
@@ -50,12 +46,7 @@ class Trainer:
     def __init__(self, device: str | None = None, resume: bool = False) -> None:
         self.log = logging.getLogger("hybridchess.trainer")
         self.device = self._resolve_device(device)
-        self._proc = psutil.Process()
-        self._device_total_gb = self._detect_device_total_gb()
         self.device_name = self._device_name()
-        # Prime CPU utilisation counters for stable subsequent reads.
-        self._proc.cpu_percent(None)
-        psutil.cpu_percent(None)
         self.model = prepare_model(
             ChessNet(),
             self.device,
@@ -164,12 +155,6 @@ class Trainer:
         if device.type != "cuda":
             self.log.warning("CUDA unavailable; training will run on CPU")
         return device
-
-    def _detect_device_total_gb(self) -> float:
-        if self.device.type != "cuda":
-            return 0.0
-        props = torch.cuda.get_device_properties(self.device)
-        return float(props.total_memory) / 1024**3
 
     def _device_name(self) -> str:
         if self.device.type != "cuda":
@@ -351,19 +336,9 @@ class Trainer:
                 f"time={format_time(arena_result.elapsed_s)}"
             )
 
-        mem = get_mem_info(self._proc, self.device, self._device_total_gb)
-        sys_info = get_sys_info(self._proc)
-        sys_line = (
-            f"SYS gpu={format_gb(mem['allocated_gb'])}/{format_gb(mem['total_gb'])} "
-            f"rss={format_gb(mem['rss_gb'])} vms={format_gb(mem['vms_gb'])} "
-            f"cpu={sys_info['cpu_proc_pct']:.0f}%/{sys_info['cpu_sys_pct']:.0f}% "
-            f"ram={sys_info['ram_pct']:.0f}% swap={sys_info['swap_pct']:.0f}%"
-        )
-
         self.log.info(sp_line)
         self.log.info(train_line)
         self.log.info(arena_line)
-        self.log.info(sys_line)
         self.log.info("")
 
     def _write_metrics(
@@ -377,8 +352,6 @@ class Trainer:
         sp_raw = stats.get("selfplay_stats")
         sp = cast(dict[str, float | int | str], sp_raw if isinstance(sp_raw, dict) else {})
         games = max(1, int(float(sp.get("games", 0))))
-        mem = get_mem_info(self._proc, self.device, self._device_total_gb)
-        sys_info = get_sys_info(self._proc)
         row = {
             "iter": int(self.iteration),
             "elapsed_s": float(elapsed),
@@ -417,15 +390,6 @@ class Trainer:
             "arena_decisive_pct": float(arena_result.decisive_pct) if arena_result else 0.0,
             "arena_elapsed_s": float(arena_result.elapsed_s) if arena_result else 0.0,
             "arena_decision": arena_result.notes[0] if arena_result else "skipped",
-            "gpu_alloc_gb": float(mem["allocated_gb"]),
-            "gpu_reserved_gb": float(mem["reserved_gb"]),
-            "proc_rss_gb": float(mem["rss_gb"]),
-            "proc_vms_gb": float(mem["vms_gb"]),
-            "proc_uss_gb": float(mem["uss_gb"]),
-            "cpu_proc_pct": float(sys_info["cpu_proc_pct"]),
-            "cpu_sys_pct": float(sys_info["cpu_sys_pct"]),
-            "ram_pct": float(sys_info["ram_pct"]),
-            "swap_pct": float(sys_info["swap_pct"]),
         }
         field_order = list(row.keys())
         self.metrics.append(row, field_order=field_order)

@@ -44,8 +44,7 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 
 # Install CUDA-enabled PyTorch (adjust compute platform if needed)
-pip install --force-reinstall torch torchvision ^
-  --index-url https://download.pytorch.org/whl/cu126
+pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu126
 
 # Verify CUDA availability
 python - <<'PY'
@@ -76,7 +75,7 @@ This produces the `chesscore` extension under `src/python/`. Tests in `tests/tes
 
 ### Default launch
 ```powershell
-\.\.venv\Scripts\Activate.ps1
+.venv\Scripts\Activate.ps1
 $env:PYTHONPATH = "$PWD\src\python"
 python -m main
 ```
@@ -128,7 +127,7 @@ Each iteration logs:
 1. **Environment preparation**
    ```powershell
    python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
+   .venv\Scripts\Activate.ps1
    pip install -r requirements.txt
    cmake -S . -B build -G "Visual Studio 17 2022" -A x64
    cmake --build build --config Release
