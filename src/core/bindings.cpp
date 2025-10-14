@@ -64,7 +64,6 @@ public:
     py::gil_scoped_acquire guard;
 
     py::list moves_py;
-    moves_py.attr("reserve")(static_cast<py::ssize_t>(moves.size()));
     for (const auto& mv : moves) {
       moves_py.append(py::cast(mv));
     }
@@ -228,7 +227,6 @@ void bind_utilities(py::module_& m) {
       "encode_move_indices_batch",
       [](const std::vector<std::vector<chess::Move>>& moves_lists) {
         py::list result;
-        result.attr("reserve")(static_cast<py::ssize_t>(moves_lists.size()));
         for (const auto& moves : moves_lists) {
           py::array_t<int32_t> encoded(static_cast<py::ssize_t>(moves.size()));
           auto info = encoded.request();
