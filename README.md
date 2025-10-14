@@ -26,9 +26,6 @@ AlphaZero-style chess RL stack with a C++ engine + MCTS core (pybind11) and a Py
 ## Setup
 
 ```powershell
-git clone <your-repo>
-cd Hybrid-Chess-AI
-
 python -m venv .venv
 . .venv\Scripts\Activate.ps1
 python -m pip install -U pip
@@ -43,17 +40,6 @@ Build the C++ core:
 ```powershell
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
-# The wheel is copied to src/python/ as `chesscore.*.pyd`
-```
-
-Quick checks:
-
-```powershell
-python -m pytest -q
-python - <<'PY'
-import chesscore, torch
-print("chesscore OK"); print("CUDA:", torch.cuda.is_available())
-PY
 ```
 
 ---
@@ -64,7 +50,7 @@ Recommended preset for RTX 3070 laptop: `configs/thesis_3070.yaml`.
 
 ```powershell
 $env:PYTHONPATH = "$PWD\src\python"
-python -m main -c configs\thesis_3070.yaml --resume
+python -m main -c configs\thesis_3070.yaml
 ```
 
 Artifacts per run are under `runs/<timestamp>/`:
