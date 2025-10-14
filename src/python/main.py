@@ -48,11 +48,6 @@ def _parse_args(args: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help="Resume training from the most recent checkpoint.",
     )
-    parser.add_argument(
-        "--dry-config",
-        action="store_true",
-        help="Load configuration files and print the merged snapshot without starting training.",
-    )
     return parser.parse_args(list(args))
 
 
@@ -136,9 +131,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     raw_args = list(argv if argv is not None else sys.argv[1:])
     parsed = _parse_args(raw_args)
     _apply_cli_configs(parsed)
-    if parsed.dry_config:
-        print(json.dumps(C.MANAGER.to_dict(), indent=2))
-        return 0
     threads_intra, threads_inter = _resolve_thread_settings()
     _apply_environment_defaults(threads_intra, threads_inter)
     _configure_logging()
