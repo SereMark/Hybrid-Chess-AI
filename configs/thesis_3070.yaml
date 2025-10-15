@@ -36,7 +36,7 @@ SELFPLAY:
   opening_random_moves: 2
 
 REPLAY:
-  capacity: 21000
+  capacity: 15000
 
 RESIGN:
   enabled: false
@@ -78,7 +78,7 @@ TRAIN:
 
 ARENA:
   eval_every_iters: 16
-  games_per_eval: 64
+  games_per_eval: 50
   mcts_simulations: 128
   temperature: 0.6
   temperature_moves: 20
