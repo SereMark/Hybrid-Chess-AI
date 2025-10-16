@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import numbers
 import threading
 import time
@@ -24,6 +25,7 @@ class BatchedEvaluator:
     """Thread-safe evaluator that batches encode requests and caches results."""
 
     def __init__(self, device: torch.device) -> None:
+        self.log = logging.getLogger("hybridchess.inference")
         self.device = device
         self.model_lock = threading.Lock()
 
@@ -37,18 +39,25 @@ class BatchedEvaluator:
             freeze=True,
         )
 
-        self._np_dtype: Any
+        self._np_dtype: np.dtype[Any]
         self._cache_dtype: torch.dtype
+        self._host_infer_dtype: torch.dtype
 
         if self._dtype == torch.bfloat16:
             self._np_dtype = np.float32
             self._cache_dtype = torch.float32
+            self._host_infer_dtype = torch.float32
+            self._should_autocast = self.device.type == "cuda"
         elif self._dtype == torch.float16:
             self._np_dtype = np.float16
             self._cache_dtype = torch.float16 if C.EVAL.use_fp16_cache else torch.float32
+            self._host_infer_dtype = torch.float32 if self.device.type == "cpu" else torch.float16
+            self._should_autocast = self.device.type == "cuda"
         else:
             self._np_dtype = np.float32
             self._cache_dtype = torch.float32
+            self._host_infer_dtype = torch.float32
+            self._should_autocast = False
 
         self.cache_lock = threading.Lock()
         self._val_cap = int(max(1, C.EVAL.value_cache_capacity))
@@ -82,8 +91,9 @@ class BatchedEvaluator:
         with suppress(Exception), self._cv:
             self._cv.notify_all()
         with suppress(Exception):
-            if self._thread.is_alive():
+            if self._thread is not None and self._thread.is_alive():
                 self._thread.join(timeout=1.0)
+        self._thread = None
         with suppress(Exception), self.cache_lock:
             self._enc_cache.clear()
             self._val_cache.clear()
@@ -113,20 +123,25 @@ class BatchedEvaluator:
         value_capacity: Optional[int] = None,
         encode_capacity: Optional[int] = None,
     ) -> None:
-        if capacity is not None:
-            self._out_cap = int(max(1, capacity))
-        if value_capacity is not None:
-            self._val_cap = int(max(1, value_capacity))
-        if encode_capacity is not None:
-            self._enc_cap = int(max(1, encode_capacity))
+        with self.cache_lock:
+            if capacity is not None:
+                self._out_cap = int(max(1, capacity))
+                self._evict_until_within(self._out_cache, self._out_cap)
+            if value_capacity is not None:
+                self._val_cap = int(max(1, value_capacity))
+                self._evict_until_within(self._val_cache, self._val_cap)
+            if encode_capacity is not None:
+                self._enc_cap = int(max(1, encode_capacity))
+                self._evict_until_within(self._enc_cache, self._enc_cap)
 
-    @property
-    def cache_capacity(self) -> int:
-        return int(self._out_cap)
+    def _touch_lru(self, cache: OrderedDict[int, Any], key: int) -> None:
+        if key in cache:
+            cache.move_to_end(key)
 
-    @cache_capacity.setter
-    def cache_capacity(self, value: int) -> None:
-        self.set_cache_capacity(int(value))
+    @staticmethod
+    def _evict_until_within(cache: OrderedDict[int, Any], capacity: int) -> None:
+        while cache and len(cache) > capacity:
+            cache.popitem(last=False)
 
     def clear_caches(self) -> None:
         with self.cache_lock:
@@ -134,7 +149,6 @@ class BatchedEvaluator:
             self._val_cache.clear()
             self._out_cache.clear()
 
-    # ------------------------------------------------------------------ public API
     def refresh_from(self, model: nn.Module) -> None:
         with self.model_lock:
             self.eval_model.load_state_dict(model.state_dict(), strict=True)
@@ -205,6 +219,8 @@ class BatchedEvaluator:
 
         request = _EvalRequest(positions_list, moves_list)
         with self._cv:
+            if self._shutdown.is_set():
+                raise RuntimeError("Evaluator has been shut down")
             request.no_wait = not self._queue
             self._queue.append(request)
             self._cv.notify()
@@ -289,13 +305,14 @@ class BatchedEvaluator:
         if misses:
             enc = self._encode_positions([positions[idx] for idx in misses])
             batch = torch.from_numpy(enc).to(self.device, dtype=torch.float32, non_blocking=False)
-            with torch.inference_mode():
-                with torch.autocast(
-                    device_type=self.device.type,
-                    dtype=self._dtype,
-                    enabled=self._dtype != torch.float32,
-                ):
-                    _, values = self.eval_model(batch)
+        autocast_enabled = self._should_autocast
+        with torch.inference_mode():
+            with torch.autocast(
+                device_type=self.device.type,
+                dtype=self._dtype,
+                enabled=autocast_enabled,
+            ):
+                _, values = self.eval_model(batch)
             out_values = values.to(dtype=self._cache_dtype).cpu().numpy()
             with self.cache_lock:
                 for dst, value in zip(misses, out_values, strict=False):
@@ -303,8 +320,8 @@ class BatchedEvaluator:
                     key = keys[dst]
                     if key is not None:
                         self._val_cache[key] = float(value)
-                        while len(self._val_cache) > self._val_cap:
-                            self._val_cache.popitem(last=False)
+                        self._touch_lru(self._val_cache, key)
+                        self._evict_until_within(self._val_cache, self._val_cap)
 
             with self._m_lock:
                 self._metrics["cache_misses_total"] += len(misses)
@@ -321,16 +338,17 @@ class BatchedEvaluator:
         keys: list[Optional[int]],
     ) -> tuple[list[np.ndarray], np.ndarray]:
         enc = self._encode_positions(positions)
-        batch_inputs = torch.from_numpy(enc).to(self.device, dtype=torch.float32, non_blocking=False)
+        batch_inputs = torch.from_numpy(enc).to(self.device, dtype=self._host_infer_dtype, non_blocking=False)
+        autocast_enabled = self._should_autocast
         with torch.inference_mode():
             with torch.autocast(
                 device_type=self.device.type,
                 dtype=self._dtype,
-                enabled=self._dtype != torch.float32,
+                enabled=autocast_enabled,
             ):
                 logits, values = self.eval_model(batch_inputs)
 
-        logits = logits.float()
+        logits = logits.to(dtype=torch.float32 if autocast_enabled else logits.dtype)
         values_np = values.to(dtype=self._cache_dtype).cpu().numpy()
         logits_np = logits.to(dtype=self._cache_dtype).cpu().numpy()
 
@@ -371,10 +389,10 @@ class BatchedEvaluator:
                     continue
                 self._out_cache[key] = (logits_np[row].reshape(-1), float(values_np[row]))
                 self._val_cache[key] = float(values_np[row])
-                while len(self._out_cache) > self._out_cap:
-                    self._out_cache.popitem(last=False)
-                while len(self._val_cache) > self._val_cap:
-                    self._val_cache.popitem(last=False)
+                self._touch_lru(self._out_cache, key)
+                self._touch_lru(self._val_cache, key)
+                self._evict_until_within(self._out_cache, self._out_cap)
+                self._evict_until_within(self._val_cache, self._val_cap)
 
         with self._m_lock:
             self._metrics["cache_misses_total"] += len(positions)
@@ -413,9 +431,9 @@ class BatchedEvaluator:
                 if key is not None and key in self._enc_cache:
                     cached_encodings.append(self._enc_cache[key])
                 else:
+                    cached_encodings.append(None)
                     missing_positions.append(positions[idx])
                     missing_indices.append(idx)
-                    cached_encodings.append(None)
 
         if missing_positions:
             encoded_missing = encoder.encode_batch(missing_positions).astype(self._np_dtype, copy=False)
@@ -429,12 +447,10 @@ class BatchedEvaluator:
                         while len(self._enc_cache) > self._enc_cap:
                             self._enc_cache.popitem(last=False)
 
-        arrays: list[np.ndarray] = []
-        for arr in cached_encodings:
-            if arr is None:
+        for entry in cached_encodings:
+            if entry is None:
                 raise RuntimeError("failed to encode position")
-            arrays.append(arr)
-        return np.stack(arrays, axis=0)
+        return np.stack(cast(list[np.ndarray], cached_encodings), axis=0)
 
     @staticmethod
     def _probs_from_cached_logits(logits: np.ndarray, moves: list[Any]) -> np.ndarray:

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import numpy as np
+import encoder
 import config as C
 import torch
 from train_loop import run_training_iteration
+import pytest
 
 
 class DummySelfPlay:
@@ -82,3 +85,118 @@ def test_run_training_iteration_sets_resign_params(monkeypatch) -> None:
     assert tr.selfplay_engine.resign_threshold == -0.5
     assert tr.selfplay_engine.resign_min_plies == 10
     assert "selfplay_stats" in stats
+
+
+def test_run_training_iteration_enables_adjudication_and_buffer(monkeypatch) -> None:
+    tr = DummyTrainer()
+
+    class _StubModel(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            features = encoder.INPUT_PLANES * encoder.BOARD_SIZE * encoder.BOARD_SIZE
+            self.policy = torch.nn.Linear(features, encoder.POLICY_SIZE)
+            self.value = torch.nn.Linear(features, 1)
+
+        def forward(self, x: torch.Tensor):
+            flat = x.reshape(x.shape[0], -1)
+            policy_logits = self.policy(flat)
+            value = torch.tanh(self.value(flat)).squeeze(-1)
+            return policy_logits, value
+
+    tr.model = _StubModel().to(tr.device)
+    tr.optimizer = torch.optim.SGD(tr.model.parameters(), lr=0.01)
+    tr.scheduler = type("Sched", (), {"step": lambda self: None})()
+
+    calls = {"play": 0, "sample": 0}
+
+    def fake_play(games: int) -> dict[str, int]:
+        calls["play"] += 1
+        return {"games": games, "moves": games * 4, "visit_per_move": 32.0}
+
+    def fake_sample(batch_size: int, recent_ratio: float, recent_window: float):
+        calls["sample"] += 1
+        state = np.zeros((encoder.INPUT_PLANES, encoder.BOARD_SIZE, encoder.BOARD_SIZE), dtype=np.uint8)
+        idx = np.array([1, 2], dtype=np.int32)
+        cnt = np.array([10, 11], dtype=np.uint16)
+        return ([state], [idx], [cnt], [np.int8(1)])
+
+    tr.selfplay_engine.play_games = fake_play  # type: ignore[assignment]
+    tr.selfplay_engine.sample_batch = fake_sample  # type: ignore[assignment]
+    monkeypatch.setattr(type(C.TRAIN), "update_steps_min", 1, raising=False)
+    monkeypatch.setattr(type(C.TRAIN), "update_steps_max", 2, raising=False)
+    monkeypatch.setattr(type(C.TRAIN), "samples_per_new_game", 1.0, raising=False)
+
+    stats = run_training_iteration(tr)
+
+    assert calls["play"] == 1
+    assert calls["sample"] >= 1
+    assert stats["train_steps_actual"] >= 1
+    assert stats["adjudication_enabled"] == 1
+
+
+def test_run_training_iteration_handles_bad_gradients(monkeypatch) -> None:
+    tr = DummyTrainer()
+
+    class ExplodingModel(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.lin = torch.nn.Linear(encoder.INPUT_PLANES * encoder.BOARD_SIZE * encoder.BOARD_SIZE, 1)
+
+        def forward(self, x: torch.Tensor):
+            flat = x.reshape(x.shape[0], -1)
+            w = self.lin(flat).squeeze(-1)
+            return torch.full((x.shape[0], encoder.POLICY_SIZE), 0.0, device=x.device), torch.tanh(w)
+
+    tr.model = ExplodingModel().to(tr.device)
+    tr.optimizer = torch.optim.SGD(tr.model.parameters(), lr=0.1)
+
+    def fake_sample(batch_size: int, recent_ratio: float, recent_window: float):
+        state = np.ones((encoder.INPUT_PLANES, encoder.BOARD_SIZE, encoder.BOARD_SIZE), dtype=np.uint8)
+        idx = np.array([0], dtype=np.int32)
+        cnt = np.array([1], dtype=np.uint16)
+        return ([state], [idx], [cnt], [np.int8(1)])
+
+    tr.selfplay_engine.sample_batch = fake_sample  # type: ignore[assignment]
+
+    original_clip = torch.nn.utils.clip_grad_norm_
+
+    def clip_and_raise(*args, **kwargs):
+        raise RuntimeError("grad error")
+
+    monkeypatch.setattr(torch.nn.utils, "clip_grad_norm_", clip_and_raise)
+
+    with pytest.raises(RuntimeError):
+        run_training_iteration(tr)
+
+    monkeypatch.setattr(torch.nn.utils, "clip_grad_norm_", original_clip)
+
+
+def test_run_training_iteration_updates_ema(monkeypatch) -> None:
+    tr = DummyTrainer()
+    tr.ema = type("EMA", (), {"update": lambda self, model: setattr(self, "touched", True), "touched": False})()
+
+    class SimpleModel(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.lin = torch.nn.Linear(encoder.INPUT_PLANES * encoder.BOARD_SIZE * encoder.BOARD_SIZE, 1)
+
+        def forward(self, x: torch.Tensor):
+            flat = x.reshape(x.shape[0], -1)
+            logits = torch.zeros((x.shape[0], encoder.POLICY_SIZE), device=x.device)
+            val = torch.tanh(self.lin(flat)).squeeze(-1)
+            return logits, val
+
+    tr.model = SimpleModel().to(tr.device)
+    tr.optimizer = torch.optim.SGD(tr.model.parameters(), lr=0.01)
+
+    def fake_sample(batch_size: int, recent_ratio: float, recent_window: float):
+        state = np.zeros((encoder.INPUT_PLANES, encoder.BOARD_SIZE, encoder.BOARD_SIZE), dtype=np.uint8)
+        idx = np.array([0], dtype=np.int32)
+        cnt = np.array([1], dtype=np.uint16)
+        return ([state], [idx], [cnt], [np.int8(1)])
+
+    tr.selfplay_engine.sample_batch = fake_sample  # type: ignore[assignment]
+
+    stats = run_training_iteration(tr)
+    assert stats["train_steps_actual"] >= 1
+    assert getattr(tr.ema, "touched", False)

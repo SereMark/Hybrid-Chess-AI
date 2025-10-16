@@ -216,13 +216,15 @@ def train_step(
 
     # Forward + losses (AMP aware)
     trainer.model.train()
-    autocast_device = "cuda" if trainer.device.type == "cuda" else "cpu"
+    autocast_device = trainer.device.type
+    autocast_enabled = bool(getattr(trainer, "_amp_enabled", False))
     autocast_dtype = getattr(trainer, "_autocast_dtype", torch.float16)
-    with torch.autocast(
-        device_type=autocast_device, dtype=autocast_dtype, enabled=getattr(trainer, "_amp_enabled", False)
-    ):
+    if autocast_device != "cuda":
+        autocast_dtype = torch.bfloat16
+
+    with torch.autocast(device_type=autocast_device, dtype=autocast_dtype, enabled=autocast_enabled):
         policy_logits, value_pred = trainer.model(x)
-        value_pred = value_pred.squeeze(-1)
+        value_pred = value_pred.reshape(-1)
         log_probs = F.log_softmax(policy_logits, dim=1)
 
         # Sparse cross-entropy via indexed rows/cols with counts as weights
@@ -290,7 +292,12 @@ def train_step(
     else:
         total_loss.backward()
 
-    grad_total = torch.nn.utils.clip_grad_norm_(trainer.model.parameters(), float(C.TRAIN.grad_clip_norm))
+    try:
+        grad_total = torch.nn.utils.clip_grad_norm_(trainer.model.parameters(), float(C.TRAIN.grad_clip_norm))
+    except RuntimeError:
+        trainer.optimizer.zero_grad(set_to_none=True)
+        trainer.scheduler.step()
+        raise
 
     if torch.isnan(grad_total) or torch.isinf(grad_total):
         trainer.optimizer.zero_grad(set_to_none=True)
