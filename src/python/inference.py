@@ -321,21 +321,7 @@ class BatchedEvaluator:
         keys: list[Optional[int]],
     ) -> tuple[list[np.ndarray], np.ndarray]:
         enc = self._encode_positions(positions)
-        move_indices = [
-            np.asarray(encoder.encode_move_indices_batch([moves])[0], dtype=np.int64) for moves in moves_per_position
-        ]
-        max_moves = max((indices.size for indices in move_indices), default=0)
-        indices = np.zeros((len(positions), max_moves), dtype=np.int64)
-        mask = np.zeros((len(positions), max_moves), dtype=bool)
-        for row, idx_arr in enumerate(move_indices):
-            length = idx_arr.size
-            indices[row, :length] = idx_arr
-            mask[row, :length] = True
-
         batch_inputs = torch.from_numpy(enc).to(self.device, dtype=torch.float32, non_blocking=False)
-        indices_t = torch.from_numpy(indices).to(self.device, dtype=torch.long)
-        mask_t = torch.from_numpy(mask).to(self.device, dtype=torch.bool)
-
         with torch.inference_mode():
             with torch.autocast(
                 device_type=self.device.type,
@@ -345,22 +331,39 @@ class BatchedEvaluator:
                 logits, values = self.eval_model(batch_inputs)
 
         logits = logits.float()
-        masked = logits.gather(1, indices_t)
-        neg_inf = torch.finfo(masked.dtype).min
-        masked = torch.where(mask_t, masked, torch.full_like(masked, neg_inf))
-        maxv = masked.max(dim=1, keepdim=True).values
-        ex = torch.exp(masked - maxv)
-        ex = torch.where(mask_t, ex, torch.zeros_like(ex))
-        denom = ex.sum(dim=1, keepdim=True).clamp_min(1e-9)
-        probs = ex / denom
-
-        probs_np = probs.to(dtype=self._cache_dtype).cpu().numpy()
         values_np = values.to(dtype=self._cache_dtype).cpu().numpy()
         logits_np = logits.to(dtype=self._cache_dtype).cpu().numpy()
 
-        result_probs: list[np.ndarray] = []
-        for row, idx_arr in enumerate(move_indices):
-            result_probs.append(probs_np[row, : idx_arr.size])
+        move_indices = [
+            np.asarray(encoder.encode_move_indices_batch([moves])[0], dtype=np.int64) for moves in moves_per_position
+        ]
+        max_moves = max((indices.size for indices in move_indices), default=0)
+
+        if max_moves > 0:
+            indices = np.zeros((len(positions), max_moves), dtype=np.int64)
+            mask = np.zeros((len(positions), max_moves), dtype=bool)
+            for row, idx_arr in enumerate(move_indices):
+                length = idx_arr.size
+                indices[row, :length] = idx_arr
+                mask[row, :length] = True
+
+            indices_t = torch.from_numpy(indices).to(self.device, dtype=torch.long)
+            mask_t = torch.from_numpy(mask).to(self.device, dtype=torch.bool)
+
+            masked = logits.gather(1, indices_t)
+            neg_inf = torch.finfo(masked.dtype).min
+            masked = torch.where(mask_t, masked, torch.full_like(masked, neg_inf))
+            maxv = masked.max(dim=1, keepdim=True).values
+            ex = torch.exp(masked - maxv)
+            ex = torch.where(mask_t, ex, torch.zeros_like(ex))
+            denom = ex.sum(dim=1, keepdim=True).clamp_min(1e-9)
+            probs = ex / denom
+            probs_np = probs.to(dtype=self._cache_dtype).cpu().numpy()
+            result_probs: list[np.ndarray] = [
+                probs_np[row, : idx_arr.size] for row, idx_arr in enumerate(move_indices)
+            ]
+        else:
+            result_probs = [np.zeros((0,), dtype=np.float32) for _ in move_indices]
 
         with self.cache_lock:
             for row, key in enumerate(keys):
