@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -395,7 +396,11 @@ def _move_to_san(
         san = _PIECE_SAN.get(piece_type, "")
         ambiguous: list[int] = []
         for other in legal_moves:
-            if other is move:
+            is_same = other is move
+            if not is_same:
+                with contextlib.suppress(Exception):
+                    is_same = bool(other == move)
+            if is_same:
                 continue
             if int(getattr(other, "to_square", -1)) != to_sq:
                 continue
