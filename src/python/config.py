@@ -115,6 +115,9 @@ class SelfPlayConfig:
     adjudication_value_margin_init: float = 0.35
     adjudication_persist_init: int = 12
     adjudication_material_margin_init: float = 6.0
+    simulation_scale_min: float = 0.5
+    simulation_scale_max: float = 1.0
+    simulation_scale_buffer_target: float = 0.6
 
 
 @dataclass(frozen=True)

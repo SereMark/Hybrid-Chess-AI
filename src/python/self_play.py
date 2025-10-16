@@ -238,6 +238,10 @@ class SelfPlayEngine:
         )
         self._buffer_lock = threading.Lock()
 
+        self._sim_scale_min = float(max(0.05, C.SELFPLAY.simulation_scale_min))
+        self._sim_scale_max = float(max(self._sim_scale_min, C.SELFPLAY.simulation_scale_max))
+        self._sim_scale_target = float(np.clip(C.SELFPLAY.simulation_scale_buffer_target, 0.0, 1.0))
+
         # Resignation
         self.resign_consecutive = int(max(1, C.RESIGN.consecutive_required))
         self.resign_enabled = bool(C.RESIGN.enabled)
@@ -660,12 +664,31 @@ class SelfPlayEngine:
         m.seed(int(rng.integers(1, np.iinfo(np.int64).max)))
         return m
 
-    @staticmethod
-    def _simulations_for(move_count: int) -> int:
+    def _buffer_fill_ratio(self) -> float:
+        with self._buffer_lock:
+            capacity = max(1, int(self._buffer.capacity))
+            size = int(self._buffer.size)
+        return float(np.clip(size / capacity, 0.0, 1.0))
+
+    def _simulation_scale(self) -> float:
+        if self._sim_scale_target <= 1e-6:
+            return self._sim_scale_max
+        ratio = self._buffer_fill_ratio()
+        if ratio >= self._sim_scale_target:
+            return self._sim_scale_max
+        frac = ratio / self._sim_scale_target
+        return self._sim_scale_min + (self._sim_scale_max - self._sim_scale_min) * frac
+
+    def _simulations_for(self, move_count: int) -> int:
         base = int(max(1, C.MCTS.train_simulations))
         decay = int(max(1, C.MCTS.train_sim_decay_move_interval))
         sims = base // (1 + max(0, move_count) // decay)
-        return max(int(C.MCTS.train_simulations_min), sims)
+        sims = max(1, sims)
+        min_sims = int(max(1, C.MCTS.train_simulations_min))
+        scale = self._simulation_scale()
+        scaled = max(1, int(round(sims * scale)))
+        min_scaled = max(1, int(round(min_sims * scale)))
+        return max(min_scaled, scaled)
 
     @staticmethod
     def _select_move(visit_counts: np.ndarray, temperature: float, rng: np.random.Generator) -> int:
