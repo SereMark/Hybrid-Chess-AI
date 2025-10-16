@@ -310,6 +310,10 @@ class SelfPlayEngine:
         self._eval_batch_cap = int(max(1, C.EVAL.batch_size_max))
         self.opening_random_moves = int(max(0, C.SELFPLAY.opening_random_moves))
 
+        self._executor_lock = threading.Lock()
+        self._executor: ThreadPoolExecutor | None = None
+        self._executor_workers = 0
+
     # ----- public API
 
     def enable_resign(self, enabled: bool) -> None:
@@ -319,6 +323,11 @@ class SelfPlayEngine:
     def set_num_workers(self, n: int) -> None:
         """Set the number of concurrent self-play workers."""
         self.num_workers = max(1, int(n))
+        with self._executor_lock:
+            if self._executor is not None and self._executor_workers != self.num_workers:
+                self._executor.shutdown(wait=True)
+                self._executor = None
+                self._executor_workers = 0
 
     def get_num_workers(self) -> int:
         """Return the configured worker count."""
@@ -412,11 +421,11 @@ class SelfPlayEngine:
             return _SelfPlayStats().to_dict()
         stats = _SelfPlayStats()
         seeds = self._rng.integers(0, np.iinfo(np.int64).max, size=num_games)
-        with ThreadPoolExecutor(max_workers=self.num_workers) as pool:
-            futures = [pool.submit(self._play_single_game, int(s)) for s in seeds]
-            for f in as_completed(futures):
-                res, moves, term, visits = f.result()
-                stats.add(result=res, moves=moves, termination=term, visits=visits)
+        executor = self._get_executor()
+        futures = [executor.submit(self._play_single_game, int(s)) for s in seeds]
+        for f in as_completed(futures):
+            res, moves, term, visits = f.result()
+            stats.add(result=res, moves=moves, termination=term, visits=visits)
         return stats.to_dict()
 
     def sample_batch(
@@ -452,6 +461,14 @@ class SelfPlayEngine:
         """Clear all stored samples."""
         with self._buffer_lock:
             self._buffer.clear()
+
+    def close(self) -> None:
+        """Shut down worker resources."""
+        with self._executor_lock:
+            if self._executor is not None:
+                self._executor.shutdown(wait=True)
+                self._executor = None
+                self._executor_workers = 0
 
     def state_dict(self) -> dict[str, Any]:
         """Return a snapshot of engine state (buffer + RNG)."""
@@ -604,6 +621,18 @@ class SelfPlayEngine:
 
         self._store_examples(examples, result)
         return result, moves, termination, visit_total
+
+    def _get_executor(self) -> ThreadPoolExecutor:
+        target = max(1, int(self.num_workers))
+        with self._executor_lock:
+            if self._executor is None or self._executor_workers != target:
+                if self._executor is not None:
+                    self._executor.shutdown(wait=True)
+                self._executor = ThreadPoolExecutor(
+                    max_workers=target, thread_name_prefix="SelfPlay"
+                )
+                self._executor_workers = target
+            return self._executor
 
     def sample_start_fen(self, rng: np.random.Generator) -> str:
         fen: str | None = None

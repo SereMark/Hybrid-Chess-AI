@@ -154,6 +154,8 @@ class Trainer:
         """Release resources associated with the trainer."""
         with contextlib.suppress(Exception):
             self.evaluator.close()
+        with contextlib.suppress(Exception):
+            self.selfplay_engine.close()
 
     # ------------------------------------------------------------------ helpers
     def _resolve_device(self, override: str | None) -> torch.device:

@@ -147,13 +147,34 @@ class BatchedEvaluator:
         moves_list = [list(moves) for moves in moves_per_position]
         if len(positions_list) != len(moves_list):
             raise ValueError("positions and moves must have the same length")
-        with self.model_lock:
-            return self._infer_positions_legal_locked(positions_list, moves_list)
+        probs, values = self._dispatch_eval(positions_list, moves_list)
+        return probs, values
 
     def infer_values(self, positions: Iterable[Any]) -> np.ndarray:
         positions_list = list(positions)
-        with self.model_lock:
-            return self._infer_values_locked(positions_list)
+        if not positions_list:
+            return np.zeros((0,), dtype=np.float32)
+
+        keys = [self._position_key(pos) for pos in positions_list]
+        cached = np.zeros((len(positions_list),), dtype=np.float32)
+        missing: list[int] = []
+
+        with self.cache_lock:
+            for idx, key in enumerate(keys):
+                if key is not None and key in self._val_cache:
+                    cached[idx] = float(self._val_cache[key])
+                else:
+                    missing.append(idx)
+
+        if not missing:
+            return cached
+
+        miss_positions = [positions_list[idx] for idx in missing]
+        placeholder_moves = [[] for _ in miss_positions]
+        _, values = self._dispatch_eval(miss_positions, placeholder_moves)
+        for offset, idx in enumerate(missing):
+            cached[idx] = float(values[offset])
+        return cached
 
     # ------------------------------------------------------------------ metrics
     def metrics_snapshot(self) -> dict[str, float]:
@@ -165,6 +186,53 @@ class BatchedEvaluator:
         return self.metrics_snapshot()
 
     # ------------------------------------------------------------------ internals (locked by model_lock)
+    def _dispatch_eval(
+        self, positions_list: list[Any], moves_list: list[list[Any]]
+    ) -> tuple[list[np.ndarray], np.ndarray]:
+        if len(positions_list) != len(moves_list):
+            raise ValueError("positions and moves must have the same length")
+        if not positions_list:
+            return [], np.zeros((0,), dtype=np.float32)
+        if self._shutdown.is_set():
+            raise RuntimeError("Evaluator has been shut down")
+
+        if self._batch_cap <= 1 and self._coalesce_ms <= 0:
+            with self.model_lock:
+                probs, values = self._infer_positions_legal_locked(positions_list, moves_list)
+            probs = [np.asarray(arr, dtype=np.float32, copy=False) for arr in probs]
+            values = np.asarray(values, dtype=np.float32, copy=False)
+            return probs, values
+
+        request = _EvalRequest(positions_list, moves_list)
+        with self._cv:
+            request.no_wait = not self._queue
+            self._queue.append(request)
+            self._cv.notify()
+
+        timeout = max(0.05, (float(self._coalesce_ms) / 1000.0) + 1.0)
+        if not request.event.wait(timeout):
+            removed = False
+            with self._cv:
+                for idx, pending in enumerate(self._queue):
+                    if pending is request:
+                        self._queue.pop(idx)
+                        removed = True
+                        break
+            if removed:
+                with self.model_lock:
+                    probs_raw, values_raw = self._infer_positions_legal_locked(positions_list, moves_list)
+                request.out_probs = probs_raw
+                request.out_values = values_raw
+                request.event.set()
+            else:
+                request.event.wait()
+
+        if request.out_probs is None or request.out_values is None:
+            raise RuntimeError("Evaluator request failed")
+        probs_np = [np.asarray(arr, dtype=np.float32, copy=False) for arr in request.out_probs]
+        values_np = np.asarray(request.out_values, dtype=np.float32, copy=False)
+        return probs_np, values_np
+
     def _infer_positions_legal_locked(
         self, positions: list[Any], moves_per_position: list[list[Any]]
     ) -> tuple[list[np.ndarray], np.ndarray]:
@@ -392,56 +460,72 @@ class BatchedEvaluator:
 
     # ------------------------------------------------------------------ background thread
     def _coalesce_loop(self) -> None:
-        while not self._shutdown.is_set():
-            batch: list[_EvalRequest] = []
-            with self._cv:
-                while not self._queue and not self._shutdown.is_set():
-                    self._cv.wait(timeout=0.01)
-                if self._shutdown.is_set():
-                    break
-                if self._queue:
-                    batch.append(self._queue.pop(0))
-                total = batch[0].size if batch else 0
-                deadline = time.monotonic() + max(0.0, float(self._coalesce_ms) / 1000.0)
-                while total < self._batch_cap and time.monotonic() < deadline:
-                    if not self._queue:
-                        remaining = deadline - time.monotonic()
-                        if remaining <= 0:
-                            break
-                        self._cv.wait(timeout=min(remaining, 0.002))
-                        continue
-                    if self._queue[0].size <= (self._batch_cap - total):
-                        request = self._queue.pop(0)
-                        batch.append(request)
-                        total += request.size
-                    else:
+        try:
+            while True:
+                batch: list[_EvalRequest] = []
+                with self._cv:
+                    while not self._queue and not self._shutdown.is_set():
+                        self._cv.wait(timeout=0.01)
+                    if self._shutdown.is_set() and not self._queue:
                         break
-            if not batch:
-                continue
-            try:
-                flat_positions: list[Any] = []
-                flat_moves: list[list[Any]] = []
-                sizes: list[int] = []
-                for request in batch:
-                    flat_positions.extend(request.positions)
-                    flat_moves.extend(request.moves)
-                    sizes.append(request.size)
-                probs_list, values_arr = self._infer_positions_legal_locked(flat_positions, flat_moves)
-                offset = 0
-                for request, size in zip(batch, sizes, strict=False):
-                    request.out_probs = probs_list[offset : offset + size]
-                    request.out_values = values_arr[offset : offset + size]
-                    request.event.set()
-                    offset += size
-            except Exception:
-                for request in batch:
-                    request.out_probs = [np.zeros((0,), dtype=np.float32) for _ in range(request.size)]
-                    request.out_values = np.zeros((request.size,), dtype=np.float32)
-                    request.event.set()
+                    if self._queue:
+                        batch.append(self._queue.pop(0))
+                    total = batch[0].size if batch else 0
+                    if batch and batch[0].no_wait:
+                        deadline = time.monotonic()
+                    else:
+                        deadline = time.monotonic() + max(0.0, float(self._coalesce_ms) / 1000.0)
+                    while total < self._batch_cap and time.monotonic() < deadline:
+                        if not self._queue:
+                            if self._shutdown.is_set():
+                                break
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                break
+                            self._cv.wait(timeout=min(remaining, 0.002))
+                            continue
+                        if self._queue[0].size <= (self._batch_cap - total):
+                            request = self._queue.pop(0)
+                            batch.append(request)
+                            total += request.size
+                        else:
+                            break
+                if not batch:
+                    continue
+                try:
+                    flat_positions: list[Any] = []
+                    flat_moves: list[list[Any]] = []
+                    sizes: list[int] = []
+                    for request in batch:
+                        flat_positions.extend(request.positions)
+                        flat_moves.extend(request.moves)
+                        sizes.append(request.size)
+                    with self.model_lock:
+                        probs_list, values_arr = self._infer_positions_legal_locked(flat_positions, flat_moves)
+                    offset = 0
+                    for request, size in zip(batch, sizes, strict=False):
+                        request.out_probs = probs_list[offset : offset + size]
+                        request.out_values = values_arr[offset : offset + size]
+                        request.event.set()
+                        offset += size
+                except Exception:
+                    for request in batch:
+                        request.out_probs = [np.zeros((0,), dtype=np.float32) for _ in range(request.size)]
+                        request.out_values = np.zeros((request.size,), dtype=np.float32)
+                        request.event.set()
+        finally:
+            # Wake any callers that are still waiting when the loop terminates
+            with self._cv:
+                pending = list(self._queue)
+                self._queue.clear()
+            for request in pending:
+                request.out_probs = [np.zeros((0,), dtype=np.float32) for _ in range(request.size)]
+                request.out_values = np.zeros((request.size,), dtype=np.float32)
+                request.event.set()
 
 
 class _EvalRequest:
-    __slots__ = ("positions", "moves", "size", "out_probs", "out_values", "event")
+    __slots__ = ("positions", "moves", "size", "out_probs", "out_values", "event", "no_wait")
 
     def __init__(self, positions: list[Any], moves: list[list[Any]]) -> None:
         self.positions = positions
@@ -450,3 +534,4 @@ class _EvalRequest:
         self.out_probs: Optional[list[np.ndarray]] = None
         self.out_values: Optional[np.ndarray] = None
         self.event = threading.Event()
+        self.no_wait = False
