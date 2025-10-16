@@ -1,0 +1,125 @@
+LOG:
+  level: INFO
+  runs_dir: runs
+  archive_checkpoints: true
+  checkpoint_interval_iters: 24
+  empty_cache_interval_iters: 96
+  metrics_csv_enable: true
+TORCH:
+  amp_enabled: true
+  matmul_float32_precision: high
+  threads_intra: 12
+  threads_inter: 2
+  model_channels_last: true
+  eval_model_channels_last: true
+  cudnn_benchmark: true
+  cuda_allow_tf32: true
+  cudnn_allow_tf32: true
+  cuda_allow_fp16_reduced_reduction: true
+DATA:
+  u8_scale: 255.0
+  value_i8_scale: 127.0
+MODEL:
+  blocks: 5
+  channels: 88
+  value_conv_channels: 12
+  value_hidden_dim: 320
+EVAL:
+  batch_size_max: 192
+  coalesce_ms: 3
+  cache_capacity: 20000
+  arena_cache_capacity: 512
+  encode_cache_capacity: 6000
+  value_cache_capacity: 20000
+  use_fp16_cache: true
+SELFPLAY:
+  num_workers: 4
+  game_max_plies: 100
+  temperature_moves: 36
+  temperature_high: 1.6
+  temperature_low: 0.65
+  deterministic_temp_eps: 0.01
+  opening_book_path: opening_book.json
+  curriculum:
+    sample_probability: 0.3
+    fens:
+    - r1bq1rk1/pppp1ppp/2n2n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 7
+    - r2q1rk1/pp3ppp/2n1pn2/2bp4/3P4/2P1PN2/PP1N1PPP/R1BQ1RK1 b - - 0 10
+    - 2r2rk1/1bqn1ppp/p2ppn2/1p6/3NP3/1BN1B3/PPP2PPP/2KR3R w - - 0 13
+    - r1bq1rk1/ppp1bppp/2nppn2/8/2B1P3/2NP1N2/PPPQ1PPP/R1B2RK1 w - - 0 9
+    - 2rq1rk1/pp2bppp/2n1pn2/2bp4/2P5/1PNPB3/PB2NPPP/R2Q1RK1 w - - 0 11
+  opening_random_moves: 2
+  adjudication_enabled: true
+  adjudication_min_plies: 64
+  adjudication_value_margin: 0.12
+  adjudication_persist_plies: 8
+  adjudication_material_margin: 3.0
+REPLAY:
+  capacity: 20000
+SAMPLING:
+  recent_ratio: 0.65
+  recent_ratio_min: 0.55
+  recent_ratio_max: 0.75
+  recent_window_frac: 0.25
+AUGMENT:
+  mirror_prob: 0.5
+  rot180_prob: 0.25
+  vflip_prob: 0.25
+MCTS:
+  train_simulations: 100
+  train_simulations_min: 96
+  train_sim_decay_move_interval: 24
+  c_puct: 1.0
+  c_puct_base: 19652
+  c_puct_init: 1.25
+  dirichlet_alpha: 0.3
+  dirichlet_weight: 0.25
+  fpu_reduction: 0.15
+  visit_count_clamp: 65535
+RESIGN:
+  enabled: false
+  value_threshold: -0.05
+  min_plies: 32
+  cooldown_iters: 4
+  consecutive_required: 2
+  playthrough_fraction: 0.25
+TRAIN:
+  total_iterations: 100
+  games_per_iter: 100
+  batch_size: 112
+  batch_size_min: 96
+  batch_size_max: 128
+  learning_rate_init: 0.0007
+  learning_rate_final: 0.00032
+  learning_rate_warmup_steps: 1000
+  lr_steps_per_iter_estimate: 40
+  lr_restart_interval_iters: 0
+  lr_restart_decay: 1.0
+  weight_decay: 0.0001
+  momentum: 0.9
+  grad_clip_norm: 1.0
+  loss_policy_weight: 1.0
+  loss_value_weight: 1.0
+  loss_policy_label_smooth: 0.015
+  loss_entropy_coef: 0.0003
+  loss_entropy_iters: 256
+  loss_entropy_min_coef: 0.0002
+  ema_enabled: true
+  ema_decay: 0.999
+  samples_per_new_game: 0.55
+  update_steps_min: 20
+  update_steps_max: 48
+ARENA:
+  eval_every_iters: 16
+  games_per_eval: 50
+  mcts_simulations: 128
+  temperature: 0.6
+  temperature_moves: 20
+  draw_score: 0.5
+  gate_baseline_p: 0.5
+  gate_margin: 0.005
+  gate_min_games: 32
+  gate_min_decisive: 1
+  gate_draw_weight: 0.4
+  max_game_plies: 140
+  resign_enable: false

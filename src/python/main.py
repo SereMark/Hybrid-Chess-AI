@@ -1,25 +1,35 @@
+"""CLI entrypoint for Hybrid Chess AI training."""
+
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
 import os
 import sys
 from typing import Sequence
 
+import config as C
 import numpy as np
 import torch
-
-import config as C
 from checkpoint import save_checkpoint
 from trainer import Trainer
 
 RLOG = logging.getLogger("hybridchess.runtime")
 TLOG = logging.getLogger("hybridchess.trainer")
 
+CLI_DESCRIPTION = "Hybrid Chess AI training entrypoint"
+__all__ = ["main"]
+
+
+# ---------------------------------------------------------------------------#
+# CLI parsing
+# ---------------------------------------------------------------------------#
+
 
 def _parse_args(args: Sequence[str]) -> argparse.Namespace:
     """Define CLI and parse arguments."""
-    parser = argparse.ArgumentParser(description="Hybrid Chess AI training entrypoint")
+    parser = argparse.ArgumentParser(description=CLI_DESCRIPTION)
     parser.add_argument(
         "-c",
         "--config",
@@ -69,6 +79,11 @@ def _apply_cli_configs(parsed: argparse.Namespace) -> None:
             raise
     if loaded:
         RLOG.info("Loaded configuration overlays: %s", ", ".join(loaded))
+
+
+# ---------------------------------------------------------------------------#
+# Runtime preparation
+# ---------------------------------------------------------------------------#
 
 
 def _resolve_thread_settings() -> tuple[int, int]:
@@ -138,14 +153,27 @@ def _configure_torch_backends(has_cuda: bool) -> None:
     if not has_cuda:
         TLOG.warning("CUDA unavailable; training will run on CPU")
         return
-    _set_backend_flag(torch.backends.cuda.matmul, "allow_tf32", bool(C.TORCH.cuda_allow_tf32))
-    _set_backend_flag(torch.backends.cudnn, "allow_tf32", bool(C.TORCH.cudnn_allow_tf32))
+    if not hasattr(torch.backends.cuda.matmul, "fp32_precision"):
+        raise RuntimeError("PyTorch build is missing torch.backends.cuda.matmul.fp32_precision; upgrade PyTorch.")
+    matmul_precision = str(C.TORCH.cuda_matmul_fp32_precision).lower()
+    torch.backends.cuda.matmul.fp32_precision = matmul_precision
+
+    cudnn_conv = getattr(torch.backends.cudnn, "conv", None)
+    if cudnn_conv is None or not hasattr(cudnn_conv, "fp32_precision"):
+        raise RuntimeError("PyTorch build is missing torch.backends.cudnn.conv.fp32_precision; upgrade PyTorch.")
+    cudnn_precision = str(C.TORCH.cudnn_conv_fp32_precision).lower()
+    cudnn_conv.fp32_precision = cudnn_precision
     _set_backend_flag(
         torch.backends.cuda.matmul,
         "allow_fp16_reduced_precision_reduction",
         bool(C.TORCH.cuda_allow_fp16_reduced_reduction),
     )
     _set_backend_flag(torch.backends.cudnn, "benchmark", bool(C.TORCH.cudnn_benchmark))
+
+
+# ---------------------------------------------------------------------------#
+# Entrypoint
+# ---------------------------------------------------------------------------#
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -191,6 +219,4 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    import contextlib
-
     raise SystemExit(main())

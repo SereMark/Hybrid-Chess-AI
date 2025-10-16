@@ -1,3 +1,24 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hybrid-chess-ai"
+version = "0.1.0"
+description = "AlphaZero-style chess reinforcement learning stack with pybind11 chess core and PyTorch network."
+readme = "README.md"
+license = { text = "Proprietary" }
+requires-python = ">=3.13"
+authors = [
+  { name = "Sere Gergő Márk", email = "seremark056@gmail.com" },
+]
+dependencies = [
+  "numpy>=1.26",
+  "pyyaml>=6.0",
+  "python-chess>=1.999",
+  "pybind11>=2.10",
+]
+
 [tool.black]
 line-length = 120
 target-version = ["py313"]

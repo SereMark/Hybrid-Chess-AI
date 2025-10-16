@@ -1,0 +1,11 @@
+[Event "Arena Evaluation"]
+[Site "Local"]
+[Date "2025.10.14"]
+[Round "4"]
+[White "Baseline"]
+[Black "Candidate"]
+[Result "1/2-1/2"]
+[SetUp "1"]
+[FEN "r2kq2r/ppp2ppp/3b1n2/3pnb2/8/1PN1PN2/PBPP2PP/R2KQB1R b KQkq - 0 8"]
+
+1. h5 e4 2. b5 Qf2 3. Be7 g4 4. Rf8 Be2 5. g5 Nh4 6. a5 Nb1 7. a4 Ng6 8. Ba3 c3 9. Qd7 Qg1 10. Bxg4 b4 11. Bxe2 Kxe2 12. Qg4 Qxg4 13. hxg4 Nf4 14. Ke7 Rd1 15. d4 Kf2 16. dxc3 Ne6 17. Nf3 Bxc3 18. Nh7 Nc5 19. Nxd2 Rc1 20. Ra6 Ke3 21. Nb3 Ne6 22. Ra7 Ng7 23. Ra5 Rf1 24. Ra6 Bd2 25. Nf6 Re1 26. Ra7 Bc3 27. Nd7 Bb2 28. Nd7c5 h3 29. Ne6 Nxa3 30. Ra5 Nxb5 31. Ra5a8 Kf2 32. c6 Reb1 33. Rad8 hxg4 34. Nb3d4 Rh1 35. Nxg7 a3 36. Ke6 Rae1 37. f6 Re2 38. Ne8 Kg1 39. Rd5 Kf2 40. Nc2 Bc3 41. Ke7 Rh6 42. Ke6 Re1 43. Na1 e5 44. Rd2 Kf1 45. Rh2 Nd4 46. Kd7 b5 47. Rb2 Rxf6 48. Rg2 Rf5 49. Kc7 e6 50. Rxf5 Nf3 51. Rf8 Bb4 52. Ra2 bxc6 53. Rh2 Rd1 54. Rb2 Be7 55. Rb1 Bd6 56. Kc8 Bg3 57. Rb7 Be5 58. Rb4 Rd6 59. Rf5 Bxa1 60. Rf6 Rd4 61. Rf8 Re4 62. Rg8 Bh8 63. Kd8 Bc3 64. Ke7 Rxb4 65. Nf6 Nd2 66. Kd8 Rb5 67. Ke7 Kf2 68. Rh8 Rb8 69. Rh7 Rb2 70. Rh5 Nf1 1/2-1/2

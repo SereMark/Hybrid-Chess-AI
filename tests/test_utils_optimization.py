@@ -4,9 +4,7 @@ import csv
 import math
 from pathlib import Path
 
-import numpy as np
 import torch
-
 from optimization import EMA, WarmupCosine, build_optimizer
 from utils import MetricsReporter, flip_fen_perspective, sanitize_fen
 
@@ -50,7 +48,7 @@ def test_warmup_cosine_and_ema() -> None:
         sch.step()
         lrs.append(opt.param_groups[0]["lr"])
     assert math.isclose(lrs[1], 1e-2, rel_tol=1e-5)  # end warmup
-    assert lrs[-1] < lrs[0]
+    assert all(next_lr <= curr_lr + 1e-9 for curr_lr, next_lr in zip(lrs[1:], lrs[2:]))
 
     model = torch.nn.Linear(2, 2)
     ema = EMA(model, decay=0.5)

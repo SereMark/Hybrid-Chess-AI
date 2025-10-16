@@ -1,3 +1,5 @@
+// Hybrid Chess AI - Core chess implementation
+
 #include "chess.hpp"
 
 #include <cctype>

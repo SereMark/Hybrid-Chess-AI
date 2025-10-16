@@ -1,3 +1,4 @@
+# ruff: noqa: E402, I001
 from __future__ import annotations
 
 import argparse
@@ -12,32 +13,14 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Any, Callable, Sequence, cast
 
-# --------------------------------------------------------------------------- sys.path
-REPO_ROOT = Path(__file__).resolve().parents[1]
-_CANDIDATE_EXT_DIRS = [
-    REPO_ROOT / "build" / "python" / "Release",
-    REPO_ROOT / "build" / "python" / "Debug",
-    REPO_ROOT / "build" / "python",
-    REPO_ROOT / "src" / "python",
-]
-for p in _CANDIDATE_EXT_DIRS:
-    if p.exists():
-        s = str(p)
-        if s not in sys.path:
-            sys.path.insert(0, s)
+from _bench_common import import_chesscore, import_python_chess, prepare_extension_import_paths
 
-import chess as pychess  # noqa: E402
-import chess.pgn  # noqa: E402
-try:
-    import chesscore as ccore  # type: ignore  # noqa: E402
-except ImportError as exc:  # pragma: no cover
-    tried = ", ".join(str(p) for p in _CANDIDATE_EXT_DIRS)
-    raise SystemExit(
-        "Failed to import chesscore. Build the extension with CMake and ensure one of these is on PYTHONPATH: "
-        f"{tried}"
-    ) from exc
+prepare_extension_import_paths()
+pychess: Any = import_python_chess()
+
+ccore: Any = import_chesscore()
 
 # --------------------------------------------------------------------------- defaults
 
@@ -75,12 +58,48 @@ class MCTSScenario:
 
 TEMPLATE_SCENARIOS: dict[str, list[dict[str, object]]] = {
     "baseline": [
-        {"name": "mcts_small", "positions": 200, "max_random_plies": 80, "simulations": 256, "max_batch": 32, "repetitions": 3, "seed": 9001, "description": "Random playout positions (small)"},
-        {"name": "mcts_medium", "positions": 400, "max_random_plies": 120, "simulations": 384, "max_batch": 48, "repetitions": 3, "seed": 42, "description": "Random playout positions (medium)"},
-        {"name": "mcts_deep", "positions": 600, "max_random_plies": 200, "simulations": 512, "max_batch": 64, "repetitions": 3, "seed": 1337, "description": "Random playout positions (deep)"},
+        {
+            "name": "mcts_small",
+            "positions": 200,
+            "max_random_plies": 80,
+            "simulations": 256,
+            "max_batch": 32,
+            "repetitions": 3,
+            "seed": 9001,
+            "description": "Random playout positions (small)",
+        },
+        {
+            "name": "mcts_medium",
+            "positions": 400,
+            "max_random_plies": 120,
+            "simulations": 384,
+            "max_batch": 48,
+            "repetitions": 3,
+            "seed": 42,
+            "description": "Random playout positions (medium)",
+        },
+        {
+            "name": "mcts_deep",
+            "positions": 600,
+            "max_random_plies": 200,
+            "simulations": 512,
+            "max_batch": 64,
+            "repetitions": 3,
+            "seed": 1337,
+            "description": "Random playout positions (deep)",
+        },
     ],
     "quick": [
-        {"name": "mcts_quick", "positions": 100, "max_random_plies": 60, "simulations": 128, "max_batch": 16, "repetitions": 2, "seed": 2025, "description": "Quick diagnostic"}
+        {
+            "name": "mcts_quick",
+            "positions": 100,
+            "max_random_plies": 60,
+            "simulations": 128,
+            "max_batch": 16,
+            "repetitions": 2,
+            "seed": 2025,
+            "description": "Quick diagnostic",
+        }
     ],
 }
 
@@ -158,7 +177,10 @@ class PythonMCTS:
         return [root_node.visits[mid] for mid in root_node.move_ids]
 
     def _simulate(
-        self, root_position: ccore.Position, root_turn: int, evaluator: Callable[[ccore.Position], tuple[list[float], float]]
+        self,
+        root_position: ccore.Position,
+        root_turn: int,
+        evaluator: Callable[[ccore.Position], tuple[list[float], float]],
     ) -> None:
         position = ccore.Position(root_position)
         nodes_path: list[tuple[PythonNode, int]] = []
@@ -341,25 +363,34 @@ def compute_alignment_metrics(fens: Sequence[str], scenario: MCTSScenario, sampl
         if _top_move(cpp_dist) == _top_move(py_dist):
             top_matches += 1
         if len(examples) < 5 and (l1 > 0.2 or _top_move(cpp_dist) != _top_move(py_dist)):
-            examples.append({"fen": fen, "l1_distance": l1, "top_cpp": _top_move(cpp_dist), "top_python": _top_move(py_dist)})
+            examples.append(
+                {"fen": fen, "l1_distance": l1, "top_cpp": _top_move(cpp_dist), "top_python": _top_move(py_dist)}
+            )
     if evaluated == 0:
         return {"positions_checked": 0, "mean_l1": 0.0, "max_l1": 0.0, "top_match_pct": 100.0, "examples": []}
     mean_l1 = float(statistics.fmean(l1_distances))
     max_l1 = float(max(l1_distances))
     top_match_pct = 100.0 * top_matches / evaluated
-    return {"positions_checked": evaluated, "mean_l1": mean_l1, "max_l1": max_l1, "top_match_pct": top_match_pct, "examples": examples}
+    return {
+        "positions_checked": evaluated,
+        "mean_l1": mean_l1,
+        "max_l1": max_l1,
+        "top_match_pct": top_match_pct,
+        "examples": examples,
+    }
 
 
-def build_markdown_report(reports: list[dict[str, object]]) -> str:
+def build_markdown_report(reports: list[dict[str, Any]]) -> str:
     lines: list[str] = []
     for report in reports:
-        scenario = report["scenario"]
-        stats = report["stats"]
+        report_dict = report
+        scenario = cast(dict[str, Any], report_dict["scenario"])
+        stats = cast(dict[str, Any], report_dict["stats"])
         lines.append(f"# MCTS Benchmark Report - {scenario['name']}")
         lines.append("")
-        lines.append(f"Generated: {report['generated_at']}")
-        lines.append(f"Python: {report['python_version']}")
-        lines.append(f"Platform: {report['platform']}")
+        lines.append(f"Generated: {report_dict['generated_at']}")
+        lines.append(f"Python: {report_dict['python_version']}")
+        lines.append(f"Platform: {report_dict['platform']}")
         lines.append("")
         lines.append("## Scenario")
         lines.append("")
@@ -373,32 +404,34 @@ def build_markdown_report(reports: list[dict[str, object]]) -> str:
         lines.append("")
         lines.append("## Timing")
         lines.append("")
-        cpp = stats["cpp"]
-        py = stats["python"]
-        lines.append(f"- C++ MCTS time: {cpp['time_seconds']:.4f} s")
-        lines.append(f"- Python MCTS time: {py['time_seconds']:.4f} s")
-        if cpp["time_seconds"] > 0:
-            lines.append(f"- Speedup (cpp/python): {py['time_seconds'] / cpp['time_seconds']:.2f}x")
-        lines.append(f"- Positions per second (C++): {cpp['positions_per_second']:.0f}")
-        lines.append(f"- Positions per second (Python): {py['positions_per_second']:.0f}")
+        cpp_stats = cast(dict[str, Any], stats["cpp"])
+        py_stats = cast(dict[str, Any], stats["python"])
+        lines.append(f"- C++ MCTS time: {cpp_stats['time_seconds']:.4f} s")
+        lines.append(f"- Python MCTS time: {py_stats['time_seconds']:.4f} s")
+        if cpp_stats["time_seconds"] > 0:
+            lines.append(f"- Speedup (cpp/python): {py_stats['time_seconds'] / cpp_stats['time_seconds']:.2f}x")
+        lines.append(f"- Positions per second (C++): {cpp_stats['positions_per_second']:.0f}")
+        lines.append(f"- Positions per second (Python): {py_stats['positions_per_second']:.0f}")
         lines.append("")
-        alignment = report.get("alignment")
+        alignment = report_dict.get("alignment")
         if alignment:
+            alignment_dict = cast(dict[str, Any], alignment)
             lines.append("## Alignment")
             lines.append("")
-            lines.append(f"- Positions checked: {alignment.get('positions_checked', 0)}")
-            lines.append(f"- Mean L1 distance: {alignment.get('mean_l1', 0.0):.4f}")
-            lines.append(f"- Max L1 distance: {alignment.get('max_l1', 0.0):.4f}")
-            lines.append(f"- Top move agreement: {alignment.get('top_match_pct', 0.0):.1f}%")
-            examples = alignment.get("examples", [])
+            lines.append(f"- Positions checked: {alignment_dict.get('positions_checked', 0)}")
+            lines.append(f"- Mean L1 distance: {alignment_dict.get('mean_l1', 0.0):.4f}")
+            lines.append(f"- Max L1 distance: {alignment_dict.get('max_l1', 0.0):.4f}")
+            lines.append(f"- Top move agreement: {alignment_dict.get('top_match_pct', 0.0):.1f}%")
+            examples = cast(list[dict[str, Any]], alignment_dict.get("examples", []))
             if examples:
                 lines.append("- Example disagreements:")
                 for example in examples:
-                    lines.append(f"  - FEN: `{example['fen']}` (L1={example['l1_distance']:.3f})")
+                    lines.append(f"  - FEN: `{example['fen']}` (L1={example.get('l1_distance', 0.0):.3f})")
                     lines.append(f"    C++ top move: {example.get('top_cpp', 'n/a')}")
                     lines.append(f"    Python top move: {example.get('top_python', 'n/a')}")
             lines.append("")
     return "\n".join(lines)
+
 
 # --------------------------------------------------------------------------- cli
 
@@ -414,15 +447,14 @@ def main() -> None:
     parser.add_argument("--scenario-name", type=str, default="mcts", help="Base name for ad-hoc scenarios")
     parser.add_argument("--template", choices=sorted(TEMPLATE_SCENARIOS.keys()), help="Use a preset scenario suite")
     parser.add_argument(
-        "--output-json", type=Path, default=Path("benchmark_reports") / "mcts" / "mcts_summary.json", help="Path for JSON report"
+        "--output-csv",
+        type=Path,
+        default=Path("benchmark_reports") / "mcts_cpp.csv",
+        help="Path for CSV timing summary",
     )
     parser.add_argument(
-        "--output-markdown", type=Path, default=Path("benchmark_reports") / "mcts" / "mcts_summary.md", help="Path for Markdown report"
+        "--alignment-sample", type=int, default=64, help="Positions sampled for visit distribution alignment"
     )
-    parser.add_argument(
-        "--output-csv", type=Path, default=Path("benchmark_reports") / "mcts" / "mcts_summary.csv", help="Path for CSV timing summary"
-    )
-    parser.add_argument("--alignment-sample", type=int, default=64, help="Positions sampled for visit distribution alignment")
     args = parser.parse_args()
 
     positions_list = list(args.positions) if args.positions else DEFAULT_POSITIONS
@@ -432,10 +464,11 @@ def main() -> None:
     repetitions_list = list(args.repetitions) if args.repetitions else DEFAULT_REPETITIONS
     seeds_list = list(args.seeds) if args.seeds else DEFAULT_SEEDS
 
+    raw: list[dict[str, Any]]
     if args.template:
         if any([args.positions, args.max_random_plies, args.simulations, args.max_batch, args.repetitions, args.seeds]):
             raise SystemExit("When --template is used, omit manual scenario arguments.")
-        raw = TEMPLATE_SCENARIOS[args.template]
+        raw = cast(list[dict[str, Any]], TEMPLATE_SCENARIOS[args.template])
     else:
         if not positions_list:
             raise SystemExit("Provide at least one --positions value or use --template.")
@@ -449,26 +482,25 @@ def main() -> None:
         )
         raw = []
         for idx in range(length):
-            raw.append(
-                {
-                    "name": f"{args.scenario_name}_{idx}" if length > 1 else args.scenario_name,
-                    "positions": positions_list[idx % len(positions_list)],
-                    "max_random_plies": maxplies_list[idx % len(maxplies_list)],
-                    "simulations": simulations_list[idx % len(simulations_list)],
-                    "max_batch": max_batch_list[idx % len(max_batch_list)],
-                    "repetitions": repetitions_list[idx % len(repetitions_list)],
-                    "seed": seeds_list[idx % len(seeds_list)],
-                    "description": "Random playout positions",
-                }
-            )
+            cfg_dict: dict[str, Any] = {
+                "name": f"{args.scenario_name}_{idx}" if length > 1 else args.scenario_name,
+                "positions": positions_list[idx % len(positions_list)],
+                "max_random_plies": maxplies_list[idx % len(maxplies_list)],
+                "simulations": simulations_list[idx % len(simulations_list)],
+                "max_batch": max_batch_list[idx % len(max_batch_list)],
+                "repetitions": repetitions_list[idx % len(repetitions_list)],
+                "seed": seeds_list[idx % len(seeds_list)],
+                "description": "Random playout positions",
+            }
+            raw.append(cfg_dict)
 
-    scenarios = [MCTSScenario(**cfg) for cfg in raw]
+    scenarios = [MCTSScenario(**cast(dict[str, Any], cfg)) for cfg in raw]
     for s in scenarios:
         if s.positions <= 0 or s.max_random_plies < 0 or s.simulations <= 0 or s.repetitions <= 0 or s.max_batch <= 0:
             raise SystemExit("Scenario parameters must be positive (plies can be zero or greater).")
 
-    reports: list[dict[str, object]] = []
-    csv_rows: list[dict[str, object]] = []
+    reports: list[dict[str, Any]] = []
+    csv_rows: list[dict[str, Any]] = []
     for scenario in scenarios:
         fens = generate_random_fens(scenario.positions, scenario.max_random_plies, scenario.seed)
         cpp_times: list[float] = []
@@ -479,8 +511,14 @@ def main() -> None:
         cpp_time = statistics.fmean(cpp_times)
         python_time = statistics.fmean(python_times)
         stats = {
-            "cpp": {"time_seconds": cpp_time, "positions_per_second": scenario.positions / cpp_time if cpp_time > 0 else float("inf")},
-            "python": {"time_seconds": python_time, "positions_per_second": scenario.positions / python_time if python_time > 0 else float("inf")},
+            "cpp": {
+                "time_seconds": cpp_time,
+                "positions_per_second": scenario.positions / cpp_time if cpp_time > 0 else float("inf"),
+            },
+            "python": {
+                "time_seconds": python_time,
+                "positions_per_second": scenario.positions / python_time if python_time > 0 else float("inf"),
+            },
         }
         alignment = compute_alignment_metrics(fens, scenario, sample_size=args.alignment_sample)
         reports.append(
@@ -493,6 +531,9 @@ def main() -> None:
                 "alignment": alignment,
             }
         )
+        cpp_stats = cast(dict[str, Any], stats["cpp"])
+        py_stats = cast(dict[str, Any], stats["python"])
+        alignment_dict = cast(dict[str, Any], alignment)
         csv_rows.append(
             {
                 "scenario": scenario.name,
@@ -503,20 +544,15 @@ def main() -> None:
                 "repetitions": scenario.repetitions,
                 "cpp_time_s": cpp_time,
                 "python_time_s": python_time,
-                "cpp_positions_per_s": stats["cpp"]["positions_per_second"],
-                "python_positions_per_s": stats["python"]["positions_per_second"],
+                "cpp_positions_per_s": cpp_stats["positions_per_second"],
+                "python_positions_per_s": py_stats["positions_per_second"],
                 "speedup_cpp_over_python": (python_time / cpp_time) if cpp_time > 0 else float("inf"),
-                "alignment_mean_l1": alignment.get("mean_l1", 0.0),
-                "alignment_top_match_pct": alignment.get("top_match_pct", 0.0),
+                "alignment_mean_l1": alignment_dict.get("mean_l1", 0.0),
+                "alignment_top_match_pct": alignment_dict.get("top_match_pct", 0.0),
             }
         )
 
-    args.output_json.parent.mkdir(parents=True, exist_ok=True)
-    args.output_json.write_text(json.dumps(reports, indent=2))
-    if args.output_markdown:
-        args.output_markdown.parent.mkdir(parents=True, exist_ok=True)
-        args.output_markdown.write_text(build_markdown_report(reports))
-    if args.output_csv and csv_rows:
+    if csv_rows:
         args.output_csv.parent.mkdir(parents=True, exist_ok=True)
         with args.output_csv.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=list(csv_rows[0].keys()))

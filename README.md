@@ -7,9 +7,9 @@ AlphaZero-style chess RL stack with a C++ engine + MCTS core (pybind11) and a Py
 ## Requirements
 
 - Windows 11 x64
-- Python 3.12
+- Python 3.13
 - Visual Studio 2022 Build Tools (Desktop C++)
-- CMake ≥ 3.21
+- CMake >= 3.21
 - NVIDIA RTX 30-series driver
 
 ---
@@ -17,13 +17,13 @@ AlphaZero-style chess RL stack with a C++ engine + MCTS core (pybind11) and a Py
 ## Setup
 
 ```powershell
-python -m venv .venv
+py -3.13 -m venv .venv
 . .venv\Scripts\Activate.ps1
-python -m pip install -U pip
+python -m pip install --upgrade pip
 
-pip install -r requirements.txt
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-````
+python -m pip install -r requirements.txt
+python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+```
 
 Build the C++ core:
 

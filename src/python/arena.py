@@ -1,3 +1,5 @@
+"""Arena evaluation between a candidate network and the current baseline."""
+
 from __future__ import annotations
 
 import time
@@ -6,23 +8,29 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-import numpy as np
 import chesscore as ccore
 import config as C
-
+import numpy as np
 
 DEFAULT_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+PGN_EVENT = "Arena Evaluation"
+
+__all__ = ["ArenaResult", "play_match"]
 
 _FILE_NAMES = "abcdefgh"
 _PIECE_SAN = {0: "", 1: "N", 2: "B", 3: "R", 4: "Q", 5: "K"}
 _PROMO_SAN = {"q": "Q", "r": "R", "b": "B", "n": "N"}
 
 
-# ---------- result
+# ---------------------------------------------------------------------------#
+# Result containers
+# ---------------------------------------------------------------------------#
+
 
 @dataclass(slots=True)
 class ArenaResult:
-    """Summary of a candidate-versus-baseline evaluation match."""
+    """Summary of an arena match outcome."""
+
     games: int
     candidate_wins: int
     baseline_wins: int
@@ -34,14 +42,61 @@ class ArenaResult:
     notes: list[str] = field(default_factory=list)
 
 
-# ---------- routed evaluator
+@dataclass(slots=True)
+class _ScoreTracker:
+    """Tracks aggregate match statistics for the arena."""
+
+    total_games: int
+    candidate_wins: int = 0
+    baseline_wins: int = 0
+    draws: int = 0
+    candidate_points: float = 0.0
+
+    def record(self, candidate_white: bool, result: ccore.Result) -> None:
+        if result == ccore.WHITE_WIN:
+            if candidate_white:
+                self.candidate_wins += 1
+                self.candidate_points += 1.0
+            else:
+                self.baseline_wins += 1
+        elif result == ccore.BLACK_WIN:
+            if candidate_white:
+                self.baseline_wins += 1
+            else:
+                self.candidate_wins += 1
+                self.candidate_points += 1.0
+        else:
+            self.draws += 1
+            self.candidate_points += 0.5
+
+    def to_result(self, elapsed_s: float, *, notes: Sequence[str] | None = None) -> ArenaResult:
+        denom = max(1, self.total_games)
+        decisive = self.candidate_wins + self.baseline_wins
+        result_notes = list(notes) if notes is not None else []
+        return ArenaResult(
+            games=self.total_games,
+            candidate_wins=self.candidate_wins,
+            baseline_wins=self.baseline_wins,
+            draws=self.draws,
+            score_pct=100.0 * self.candidate_points / denom,
+            draw_pct=100.0 * self.draws / denom,
+            decisive_pct=100.0 * decisive / denom,
+            elapsed_s=float(elapsed_s),
+            notes=result_notes,
+        )
+
+
+# ---------------------------------------------------------------------------#
+# Routed evaluator
+# ---------------------------------------------------------------------------#
+
 
 class _ColourRoutedEvaluator:
-    """Dispatch network calls to white/black evaluators based on side to move."""
+    """Dispatches evaluation requests to side-specific evaluators."""
 
     def __init__(self, white_eval: Any, black_eval: Any) -> None:
-        self.white_eval = white_eval
-        self.black_eval = black_eval
+        self._white = white_eval
+        self._black = black_eval
 
     def infer_positions_legal(
         self, positions: list[Any], moves_per_position: list[list[Any]]
@@ -49,59 +104,76 @@ class _ColourRoutedEvaluator:
         if not positions:
             return [], np.zeros((0,), dtype=np.float32)
 
-        w_idx: list[int] = []
-        b_idx: list[int] = []
-        w_pos: list[Any] = []
-        b_pos: list[Any] = []
-        w_moves: list[list[Any]] = []
-        b_moves: list[list[Any]] = []
+        white_indices: list[int] = []
+        black_indices: list[int] = []
+        white_positions: list[Any] = []
+        black_positions: list[Any] = []
+        white_moves: list[list[Any]] = []
+        black_moves: list[list[Any]] = []
 
         for i, pos in enumerate(positions):
             if getattr(pos, "turn", ccore.WHITE) == ccore.WHITE:
-                w_idx.append(i); w_pos.append(pos); w_moves.append(moves_per_position[i])
+                white_indices.append(i)
+                white_positions.append(pos)
+                white_moves.append(moves_per_position[i])
             else:
-                b_idx.append(i); b_pos.append(pos); b_moves.append(moves_per_position[i])
+                black_indices.append(i)
+                black_positions.append(pos)
+                black_moves.append(moves_per_position[i])
 
-        pol_out: list[np.ndarray] = [np.zeros((0,), dtype=np.float32)] * len(positions)
-        val_out = np.zeros((len(positions),), dtype=np.float32)
+        policy_out: list[np.ndarray] = [np.zeros((0,), dtype=np.float32)] * len(positions)
+        value_out = np.zeros((len(positions),), dtype=np.float32)
 
-        if w_pos:
-            pol_list, val_arr = self.white_eval.infer_positions_legal(w_pos, w_moves)
-            for dst, pol, val in zip(w_idx, pol_list, val_arr, strict=False):
-                pol_out[dst] = pol; val_out[dst] = float(val)
-        if b_pos:
-            pol_list, val_arr = self.black_eval.infer_positions_legal(b_pos, b_moves)
-            for dst, pol, val in zip(b_idx, pol_list, val_arr, strict=False):
-                pol_out[dst] = pol; val_out[dst] = float(val)
-        return pol_out, val_out
+        if white_positions:
+            policies, values = self._white.infer_positions_legal(white_positions, white_moves)
+            for dst, pol, val in zip(white_indices, policies, values, strict=False):
+                policy_out[dst] = pol
+                value_out[dst] = float(val)
+
+        if black_positions:
+            policies, values = self._black.infer_positions_legal(black_positions, black_moves)
+            for dst, pol, val in zip(black_indices, policies, values, strict=False):
+                policy_out[dst] = pol
+                value_out[dst] = float(val)
+
+        return policy_out, value_out
 
     def infer_values(self, positions: list[Any]) -> np.ndarray:
         if not positions:
             return np.zeros((0,), dtype=np.float32)
 
-        w_idx: list[int] = []
-        b_idx: list[int] = []
-        w_pos: list[Any] = []
-        b_pos: list[Any] = []
+        white_indices: list[int] = []
+        black_indices: list[int] = []
+        white_positions: list[Any] = []
+        black_positions: list[Any] = []
+
         for i, pos in enumerate(positions):
             if getattr(pos, "turn", ccore.WHITE) == ccore.WHITE:
-                w_idx.append(i); w_pos.append(pos)
+                white_indices.append(i)
+                white_positions.append(pos)
             else:
-                b_idx.append(i); b_pos.append(pos)
+                black_indices.append(i)
+                black_positions.append(pos)
 
         values = np.zeros((len(positions),), dtype=np.float32)
-        if w_pos:
-            arr = self.white_eval.infer_values(w_pos)
-            for dst, v in zip(w_idx, arr, strict=False):
-                values[dst] = float(v)
-        if b_pos:
-            arr = self.black_eval.infer_values(b_pos)
-            for dst, v in zip(b_idx, arr, strict=False):
-                values[dst] = float(v)
+
+        if white_positions:
+            arr = self._white.infer_values(white_positions)
+            for dst, val in zip(white_indices, arr, strict=False):
+                values[dst] = float(val)
+
+        if black_positions:
+            arr = self._black.infer_values(black_positions)
+            for dst, val in zip(black_indices, arr, strict=False):
+                values[dst] = float(val)
+
         return values
 
 
-# ---------- public API
+# ---------------------------------------------------------------------------#
+# Public API
+# ---------------------------------------------------------------------------#
+
 
 def play_match(
     candidate_eval: Any,
@@ -113,146 +185,137 @@ def play_match(
     pgn_dir: Path | None = None,
     label: str | None = None,
 ) -> ArenaResult:
-    """Head-to-head match between candidate and baseline evaluators."""
+    """Run a head-to-head arena match and report aggregate statistics."""
+    requested_games = int(max(0, games))
     rng = np.random.default_rng(seed)
-    games = int(max(0, games))
-    t0 = time.time()
+    tracker = _ScoreTracker(requested_games)
+    pgn_target = _prepare_pgn_directory(pgn_dir)
+    label = label or "arena"
+    start_time = time.time()
 
-    cand_w = base_w = draws = 0
-    cand_score = 0.0
-
-    if pgn_dir is not None:
-        pgn_dir.mkdir(parents=True, exist_ok=True)
-
-    for g in range(games):
-        cand_white = (g % 2) == 0
-        white_eval = candidate_eval if cand_white else baseline_eval
-        black_eval = baseline_eval if cand_white else candidate_eval
+    for game_index in range(requested_games):
+        candidate_white = (game_index % 2) == 0
+        white_eval = candidate_eval if candidate_white else baseline_eval
+        black_eval = baseline_eval if candidate_white else candidate_eval
         evaluator = _ColourRoutedEvaluator(white_eval, black_eval)
 
         start_fen = start_fen_fn(rng) if start_fen_fn is not None else DEFAULT_START_FEN
-        record_moves = pgn_dir is not None
-        result, moves_san = _play_single_game(evaluator, rng, start_fen, record_moves=record_moves)
+        record_moves = pgn_target is not None
+        result, moves_san = _play_single_game(
+            evaluator,
+            rng,
+            start_fen,
+            record_moves=record_moves,
+        )
 
-        if result == ccore.WHITE_WIN:
-            if cand_white:
-                cand_w += 1; cand_score += 1.0
-            else:
-                base_w += 1
-        elif result == ccore.BLACK_WIN:
-            if cand_white:
-                base_w += 1
-            else:
-                cand_w += 1; cand_score += 1.0
-        else:
-            draws += 1; cand_score += 0.5
+        tracker.record(candidate_white, result)
 
-        if record_moves and pgn_dir is not None:
+        if record_moves and pgn_target is not None:
             _save_pgn(
-                pgn_dir,
-                label or "arena",
-                g,
+                pgn_target,
+                label,
+                game_index,
                 start_fen,
                 moves_san,
                 _result_to_str(result),
-                white_name="Candidate" if cand_white else "Baseline",
-                black_name="Baseline" if cand_white else "Candidate",
+                white_name="Candidate" if candidate_white else "Baseline",
+                black_name="Baseline" if candidate_white else "Candidate",
             )
 
-    elapsed = time.time() - t0
-    tot = max(1, games)
-    decisive = cand_w + base_w
-    return ArenaResult(
-        games=games,
-        candidate_wins=cand_w,
-        baseline_wins=base_w,
-        draws=draws,
-        score_pct=100.0 * cand_score / tot,
-        draw_pct=100.0 * draws / tot,
-        decisive_pct=100.0 * decisive / tot,
-        elapsed_s=elapsed,
-        notes=[],
-    )
+    elapsed = time.time() - start_time
+    return tracker.to_result(elapsed_s=elapsed)
 
 
-# ---------- internals
+# ---------------------------------------------------------------------------#
+# Game loop helpers
+# ---------------------------------------------------------------------------#
+
 
 def _play_single_game(
     evaluator: _ColourRoutedEvaluator,
     rng: np.random.Generator,
     start_fen: str,
     *,
-    record_moves: bool = False,
+    record_moves: bool,
 ) -> tuple[ccore.Result, list[str]]:
-    pos = ccore.Position()
+    """Play a single arena game and optionally return SAN moves."""
+    position = ccore.Position()
     try:
-        pos.from_fen(start_fen)
+        position.from_fen(start_fen)
     except Exception:
-        pos.from_fen(DEFAULT_START_FEN)
+        position.from_fen(DEFAULT_START_FEN)
 
     mcts = _build_mcts(rng)
-    moves_done = 0
+    moves_played = 0
     max_plies = int(max(1, C.ARENA.max_game_plies))
+
     resign_enabled = bool(C.ARENA.resign_enable)
     resign_threshold = float(C.RESIGN.value_threshold)
     resign_consecutive = int(max(1, C.RESIGN.consecutive_required))
     resign_streak = 0
-    moves_san: list[str] = [] if record_moves else []
 
-    while moves_done < max_plies:
-        result = pos.result()
+    moves_san: list[str] = []
+
+    while moves_played < max_plies:
+        result = position.result()
         if result != ccore.ONGOING:
             return result, moves_san
 
-        legal = list(pos.legal_moves())
-        if not legal:
-            return pos.result(), moves_san
+        legal_moves = list(position.legal_moves())
+        if not legal_moves:
+            return position.result(), moves_san
 
-        counts = mcts.search_batched_legal(pos, evaluator.infer_positions_legal, int(max(1, C.EVAL.batch_size_max)))
-        counts = np.asarray(counts, dtype=np.float64)
-        if counts.shape[0] != len(legal):
+        visit_counts = mcts.search_batched_legal(
+            position,
+            evaluator.infer_positions_legal,
+            int(max(1, C.EVAL.batch_size_max)),
+        )
+        counts = np.asarray(visit_counts, dtype=np.float64)
+        if counts.shape[0] != len(legal_moves):
             return ccore.DRAW, moves_san
 
-        temperature = C.ARENA.temperature if moves_done < C.ARENA.temperature_moves else C.SELFPLAY.deterministic_temp_eps
-        mv = legal[_select_move(counts, temperature, rng)]
-        mv_str = str(mv)
+        temperature = (
+            C.ARENA.temperature if moves_played < C.ARENA.temperature_moves else C.SELFPLAY.deterministic_temp_eps
+        )
+        move_index = _select_move(counts, temperature, rng)
+        move = legal_moves[move_index]
 
         if record_moves:
-            moves_san.append(_move_to_san(pos, mv, mv_str, legal))
+            moves_san.append(_move_to_san(position, move, str(move), legal_moves))
 
-        val = float(evaluator.infer_values([pos])[0])
-        stm_white = bool(getattr(pos, "turn", ccore.WHITE) == ccore.WHITE)
-        player_view = val if stm_white else -val
+        value = float(evaluator.infer_values([position])[0])
+        stm_is_white = getattr(position, "turn", ccore.WHITE) == ccore.WHITE
+        value_from_player = value if stm_is_white else -value
         if resign_enabled:
-            if player_view <= resign_threshold:
+            if value_from_player <= resign_threshold:
                 resign_streak += 1
                 if resign_streak >= resign_consecutive:
-                    res = ccore.BLACK_WIN if stm_white else ccore.WHITE_WIN
-                    return res, moves_san
+                    return (ccore.BLACK_WIN if stm_is_white else ccore.WHITE_WIN), moves_san
             else:
                 resign_streak = 0
 
-        pos.make_move(mv)
+        position.make_move(move)
         try:
-            mcts.advance_root(pos, mv)
+            mcts.advance_root(position, move)
         except Exception:
             mcts = _build_mcts(rng)
-        moves_done += 1
+
+        moves_played += 1
 
     return ccore.DRAW, moves_san
 
 
 def _build_mcts(rng: np.random.Generator) -> ccore.MCTS:
-    m = ccore.MCTS(
+    mcts = ccore.MCTS(
         int(C.ARENA.mcts_simulations),
         float(C.MCTS.c_puct),
         float(C.MCTS.dirichlet_alpha),
         float(C.MCTS.dirichlet_weight),
     )
-    m.set_c_puct_params(float(C.MCTS.c_puct_base), float(C.MCTS.c_puct_init))
-    m.set_fpu_reduction(float(C.MCTS.fpu_reduction))
-    m.seed(int(rng.integers(1, np.iinfo(np.int64).max)))
-    return m
+    mcts.set_c_puct_params(float(C.MCTS.c_puct_base), float(C.MCTS.c_puct_init))
+    mcts.set_fpu_reduction(float(C.MCTS.fpu_reduction))
+    mcts.seed(int(rng.integers(1, np.iinfo(np.int64).max)))
+    return mcts
 
 
 def _select_move(visit_counts: np.ndarray, temperature: float, rng: np.random.Generator) -> int:
@@ -264,11 +327,14 @@ def _select_move(visit_counts: np.ndarray, temperature: float, rng: np.random.Ge
     total = float(scaled.sum())
     if not np.isfinite(total) or total <= 0.0:
         return int(np.argmax(visit_counts))
-    probs = np.asarray(scaled / total, dtype=np.float64)
-    return int(rng.choice(len(probs), p=probs))
+    probabilities = np.asarray(scaled / total, dtype=np.float64)
+    return int(rng.choice(len(probabilities), p=probabilities))
 
 
-# ---------- SAN helpers
+# ---------------------------------------------------------------------------#
+# SAN helpers
+# ---------------------------------------------------------------------------#
+
 
 def _square_file(square: int) -> int:
     return int(square) & 7
@@ -282,47 +348,44 @@ def _square_name(square: int) -> str:
     return f"{_FILE_NAMES[_square_file(square)]}{_square_rank(square) + 1}"
 
 
-def _piece_on(pos: ccore.Position, square: int) -> tuple[ccore.Color, int] | None:
+def _piece_on(position: ccore.Position, square: int) -> tuple[ccore.Color, int] | None:
     mask = 1 << int(square)
-    for idx, pair in enumerate(pos.pieces):
+    for idx, pair in enumerate(position.pieces):
         try:
-            w_bb, b_bb = int(pair[0]), int(pair[1])
+            white_bb, black_bb = int(pair[0]), int(pair[1])
         except Exception:
             continue
-        if w_bb & mask:
+        if white_bb & mask:
             return ccore.Color.WHITE, idx
-        if b_bb & mask:
+        if black_bb & mask:
             return ccore.Color.BLACK, idx
     return None
 
 
 def _move_to_san(
-    pos: ccore.Position,
+    position: ccore.Position,
     move: ccore.Move,
     move_str: str,
     legal_moves: Sequence[ccore.Move],
 ) -> str:
     from_sq = int(getattr(move, "from_square", 0))
     to_sq = int(getattr(move, "to_square", 0))
-    info = _piece_on(pos, from_sq)
+    info = _piece_on(position, from_sq)
     if info is None:
         return move_str
     mover_color, piece_type = info
 
     capture = False
-    tgt = _piece_on(pos, to_sq)
-    if tgt is not None:
-        capture = tgt[0] != mover_color
+    target = _piece_on(position, to_sq)
+    if target is not None:
+        capture = target[0] != mover_color
     elif piece_type == 0:
-        ep_sq = int(getattr(pos, "ep_square", -1))
+        ep_sq = int(getattr(position, "ep_square", -1))
         capture = ep_sq >= 0 and ep_sq == to_sq
 
-    # Castling
-    if piece_type == 5:
-        if abs(_square_file(to_sq) - _square_file(from_sq)) == 2:
-            return "O-O" if _square_file(to_sq) > _square_file(from_sq) else "O-O-O"
+    if piece_type == 5 and abs(_square_file(to_sq) - _square_file(from_sq)) == 2:
+        return "O-O" if _square_file(to_sq) > _square_file(from_sq) else "O-O-O"
 
-    # Piece and disambiguation
     if piece_type == 0:
         san = (_FILE_NAMES[_square_file(from_sq)] + "x") if capture else ""
         san += _square_name(to_sq)
@@ -336,12 +399,12 @@ def _move_to_san(
                 continue
             if int(getattr(other, "to_square", -1)) != to_sq:
                 continue
-            other_info = _piece_on(pos, int(getattr(other, "from_square", -1)))
-            if other_info and other_info[0] == mover_color and other_info[1] == piece_type:
+            details = _piece_on(position, int(getattr(other, "from_square", -1)))
+            if details and details[0] == mover_color and details[1] == piece_type:
                 ambiguous.append(int(getattr(other, "from_square", -1)))
         if ambiguous:
-            same_file = any(_square_file(s) == _square_file(from_sq) for s in ambiguous)
-            same_rank = any(_square_rank(s) == _square_rank(from_sq) for s in ambiguous)
+            same_file = any(_square_file(sq) == _square_file(from_sq) for sq in ambiguous)
+            same_rank = any(_square_rank(sq) == _square_rank(from_sq) for sq in ambiguous)
             if same_file and same_rank:
                 san += _square_name(from_sq)
             elif same_file:
@@ -354,13 +417,12 @@ def _move_to_san(
             san += "x"
         san += _square_name(to_sq)
 
-    # Checkmate marker
-    nxt = ccore.Position(pos)
     try:
-        nxt.make_move(move)
-        res = nxt.result()
-        if (mover_color == ccore.Color.WHITE and res == ccore.WHITE_WIN) or (
-            mover_color == ccore.Color.BLACK and res == ccore.BLACK_WIN
+        next_position = ccore.Position(position)
+        next_position.make_move(move)
+        result = next_position.result()
+        if (mover_color == ccore.Color.WHITE and result == ccore.WHITE_WIN) or (
+            mover_color == ccore.Color.BLACK and result == ccore.BLACK_WIN
         ):
             san += "#"
     except Exception:
@@ -368,7 +430,17 @@ def _move_to_san(
     return san
 
 
-# ---------- PGN helpers
+# ---------------------------------------------------------------------------#
+# PGN helpers
+# ---------------------------------------------------------------------------#
+
+
+def _prepare_pgn_directory(path: Path | None) -> Path | None:
+    if path is None:
+        return None
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
 
 def _result_to_str(result: ccore.Result) -> str:
     if result == ccore.WHITE_WIN:
@@ -392,8 +464,8 @@ def _save_pgn(
     filename = f"{label}_g{game_index + 1:02d}.pgn"
     path = directory / filename
     date_str = datetime.utcnow().strftime("%Y.%m.%d")
-    headers = [
-        ("Event", "Arena Evaluation"),
+    headers: list[tuple[str, str]] = [
+        ("Event", PGN_EVENT),
         ("Site", "Local"),
         ("Date", date_str),
         ("Round", str(game_index + 1)),
@@ -402,22 +474,22 @@ def _save_pgn(
         ("Result", result_str),
     ]
     if start_fen != DEFAULT_START_FEN:
-        headers += [("SetUp", "1"), ("FEN", start_fen)]
+        headers.extend([("SetUp", "1"), ("FEN", start_fen)])
 
-    with path.open("w", encoding="utf-8") as h:
-        for k, v in headers:
-            h.write(f'[{k} "{v}"]\n')
-        h.write("\n")
+    with path.open("w", encoding="utf-8") as handle:
+        for key, value in headers:
+            handle.write(f'[{key} "{value}"]\n')
+        handle.write("\n")
         if moves_san:
             chunks: list[str] = []
-            for i, san in enumerate(moves_san):
-                move_no = i // 2 + 1
-                if i % 2 == 0:
+            for idx, san in enumerate(moves_san):
+                move_no = idx // 2 + 1
+                if idx % 2 == 0:
                     chunks.append(f"{move_no}. {san}")
                 else:
                     chunks[-1] += f" {san}"
-            h.write(" ".join(chunks))
-            h.write(f" {result_str}\n")
+            handle.write(" ".join(chunks))
+            handle.write(f" {result_str}\n")
         else:
-            h.write(f"{result_str}\n")
+            handle.write(f"{result_str}\n")
     return path

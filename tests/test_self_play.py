@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+import self_play
 import torch
 from inference import BatchedEvaluator
 from self_play import SelfPlayEngine
@@ -43,7 +44,7 @@ def test_self_play_resignation_and_adjudication(monkeypatch) -> None:
         eng.resign_enabled = True
         eng.resign_threshold = 0.4
         eng.resign_min_plies = 0
-        monkeypatch.setattr(eng, "_material_balance", lambda pos: 5.0)
+        monkeypatch.setattr(self_play, "_material_balance", lambda pos: 5.0)
         stats = eng.play_games(4)
         assert stats["games"] > 0 and stats["term_adjudicated"] >= 0
     finally:

@@ -1,9 +1,11 @@
+"""High-level trainer coordinating self-play, optimisation, and evaluation."""
+
 from __future__ import annotations
 
 import contextlib
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -26,13 +28,16 @@ from utils import (
     startup_summary,
 )
 
+__all__ = ["Trainer"]
+
+
 @dataclass(slots=True)
 class GateHistory:
     """Lightweight record of arena evaluations."""
+
     last: ArenaResult | None = None
     accepted: int = 0
     rejected: int = 0
-    notes: list[str] = field(default_factory=list)
 
 
 class Trainer:
@@ -80,7 +85,14 @@ class Trainer:
             encode_capacity=C.EVAL.encode_cache_capacity,
         )
 
-        self.selfplay_engine = SelfPlayEngine(self.evaluator)
+        base_seed = int(getattr(C, "SEED", 0))
+
+        def _seed_or_none(offset: int) -> int | None:
+            if base_seed == 0:
+                return None
+            return (base_seed + offset) % (2**32)
+
+        self.selfplay_engine = SelfPlayEngine(self.evaluator, seed=_seed_or_none(1))
 
         initial_root = Path(get_run_root(self))
         self._configure_run_paths(initial_root)
@@ -101,7 +113,7 @@ class Trainer:
         self.total_games = 0
         self.start_time = time.time()
         self.gate = GateHistory()
-        self._arena_rng = np.random.default_rng()
+        self._arena_rng = np.random.default_rng(_seed_or_none(2))
 
         self._sync_selfplay_evaluator()
 
@@ -114,6 +126,7 @@ class Trainer:
 
     # ------------------------------------------------------------------ public API
     def train(self) -> None:
+        """Run the primary training loop until the iteration budget is met."""
         try:
             max_iters = int(C.TRAIN.total_iterations)
             while self.iteration < max_iters:
@@ -138,16 +151,19 @@ class Trainer:
             self.close()
 
     def close(self) -> None:
+        """Release resources associated with the trainer."""
         with contextlib.suppress(Exception):
             self.evaluator.close()
 
     # ------------------------------------------------------------------ helpers
     def _resolve_device(self, override: str | None) -> torch.device:
+        """Determine the torch device, preferring CUDA unless overridden."""
         if override:
             return torch.device(override)
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def _device_name(self) -> str:
+        """Return a device name."""
         if self.device.type != "cuda":
             return "CPU"
         try:
@@ -157,12 +173,14 @@ class Trainer:
             return "cuda"
 
     def _clone_model(self) -> torch.nn.Module:
+        """Allocate a fresh model instance on the trainer device."""
         model = ChessNet()
         model.to(self.device)
         model.eval()
         return model
 
     def _sync_selfplay_evaluator(self) -> None:
+        """Copy the latest training (or EMA) weights into the shared evaluator."""
         model = self.model
         if self.ema is not None:
             shadow = self._clone_model()
@@ -176,6 +194,7 @@ class Trainer:
         )
 
     def _candidate_eval_model(self) -> torch.nn.Module:
+        """Return a copy of the candidate network (using EMA if enabled)."""
         model = self._clone_model()
         if self.ema is not None:
             model.load_state_dict(self.ema.shadow, strict=True)
@@ -185,6 +204,7 @@ class Trainer:
         return model
 
     def _make_eval(self, net: torch.nn.Module, cache_cap: int) -> BatchedEvaluator:
+        """Spawn a temporary evaluator with limited caches for arena play."""
         ev = BatchedEvaluator(self.device)
         ev.refresh_from(net)
         ev.set_batching_params(batch_size_max=C.EVAL.batch_size_max, coalesce_ms=C.EVAL.coalesce_ms)
@@ -197,6 +217,7 @@ class Trainer:
         return ev
 
     def _configure_run_paths(self, root: Path) -> None:
+        """Initialise directories and metric reporters for the current run."""
         resolved = Path(root).resolve()
         resolved.mkdir(parents=True, exist_ok=True)
         self.run_root = resolved
@@ -214,6 +235,7 @@ class Trainer:
         )
 
     def _run_arena(self) -> ArenaResult:
+        """Run an arena match between the candidate and baseline models."""
         candidate_model = self._candidate_eval_model()
         baseline_model = self._clone_model()
         baseline_model.load_state_dict(self.best_model.state_dict(), strict=True)
@@ -232,28 +254,36 @@ class Trainer:
             label=f"iter{self.iteration:04d}",
         )
 
+        total_games = max(1, int(result.games))
         decisive_games = result.candidate_wins + result.baseline_wins
         min_games = int(C.ARENA.gate_min_games)
         min_decisive = int(C.ARENA.gate_min_decisive)
-        required = C.ARENA.gate_baseline_p + C.ARENA.gate_margin
-        score = result.score_pct / 100.0
+        score_target = float(C.ARENA.gate_baseline_p + C.ARENA.gate_margin)
+        draw_weight = float(np.clip(C.ARENA.gate_draw_weight, 0.0, 1.0))
+        weighted_score = (result.candidate_wins + draw_weight * result.draws) / total_games
 
-        accept = (
-            result.games >= max(1, min_games)
-            and decisive_games >= max(1, min_decisive)
-            and score >= required
-        )
+        rejection_notes: list[str] = []
+        if total_games < max(1, min_games):
+            rejection_notes.append(f"insufficient games ({total_games}/{min_games})")
+        if decisive_games < max(1, min_decisive):
+            rejection_notes.append(f"insufficient decisive games ({decisive_games}/{min_decisive})")
+        if weighted_score < score_target:
+            rejection_notes.append(f"score {weighted_score:.3f} < target {score_target:.3f}")
+
+        accept = not rejection_notes
 
         if accept:
             self.best_model.load_state_dict(candidate_model.state_dict(), strict=True)
             save_best_model(self)
             self.gate.accepted += 1
-            decision = "accept"
+            decision = f"accept score={weighted_score:.3f}"
         else:
             self.gate.rejected += 1
             decision = "reject"
 
         result.notes.append(decision)
+        if rejection_notes:
+            result.notes.extend(rejection_notes)
         self.gate.last = result
 
         candidate_eval.close()
@@ -267,16 +297,19 @@ class Trainer:
         return self.iteration % every == 0
 
     def _maybe_checkpoint(self) -> None:
+        """Save a checkpoint if the iteration aligns with the configured cadence."""
         if C.LOG.checkpoint_interval_iters > 0 and self.iteration % C.LOG.checkpoint_interval_iters == 0:
             save_checkpoint(self)
 
     def _maybe_flush_cuda_cache(self) -> None:
+        """Occasionally flush the CUDA allocator to prevent fragmentation."""
         if self.device.type == "cuda":
             interval = int(C.LOG.empty_cache_interval_iters)
             if interval > 0 and self.iteration % interval == 0:
                 torch.cuda.empty_cache()
 
     def _log_iteration(self, stats: dict[str, float | int | str], arena_result: ArenaResult | None) -> None:
+        """Emit logs summarising the current iteration."""
         sp_raw = stats.get("selfplay_stats")
         sp = cast(dict[str, float | int | str], sp_raw if isinstance(sp_raw, dict) else {})
         games = max(1, int(float(sp.get("games", 0))))
@@ -296,7 +329,12 @@ class Trainer:
             f"entropy={stats['entropy']:.3f} lr={stats['learning_rate']:.2e} "
             f"grad={stats['avg_grad_norm']:.2f} samples/s={stats['samples_per_sec']:.0f} "
             f"buffer={stats['buffer_percent']:.0f}% recent={stats['train_recent_pct']:.0f}% "
-            f"resign={stats['resign_status']}"
+            f"resign={stats['resign_status']} "
+            f"adj={stats['adjudication_phase']}("
+            f"{'on' if stats['adjudication_enabled'] else 'off'}) "
+            f"min={int(stats['adjudication_min_plies'])} "
+            f"margin={float(stats['adjudication_value_margin']):.3f} "
+            f"persist={int(stats['adjudication_persist_plies'])}"
         )
         sp_line = (
             f"SP  games={games} W/D/L={sp_w}/{sp_d}/{sp_b} "
@@ -320,6 +358,7 @@ class Trainer:
         self.log.info("")
 
     def _write_metrics(self, stats: dict[str, float | int | str], arena_result: ArenaResult | None) -> None:
+        """Append numeric metrics for the current iteration to persistent storage."""
         if not C.LOG.metrics_csv_enable or not self.metrics.csv_path:
             return
         elapsed = time.time() - self.start_time
@@ -350,6 +389,12 @@ class Trainer:
             "buffer_percent": float(stats["buffer_percent"]),
             "buffer_size": int(stats["buffer_size"]),
             "buffer_capacity": int(stats["buffer_capacity"]),
+            "adjudication_phase": str(stats["adjudication_phase"]),
+            "adjudication_enabled": int(stats["adjudication_enabled"]),
+            "adjudication_min_plies": int(stats["adjudication_min_plies"]),
+            "adjudication_value_margin": float(stats["adjudication_value_margin"]),
+            "adjudication_persist_plies": int(stats["adjudication_persist_plies"]),
+            "adjudication_material_margin": float(stats["adjudication_material_margin"]),
             "sp_games": int(float(sp.get("games", 0))),
             "sp_white_wins": int(float(sp.get("white_wins", 0))),
             "sp_black_wins": int(float(sp.get("black_wins", 0))),

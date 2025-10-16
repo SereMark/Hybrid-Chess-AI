@@ -1,59 +1,42 @@
+# ruff: noqa: E402, I001
 from __future__ import annotations
 
 import argparse
 import csv
 import json
 import platform
+from importlib import import_module
 import random
 import statistics
 import sys
 import time
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence, cast
 
-# --------------------------------------------------------------------------- sys.path
-REPO_ROOT = Path(__file__).resolve().parents[1]
-_CANDIDATE_EXT_DIRS = [
-    REPO_ROOT / "build" / "python" / "Release",
-    REPO_ROOT / "build" / "python" / "Debug",
-    REPO_ROOT / "build" / "python",
-    REPO_ROOT / "src" / "python",
-]
-for p in _CANDIDATE_EXT_DIRS:
-    if p.exists():
-        s = str(p)
-        if s not in sys.path:
-            sys.path.insert(0, s)
+from _bench_common import import_chesscore, import_python_chess, prepare_extension_import_paths
 
-try:
-    import chesscore as ccore  # type: ignore
-except ImportError as exc:
-    tried = ", ".join(str(p) for p in _CANDIDATE_EXT_DIRS)
-    raise SystemExit(
-        "Failed to import chesscore. Build the extension with CMake and ensure one of these is on PYTHONPATH: "
-        f"{tried}"
-    ) from exc
-
-try:
-    import chess  # python-chess
-except ImportError as exc:
-    raise SystemExit("Missing dependency: python-chess (pip install python-chess)") from exc
+prepare_extension_import_paths()
+ccore: Any = import_chesscore()
+chess: Any = import_python_chess()
+chess_pgn = import_module("chess.pgn")
 
 # --------------------------------------------------------------------------- helpers
 
 
-def dataclass_to_dict(obj: object) -> dict:
-    return json.loads(json.dumps(asdict(obj)))
+def dataclass_to_dict(obj: Any) -> dict[str, Any]:
+    if not is_dataclass(obj):
+        raise TypeError("Expected dataclass instance")
+    return cast(dict[str, Any], json.loads(json.dumps(asdict(obj))))  # type: ignore[arg-type]
 
 
-def render_markdown_report(report: dict) -> str:
-    dataset = report["dataset"]
-    timings = dataset["timings"]
-    move_stats = dataset["move_statistics"]
-    correctness = dataset["correctness"]
+def render_markdown_report(report: dict[str, Any]) -> str:
+    dataset = cast(dict[str, Any], report["dataset"])
+    timings = cast(dict[str, Any], dataset["timings"])
+    move_stats = cast(dict[str, Any], dataset["move_statistics"])
+    correctness = cast(dict[str, Any], dataset["correctness"])
     lines: list[str] = []
     lines.append("# Chess Engine Benchmark Report")
     lines.append("")
@@ -67,7 +50,8 @@ def render_markdown_report(report: dict) -> str:
     lines.append(f"- Positions: {dataset['positions']}")
     lines.append(f"- Loops per timing run: {dataset['loops']}")
     lines.append(f"- Timing repetitions: {dataset['repetitions']}")
-    lines.append(f"- Description: {dataset['extras'].get('description', 'N/A')}")
+    extras = cast(dict[str, Any], dataset.get("extras", {}))
+    lines.append(f"- Description: {extras.get('description', 'N/A')}")
     lines.append("")
     lines.append("## Move Statistics")
     lines.append("")
@@ -84,15 +68,18 @@ def render_markdown_report(report: dict) -> str:
     lines.append("")
     lines.append(f"- Positions checked: {correctness['total_positions']}")
     lines.append(f"- Mismatches: {correctness['mismatch_count']}")
-    if correctness["examples"]:
+    examples = cast(list[dict[str, Any]], correctness["examples"])
+    if examples:
         lines.append("- Example mismatches:")
-        for example in correctness["examples"]:
+        for example in examples:
             lines.append(f"  - FEN: `{example['fen']}`")
             if example["missing_in_chesscore"]:
-                missing = ", ".join(example["missing_in_chesscore"])
+                missing_moves = cast(Iterable[str], example["missing_in_chesscore"])
+                missing = ", ".join(missing_moves)
                 lines.append(f"    Missing in chesscore: {missing}")
             if example["extra_in_chesscore"]:
-                extra = ", ".join(example["extra_in_chesscore"])
+                extra_moves = cast(Iterable[str], example["extra_in_chesscore"])
+                extra = ", ".join(extra_moves)
                 lines.append(f"    Extra in chesscore: {extra}")
     lines.append("")
     lines.append("## Timing Summary")
@@ -219,9 +206,30 @@ class BenchmarkScenario:
 
 TEMPLATE_SCENARIOS: dict[str, list[dict]] = {
     "baseline": [
-        {"name": "baseline_small", "positions": 200, "max_random_plies": 80, "loops": 80, "repetitions": 3, "seed": 9001},
-        {"name": "baseline_medium", "positions": 400, "max_random_plies": 120, "loops": 100, "repetitions": 3, "seed": 42},
-        {"name": "baseline_deep", "positions": 600, "max_random_plies": 200, "loops": 150, "repetitions": 3, "seed": 1337},
+        {
+            "name": "baseline_small",
+            "positions": 200,
+            "max_random_plies": 80,
+            "loops": 80,
+            "repetitions": 3,
+            "seed": 9001,
+        },
+        {
+            "name": "baseline_medium",
+            "positions": 400,
+            "max_random_plies": 120,
+            "loops": 100,
+            "repetitions": 3,
+            "seed": 42,
+        },
+        {
+            "name": "baseline_deep",
+            "positions": 600,
+            "max_random_plies": 200,
+            "loops": 150,
+            "repetitions": 3,
+            "seed": 1337,
+        },
     ],
     "quick": [
         {"name": "quick_small", "positions": 100, "max_random_plies": 60, "loops": 40, "repetitions": 2, "seed": 2025}
@@ -530,7 +538,7 @@ def read_pgn_games(
     meta: list[dict[str, str]] = []
     for game_index, pgn_text in enumerate(pgn_texts):
         handle = io.StringIO(pgn_text)
-        game = chess.pgn.read_game(handle)
+        game = chess_pgn.read_game(handle)
         if game is None:
             continue
         headers = dict(game.headers)
@@ -638,21 +646,12 @@ def main() -> None:
     parser.add_argument("--max-random-plies", type=int, nargs="*", default=None, help="Upper bound on random plies")
     parser.add_argument("--loops", type=int, nargs="*", default=None, help="Benchmark loops per scenario")
     parser.add_argument("--repetitions", type=int, nargs="*", default=None, help="Timing repetitions per scenario")
-    parser.add_argument("--seeds", type=int, nargs="*", default=None, help="Seeds to use for random position generation")
+    parser.add_argument(
+        "--seeds", type=int, nargs="*", default=None, help="Seeds to use for random position generation"
+    )
     parser.add_argument("--scenario-name", type=str, default="random", help="Base name for ad-hoc scenarios")
     parser.add_argument("--template", choices=sorted(TEMPLATE_SCENARIOS.keys()), help="Use a preset suite of scenarios")
-    parser.add_argument(
-        "--output-json",
-        type=Path,
-        default=Path("benchmark_reports") / "benchmark_summary.json",
-        help="Path for the JSON report",
-    )
-    parser.add_argument(
-        "--output-markdown",
-        type=Path,
-        default=Path("benchmark_reports") / "benchmark_summary.md",
-        help="Path for the Markdown report",
-    )
+
     parser.add_argument(
         "--output-csv",
         type=Path,
@@ -699,10 +698,14 @@ def main() -> None:
 
     scenarios = [BenchmarkScenario(**cfg) for cfg in raw_scenarios]
 
-    reports: list[dict[str, object]] = []
+    reports: list[dict[str, Any]] = []
     for scenario in scenarios:
         fens = generate_random_positions(scenario.positions, scenario.max_random_plies, scenario.seed)
-        print(f"[{scenario.name}] Generated {len(fens)} positions up to {scenario.max_random_plies} plies (seed={scenario.seed}).")
+        msg = (
+            f"[{scenario.name}] Generated {len(fens)} positions up to "
+            f"{scenario.max_random_plies} plies (seed={scenario.seed})."
+        )
+        print(msg)
 
         correctness = make_correctness_report(fens, example_limit=10)
         discrepancies = correctness.examples
@@ -710,8 +713,8 @@ def main() -> None:
             print(f"[{scenario.name}] Correctness: {correctness.mismatch_count} mismatches.")
             for idx, mismatch in enumerate(discrepancies[:5], start=1):
                 print(f"  [{idx}] FEN: {mismatch['fen']}")
-                extra = mismatch["extra_in_chesscore"]
-                missing = mismatch["missing_in_chesscore"]
+                extra = cast(Iterable[str], mismatch["extra_in_chesscore"])
+                missing = cast(Iterable[str], mismatch["missing_in_chesscore"])
                 if extra:
                     print(f"      Extra in chesscore : {', '.join(extra)}")
                 if missing:
@@ -757,30 +760,22 @@ def main() -> None:
             }
         )
 
-    args.output_json.parent.mkdir(parents=True, exist_ok=True)
-    args.output_json.write_text(json.dumps(reports, indent=2))
-    print(f"Wrote JSON report to {args.output_json}")
-
-    if args.output_markdown:
-        md_sections = [render_markdown_report(report) for report in reports]
-        args.output_markdown.parent.mkdir(parents=True, exist_ok=True)
-        args.output_markdown.write_text("\n\n".join(md_sections))
-        print(f"Wrote Markdown report to {args.output_markdown}")
-
     if args.output_csv:
         args.output_csv.parent.mkdir(parents=True, exist_ok=True)
         csv_rows: list[dict[str, object]] = []
         for report in reports:
-            scenario = report["scenario"]
-            timings = report["dataset"]["timings"]
-            correctness = report["dataset"]["correctness"]
+            report_dict = report
+            scenario_dict = cast(dict[str, Any], report_dict["scenario"])
+            dataset_dict = cast(dict[str, Any], report_dict["dataset"])
+            timings = cast(dict[str, Any], dataset_dict["timings"])
+            correctness_dict = cast(dict[str, Any], dataset_dict["correctness"])
             csv_rows.append(
                 {
-                    "scenario": scenario["name"],
-                    "positions": scenario["positions"],
-                    "loops": scenario["loops"],
-                    "repetitions": scenario["repetitions"],
-                    "mismatches": correctness["mismatch_count"],
+                    "scenario": scenario_dict["name"],
+                    "positions": scenario_dict["positions"],
+                    "loops": scenario_dict["loops"],
+                    "repetitions": scenario_dict["repetitions"],
+                    "mismatches": correctness_dict["mismatch_count"],
                     "chesscore_time": timings["chesscore"]["mean_s"],
                     "python_time": timings["python-chess"]["mean_s"],
                     "speedup": (
@@ -796,7 +791,10 @@ def main() -> None:
             writer.writerows(csv_rows)
         print(f"Wrote CSV summary to {args.output_csv}")
 
-    if any(report["dataset"]["correctness"]["mismatch_count"] > 0 for report in reports):
+    if any(
+        cast(dict[str, Any], cast(dict[str, Any], report["dataset"])["correctness"])["mismatch_count"] > 0
+        for report in reports
+    ):
         raise SystemExit(1)
 
 

@@ -1,0 +1,2 @@
+batch_size,device,dtype,max_s,mean_s,min_s,name,positions_per_sec,sample_count,stdev_s
+64,cpu,float32,0.05137989999639103,0.04919792999935453,0.047079299998586066,inference-cpu,1300.8677397776628,10,0.0012349934466069727

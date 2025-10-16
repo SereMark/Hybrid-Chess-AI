@@ -1,10 +1,12 @@
+"""Utility helpers for device setup, FEN manipulation, and metric reporting."""
+
 from __future__ import annotations
 
 import contextlib
 import csv
 import json
 import os
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -15,11 +17,28 @@ import numpy as np
 import torch
 from torch import nn
 
+__all__ = [
+    "select_autocast_dtype",
+    "select_inference_dtype",
+    "prepare_model",
+    "sanitize_fen",
+    "flip_fen_perspective",
+    "MetricsReporter",
+    "format_time",
+    "startup_summary",
+]
+
 _CASTLING_ORDER = "KQkq"
 _FILES = "abcdefgh"
 
 
+# ---------------------------------------------------------------------------#
+# Device helpers
+# ---------------------------------------------------------------------------#
+
+
 def _cuda_supports_bf16() -> bool:
+    """Return True when CUDA reports BF16 support."""
     if not torch.cuda.is_available():
         return False
     checker = getattr(torch.cuda, "is_bf16_supported", None)
@@ -31,15 +50,22 @@ def _cuda_supports_bf16() -> bool:
 
 
 def select_autocast_dtype(device: torch.device) -> torch.dtype:
+    """Return the preferred autocast dtype for the given device."""
     if device.type != "cuda":
         return torch.bfloat16
     return torch.bfloat16 if _cuda_supports_bf16() else torch.float16
 
 
 def select_inference_dtype(device: torch.device, *, cpu_dtype: torch.dtype = torch.float32) -> torch.dtype:
+    """Return the evaluation dtype, using CPU override when CUDA is absent."""
     if device.type != "cuda":
         return cpu_dtype
     return select_autocast_dtype(device)
+
+
+# ---------------------------------------------------------------------------#
+# Model preparation
+# ---------------------------------------------------------------------------#
 
 
 def prepare_model(
@@ -51,6 +77,7 @@ def prepare_model(
     eval_mode: bool = False,
     freeze: bool = False,
 ) -> nn.Module:
+    """Move a model to device and apply layout/dtype/mode toggles."""
     model = model.to(device)
     if channels_last:
         for module in model.modules():
@@ -65,7 +92,13 @@ def prepare_model(
     return model
 
 
+# ---------------------------------------------------------------------------#
+# FEN helpers
+# ---------------------------------------------------------------------------#
+
+
 def _flip_square(square: str) -> str:
+    """Flip algebraic square notation across the central ranks/files."""
     if not square or square == "-":
         return "-"
     sq = square.strip()
@@ -83,6 +116,7 @@ def _flip_square(square: str) -> str:
 
 
 def _swap_castling_rights(rights: str) -> str:
+    """Swap castling rights between white and black."""
     if not rights or rights == "-":
         return "-"
     swapped: list[str] = []
@@ -95,6 +129,7 @@ def _swap_castling_rights(rights: str) -> str:
 
 
 def sanitize_fen(fen: str) -> str:
+    """Normalise a FEN string to ensure all mandatory fields are present."""
     parts = fen.strip().split()
     board = parts[0] if len(parts) > 0 else "8/8/8/8/8/8/8/8"
     side = parts[1] if len(parts) > 1 else "w"
@@ -106,6 +141,7 @@ def sanitize_fen(fen: str) -> str:
 
 
 def _revrow(row: str) -> str:
+    """Reverse a FEN row while preserving run-length encoding."""
     # expand digits to cells
     cells: list[str] = []
     for ch in row:
@@ -132,6 +168,7 @@ def _revrow(row: str) -> str:
 
 
 def flip_fen_perspective(fen: str) -> str:
+    """Mirror a FEN so that the opposite side to move becomes primary."""
     board, side, castling, ep, halfmove, fullmove, *rest = sanitize_fen(fen).split()
     rows = board.split("/")
     flipped_board = "/".join(_revrow(r) for r in rows[::-1])
@@ -151,16 +188,13 @@ def flip_fen_perspective(fen: str) -> str:
     return " ".join(components)
 
 
-def iter_with_perspectives(fens: Iterable[str]) -> list[str]:
-    out: list[str] = []
-    for fen in fens:
-        cleaned = sanitize_fen(fen)
-        out.append(cleaned)
-        out.append(flip_fen_perspective(cleaned))
-    return out
+# ---------------------------------------------------------------------------#
+# JSON helpers
+# ---------------------------------------------------------------------------#
 
 
 def _json_safe(value: object) -> object:
+    """Convert values to JSON-compatible equivalents."""
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     if isinstance(value, Path):
@@ -176,9 +210,15 @@ def _json_safe(value: object) -> object:
     return str(value)
 
 
+# ---------------------------------------------------------------------------#
+# Metrics reporting
+# ---------------------------------------------------------------------------#
+
+
 @dataclass(slots=True)
 class MetricsReporter:
     """Append-only reporter writing CSV and optional JSONL."""
+
     csv_path: str
     jsonl_path: str | None = None
 
@@ -222,6 +262,7 @@ class MetricsReporter:
 
 
 def format_time(seconds: float) -> str:
+    """Duration formatter supporting seconds/minutes/hours."""
     v = float(seconds)
     if v < 60:
         return f"{v:.1f}s"
@@ -230,7 +271,13 @@ def format_time(seconds: float) -> str:
     return f"{v / 3600:.1f}h"
 
 
+# ---------------------------------------------------------------------------#
+# Logging helpers
+# ---------------------------------------------------------------------------#
+
+
 def startup_summary(trainer: Any) -> str:
+    """Summarise runtime configuration for logging at trainer start-up."""
     has_cuda = bool(trainer.device.type == "cuda" and torch.cuda.is_available())
     amp_enabled = bool(getattr(trainer, "_amp_enabled", C.TORCH.amp_enabled))
     autocast_mode = "fp16" if amp_enabled else "off"
@@ -256,7 +303,9 @@ def startup_summary(trainer: Any) -> str:
                 f"sims={C.MCTS.train_simulations}->{C.MCTS.train_simulations_min}",
                 f"temp_moves={C.SELFPLAY.temperature_moves}",
                 f"max_plies={C.SELFPLAY.game_max_plies}",
-                f"adjudication_margin={C.SELFPLAY.adjudication_value_margin}",
+                f"adj_margin={C.SELFPLAY.adjudication_value_margin}",
+                f"adj_warmup={C.SELFPLAY.adjudication_warmup_iters}",
+                f"adj_ramp={C.SELFPLAY.adjudication_ramp_iters}",
             ]
         ),
         " ".join(

@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import replace
 
 import config as C
-import numpy as np
 import torch
 from train_loop import run_training_iteration
 
@@ -14,6 +13,12 @@ class DummySelfPlay:
         self.resign_threshold = 0.0
         self.resign_min_plies = 0
         self.resign_consecutive = 0
+        self.adjudication_phase = "disabled"
+        self.adjudication_enabled = False
+        self.adjudication_min_plies = 0
+        self.adjudication_value_margin = 0.0
+        self.adjudication_persist = 0
+        self.adjudication_material_margin = 0.0
 
     def get_capacity(self) -> int:
         return 1
@@ -36,7 +41,8 @@ class DummySelfPlay:
         self.resign_min_plies = min_plies
 
     def update_adjudication(self, iteration: int) -> None:
-        return None
+        self.adjudication_phase = "active" if iteration >= 0 else "disabled"
+        self.adjudication_enabled = True
 
 
 class DummyTrainer:
@@ -59,7 +65,8 @@ def test_run_training_iteration_handles_no_batches(monkeypatch) -> None:
     monkeypatch.setattr(type(C.TRAIN), "update_steps_min", 1, raising=False)
     stats = run_training_iteration(tr)
     assert stats["train_steps_actual"] == 0
-    assert 0.0 <= stats["entropy_coef"] <= C.TRAIN.loss_entropy_coef
+    entropy_coef = float(stats["entropy_coef"])
+    assert 0.0 <= entropy_coef <= float(C.TRAIN.loss_entropy_coef)
 
 
 def test_run_training_iteration_sets_resign_params(monkeypatch) -> None:

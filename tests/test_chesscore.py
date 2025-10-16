@@ -29,7 +29,7 @@ def test_initial_position_legal_and_encodable() -> None:
 @pytest.mark.usefixtures("ensure_chesscore")
 def test_make_moves_and_detect_repetition() -> None:
     pos = ccore.Position()
-    seq = ["e2e4", "e7e5", "g1f3", "b8c6", "f3g1", "c6b8", "f3f1", "b8c6", "f1g2", "c6b8"]
+    seq = ["e2e4", "e7e5", "g1f3", "b8c6", "f3g1", "c6b8", "g1f3", "b8c6", "f3g1", "c6b8"]
     for u in seq:
         result = pos.make_move(_move_by_uci(pos, u))
         assert result in {ccore.ONGOING, ccore.DRAW}

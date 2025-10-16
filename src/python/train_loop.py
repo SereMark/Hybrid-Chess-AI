@@ -1,3 +1,5 @@
+"""Core training loop that drives self-play sampling and optimisation."""
+
 from __future__ import annotations
 
 import time
@@ -7,32 +9,37 @@ import config as C
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch.amp import GradScaler
 
-# ---------- schedules
+__all__ = ["run_training_iteration", "train_step"]
+
+# ---------------------------------------------------------------------------#
+# Schedules
+
 
 def _entropy_coefficient(iteration: int) -> float:
-    """Linear anneal from start -> min over loss_entropy_iters."""
+    """Linearly anneal the entropy coefficient towards the configured floor."""
     start = float(C.TRAIN.loss_entropy_coef)
     floor = float(C.TRAIN.loss_entropy_min_coef)
     horizon = max(1, int(C.TRAIN.loss_entropy_iters))
-    if iteration <= horizon:
-        t = (iteration - 1) / horizon
-        return max(floor, start + t * (floor - start))
-    return floor
+    progress = max(0.0, min(1.0, (iteration - 1) / horizon))
+    return start + progress * (floor - start)
 
 
 def _recent_sample_ratio() -> float:
-    """Clamp target recent ratio to configured bounds."""
+    """Return the recent-sample ratio constrained to configured bounds."""
     base = float(C.SAMPLING.recent_ratio)
     lo = float(C.SAMPLING.recent_ratio_min)
     hi = float(C.SAMPLING.recent_ratio_max)
     return float(np.clip(base, lo, hi))
 
 
-# ---------- public API
+# ---------------------------------------------------------------------------#
+# Public API
+
 
 def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
-    """Execute one training iteration."""
+    """Execute one training iteration of self-play generation and optimisation."""
     buf_capacity = max(1, trainer.selfplay_engine.get_capacity())
     buf_size = trainer.selfplay_engine.size()
     buf_fill = buf_size / buf_capacity
@@ -139,14 +146,22 @@ def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
         "resign_min_plies": trainer.selfplay_engine.resign_min_plies,
         "samples_per_sec": sps,
         "selfplay_stats": sp_stats,
+        "adjudication_phase": trainer.selfplay_engine.adjudication_phase,
+        "adjudication_enabled": int(bool(trainer.selfplay_engine.adjudication_enabled)),
+        "adjudication_min_plies": int(trainer.selfplay_engine.adjudication_min_plies),
+        "adjudication_value_margin": float(trainer.selfplay_engine.adjudication_value_margin),
+        "adjudication_persist_plies": int(trainer.selfplay_engine.adjudication_persist),
+        "adjudication_material_margin": float(trainer.selfplay_engine.adjudication_material_margin),
     }
 
 
+# ---------------------------------------------------------------------------#
+# Training step
 def train_step(
     trainer: Any,
     batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray], list[np.ndarray]],
 ) -> tuple[float, float, float, float] | None:
-    """Single optimiser step. Returns (policy_loss, value_loss, grad_norm, entropy) as floats."""
+    """Perform one optimisation step and return `(policy, value, grad, entropy)`."""
     states_u8, indices_i32, counts_u16, values_i8 = batch_data
     if not states_u8:
         return None
@@ -203,7 +218,9 @@ def train_step(
     trainer.model.train()
     autocast_device = "cuda" if trainer.device.type == "cuda" else "cpu"
     autocast_dtype = getattr(trainer, "_autocast_dtype", torch.float16)
-    with torch.autocast(device_type=autocast_device, dtype=autocast_dtype, enabled=getattr(trainer, "_amp_enabled", False)):
+    with torch.autocast(
+        device_type=autocast_device, dtype=autocast_dtype, enabled=getattr(trainer, "_amp_enabled", False)
+    ):
         policy_logits, value_pred = trainer.model(x)
         value_pred = value_pred.squeeze(-1)
         log_probs = F.log_softmax(policy_logits, dim=1)
@@ -262,10 +279,12 @@ def train_step(
 
     # Backward + step (AMP aware)
     trainer.optimizer.zero_grad(set_to_none=True)
-    scaler = getattr(trainer, "scaler", None)
-    scaler_enabled = bool(scaler is not None and scaler.is_enabled())
+    scaler_obj = getattr(trainer, "scaler", None)
+    scaler: GradScaler | None = None
+    if isinstance(scaler_obj, GradScaler) and scaler_obj.is_enabled():
+        scaler = scaler_obj
 
-    if scaler_enabled:
+    if scaler is not None:
         scaler.scale(total_loss).backward()
         scaler.unscale_(trainer.optimizer)
     else:
@@ -275,12 +294,12 @@ def train_step(
 
     if torch.isnan(grad_total) or torch.isinf(grad_total):
         trainer.optimizer.zero_grad(set_to_none=True)
-        if scaler_enabled:
+        if scaler is not None:
             scaler.update()  # keep scaler moving even if step is skipped
         trainer.scheduler.step()
         return None
 
-    if scaler_enabled:
+    if scaler is not None:
         scaler.step(trainer.optimizer)
         scaler.update()
     else:

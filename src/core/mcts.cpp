@@ -1,5 +1,7 @@
 #include "mcts.hpp"
 
+// Hybrid Chess AI - Monte Carlo Tree Search implementation
+
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -11,13 +13,91 @@
 
 namespace mcts {
 
-[[nodiscard]] inline float Node::ucb(float c_puct, float sqrt_visits, float parent_q, float fpu) const {
+namespace {
+
+int encode_move_73x64(const chess::Move& move) {
+  const int from = move.from();
+  const int to = move.to();
+  const int fr = from >> 3;
+  const int fc = from & 7;
+  const int tr = to >> 3;
+  const int tc = to & 7;
+  const int dr = tr - fr;
+  const int dc = tc - fc;
+  const int promo = static_cast<int>(move.promotion());
+
+  if (promo == chess::KNIGHT || promo == chess::ROOK || promo == chess::BISHOP) {
+    const int promo_plane = (promo == chess::KNIGHT) ? 0 : ((promo == chess::ROOK) ? 1 : 2);
+    int plane_index;
+    if (dc == 0) {
+      plane_index = 64 + promo_plane * 3 + 0;
+    } else if (dc == -1) {
+      plane_index = 64 + promo_plane * 3 + 1;
+    } else if (dc == 1) {
+      plane_index = 64 + promo_plane * 3 + 2;
+    } else {
+      return -1;
+    }
+    return plane_index * 64 + from;
+  }
+
+  static constexpr int kKnightOffsets[8][2] = {{-2, -1}, {-2, 1}, {-1, -2}, {-1, 2},
+                                               {1, -2},  {1, 2},  {2, -1},  {2, 1}};
+  for (int i = 0; i < 8; ++i) {
+    if (dr == kKnightOffsets[i][0] && dc == kKnightOffsets[i][1]) {
+      return (56 + i) * 64 + from;
+    }
+  }
+
+  static constexpr int kDir8[8][2] = {{-1, -1}, {-1, 0}, {-1, 1}, {0, -1},
+                                      {0, 1},  {1, -1}, {1, 0},  {1, 1}};
+  if (dr != 0 || dc != 0) {
+    const int dist = std::max(std::abs(dr), std::abs(dc));
+    if (dist >= 1 && dist <= 7) {
+      for (int d = 0; d < 8; ++d) {
+        if (dr == kDir8[d][0] * dist && dc == kDir8[d][1] * dist) {
+          return (d * 7 + (dist - 1)) * 64 + from;
+        }
+      }
+    }
+  }
+  return -1;
+}
+
+void normalize_priors_inplace(std::vector<float>& priors) {
+  float sum = 0.0f;
+  bool any_valid = false;
+  for (float& value : priors) {
+    if (std::isfinite(value) && value > 0.0f) {
+      sum += value;
+      any_valid = true;
+    } else {
+      value = 0.0f;
+    }
+  }
+
+  const float inv = (any_valid && sum > POLICY_EPSILON) ? (1.0f / sum) : 0.0f;
+  if (inv == 0.0f) {
+    const float uniform = 1.0f / static_cast<float>(priors.empty() ? 1 : priors.size());
+    for (float& value : priors) {
+      value = uniform;
+    }
+  } else {
+    for (float& value : priors) {
+      value *= inv;
+    }
+  }
+}
+
+}  // namespace
+
+float Node::ucb(float c_puct, float sqrt_visits, float parent_q, float fpu) const {
   const float q = (visits > 0) ? (val_sum / visits) : (parent_q - fpu);
   const float u = c_puct * prior * sqrt_visits / (1.0f + visits);
   return q + u;
 }
 
-inline void Node::update(float v) {
+void Node::update(float v) {
   ++visits;
   val_sum += v;
 }
@@ -28,8 +108,10 @@ NodePool::NodePool() {
 }
 
 void NodePool::reset() {
-  if (nodes_.empty()) nodes_.resize(kDefaultCapacity);
-  used_     = 1;
+  if (nodes_.empty()) {
+    nodes_.resize(kDefaultCapacity);
+  }
+  used_ = 1;
   nodes_[0] = Node{};
 }
 
@@ -38,7 +120,9 @@ Node* NodePool::get_root() { return &nodes_[0]; }
 Node* NodePool::allocate(size_t count) {
   if (used_ + count > nodes_.size()) {
     size_t new_size = nodes_.size() * 2;
-    if (new_size < used_ + count) new_size = used_ + count;
+    if (new_size < used_ + count) {
+      new_size = used_ + count;
+    }
     nodes_.resize(new_size);
   }
   Node* ptr = &nodes_[used_];
@@ -47,241 +131,169 @@ Node* NodePool::allocate(size_t count) {
   return ptr;
 }
 
-Node* NodePool::get_node(uint32_t i) { return &nodes_[i]; }
+Node* NodePool::get_node(uint32_t index) { return &nodes_[index]; }
 
-uint32_t NodePool::get_index(Node* n) { return static_cast<uint32_t>(n - nodes_.data()); }
+uint32_t NodePool::get_index(Node* node) { return static_cast<uint32_t>(node - nodes_.data()); }
 
-static int encode_move_73x64(const chess::Move& move) {
-  const int from  = move.from(), to = move.to();
-  const int fr = from >> 3, fc = from & 7, tr = to >> 3, tc = to & 7, dr = tr - fr, dc = tc - fc;
-  const int promo = static_cast<int>(move.promotion());
-
-  if (promo == chess::KNIGHT || promo == chess::ROOK || promo == chess::BISHOP) {
-    const int pp = (promo == chess::KNIGHT) ? 0 : ((promo == chess::ROOK) ? 1 : 2);
-    int plane;
-    if      (dc == 0)  plane = 64 + pp * 3 + 0;
-    else if (dc == -1) plane = 64 + pp * 3 + 1;
-    else if (dc == 1)  plane = 64 + pp * 3 + 2;
-    else               return -1;
-    return plane * 64 + from;
-  }
-
-  static constexpr int KNIGHT_OFFSETS[8][2] = {
-      {-2, -1}, {-2, 1}, {-1, -2}, {-1, 2}, {1, -2}, {1, 2}, {2, -1}, {2, 1}};
-  for (int i = 0; i < 8; ++i)
-    if (dr == KNIGHT_OFFSETS[i][0] && dc == KNIGHT_OFFSETS[i][1])
-      return (56 + i) * 64 + from;
-
-  static constexpr int DIR8[8][2] = {
-      {-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}};
-  if (dr || dc) {
-    const int dist = std::max(std::abs(dr), std::abs(dc));
-    if (dist >= 1 && dist <= 7) {
-      for (int d = 0; d < 8; ++d)
-        if (dr == DIR8[d][0] * dist && dc == DIR8[d][1] * dist)
-          return (d * 7 + (dist - 1)) * 64 + from;
-    }
-  }
-  return -1;
-}
-
-int encode_move_index(const chess::Move& m) { return encode_move_73x64(m); }
-
-static inline void normalize_priors_inplace(std::vector<float>& p) {
-  float sum = 0.0f;
-  bool  any_valid = false;
-  for (float& v : p) {
-    if (std::isfinite(v) && v > 0.0f) { sum += v; any_valid = true; }
-    else v = 0.0f;
-  }
-  const float inv = (any_valid && sum > POLICY_EPSILON) ? (1.0f / sum) : 0.0f;
-  if (inv == 0.0f) {
-    const float u = 1.0f / static_cast<float>(p.empty() ? 1 : p.size());
-    for (float& v : p) v = u;
-  } else {
-    for (float& v : p) v *= inv;
-  }
-}
+int encode_move_index(const chess::Move& move) { return encode_move_73x64(move); }
 
 Node* MCTS::select_child(Node* parent) {
-  Node*       children    = node_pool_.get_node(parent->first_child_index);
-  const float sqrt_visits = sqrtf(1.0f + static_cast<float>(parent->visits));
-  float       c           = c_puct_;
-  if (parent->visits > 0)
-    c = c_puct_ * (logf((parent->visits + c_puct_base_ + 1.0f) / c_puct_base_) + c_puct_init_);
+  Node* children = node_pool_.get_node(parent->first_child_index);
+  const float sqrt_visits = std::sqrt(1.0f + static_cast<float>(parent->visits));
+
+  float adjusted_c = c_puct_;
+  if (parent->visits > 0) {
+    adjusted_c = c_puct_ * (std::log((parent->visits + c_puct_base_ + 1.0f) / c_puct_base_) + c_puct_init_);
+  }
   const float parent_q = (parent->visits > 0) ? (parent->val_sum / parent->visits) : 0.0f;
 
-  Node* best       = &children[0];
-  float best_score = best->ucb(c, sqrt_visits, parent_q, fpu_reduction_);
+  Node* best_child = &children[0];
+  float best_score = best_child->ucb(adjusted_c, sqrt_visits, parent_q, fpu_reduction_);
   for (uint16_t i = 1; i < parent->child_count; ++i) {
-    const float sc = children[i].ucb(c, sqrt_visits, parent_q, fpu_reduction_);
-    if (sc > best_score) { best_score = sc; best = &children[i]; }
+    const float score = children[i].ucb(adjusted_c, sqrt_visits, parent_q, fpu_reduction_);
+    if (score > best_score) {
+      best_score = score;
+      best_child = &children[i];
+    }
   }
-  return best;
+  return best_child;
 }
 
-void MCTS::expand_node_with_priors(Node* node, const std::vector<chess::Move>& moves,
+void MCTS::expand_node_with_priors(Node* node,
+                                   const std::vector<chess::Move>& moves,
                                    const std::vector<float>& priors_in) {
-  const size_t n = moves.size();
-  if (n == 0) return;
+  if (moves.empty()) {
+    return;
+  }
 
   std::vector<float> priors = priors_in;
-  if (priors.size() != n) {
-    priors.assign(n, 1.0f / static_cast<float>(n));
-  }
+  priors.resize(moves.size(), 0.0f);
   normalize_priors_inplace(priors);
 
-  const uint32_t node_idx      = node_pool_.get_index(node);
-  Node*          children      = node_pool_.allocate(n);
-  Node*          refreshed     = node_pool_.get_node(node_idx);
-  refreshed->first_child_index = node_pool_.get_index(children);
-  refreshed->child_count       = static_cast<uint16_t>(n);
+  node->first_child_index = node_pool_.get_index(node_pool_.allocate(moves.size()));
+  node->child_count = static_cast<uint16_t>(moves.size());
+  Node* children = node_pool_.get_node(node->first_child_index);
 
-  for (size_t i = 0; i < n; ++i) {
-    children[i].move  = moves[i];
+  for (size_t i = 0; i < moves.size(); ++i) {
+    children[i] = Node{};
+    children[i].move = moves[i];
     children[i].prior = priors[i];
   }
 }
 
 void MCTS::add_dirichlet_noise(Node* node) {
-  if (node->child_count == 0) return;
-
-  Node*        children = node_pool_.get_node(node->first_child_index);
-  const size_t n        = node->child_count;
-
-  std::gamma_distribution<float> g(dirichlet_alpha_, 1.0f);
-  std::vector<float>             noise(n);
-  float                          sum = 0.0f;
-  for (size_t i = 0; i < n; ++i) {
-    float x = g(rng_);
-    if (x < 0.0f) x = 0.0f;
-    noise[i] = x;
-    sum += x;
+  if (node->child_count == 0 || dirichlet_weight_ <= 0.0f) {
+    return;
   }
 
-  if (sum > DIRICHLET_EPSILON) {
-    const float inv = 1.0f / sum, w = dirichlet_weight_, omw = 1.0f - w;
-    for (size_t i = 0; i < n; ++i) {
-      const float nrm   = noise[i] * inv;
-      children[i].prior = omw * children[i].prior + w * nrm;
-    }
+  std::gamma_distribution<float> gamma(dirichlet_alpha_, 1.0f);
+  std::vector<float> noise(node->child_count, 0.0f);
+  float sum = 0.0f;
+  for (float& n : noise) {
+    n = gamma(rng_);
+    sum += n;
+  }
+  if (sum <= 0.0f) {
+    return;
+  }
+  for (float& n : noise) {
+    n /= sum;
+  }
+
+  Node* children = node_pool_.get_node(node->first_child_index);
+  for (uint16_t i = 0; i < node->child_count; ++i) {
+    children[i].prior = children[i].prior * (1.0f - dirichlet_weight_) + noise[i] * dirichlet_weight_;
   }
 }
 
-std::vector<int> MCTS::search_batched_legal(const chess::Position& position, const EvalLegalBatchFn& eval_fn,
-                                            int max_batch) {
-  ensure_root(position);
+bool MCTS::ensure_root(const chess::Position& position) {
+  const uint64_t hash = position.get_hash();
+  if (!root_initialized_ || hash != root_hash_) {
+    node_pool_.reset();
+    root_index_ = 0;
+    root_hash_ = hash;
+    root_initialized_ = true;
 
-  chess::Position pos_copy = position;
-  chess::MoveList root_moves = pos_copy.legal_moves();
-
-  // Root expansion if needed
-  {
     Node* root = node_pool_.get_node(root_index_);
-    if (root->child_count == 0) {
-      std::vector<chess::Position>          root_vec{position};
-      std::vector<std::vector<chess::Move>> root_mv_vec(1);
-      root_mv_vec[0].reserve(root_moves.size());
-      for (size_t i = 0; i < root_moves.size(); ++i) root_mv_vec[0].push_back(root_moves[i]);
+    root->first_child_index = 0;
+    root->child_count = 0;
+    root->val_sum = 0.0f;
+    root->prior = 0.0f;
+    root->visits = 0;
+    return false;
+  }
+  return true;
+}
 
-      std::vector<std::vector<float>> policy_legal_batch;
-      std::vector<float>              value_batch;
-      policy_legal_batch.reserve(1);
-      value_batch.reserve(1);
-      eval_fn(root_vec, root_mv_vec, policy_legal_batch, value_batch);
-      if (policy_legal_batch.size() != 1 || value_batch.size() != 1) {
-        throw std::runtime_error("MCTS legal root evaluator returned wrong batch size");
-      }
-      // Enforce policy length match or fallback to uniform
-      if (policy_legal_batch[0].size() != root_mv_vec[0].size()) {
-        policy_legal_batch[0].assign(root_mv_vec[0].size(),
-                                     1.0f / static_cast<float>(std::max<size_t>(1, root_mv_vec[0].size())));
-      }
-      normalize_priors_inplace(policy_legal_batch[0]);
-
-      std::vector<chess::Move> root_mv_copy;
-      root_mv_copy.reserve(root_moves.size());
-      for (size_t i = 0; i < root_moves.size(); ++i) root_mv_copy.push_back(root_moves[i]);
-
-      expand_node_with_priors(root, root_mv_copy, policy_legal_batch[0]);
-      root = node_pool_.get_node(root_index_);
-    }
-    add_dirichlet_noise(root);
+std::vector<int> MCTS::search_batched_legal(const chess::Position& position,
+                                            const EvalLegalBatchFn& eval_fn,
+                                            int max_batch) {
+  if (max_batch <= 0) {
+    throw std::invalid_argument("max_batch must be > 0");
   }
 
-  std::vector<chess::Position>          to_eval;
-  std::vector<uint32_t>                 eval_path_offsets;
-  std::vector<std::vector<uint32_t>>    eval_paths;
-  std::vector<std::vector<chess::Move>> pending_moves;
+  ensure_root(position);
+  working_pos_ = position;
 
-  to_eval.reserve(static_cast<size_t>(max_batch));
-  eval_path_offsets.reserve(static_cast<size_t>(max_batch));
-  eval_paths.reserve(static_cast<size_t>(max_batch));
-  pending_moves.reserve(static_cast<size_t>(max_batch));
+  std::vector<chess::Position> to_eval;
+  std::vector<std::vector<chess::Move>> pending_moves;
+  std::vector<std::vector<float>> eval_priors;
+  std::vector<float> eval_values;
+  std::vector<uint32_t> eval_path_offsets;
+  std::vector<std::vector<uint32_t>> eval_paths;
 
   auto flush_and_expand = [&]() {
-    if (to_eval.empty()) return;
-
-    const size_t B = to_eval.size();
-    std::vector<std::vector<float>> policies_legal;
-    std::vector<float>              values;
-    policies_legal.reserve(B);
-    values.reserve(B);
-
-    eval_fn(to_eval, pending_moves, policies_legal, values);
-    if (policies_legal.size() != B || values.size() != B) {
-      throw std::runtime_error("MCTS legal evaluator returned wrong batch sizes");
+    if (to_eval.empty()) {
+      return;
     }
+    eval_priors.clear();
+    eval_values.clear();
+    eval_fn(to_eval, pending_moves, eval_priors, eval_values);
+    if (eval_priors.size() != pending_moves.size() || eval_values.size() != pending_moves.size()) {
+      throw std::runtime_error("evaluation callback returned mismatched sizes");
+    }
+    for (size_t i = 0; i < to_eval.size(); ++i) {
+      Node* node = node_pool_.get_node(eval_path_offsets[i]);
+      node->val_sum += eval_values[i];
+      expand_node_with_priors(node, pending_moves[i], eval_priors[i]);
+      add_dirichlet_noise(node);
 
-    for (size_t i = 0; i < B; ++i) {
-      const uint32_t idx  = eval_path_offsets[i];
-      Node*          node = node_pool_.get_node(idx);
-      node->val_sum += VIRTUAL_LOSS;
-
-      // Ensure 1:1 policy-to-legal-moves mapping
-      if (policies_legal[i].size() != pending_moves[i].size()) {
-        policies_legal[i].assign(pending_moves[i].size(),
-                                 1.0f / static_cast<float>(std::max<size_t>(1, pending_moves[i].size())));
-      }
-      normalize_priors_inplace(policies_legal[i]);
-
-      expand_node_with_priors(node, pending_moves[i], policies_legal[i]);
-
-      float v = values[i];
+      float value = eval_values[i];
       for (auto it = eval_paths[i].rbegin(); it != eval_paths[i].rend(); ++it) {
-        node_pool_.get_node(*it)->update(v);
-        v = -v;
+        node_pool_.get_node(*it)->update(value);
+        value = -value;
       }
-      node_pool_.get_node(root_index_)->update(v);
+      node_pool_.get_node(root_index_)->update(value);
     }
-
     to_eval.clear();
+    pending_moves.clear();
     eval_path_offsets.clear();
     eval_paths.clear();
-    pending_moves.clear();
   };
 
   for (int sim = 0; sim < simulations_; ++sim) {
-    Node* node          = node_pool_.get_node(root_index_);
-    int   depth         = 0;
-    working_pos_        = position;
-    const int max_depth = static_cast<int>(std::min(undo_stack_.size(), path_buffer_.size()));
-
+    Node* node = node_pool_.get_node(root_index_);
+    int depth = 0;
     while (node->child_count > 0) {
-      if (depth >= max_depth) break;
-      node                = select_child(node);
-      path_buffer_[depth] = node_pool_.get_index(node);
-      working_pos_.make_move_fast(node->move, undo_stack_[depth]);
+      Node* child = select_child(node);
+      const uint32_t child_index = node_pool_.get_index(child);
+      working_pos_.make_move_fast(child->move, undo_stack_[depth]);
+      path_buffer_[depth] = child_index;
+      child->val_sum -= VIRTUAL_LOSS;
+      node = child;
       ++depth;
     }
 
-    const auto res = working_pos_.result();
-    if (res != chess::ONGOING) {
+    const chess::Result terminal = working_pos_.result();
+    if (terminal != chess::ONGOING) {
       float v;
-      if (res == chess::DRAW) v = 0.0f;
-      else {
-        v = (res == chess::WHITE_WIN) ? 1.0f : -1.0f;
-        if (working_pos_.get_turn() == chess::BLACK) v = -v;
+      if (terminal == chess::DRAW) {
+        v = 0.0f;
+      } else {
+        v = (terminal == chess::WHITE_WIN) ? 1.0f : -1.0f;
+        if (working_pos_.get_turn() == chess::BLACK) {
+          v = -v;
+        }
       }
       for (int i = depth - 1; i >= 0; --i) {
         node_pool_.get_node(path_buffer_[i])->update(v);
@@ -289,54 +301,58 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position, con
       }
       node_pool_.get_node(root_index_)->update(v);
     } else {
-      chess::MoveList mvlist;
-      working_pos_.legal_moves(mvlist);
+      chess::MoveList legal_moves;
+      working_pos_.legal_moves(legal_moves);
 
-      std::vector<chess::Move> mvvec;
-      mvvec.reserve(mvlist.size());
-      for (size_t k = 0; k < mvlist.size(); ++k) mvvec.push_back(mvlist[k]);
+      std::vector<chess::Move> moves;
+      moves.reserve(legal_moves.size());
+      for (size_t i = 0; i < legal_moves.size(); ++i) {
+        moves.push_back(legal_moves[i]);
+      }
 
-      const uint32_t idx = node_pool_.get_index(node);
-      eval_path_offsets.push_back(idx);
+      eval_path_offsets.push_back(node_pool_.get_index(node));
       to_eval.push_back(working_pos_);
+      pending_moves.push_back(std::move(moves));
 
       std::vector<uint32_t> path;
       path.reserve(static_cast<size_t>(depth));
-      for (int d = 0; d < depth; ++d) path.push_back(path_buffer_[d]);
+      for (int d = 0; d < depth; ++d) {
+        path.push_back(path_buffer_[d]);
+      }
       eval_paths.push_back(std::move(path));
 
       node->val_sum -= VIRTUAL_LOSS;
-      pending_moves.push_back(std::move(mvvec));
-      if (static_cast<int>(to_eval.size()) >= max_batch) flush_and_expand();
+      if (static_cast<int>(to_eval.size()) >= max_batch) {
+        flush_and_expand();
+      }
     }
 
-    for (int i = depth - 1; i >= 0; --i)
+    for (int i = depth - 1; i >= 0; --i) {
       working_pos_.unmake_move_fast(node_pool_.get_node(path_buffer_[i])->move, undo_stack_[i]);
+    }
   }
 
   flush_and_expand();
 
   std::vector<int> visits;
-  {
-    Node* root = node_pool_.get_node(root_index_);
-    visits.reserve(root->child_count);
-    Node* children = node_pool_.get_node(root->first_child_index);
-    for (uint16_t i = 0; i < root->child_count; ++i) visits.push_back(children[i].visits);
+  Node* root = node_pool_.get_node(root_index_);
+  visits.reserve(root->child_count);
+  Node* children = node_pool_.get_node(root->first_child_index);
+  for (uint16_t i = 0; i < root->child_count; ++i) {
+    visits.push_back(children[i].visits);
   }
   return visits;
 }
 
-MCTS::MCTS(int sims, float c, float alpha, float w)
-    : simulations_(sims),
-      c_puct_(c),
+MCTS::MCTS(int simulations, float c_puct, float alpha, float weight)
+    : simulations_(simulations),
+      c_puct_(c_puct),
       c_puct_base_(19652.0f),
       c_puct_init_(1.25f),
       dirichlet_alpha_(alpha),
-      dirichlet_weight_(w) {
+      dirichlet_weight_(weight) {
   node_pool_.reset();
   rng_.seed(1337u);
-  root_index_       = 0;
-  root_hash_        = 0;
   root_initialized_ = false;
 }
 
@@ -345,28 +361,11 @@ void MCTS::set_c_puct_params(float base, float init) {
   c_puct_init_ = init;
 }
 
-bool MCTS::ensure_root(const chess::Position& position) {
-  const uint64_t h = position.get_hash();
-  if (!root_initialized_ || h != root_hash_) {
-    node_pool_.reset();
-    root_index_             = 0;
-    root_hash_              = h;
-    root_initialized_       = true;
-    Node* root              = node_pool_.get_node(root_index_);
-    root->first_child_index = 0;
-    root->child_count       = 0;
-    root->val_sum           = 0.0f;
-    root->prior             = 0.0f;
-    root->visits            = 0;
-    return false;
-  }
-  return true;
-}
 
 void MCTS::reset_tree() {
   node_pool_.reset();
-  root_index_       = 0;
-  root_hash_        = 0;
+  root_index_ = 0;
+  root_hash_ = 0;
   root_initialized_ = false;
 }
 
@@ -374,30 +373,30 @@ void MCTS::advance_root(const chess::Position& new_position, const chess::Move& 
   const uint64_t new_hash = new_position.get_hash();
   if (!root_initialized_) {
     node_pool_.reset();
-    root_index_       = 0;
-    root_hash_        = new_hash;
+    root_index_ = 0;
+    root_hash_ = new_hash;
     root_initialized_ = true;
     return;
   }
 
-  Node* root  = node_pool_.get_node(root_index_);
-  bool  moved = false;
+  Node* root = node_pool_.get_node(root_index_);
+  bool matched_child = false;
   if (root->child_count > 0) {
     Node* children = node_pool_.get_node(root->first_child_index);
     for (uint16_t i = 0; i < root->child_count; ++i) {
       if (children[i].move == played_move) {
         root_index_ = static_cast<uint32_t>(root->first_child_index + i);
-        moved       = true;
+        matched_child = true;
         break;
       }
     }
   }
-  if (!moved) {
+  if (!matched_child) {
     node_pool_.reset();
     root_index_ = 0;
   }
-  root_hash_        = new_hash;
+  root_hash_ = new_hash;
   root_initialized_ = true;
 }
 
-} // namespace mcts
+}  // namespace mcts

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Tuple, cast
 
 try:
-    import yaml
+    import yaml  # type: ignore[import-untyped]
 except Exception:
     yaml = None
 
@@ -18,6 +18,7 @@ SEED: int = 0
 @dataclass(frozen=True)
 class LoggingConfig:
     """Filesystem and console settings for long runs."""
+
     level: str = "INFO"
     runs_dir: str = "runs"
     archive_checkpoints: bool = True
@@ -29,21 +30,23 @@ class LoggingConfig:
 @dataclass(frozen=True)
 class TorchConfig:
     """Runtime directives influencing PyTorch backend behaviour."""
+
     amp_enabled: bool = True
     matmul_float32_precision: str = "medium"
+    cuda_matmul_fp32_precision: str = "tf32"
+    cudnn_conv_fp32_precision: str = "tf32"
     threads_intra: int = 0
     threads_inter: int = 0
     model_channels_last: bool = True
     eval_model_channels_last: bool = True
     cudnn_benchmark: bool = True
-    cuda_allow_tf32: bool = True
-    cudnn_allow_tf32: bool = True
     cuda_allow_fp16_reduced_reduction: bool = True
 
 
 @dataclass(frozen=True)
 class DataConfig:
     """Numeric conventions for encoding states and targets."""
+
     u8_scale: float = 255.0
     value_i8_scale: float = 127.0
 
@@ -51,6 +54,7 @@ class DataConfig:
 @dataclass(frozen=True)
 class ModelConfig:
     """Network architecture hyperparameters."""
+
     blocks: int = 5
     channels: int = 96
     value_conv_channels: int = 12
@@ -60,6 +64,7 @@ class ModelConfig:
 @dataclass(frozen=True)
 class EvalConfig:
     """Inference batching and caching settings."""
+
     batch_size_max: int = 192
     coalesce_ms: int = 20
     cache_capacity: int = 512
@@ -81,6 +86,7 @@ DEFAULT_CURRICULUM_FENS: Tuple[str, ...] = (
 @dataclass(frozen=True)
 class CurriculumConfig:
     """Optional curriculum to bias self-play openings."""
+
     sample_probability: float = 0.30
     fens: Tuple[str, ...] = field(default_factory=lambda: DEFAULT_CURRICULUM_FENS)
 
@@ -88,6 +94,7 @@ class CurriculumConfig:
 @dataclass(frozen=True)
 class SelfPlayConfig:
     """Self-play generation parameters."""
+
     num_workers: int = 2
     game_max_plies: int = 90
     temperature_moves: int = 40
@@ -102,17 +109,25 @@ class SelfPlayConfig:
     adjudication_value_margin: float = 0.08
     adjudication_persist_plies: int = 6
     adjudication_material_margin: float = 3.0
+    adjudication_warmup_iters: int = 32
+    adjudication_ramp_iters: int = 96
+    adjudication_min_plies_init: int = 120
+    adjudication_value_margin_init: float = 0.35
+    adjudication_persist_init: int = 12
+    adjudication_material_margin_init: float = 6.0
 
 
 @dataclass(frozen=True)
 class ReplayConfig:
     """Replay buffer sizing."""
+
     capacity: int = 8_000
 
 
 @dataclass(frozen=True)
 class SamplingConfig:
     """Batch sampling policy mixing fresh and historical games."""
+
     recent_ratio: float = 0.65
     recent_ratio_min: float = 0.55
     recent_ratio_max: float = 0.75
@@ -122,6 +137,7 @@ class SamplingConfig:
 @dataclass(frozen=True)
 class AugmentConfig:
     """Symmetry-based data augmentation options."""
+
     mirror_prob: float = 0.50
     rot180_prob: float = 0.25
     vflip_prob: float = 0.25
@@ -130,6 +146,7 @@ class AugmentConfig:
 @dataclass(frozen=True)
 class MCTSConfig:
     """Monte-Carlo Tree Search hyperparameters."""
+
     train_simulations: int = 96
     train_simulations_min: int = 32
     train_sim_decay_move_interval: int = 24
@@ -145,6 +162,7 @@ class MCTSConfig:
 @dataclass(frozen=True)
 class ResignConfig:
     """Automatic resignation policy."""
+
     enabled: bool = True
     value_threshold: float = -0.05
     min_plies: int = 22
@@ -156,6 +174,7 @@ class ResignConfig:
 @dataclass(frozen=True)
 class TrainConfig:
     """End-to-end training schedule."""
+
     total_iterations: int = 768
     games_per_iter: int = 48
     batch_size: int = 160
@@ -186,6 +205,7 @@ class TrainConfig:
 @dataclass(frozen=True)
 class ArenaConfig:
     """Evaluation and gating schedule."""
+
     eval_every_iters: int = 8
     games_per_eval: int = 12
     mcts_simulations: int = 160
@@ -296,6 +316,7 @@ class ConfigManager:
         for k, v in self._state.items():
             if is_dataclass(v) and not isinstance(v, type):
                 from dataclasses import asdict
+
                 out[k] = asdict(v)
             else:
                 out[k] = _clone(v)

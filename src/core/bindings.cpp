@@ -12,7 +12,7 @@
 
 namespace py = pybind11;
 
-namespace {
+namespace detail {
 
 constexpr char kModuleDoc[] =
     "Bindings for the high-performance C++ chess core used by Hybrid Chess AI.";
@@ -40,7 +40,7 @@ std::string move_to_uci(const chess::Move& move) {
 }
 
 std::vector<chess::Move> copy_moves(const chess::MoveList& moves) {
-  return std::vector<chess::Move>(moves.begin(), moves.end());
+  return {moves.begin(), moves.end()};
 }
 
 py::tuple piece_bitboards_as_tuple(const chess::Position& position) {
@@ -53,48 +53,49 @@ py::tuple piece_bitboards_as_tuple(const chess::Position& position) {
   return outer;
 }
 
-class PyEvaluator {
+class PythonEvaluator {
 public:
-  explicit PyEvaluator(py::object fn) : fn_(std::move(fn)) {}
+  explicit PythonEvaluator(py::object fn) : fn_(std::move(fn)) {}
 
   void operator()(const std::vector<chess::Position>& positions,
                   const std::vector<std::vector<chess::Move>>& moves,
                   std::vector<std::vector<float>>& policies,
                   std::vector<float>& values) const {
-    py::gil_scoped_acquire guard;
+    py::gil_scoped_acquire acquire;
 
     py::list moves_py;
     for (const auto& mv : moves) {
       moves_py.append(py::cast(mv));
     }
 
-    py::object result = fn_(positions, moves_py);
-    auto tuple = result.cast<py::tuple>();
+    const py::object result = fn_(positions, moves_py);
+    const auto tuple = result.cast<py::tuple>();
     if (tuple.size() != 2) {
       throw py::value_error("evaluator must return a tuple of (policies, values)");
     }
 
     const auto batch_size = static_cast<py::ssize_t>(positions.size());
-    py::sequence pol_seq = tuple[0].cast<py::sequence>();
-    py::array_t<float, py::array::c_style | py::array::forcecast> val_arr =
+    const py::sequence pol_seq = tuple[0].cast<py::sequence>();
+    const auto val_arr =
         tuple[1].cast<py::array_t<float, py::array::c_style | py::array::forcecast>>();
 
     if (py::len(pol_seq) != batch_size) {
       throw py::value_error("policies must be a sequence with batch dimension first");
     }
 
-    auto val_info = val_arr.request();
+    const auto val_info = val_arr.request();
     if (val_info.ndim != 1 || val_info.shape[0] != batch_size) {
       throw py::value_error("values must be a 1D array matching the batch size");
     }
-    const float* value_ptr = static_cast<const float*>(val_info.ptr);
+    const auto* value_ptr = static_cast<const float*>(val_info.ptr);
     values.assign(value_ptr, value_ptr + static_cast<size_t>(batch_size));
 
     policies.clear();
     policies.reserve(static_cast<size_t>(batch_size));
     for (py::ssize_t i = 0; i < batch_size; ++i) {
-      auto arr = pol_seq[i].cast<py::array_t<float, py::array::c_style | py::array::forcecast>>();
-      auto arr_info = arr.request();
+      const auto arr =
+          pol_seq[i].cast<py::array_t<float, py::array::c_style | py::array::forcecast>>();
+      const auto arr_info = arr.request();
       if (arr_info.ndim != 1) {
         throw py::value_error("each policy vector must be one-dimensional");
       }
@@ -103,7 +104,7 @@ public:
       if (count != expected) {
         throw py::value_error("policy length must equal number of legal moves for each position");
       }
-      const float* policy_ptr = static_cast<const float*>(arr_info.ptr);
+      const auto* policy_ptr = static_cast<const float*>(arr_info.ptr);
       policies.emplace_back(policy_ptr, policy_ptr + count);
     }
   }
@@ -136,15 +137,15 @@ void bind_enums(py::module_& m) {
 void bind_move(py::module_& m) {
   py::class_<chess::Move>(m, "Move", "Compact chess move representation.")
       .def(py::init<>())
-      .def(py::init<int, int>(), py::arg("from_square"), py::arg("to_square"))
-      .def(py::init<int, int, chess::Piece>(), py::arg("from_square"), py::arg("to_square"),
-           py::arg("promotion"))
+      .def(py::init<chess::Square, chess::Square, chess::Piece>(),
+           py::arg("from_square"),
+           py::arg("to_square"),
+           py::arg("promotion") = chess::PIECE_NONE)
       .def_property_readonly("from_square", &chess::Move::from)
       .def_property_readonly("to_square", &chess::Move::to)
       .def_property_readonly("promotion", &chess::Move::promotion)
       .def("__repr__", [](const chess::Move& move) {
-        std::string repr = "Move(" + square_to_string(move.from()) + "->" +
-                           square_to_string(move.to());
+        std::string repr = "Move(" + square_to_string(move.from()) + "->" + square_to_string(move.to());
         if (move.promotion() != chess::PIECE_NONE) {
           repr += ", promo=" + std::to_string(static_cast<int>(move.promotion()));
         }
@@ -162,28 +163,22 @@ void bind_position(py::module_& m) {
       .def(py::init<>())
       .def(py::init<const chess::Position&>(), py::arg("other"))
       .def("reset", &chess::Position::reset, "Reset the position to the initial board state.")
-      .def("from_fen", &chess::Position::from_fen, py::arg("fen"),
-           "Load a position from a FEN string.")
+      .def("from_fen", &chess::Position::from_fen, py::arg("fen"), "Load a position from a FEN string.")
       .def("to_fen", &chess::Position::to_fen, "Serialize the position to FEN.")
       .def("legal_moves",
            [](chess::Position& position) { return copy_moves(position.legal_moves()); },
            "Return a list of legal moves from the current position.")
-      .def("make_move", &chess::Position::make_move, py::arg("move"),
-           "Apply a move and return the resulting game result.")
+      .def("make_move", &chess::Position::make_move, py::arg("move"), "Apply a move and return the result.")
       .def("result", &chess::Position::result, "Return the current game result.")
-      .def("count_repetitions", &chess::Position::repetition_count,
-           "Return how many times this position has repeated.")
-      .def_property_readonly("pieces", &piece_bitboards_as_tuple,
-                             "Bitboards (white, black) for each piece type.")
+      .def("count_repetitions", &chess::Position::repetition_count, "How many times this position has repeated.")
+      .def_property_readonly("pieces", &piece_bitboards_as_tuple, "Bitboards (white, black) for each piece type.")
       .def_property_readonly("turn", &chess::Position::get_turn)
       .def_property_readonly("castling", &chess::Position::get_castling)
       .def_property_readonly("ep_square", &chess::Position::get_ep_square)
       .def_property_readonly("halfmove", &chess::Position::get_halfmove)
       .def_property_readonly("fullmove", &chess::Position::get_fullmove)
       .def_property_readonly("hash", &chess::Position::get_hash)
-      .def("__repr__", [](const chess::Position& position) {
-        return "Position(" + position.to_fen() + ")";
-      })
+      .def("__repr__", [](const chess::Position& position) { return "Position(" + position.to_fen() + ")"; })
       .def("__str__", &chess::Position::to_fen)
       .def(py::pickle(
           [](const chess::Position& position) { return position.to_fen(); },
@@ -196,24 +191,27 @@ void bind_position(py::module_& m) {
 
 void bind_mcts(py::module_& m) {
   py::class_<mcts::MCTS>(m, "MCTS", "Monte Carlo Tree Search engine.")
-      .def(py::init<int, float, float, float>(), py::arg("simulations") = 800,
-           py::arg("c_puct") = 1.0f, py::arg("dirichlet_alpha") = 0.3f,
+      .def(py::init<int, float, float, float>(),
+           py::arg("simulations") = 800,
+           py::arg("c_puct") = 1.0f,
+           py::arg("dirichlet_alpha") = 0.3f,
            py::arg("dirichlet_weight") = 0.25f)
       .def("seed", &mcts::MCTS::seed, py::arg("seed"), "Seed the internal RNG.")
       .def(
           "search_batched_legal",
           [](mcts::MCTS& engine, const chess::Position& position, py::object evaluator, int max_batch) {
-            const PyEvaluator adapter(std::move(evaluator));
+            const PythonEvaluator adapter(std::move(evaluator));
             py::gil_scoped_release release;
             return engine.search_batched_legal(position, adapter, max_batch);
           },
-          py::arg("position"), py::arg("evaluator"), py::arg("max_batch") = 64,
+          py::arg("position"),
+          py::arg("evaluator"),
+          py::arg("max_batch") = 64,
           "Run batched MCTS search given a Python evaluator callback.")
       .def("set_simulations", &mcts::MCTS::set_simulations, py::arg("simulations"))
       .def("set_c_puct", &mcts::MCTS::set_c_puct, py::arg("c_puct"))
       .def("set_dirichlet_params", &mcts::MCTS::set_dirichlet_params, py::arg("alpha"), py::arg("weight"))
-      .def("set_c_puct_params", &mcts::MCTS::set_c_puct_params, py::arg("c_puct_base"),
-           py::arg("c_puct_init"))
+      .def("set_c_puct_params", &mcts::MCTS::set_c_puct_params, py::arg("c_puct_base"), py::arg("c_puct_init"))
       .def("set_fpu_reduction", &mcts::MCTS::set_fpu_reduction, py::arg("fpu_reduction"))
       .def("reset_tree", &mcts::MCTS::reset_tree)
       .def("advance_root", &mcts::MCTS::advance_root, py::arg("new_position"), py::arg("played_move"));
@@ -229,7 +227,7 @@ void bind_utilities(py::module_& m) {
         py::list result;
         for (const auto& moves : moves_lists) {
           py::array_t<int32_t> encoded(static_cast<py::ssize_t>(moves.size()));
-          auto info = encoded.request();
+          const auto info = encoded.request();
           auto* data = static_cast<int32_t*>(info.ptr);
           for (size_t i = 0; i < moves.size(); ++i) {
             data[i] = mcts::encode_move_index(moves[i]);
@@ -245,26 +243,26 @@ void bind_utilities(py::module_& m) {
 
   // Export constants used by Python.
   m.attr("POLICY_SIZE") = mcts::POLICY_SIZE;
-  m.attr("BOARD_SIZE")  = chess::BOARD_SIZE;
-  m.attr("NSQUARES")    = chess::NSQUARES;
+  m.attr("BOARD_SIZE") = chess::BOARD_SIZE;
+  m.attr("NSQUARES") = chess::NSQUARES;
 
-  m.attr("WHITE")     = chess::WHITE;
-  m.attr("BLACK")     = chess::BLACK;
-  m.attr("ONGOING")   = chess::ONGOING;
+  m.attr("WHITE") = chess::WHITE;
+  m.attr("BLACK") = chess::BLACK;
+  m.attr("ONGOING") = chess::ONGOING;
   m.attr("WHITE_WIN") = chess::WHITE_WIN;
   m.attr("BLACK_WIN") = chess::BLACK_WIN;
-  m.attr("DRAW")      = chess::DRAW;
+  m.attr("DRAW") = chess::DRAW;
 }
 
-}  // namespace
+}  // namespace detail
 
 PYBIND11_MODULE(chesscore, m) {
-  m.doc() = kModuleDoc;
+  m.doc() = detail::kModuleDoc;
   chess::init_tables();
 
-  bind_enums(m);
-  bind_move(m);
-  bind_position(m);
-  bind_mcts(m);
-  bind_utilities(m);
+  detail::bind_enums(m);
+  detail::bind_move(m);
+  detail::bind_position(m);
+  detail::bind_mcts(m);
+  detail::bind_utilities(m);
 }

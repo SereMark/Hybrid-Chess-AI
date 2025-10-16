@@ -1,3 +1,5 @@
+"""Self-play game generation and replay buffer management."""
+
 from __future__ import annotations
 
 import json
@@ -5,14 +7,14 @@ import logging
 import threading
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
+import chesscore as ccore
 import config as C
 import encoder
 import numpy as np
-import chesscore as ccore
 from encoder import POLICY_SIZE, encode_move_index
 from replay_buffer import ReplayBuffer
 from utils import flip_fen_perspective, sanitize_fen
@@ -20,11 +22,18 @@ from utils import flip_fen_perspective, sanitize_fen
 DEFAULT_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 _MATERIAL_WEIGHTS = (1.0, 3.0, 3.0, 5.0, 9.0, 0.0)  # P,N,B,R,Q,K
 
+__all__ = ["SelfPlayEngine"]
 
-# ---------- stats
+
+# ---------------------------------------------------------------------------#
+# Statistics containers
+# ---------------------------------------------------------------------------#
+
 
 @dataclass(slots=True)
 class _SelfPlayStats:
+    """Accumulates self-play statistics for reporting."""
+
     games: int = 0
     moves: int = 0
     white_wins: int = 0
@@ -74,7 +83,35 @@ class _SelfPlayStats:
         }
 
 
-# ---------- helpers
+# ---------------------------------------------------------------------------#
+# Adjudication schedule primitives
+# ---------------------------------------------------------------------------#
+
+
+@dataclass(frozen=True, slots=True)
+class _AdjudicationState:
+    """Snapshot of adjudication thresholds."""
+
+    enabled: bool
+    min_plies: int
+    value_margin: float
+    persist_plies: int
+    material_margin: float
+
+
+def _lerp(start: float, end: float, t: float) -> float:
+    """Linear interpolation with clamped parameter."""
+    if t <= 0.0:
+        return start
+    if t >= 1.0:
+        return end
+    return start + (end - start) * t
+
+
+# ---------------------------------------------------------------------------#
+# Helper functions
+# ---------------------------------------------------------------------------#
+
 
 def _load_opening_book(path_spec: object) -> list[tuple[str, float]]:
     """Read JSON book -> [(sanitized_fen, weight)]. Accepts file with {'entries': ...} or a list."""
@@ -105,15 +142,18 @@ def _load_opening_book(path_spec: object) -> list[tuple[str, float]]:
 
 
 def _encode_state_u8(encoded: np.ndarray) -> np.ndarray:
+    """Quantise encoded state planes to uint8 for storage."""
     return np.clip(np.rint(encoded * float(C.DATA.u8_scale)), 0, 255).astype(np.uint8, copy=False)
 
 
 def _encode_value_i8(value: float) -> np.int8:
+    """Quantise scalar value targets to int8."""
     scale = float(C.DATA.value_i8_scale)
     return np.int8(int(round(float(np.clip(value * scale, -128, 127)))))
 
 
 def _material_balance(position: ccore.Position) -> float:
+    """Compute a simple weighted material balance."""
     pieces = getattr(position, "pieces", None)
     if pieces is None:
         return 0.0
@@ -140,6 +180,7 @@ def _material_balance(position: ccore.Position) -> float:
 
 
 def _policy_targets(moves: Iterable[Any], visit_counts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Convert visit counts into sparse policy indices and weights."""
     idx_list: list[int] = []
     cnt_list: list[int] = []
     for mv, cnt in zip(moves, visit_counts, strict=False):
@@ -156,12 +197,15 @@ def _policy_targets(moves: Iterable[Any], visit_counts: np.ndarray) -> tuple[np.
     return np.asarray(idx_list, dtype=np.int32), np.asarray(cnt_list, dtype=np.uint16)
 
 
-# ---------- engine
+# ---------------------------------------------------------------------------#
+# Self-play engine
+# ---------------------------------------------------------------------------#
+
 
 class SelfPlayEngine:
     """Generates self-play games and manages the replay buffer."""
 
-    def __init__(self, evaluator: Any) -> None:
+    def __init__(self, evaluator: Any, *, seed: int | np.random.SeedSequence | None = None) -> None:
         self.log = logging.getLogger("hybridchess.selfplay")
         self.evaluator = evaluator
 
@@ -169,11 +213,28 @@ class SelfPlayEngine:
         self.game_max_plies = int(max(1, C.SELFPLAY.game_max_plies))
 
         planes = encoder.INPUT_PLANES
+
+        seed_seq: np.random.SeedSequence | None
+        if isinstance(seed, np.random.SeedSequence):
+            seed_seq = seed
+        elif seed is None:
+            seed_seq = None
+        else:
+            seed_int = int(seed)
+            seed_seq = None if seed_int == 0 else np.random.SeedSequence(seed_int)
+
+        if seed_seq is None:
+            buffer_seed = None
+            rng_seed = None
+        else:
+            buffer_seed, rng_seed = seed_seq.spawn(2)
+
         self._buffer = ReplayBuffer(
             capacity=int(C.REPLAY.capacity),
             planes=int(planes),
             height=encoder.BOARD_SIZE,
             width=encoder.BOARD_SIZE,
+            seed=buffer_seed,
         )
         self._buffer_lock = threading.Lock()
 
@@ -184,12 +245,49 @@ class SelfPlayEngine:
         self.resign_min_plies = int(max(0, C.RESIGN.min_plies))
         self.resign_playthrough_fraction = float(np.clip(C.RESIGN.playthrough_fraction, 0.0, 1.0))
 
-        # Adjudication
-        self.adjudication_enabled = bool(C.SELFPLAY.adjudication_enabled)
-        self.adjudication_min_plies = int(max(0, C.SELFPLAY.adjudication_min_plies))
-        self.adjudication_value_margin = float(max(0.0, C.SELFPLAY.adjudication_value_margin))
-        self.adjudication_persist = int(max(1, C.SELFPLAY.adjudication_persist_plies))
-        self.adjudication_material_margin = float(max(0.0, getattr(C.SELFPLAY, "adjudication_material_margin", 0.0)))
+        # Adjudication scheduling
+        self._adj_warmup_iters = int(max(0, getattr(C.SELFPLAY, "adjudication_warmup_iters", 0)))
+        self._adj_ramp_iters = int(max(1, getattr(C.SELFPLAY, "adjudication_ramp_iters", 1)))
+        target_state = _AdjudicationState(
+            enabled=bool(getattr(C.SELFPLAY, "adjudication_enabled", True)),
+            min_plies=int(max(0, getattr(C.SELFPLAY, "adjudication_min_plies", 0))),
+            value_margin=float(max(0.0, getattr(C.SELFPLAY, "adjudication_value_margin", 0.0))),
+            persist_plies=int(max(1, getattr(C.SELFPLAY, "adjudication_persist_plies", 1))),
+            material_margin=float(max(0.0, getattr(C.SELFPLAY, "adjudication_material_margin", 0.0))),
+        )
+        start_state = _AdjudicationState(
+            enabled=target_state.enabled,
+            min_plies=max(
+                target_state.min_plies,
+                int(max(0, getattr(C.SELFPLAY, "adjudication_min_plies_init", target_state.min_plies))),
+            ),
+            value_margin=max(
+                target_state.value_margin,
+                float(max(0.0, getattr(C.SELFPLAY, "adjudication_value_margin_init", target_state.value_margin))),
+            ),
+            persist_plies=max(
+                target_state.persist_plies,
+                int(max(1, getattr(C.SELFPLAY, "adjudication_persist_init", target_state.persist_plies))),
+            ),
+            material_margin=max(
+                target_state.material_margin,
+                float(
+                    max(
+                        0.0,
+                        getattr(
+                            C.SELFPLAY,
+                            "adjudication_material_margin_init",
+                            target_state.material_margin,
+                        ),
+                    )
+                ),
+            ),
+        )
+        self._adj_target = target_state
+        self._adj_start = start_state
+        self._adj_last_state: _AdjudicationState | None = None
+        self.adjudication_phase: str = "disabled"
+        self.update_adjudication(0)
 
         # Curriculum and opening book
         self._curriculum_prob = float(np.clip(C.SELFPLAY.curriculum.sample_probability, 0.0, 1.0))
@@ -208,36 +306,108 @@ class SelfPlayEngine:
             self._opening_book = entries
             self._opening_cumulative = np.cumsum(weights / weights.sum())
 
-        self._rng = np.random.default_rng()
+        self._rng = np.random.default_rng(None if seed_seq is None else rng_seed)
         self._eval_batch_cap = int(max(1, C.EVAL.batch_size_max))
         self.opening_random_moves = int(max(0, C.SELFPLAY.opening_random_moves))
 
     # ----- public API
 
     def enable_resign(self, enabled: bool) -> None:
+        """Toggle resignation behaviour."""
         self.resign_enabled = bool(enabled)
 
     def set_num_workers(self, n: int) -> None:
+        """Set the number of concurrent self-play workers."""
         self.num_workers = max(1, int(n))
 
     def get_num_workers(self) -> int:
+        """Return the configured worker count."""
         return int(self.num_workers)
 
     def set_game_length(self, max_plies: int) -> None:
+        """Adjust the per-game ply limit."""
         self.game_max_plies = int(max(1, max_plies))
 
     def get_game_length(self) -> int:
+        """Return the ply limit for games."""
         return int(self.game_max_plies)
 
     def set_resign_params(self, threshold: float, min_plies: int) -> None:
+        """Update resignation threshold and minimum plies."""
         self.resign_threshold = float(threshold)
         self.resign_min_plies = int(max(0, min_plies))
 
     def update_adjudication(self, iteration: int) -> None:
-        """Hook retained for compatibility; schedule is static."""
-        return
+        """Update adjudication thresholds according to the training schedule."""
+        state = self._resolve_adjudication_state(iteration)
+        self._apply_adjudication_state(state)
+
+        log_transition = False
+        if self._adj_last_state is None or state.enabled != self._adj_last_state.enabled:
+            log_transition = True
+        elif iteration in (
+            self._adj_warmup_iters,
+            self._adj_warmup_iters + self._adj_ramp_iters,
+        ):
+            log_transition = state != self._adj_last_state
+
+        if log_transition:
+            self.log.info(
+                "Adjudication schedule: iter=%d phase=%s enabled=%s min_plies=%d "
+                "value_margin=%.3f persist=%d material_margin=%.2f",
+                iteration,
+                self.adjudication_phase,
+                "yes" if state.enabled else "no",
+                state.min_plies,
+                state.value_margin,
+                state.persist_plies,
+                state.material_margin,
+            )
+
+        self._adj_last_state = state
+
+    def _resolve_adjudication_state(self, iteration: int) -> _AdjudicationState:
+        target = self._adj_target
+        if not target.enabled:
+            self.adjudication_phase = "disabled"
+            return _AdjudicationState(
+                False, target.min_plies, target.value_margin, target.persist_plies, target.material_margin
+            )
+
+        if iteration < self._adj_warmup_iters:
+            self.adjudication_phase = "warmup"
+            start = self._adj_start
+            return _AdjudicationState(
+                False, start.min_plies, start.value_margin, start.persist_plies, start.material_margin
+            )
+
+        ramp_den = float(max(1, self._adj_ramp_iters))
+        progress = min(1.0, (iteration - self._adj_warmup_iters) / ramp_den)
+        self.adjudication_phase = "ramp" if progress < 1.0 else "steady"
+        start = self._adj_start
+
+        min_plies = int(round(_lerp(start.min_plies, target.min_plies, progress)))
+        value_margin = float(round(_lerp(start.value_margin, target.value_margin, progress), 4))
+        persist = int(round(_lerp(start.persist_plies, target.persist_plies, progress)))
+        material = float(round(_lerp(start.material_margin, target.material_margin, progress), 3))
+
+        return _AdjudicationState(
+            True,
+            max(0, min_plies),
+            max(0.0, value_margin),
+            max(1, persist),
+            max(0.0, material),
+        )
+
+    def _apply_adjudication_state(self, state: _AdjudicationState) -> None:
+        self.adjudication_enabled = bool(state.enabled)
+        self.adjudication_min_plies = int(max(0, state.min_plies))
+        self.adjudication_value_margin = float(max(0.0, state.value_margin))
+        self.adjudication_persist = int(max(1, state.persist_plies))
+        self.adjudication_material_margin = float(max(0.0, state.material_margin))
 
     def play_games(self, num_games: int) -> dict[str, float | int]:
+        """Generate `num_games` self-play games and return metrics."""
         if num_games <= 0:
             return _SelfPlayStats().to_dict()
         stats = _SelfPlayStats()
@@ -255,6 +425,7 @@ class SelfPlayEngine:
         recent_ratio: float,
         recent_window_frac: float,
     ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray], list[np.int8]]:
+        """Sample a replay batch mixing recent and historical games."""
         return self._buffer.sample(
             batch_size=int(batch_size),
             recent_ratio=float(np.clip(recent_ratio, 0.0, 1.0)),
@@ -262,18 +433,61 @@ class SelfPlayEngine:
         )
 
     def get_capacity(self) -> int:
+        """Return total capacity of the replay buffer."""
         return int(self._buffer.capacity)
 
     def set_capacity(self, capacity: int) -> None:
+        """Resize the replay buffer, preserving the most recent entries."""
         with self._buffer_lock:
             self._buffer.set_capacity(int(max(1, capacity)))
 
     def size(self) -> int:
+        """Return the number of items currently stored in the buffer."""
         return int(self._buffer.size)
 
     def clear_buffer(self) -> None:
+        """Clear all stored samples."""
         with self._buffer_lock:
             self._buffer.clear()
+
+    def state_dict(self) -> dict[str, Any]:
+        """Return a snapshot of engine state (buffer + RNG)."""
+        data: dict[str, Any] = {
+            "buffer": self._buffer.state_dict(),
+            "rng_state": self._rng.bit_generator.state,
+            "adjudication_phase": self.adjudication_phase,
+        }
+        if self._adj_last_state is not None:
+            data["adjudication_last_state"] = asdict(self._adj_last_state)
+        return data
+
+    def load_state_dict(self, payload: Mapping[str, Any]) -> None:
+        """Restore engine state from a snapshot."""
+        buffer_state = payload.get("buffer")
+        if buffer_state is not None:
+            self._buffer.load_state_dict(buffer_state)
+
+        rng_state = payload.get("rng_state")
+        if rng_state is not None:
+            self._rng = np.random.default_rng()
+            self._rng.bit_generator.state = rng_state
+
+        last_state = payload.get("adjudication_last_state")
+        if isinstance(last_state, Mapping):
+            self._adj_last_state = _AdjudicationState(
+                enabled=bool(last_state.get("enabled", True)),
+                min_plies=int(last_state.get("min_plies", 0)),
+                value_margin=float(last_state.get("value_margin", 0.0)),
+                persist_plies=int(last_state.get("persist_plies", 1)),
+                material_margin=float(last_state.get("material_margin", 0.0)),
+            )
+            self._apply_adjudication_state(self._adj_last_state)
+        else:
+            self._adj_last_state = None
+
+        phase = payload.get("adjudication_phase")
+        if isinstance(phase, str):
+            self.adjudication_phase = phase
 
     # ----- internals
 
@@ -452,7 +666,6 @@ class SelfPlayEngine:
     def _normalize_result(result: ccore.Result | int | float | None) -> ccore.Result | None:
         if isinstance(result, ccore.Result):
             return result
-        try:
+        if isinstance(result, (int, float)):
             return ccore.Result(int(result))
-        except Exception:
-            return None
+        return None

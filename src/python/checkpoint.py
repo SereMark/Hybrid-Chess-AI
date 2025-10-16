@@ -1,5 +1,8 @@
+"""Checkpoint management utilities for persisting trainer state."""
+
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import time
@@ -7,19 +10,28 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
+import config as C
 import numpy as np
 import torch
 from torch.amp import GradScaler
 
-import config as C
+__all__ = ["get_run_root", "save_checkpoint", "save_best_model", "try_resume"]
+
+
+# ---------------------------------------------------------------------------#
+# Path helpers
+# ---------------------------------------------------------------------------#
+
 
 def _timestamped_path(base_path: str, iteration: int | None = None) -> str:
+    """Append iteration and wall time to a checkpoint path for archival saves."""
     stem, ext = os.path.splitext(base_path)
     tag = f"_iter{int(iteration):05d}" if iteration is not None else ""
     return f"{stem}{tag}_{int(time.time())}{ext or '.pt'}"
 
 
 def _resolve_run_root(trainer: Any) -> str:
+    """Return (and cache on trainer) the directory used for the current run."""
     existing = getattr(trainer, "run_root", None)
     if existing:
         return str(existing)
@@ -31,10 +43,12 @@ def _resolve_run_root(trainer: Any) -> str:
 
 
 def get_run_root(trainer: Any) -> str:
+    """Public accessor that delegates to `_resolve_run_root`."""
     return _resolve_run_root(trainer)
 
 
 def _experiment_paths(trainer: Any, iteration: int | None = None) -> dict[str, str]:
+    """Construct canonical file paths for the current experiment run."""
     root = _resolve_run_root(trainer)
     paths = {
         "root": root,
@@ -47,19 +61,26 @@ def _experiment_paths(trainer: Any, iteration: int | None = None) -> dict[str, s
     return paths
 
 
+# ---------------------------------------------------------------------------#
+# Metadata serialisation
+# ---------------------------------------------------------------------------#
+
+
 def _write_config_snapshot(snapshot: dict[str, Any], config_dir: Path) -> None:
+    """Persist merged configuration alongside the run metadata."""
     config_dir.mkdir(parents=True, exist_ok=True)
     (config_dir / "merged.json").write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
     try:
-        import yaml
+        import yaml  # type: ignore[import-untyped]
     except Exception:
         yaml = None
     if yaml is not None:
-        with (config_dir / "merged.yaml").open("w", encoding="utf-8") as h:
-            yaml.safe_dump(snapshot, h, sort_keys=False)
+        with (config_dir / "merged.yaml").open("w", encoding="utf-8") as handle:
+            yaml.safe_dump(snapshot, handle, sort_keys=False)
 
 
 def _write_metadata(trainer: Any, artifacts: dict[str, str]) -> None:
+    """Write run metadata describing the latest checkpoint."""
     meta = {
         "iteration": int(trainer.iteration),
         "total_games": int(trainer.total_games),
@@ -84,7 +105,21 @@ def _write_metadata(trainer: Any, artifacts: dict[str, str]) -> None:
     meta["log_paths"] = {"metrics_csv": str(metrics_path), "arena_dir": arena_dir}
 
     snapshot: dict[str, Any] = {}
-    for name in ("LOG", "TORCH", "DATA", "MODEL", "EVAL", "SELFPLAY", "REPLAY", "SAMPLING", "AUGMENT", "MCTS", "RESIGN", "TRAIN", "ARENA"):
+    for name in (
+        "LOG",
+        "TORCH",
+        "DATA",
+        "MODEL",
+        "EVAL",
+        "SELFPLAY",
+        "REPLAY",
+        "SAMPLING",
+        "AUGMENT",
+        "MCTS",
+        "RESIGN",
+        "TRAIN",
+        "ARENA",
+    ):
         cfg = getattr(C, name, None)
         if cfg is None:
             continue
@@ -97,6 +132,14 @@ def _write_metadata(trainer: Any, artifacts: dict[str, str]) -> None:
     _write_config_snapshot(snapshot, meta_path.parent / "config")
 
 
+# ---------------------------------------------------------------------------#
+# Checkpoint persistence
+# ---------------------------------------------------------------------------#
+
+# ---------------------------------------------------------------------------#
+# Checkpoint persistence
+
+
 def save_checkpoint(trainer: Any) -> None:
     """Persist full trainer state."""
     try:
@@ -105,6 +148,16 @@ def save_checkpoint(trainer: Any) -> None:
         Path(ckpt_path).parent.mkdir(parents=True, exist_ok=True)
 
         base = getattr(trainer.model, "_orig_mod", trainer.model)
+
+        selfplay_state: dict[str, Any] | None = None
+        with contextlib.suppress(Exception):
+            selfplay_state = trainer.selfplay_engine.state_dict()
+
+        arena_state: dict[str, Any] | None = None
+        if hasattr(trainer, "_arena_rng"):
+            with contextlib.suppress(Exception):
+                arena_state = trainer._arena_rng.bit_generator.state
+
         payload = {
             "iter": int(trainer.iteration),
             "total_games": int(trainer.total_games),
@@ -116,6 +169,8 @@ def save_checkpoint(trainer: Any) -> None:
             "scaler": trainer.scaler.state_dict(),
             "ema": trainer.ema.shadow if trainer.ema is not None else None,
             "gate": {"accepted": int(trainer.gate.accepted), "rejected": int(trainer.gate.rejected)},
+            "selfplay_state": selfplay_state,
+            "arena_rng_state": arena_state,
             "rng": {
                 "py": __import__("random").getstate(),
                 "np": np.random.get_state(),
@@ -140,7 +195,11 @@ def save_best_model(trainer: Any) -> None:
         artifacts = _experiment_paths(trainer, trainer.iteration)
         best_path = artifacts["best_model"]
         Path(best_path).parent.mkdir(parents=True, exist_ok=True)
-        payload = {"iter": int(trainer.iteration), "total_games": int(trainer.total_games), "model": trainer.best_model.state_dict()}
+        payload = {
+            "iter": int(trainer.iteration),
+            "total_games": int(trainer.total_games),
+            "model": trainer.best_model.state_dict(),
+        }
         tmp = f"{best_path}.tmp"
         torch.save(payload, tmp)
         os.replace(tmp, best_path)
@@ -149,8 +208,16 @@ def save_best_model(trainer: Any) -> None:
         trainer.log.warning("Best-model save failed: %s", exc)
 
 
-def try_resume(trainer: Any) -> None:
-    """Restore trainer state from latest checkpoint if available."""
+# ---------------------------------------------------------------------------#
+# Checkpoint restoration
+# ---------------------------------------------------------------------------#
+
+# ---------------------------------------------------------------------------#
+# Checkpoint restoration
+
+
+def _collect_candidate_paths(trainer: Any) -> list[str]:
+    """Return an ordered list of possible resume checkpoint paths."""
     candidates: list[str] = []
     env_root = os.environ.get("HYBRID_CHESS_RESUME")
     if env_root:
@@ -160,13 +227,22 @@ def try_resume(trainer: Any) -> None:
 
     runs_dir = Path(C.LOG.runs_dir)
     if runs_dir.is_dir():
-        recent = sorted((p for p in runs_dir.iterdir() if p.is_dir()), key=lambda p: p.stat().st_mtime, reverse=True)
-        for run in recent:
-            cand = run / "checkpoints" / "latest.pt"
-            if cand.is_file():
-                candidates.append(str(cand))
+        recent_runs = sorted(
+            (p for p in runs_dir.iterdir() if p.is_dir()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for run in recent_runs:
+            candidate = run / "checkpoints" / "latest.pt"
+            if candidate.is_file():
+                candidates.append(str(candidate))
                 break
+    return candidates
 
+
+def try_resume(trainer: Any) -> None:
+    """Restore trainer state from latest checkpoint if available."""
+    candidates = _collect_candidate_paths(trainer)
     seen: set[str] = set()
     path: str | None = None
     for c in candidates:
@@ -234,6 +310,22 @@ def try_resume(trainer: Any) -> None:
             torch.set_rng_state(rng["torch_cpu"])
         if rng.get("torch_cuda") is not None and torch.cuda.is_available():
             torch.cuda.set_rng_state_all(rng["torch_cuda"])
+
+        sp_state = ckpt.get("selfplay_state")
+        if sp_state is not None:
+            try:
+                trainer.selfplay_engine.load_state_dict(sp_state)
+            except Exception as exc:
+                trainer.log.warning("[CKPT] self-play restore failed: %s", exc)
+
+        trainer.selfplay_engine.update_adjudication(trainer.iteration)
+
+        arena_state = ckpt.get("arena_rng_state")
+        if arena_state is not None and hasattr(trainer, "_arena_rng"):
+            try:
+                trainer._arena_rng.bit_generator.state = arena_state
+            except Exception as exc:
+                trainer.log.warning("[CKPT] arena RNG restore failed: %s", exc)
 
         trainer.log.info("[CKPT] resumed from %s @ iter %s", path, trainer.iteration)
     except Exception as exc:

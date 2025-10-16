@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import numpy as np
 import encoder
+import numpy as np
 
 
 def test_encode_position_and_batch(ensure_chesscore) -> None:

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import encoder
 import numpy as np
 import pytest
 from augmentation import POLICY_OUTPUT, Augment
-import encoder
 
 
 def test_policy_index_permutation_shapes() -> None:
@@ -12,7 +12,7 @@ def test_policy_index_permutation_shapes() -> None:
 
 
 def test_apply_shapes_and_roundtrip() -> None:
-    planes = POLICY_OUTPUT // 64
+    planes = encoder.INPUT_PLANES
     rng = np.random.default_rng(0)
     state = rng.random((planes, 8, 8), dtype=np.float32)
     policy = rng.random(POLICY_OUTPUT, dtype=np.float32)

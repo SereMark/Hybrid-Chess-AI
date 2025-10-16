@@ -1,4 +1,7 @@
 #pragma once
+
+// Hybrid Chess AI - Monte Carlo Tree Search declarations
+
 #include "chess.hpp"
 
 #include <array>
@@ -9,35 +12,41 @@
 
 namespace mcts {
 
-constexpr float POLICY_EPSILON    = 1e-8f;
+constexpr float POLICY_EPSILON = 1e-8f;
 constexpr float DIRICHLET_EPSILON = 1e-10f;
-constexpr int   POLICY_SIZE       = 73 * 64;
+constexpr int POLICY_SIZE = 73 * 64;
+
+// ---------------------------------------------------------------------------
+// Utility helpers
 
 int encode_move_index(const chess::Move& move);
 
+// ---------------------------------------------------------------------------
+// Tree structures
+
 struct alignas(32) Node {
-  uint32_t    first_child_index = 0;
-  uint16_t    child_count       = 0;
+  uint32_t first_child_index = 0;
+  uint16_t child_count = 0;
   chess::Move move;
-  float       val_sum = 0.0f;
-  float       prior   = 0.0f;
-  int         visits  = 0;
+  float val_sum = 0.0f;
+  float prior = 0.0f;
+  int visits = 0;
 
   float ucb(float c_puct, float sqrt_visits, float parent_q, float fpu) const;
-  void  update(float v);
+  void update(float v);
 };
 
 class NodePool {
   std::vector<Node> nodes_;
-  size_t            used_ = 0;
+  size_t used_ = 0;
   static constexpr size_t kDefaultCapacity = 500000;
 
 public:
   NodePool();
-  void                   reset();
-  [[nodiscard]] Node*    get_root();
-  Node*                  allocate(size_t count);
-  [[nodiscard]] Node*    get_node(uint32_t index);
+  void reset();
+  [[nodiscard]] Node* get_root();
+  Node* allocate(size_t count);
+  [[nodiscard]] Node* get_node(uint32_t index);
   [[nodiscard]] uint32_t get_index(Node* node);
 };
 
@@ -74,22 +83,22 @@ private:
   float dirichlet_weight_;
   float fpu_reduction_ = 0.10f;
 
-  NodePool                                            node_pool_;
-  mutable chess::Position                             working_pos_;
+  NodePool node_pool_;
+  mutable chess::Position working_pos_;
   mutable std::array<chess::Position::MoveInfo, 1024> undo_stack_;
-  std::array<uint32_t, 1024>                          path_buffer_;
-  static constexpr float                              VIRTUAL_LOSS = 1.0f;
-  std::mt19937                                        rng_;
+  std::array<uint32_t, 1024> path_buffer_;
+  static constexpr float VIRTUAL_LOSS = 1.0f;
+  std::mt19937 rng_;
 
-  uint32_t root_index_       = 0;
-  uint64_t root_hash_        = 0;
-  bool     root_initialized_ = false;
+  uint32_t root_index_ = 0;
+  uint64_t root_hash_ = 0;
+  bool root_initialized_ = false;
 
   Node* select_child(Node* parent);
-  void  expand_node_with_priors(Node* node, const std::vector<chess::Move>& moves,
-                                const std::vector<float>& priors);
-  void  add_dirichlet_noise(Node* node);
-  bool  ensure_root(const chess::Position& position);
+  void expand_node_with_priors(Node* node, const std::vector<chess::Move>& moves,
+                               const std::vector<float>& priors);
+  void add_dirichlet_noise(Node* node);
+  bool ensure_root(const chess::Position& position);
 };
 
 }  // namespace mcts

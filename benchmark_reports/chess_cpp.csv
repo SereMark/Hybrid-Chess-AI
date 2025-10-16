@@ -1,0 +1,2 @@
+scenario,positions,loops,repetitions,mismatches,chesscore_time,python_time,speedup
+random,200,50,3,0,0.18805993333323082,1.3496020666667998,7.176446586713325

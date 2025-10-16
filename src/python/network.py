@@ -1,3 +1,5 @@
+"""Model definitions for the Hybrid Chess neural network."""
+
 from __future__ import annotations
 
 import chesscore as ccore
@@ -6,10 +8,23 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+__all__ = [
+    "BOARD_SIZE",
+    "NSQUARES",
+    "INPUT_PLANES",
+    "POLICY_OUTPUT",
+    "ResidualBlock",
+    "ChessNet",
+]
+
 BOARD_SIZE: int = 8
 NSQUARES: int = 64
 INPUT_PLANES: int = int(getattr(ccore, "INPUT_PLANES", 14 * 8 + 7))
 POLICY_OUTPUT: int = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
+
+# ---------------------------------------------------------------------------#
+# Residual blocks
+
 
 class ResidualBlock(nn.Module):
     """2×Conv3x3 + BN + ReLU with skip."""
@@ -26,6 +41,10 @@ class ResidualBlock(nn.Module):
         x = F.relu(self.bn1(self.conv1(x)))
         x = self.bn2(self.conv2(x))
         return F.relu(x + s)
+
+
+# ---------------------------------------------------------------------------#
+# Chess network
 
 
 class ChessNet(nn.Module):

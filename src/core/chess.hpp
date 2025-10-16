@@ -1,11 +1,17 @@
 #pragma once
 
+// Hybrid Chess AI - Core chess primitives
+// Provides the position representation, move lists, and helper utilities
+// used by the PyTorch trainer and the C++ MCTS engine.
+
 #include <bit>
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace mcts { class MCTS; }
+namespace mcts {
+class MCTS;
+}  // namespace mcts
 
 namespace chess {
 
