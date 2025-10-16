@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import encoder
 import numpy as np
 import pytest
 import self_play
 import torch
-import encoder
 from inference import BatchedEvaluator
 from self_play import SelfPlayEngine
 

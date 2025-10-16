@@ -632,9 +632,7 @@ class SelfPlayEngine:
             if self._executor is None or self._executor_workers != target:
                 if self._executor is not None:
                     self._executor.shutdown(wait=True)
-                self._executor = ThreadPoolExecutor(
-                    max_workers=target, thread_name_prefix="SelfPlay"
-                )
+                self._executor = ThreadPoolExecutor(max_workers=target, thread_name_prefix="SelfPlay")
                 self._executor_workers = target
             return self._executor
 

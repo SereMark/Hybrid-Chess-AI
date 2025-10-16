@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import TypedDict
 
-import numpy as np
-import encoder
 import config as C
+import encoder
+import numpy as np
+import pytest
 import torch
 from train_loop import run_training_iteration
-import pytest
+
+
+class _Stats(TypedDict, total=False):
+    games: int
+    moves: int
+    visit_per_move: float
 
 
 class DummySelfPlay:
@@ -29,7 +36,7 @@ class DummySelfPlay:
     def size(self) -> int:
         return 1
 
-    def play_games(self, games: int) -> dict[str, int]:
+    def play_games(self, games: int) -> _Stats:
         self._games += games
         return {"games": games}
 
@@ -53,7 +60,7 @@ class DummyTrainer:
         self.selfplay_engine = DummySelfPlay()
         self.iteration = 0
         self.train_batch_size = 1
-        self.model = torch.nn.Linear(2, 2)
+        self.model: torch.nn.Module = torch.nn.Linear(2, 2)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.1)
         self.scheduler = type("Sched", (), {"step": lambda self: None})()
         self.device = torch.device("cpu")
@@ -109,7 +116,7 @@ def test_run_training_iteration_enables_adjudication_and_buffer(monkeypatch) -> 
 
     calls = {"play": 0, "sample": 0}
 
-    def fake_play(games: int) -> dict[str, int]:
+    def fake_play(games: int) -> _Stats:
         calls["play"] += 1
         return {"games": games, "moves": games * 4, "visit_per_move": 32.0}
 
@@ -130,7 +137,7 @@ def test_run_training_iteration_enables_adjudication_and_buffer(monkeypatch) -> 
 
     assert calls["play"] == 1
     assert calls["sample"] >= 1
-    assert stats["train_steps_actual"] >= 1
+    assert int(stats["train_steps_actual"]) >= 1
     assert stats["adjudication_enabled"] == 1
 
 
@@ -198,5 +205,5 @@ def test_run_training_iteration_updates_ema(monkeypatch) -> None:
     tr.selfplay_engine.sample_batch = fake_sample  # type: ignore[assignment]
 
     stats = run_training_iteration(tr)
-    assert stats["train_steps_actual"] >= 1
+    assert int(stats["train_steps_actual"]) >= 1
     assert getattr(tr.ema, "touched", False)

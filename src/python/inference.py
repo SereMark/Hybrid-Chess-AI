@@ -44,17 +44,17 @@ class BatchedEvaluator:
         self._host_infer_dtype: torch.dtype
 
         if self._dtype == torch.bfloat16:
-            self._np_dtype = np.float32
+            self._np_dtype = np.dtype(np.float32)
             self._cache_dtype = torch.float32
             self._host_infer_dtype = torch.float32
             self._should_autocast = self.device.type == "cuda"
         elif self._dtype == torch.float16:
-            self._np_dtype = np.float16
+            self._np_dtype = np.dtype(np.float16)
             self._cache_dtype = torch.float16 if C.EVAL.use_fp16_cache else torch.float32
             self._host_infer_dtype = torch.float32 if self.device.type == "cpu" else torch.float16
             self._should_autocast = self.device.type == "cuda"
         else:
-            self._np_dtype = np.float32
+            self._np_dtype = np.dtype(np.float32)
             self._cache_dtype = torch.float32
             self._host_infer_dtype = torch.float32
             self._should_autocast = False
@@ -72,7 +72,9 @@ class BatchedEvaluator:
         self._shutdown = threading.Event()
         self._cv = threading.Condition()
         self._queue: list[_EvalRequest] = []
-        self._thread = threading.Thread(target=self._coalesce_loop, name="EvalCoalesce", daemon=True)
+        self._thread: threading.Thread | None = threading.Thread(
+            target=self._coalesce_loop, name="EvalCoalesce", daemon=True
+        )
         self._thread.start()
 
         self._m_lock = threading.Lock()
@@ -184,7 +186,7 @@ class BatchedEvaluator:
             return cached
 
         miss_positions = [positions_list[idx] for idx in missing]
-        placeholder_moves = [[] for _ in miss_positions]
+        placeholder_moves: list[list[Any]] = [[] for _ in miss_positions]
         _, values = self._dispatch_eval(miss_positions, placeholder_moves)
         for offset, idx in enumerate(missing):
             cached[idx] = float(values[offset])
@@ -377,9 +379,7 @@ class BatchedEvaluator:
             denom = ex.sum(dim=1, keepdim=True).clamp_min(1e-9)
             probs = ex / denom
             probs_np = probs.to(dtype=self._cache_dtype).cpu().numpy()
-            result_probs: list[np.ndarray] = [
-                probs_np[row, : idx_arr.size] for row, idx_arr in enumerate(move_indices)
-            ]
+            result_probs: list[np.ndarray] = [probs_np[row, : idx_arr.size] for row, idx_arr in enumerate(move_indices)]
         else:
             result_probs = [np.zeros((0,), dtype=np.float32) for _ in move_indices]
 
