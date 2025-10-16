@@ -27,8 +27,8 @@ EVAL:
 
 SELFPLAY:
   num_workers: 4
-  game_max_plies: 120
-  temperature_moves: 32
+  game_max_plies: 100
+  temperature_moves: 28
   temperature_high: 1.4
   temperature_low: 0.55
   deterministic_temp_eps: 0.01
@@ -36,19 +36,19 @@ SELFPLAY:
   curriculum:
     sample_probability: 0.2
   adjudication_enabled: true
-  adjudication_warmup_iters: 24
-  adjudication_ramp_iters: 48
-  adjudication_min_plies: 120
-  adjudication_min_plies_init: 150
-  adjudication_value_margin: 0.35
-  adjudication_value_margin_init: 0.55
-  adjudication_persist_plies: 14
-  adjudication_persist_init: 18
-  adjudication_material_margin: 8.0
-  adjudication_material_margin_init: 12.0
-  simulation_scale_min: 0.2
-  simulation_scale_max: 1.0
-  simulation_scale_buffer_target: 0.35
+  adjudication_warmup_iters: 4
+  adjudication_ramp_iters: 12
+  adjudication_min_plies: 100
+  adjudication_min_plies_init: 130
+  adjudication_value_margin: 0.30
+  adjudication_value_margin_init: 0.45
+  adjudication_persist_plies: 12
+  adjudication_persist_init: 16
+  adjudication_material_margin: 7.0
+  adjudication_material_margin_init: 10.0
+  simulation_scale_min: 0.25
+  simulation_scale_max: 0.65
+  simulation_scale_buffer_target: 0.55
 
 REPLAY:
   capacity: 24000
@@ -60,14 +60,14 @@ SAMPLING:
   recent_window_frac: 0.3
 
 RESIGN:
-  enabled: false
-  min_plies: 36
-  playthrough_fraction: 0.25
+  enabled: true
+  min_plies: 30
+  playthrough_fraction: 0.2
 
 MCTS:
-  train_simulations: 112
-  train_simulations_min: 64
-  train_sim_decay_move_interval: 28
+  train_simulations: 96
+  train_simulations_min: 60
+  train_sim_decay_move_interval: 30
   c_puct: 1.15
   c_puct_base: 19652
   c_puct_init: 1.5
