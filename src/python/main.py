@@ -148,23 +148,25 @@ def _seed_everything(has_cuda: bool) -> None:
 
 def _configure_torch_backends(has_cuda: bool) -> None:
     """Set math precision and backend toggles according to config."""
-    # Always apply matmul precision hint
-    torch.set_float32_matmul_precision(C.TORCH.matmul_float32_precision)
+    cuda_backend = getattr(torch.backends, "cuda", None)
+    matmul_backend = getattr(cuda_backend, "matmul", None) if cuda_backend else None
+    matmul_precision = str(C.TORCH.cuda_matmul_fp32_precision).lower()
+
+    if has_cuda and (matmul_backend is None or not hasattr(matmul_backend, "fp32_precision")):
+        raise RuntimeError("PyTorch build is missing torch.backends.cuda.matmul.fp32_precision; upgrade PyTorch.")
+    if matmul_backend is not None and hasattr(matmul_backend, "fp32_precision"):
+        matmul_backend.fp32_precision = matmul_precision
+
     if not has_cuda:
         TLOG.warning("CUDA unavailable; training will run on CPU")
         return
-    if not hasattr(torch.backends.cuda.matmul, "fp32_precision"):
-        raise RuntimeError("PyTorch build is missing torch.backends.cuda.matmul.fp32_precision; upgrade PyTorch.")
-    matmul_precision = str(C.TORCH.cuda_matmul_fp32_precision).lower()
-    torch.backends.cuda.matmul.fp32_precision = matmul_precision
-
     cudnn_conv = getattr(torch.backends.cudnn, "conv", None)
     if cudnn_conv is None or not hasattr(cudnn_conv, "fp32_precision"):
         raise RuntimeError("PyTorch build is missing torch.backends.cudnn.conv.fp32_precision; upgrade PyTorch.")
     cudnn_precision = str(C.TORCH.cudnn_conv_fp32_precision).lower()
     cudnn_conv.fp32_precision = cudnn_precision
     _set_backend_flag(
-        torch.backends.cuda.matmul,
+        matmul_backend,
         "allow_fp16_reduced_precision_reduction",
         bool(C.TORCH.cuda_allow_fp16_reduced_reduction),
     )
