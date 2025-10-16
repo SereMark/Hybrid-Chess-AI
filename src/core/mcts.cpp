@@ -242,6 +242,8 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position,
   std::vector<uint32_t> eval_path_offsets;
   std::vector<std::vector<uint32_t>> eval_paths;
 
+  const int batch_limit = std::max(1, std::min(max_batch, std::max(1, simulations_)));
+
   auto flush_and_expand = [&]() {
     if (to_eval.empty()) {
       return;
@@ -322,13 +324,17 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position,
       eval_paths.push_back(std::move(path));
 
       node->val_sum -= VIRTUAL_LOSS;
-      if (static_cast<int>(to_eval.size()) >= max_batch) {
+      if (static_cast<int>(to_eval.size()) >= batch_limit) {
         flush_and_expand();
       }
     }
 
     for (int i = depth - 1; i >= 0; --i) {
       working_pos_.unmake_move_fast(node_pool_.get_node(path_buffer_[i])->move, undo_stack_[i]);
+    }
+
+    if (!to_eval.empty()) {
+      flush_and_expand();
     }
   }
 
