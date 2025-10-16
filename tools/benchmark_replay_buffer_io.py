@@ -22,12 +22,12 @@ from replay_buffer import ReplayBuffer
 from augmentation import POLICY_OUTPUT
 
 
-def random_entry() -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
-    state = np.random.randint(0, 256, size=(INPUT_PLANES, 8, 8), dtype=np.uint8)
-    policy_size = np.random.randint(1, 32)
-    indices = np.random.choice(POLICY_OUTPUT, size=policy_size, replace=False).astype(np.int32)
-    counts = np.random.randint(1, 10, size=policy_size).astype(np.uint16)
-    value = int(np.random.randint(-128, 128))
+def random_entry(rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    state = rng.integers(0, 256, size=(INPUT_PLANES, 8, 8), dtype=np.uint8)
+    policy_size = int(rng.integers(1, 32))
+    indices = rng.choice(POLICY_OUTPUT, size=policy_size, replace=False).astype(np.int32)
+    counts = rng.integers(1, 10, size=policy_size, dtype=np.int64).astype(np.uint16)
+    value = int(rng.integers(-128, 128))
     return state, indices, counts, value
 
 
@@ -37,6 +37,7 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=256, help="Batch size for sampling.")
     parser.add_argument("--repeat", type=int, default=10, help="Timed iterations per scenario.")
     parser.add_argument("--warmup", type=int, default=2, help="Warmup iterations per scenario.")
+    parser.add_argument("--seed", type=int, default=2025, help="Random seed for synthetic entries.")
     parser.add_argument(
         "--output-csv",
         type=Path,
@@ -46,8 +47,9 @@ def main() -> None:
     args = parser.parse_args()
 
     buffer = ReplayBuffer(capacity=args.capacity, planes=INPUT_PLANES, height=8, width=8)
+    rng = np.random.default_rng(args.seed)
 
-    entries = [random_entry() for _ in range(args.capacity)]
+    entries = [random_entry(rng) for _ in range(args.capacity)]
 
     def fill_buffer() -> None:
         buffer.clear()
@@ -88,6 +90,7 @@ def main() -> None:
             "batch_size": args.batch_size,
             "repeat": args.repeat,
             "warmup": args.warmup,
+            "seed": args.seed,
         },
     )
 

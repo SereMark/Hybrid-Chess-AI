@@ -26,18 +26,20 @@ from train_loop import train_step  # noqa: E402
 from utils import select_autocast_dtype  # noqa: E402
 
 
-def random_batch(batch_size: int) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
-    states = [np.random.randint(0, 256, size=(INPUT_PLANES, 8, 8), dtype=np.uint8) for _ in range(batch_size)]
+def random_batch(
+    batch_size: int, rng: np.random.Generator
+) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
+    states = [rng.integers(0, 256, size=(INPUT_PLANES, 8, 8), dtype=np.uint8) for _ in range(batch_size)]
     indices: list[np.ndarray] = []
     counts: list[np.ndarray] = []
     values: list[np.ndarray] = []
     for _ in range(batch_size):
-        move_count = np.random.randint(16, 48)
-        idx = np.random.choice(POLICY_OUTPUT, size=move_count, replace=False).astype(np.int32)
-        cnt = np.random.randint(1, 16, size=move_count).astype(np.uint16)
+        move_count = int(rng.integers(16, 48))
+        idx = rng.choice(POLICY_OUTPUT, size=move_count, replace=False).astype(np.int32)
+        cnt = rng.integers(1, 16, size=move_count, dtype=np.int64).astype(np.uint16)
         indices.append(idx)
         counts.append(cnt)
-        values.append(np.array(np.random.randint(-127, 128), dtype=np.int8))
+        values.append(np.array(rng.integers(-127, 128), dtype=np.int8))
     return states, indices, counts, values
 
 
@@ -69,6 +71,7 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=32, help="Synthetic batch size.")
     parser.add_argument("--repeats", type=int, default=5, help="Timed iterations.")
     parser.add_argument("--warmup", type=int, default=1, help="Warmup iterations.")
+    parser.add_argument("--seed", type=int, default=2025, help="Random seed for synthetic batches.")
     parser.add_argument(
         "--output-csv",
         type=Path,
@@ -78,7 +81,11 @@ def main() -> None:
     args = parser.parse_args()
 
     device = torch.device(args.device)
-    batch = random_batch(args.batch_size)
+    rng = np.random.default_rng(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+    batch = random_batch(args.batch_size, rng)
 
     trainers = {
         "amp-off": build_trainer(device, amp_enabled=False, batch_size=args.batch_size),
@@ -119,6 +126,7 @@ def main() -> None:
             "batch_size": args.batch_size,
             "repeats": args.repeats,
             "warmup": args.warmup,
+            "seed": args.seed,
         },
     )
 

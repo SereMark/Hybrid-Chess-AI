@@ -426,15 +426,17 @@ class SelfPlayEngine:
         recent_window_frac: float,
     ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray], list[np.int8]]:
         """Sample a replay batch mixing recent and historical games."""
-        return self._buffer.sample(
-            batch_size=int(batch_size),
-            recent_ratio=float(np.clip(recent_ratio, 0.0, 1.0)),
-            recent_window_frac=float(np.clip(recent_window_frac, 0.0, 1.0)),
-        )
+        with self._buffer_lock:
+            return self._buffer.sample(
+                batch_size=int(batch_size),
+                recent_ratio=float(np.clip(recent_ratio, 0.0, 1.0)),
+                recent_window_frac=float(np.clip(recent_window_frac, 0.0, 1.0)),
+            )
 
     def get_capacity(self) -> int:
         """Return total capacity of the replay buffer."""
-        return int(self._buffer.capacity)
+        with self._buffer_lock:
+            return int(self._buffer.capacity)
 
     def set_capacity(self, capacity: int) -> None:
         """Resize the replay buffer, preserving the most recent entries."""
@@ -443,7 +445,8 @@ class SelfPlayEngine:
 
     def size(self) -> int:
         """Return the number of items currently stored in the buffer."""
-        return int(self._buffer.size)
+        with self._buffer_lock:
+            return int(self._buffer.size)
 
     def clear_buffer(self) -> None:
         """Clear all stored samples."""
@@ -452,8 +455,10 @@ class SelfPlayEngine:
 
     def state_dict(self) -> dict[str, Any]:
         """Return a snapshot of engine state (buffer + RNG)."""
+        with self._buffer_lock:
+            buffer_snapshot = self._buffer.state_dict()
         data: dict[str, Any] = {
-            "buffer": self._buffer.state_dict(),
+            "buffer": buffer_snapshot,
             "rng_state": self._rng.bit_generator.state,
             "adjudication_phase": self.adjudication_phase,
         }
@@ -465,7 +470,8 @@ class SelfPlayEngine:
         """Restore engine state from a snapshot."""
         buffer_state = payload.get("buffer")
         if buffer_state is not None:
-            self._buffer.load_state_dict(buffer_state)
+            with self._buffer_lock:
+                self._buffer.load_state_dict(buffer_state)
 
         rng_state = payload.get("rng_state")
         if rng_state is not None:

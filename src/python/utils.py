@@ -79,12 +79,10 @@ def prepare_model(
 ) -> nn.Module:
     """Move a model to device and apply layout/dtype/mode toggles."""
     model = model.to(device)
-    if channels_last:
-        for module in model.modules():
-            if isinstance(module, torch.nn.Conv2d):
-                module.weight.data = module.weight.data.to(memory_format=torch.channels_last)
     if dtype is not None:
         model = model.to(dtype=dtype)
+    if channels_last:
+        model = model.to(memory_format=torch.channels_last)  # type: ignore[call-overload]
     model = model.eval() if eval_mode else model.train()
     if freeze:
         for p in model.parameters():

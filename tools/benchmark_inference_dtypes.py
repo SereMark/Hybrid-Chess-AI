@@ -34,11 +34,16 @@ def run_benchmark(
     batch_size: int,
     repeats: int,
     warmup: int,
+    seed: int,
 ) -> list[Measurement]:
     try:
         device = torch.device(device_name)
     except Exception:
         raise SystemExit(f"Invalid device: {device_name}")
+
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
     measurements: list[Measurement] = []
 
@@ -105,6 +110,7 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size for each forward pass.")
     parser.add_argument("--repeats", type=int, default=12, help="Timed iterations per dtype.")
     parser.add_argument("--warmup", type=int, default=3, help="Warmup iterations per dtype.")
+    parser.add_argument("--seed", type=int, default=2025, help="Random seed for synthetic inputs.")
     parser.add_argument(
         "--output-csv",
         type=Path,
@@ -113,7 +119,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    measurements = run_benchmark(args.device, args.dtypes, args.batch_size, args.repeats, args.warmup)
+    measurements = run_benchmark(args.device, args.dtypes, args.batch_size, args.repeats, args.warmup, args.seed)
 
     if not measurements:
         raise SystemExit("No measurements collected; all dtypes may have been skipped.")
@@ -125,6 +131,7 @@ def main() -> None:
             "batch_size": args.batch_size,
             "repeats": args.repeats,
             "warmup": args.warmup,
+            "seed": args.seed,
         },
     )
 

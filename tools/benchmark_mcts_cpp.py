@@ -24,11 +24,11 @@ ccore: Any = import_chesscore()
 
 # --------------------------------------------------------------------------- defaults
 
-DEFAULT_POSITIONS = [200]
-DEFAULT_MAX_PLIES = [80]
-DEFAULT_SIMULATIONS = [256]
-DEFAULT_MAX_BATCH = [32]
-DEFAULT_REPETITIONS = [3]
+DEFAULT_POSITIONS = [120]
+DEFAULT_MAX_PLIES = [70]
+DEFAULT_SIMULATIONS = [192]
+DEFAULT_MAX_BATCH = [24]
+DEFAULT_REPETITIONS = [2]
 DEFAULT_SEEDS = [2025]
 
 
@@ -91,15 +91,35 @@ TEMPLATE_SCENARIOS: dict[str, list[dict[str, object]]] = {
     ],
     "quick": [
         {
-            "name": "mcts_quick",
-            "positions": 100,
-            "max_random_plies": 60,
-            "simulations": 128,
-            "max_batch": 16,
+            "name": "mcts_quick_small",
+            "positions": 120,
+            "max_random_plies": 70,
+            "simulations": 192,
+            "max_batch": 24,
             "repetitions": 2,
             "seed": 2025,
-            "description": "Quick diagnostic",
-        }
+            "description": "Balanced comparison (small)",
+        },
+        {
+            "name": "mcts_quick_medium",
+            "positions": 240,
+            "max_random_plies": 110,
+            "simulations": 224,
+            "max_batch": 32,
+            "repetitions": 2,
+            "seed": 2026,
+            "description": "Balanced comparison (medium)",
+        },
+        {
+            "name": "mcts_quick_deep",
+            "positions": 320,
+            "max_random_plies": 150,
+            "simulations": 288,
+            "max_batch": 40,
+            "repetitions": 2,
+            "seed": 2027,
+            "description": "Balanced comparison (deep)",
+        },
     ],
 }
 
@@ -453,7 +473,7 @@ def main() -> None:
         help="Path for CSV timing summary",
     )
     parser.add_argument(
-        "--alignment-sample", type=int, default=64, help="Positions sampled for visit distribution alignment"
+        "--alignment-sample", type=int, default=32, help="Positions sampled for visit distribution alignment"
     )
     args = parser.parse_args()
 

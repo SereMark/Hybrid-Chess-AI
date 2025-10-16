@@ -655,7 +655,7 @@ def main() -> None:
     parser.add_argument(
         "--output-csv",
         type=Path,
-        default=Path("benchmark_reports") / "benchmark_summary.csv",
+        default=Path("benchmark_reports") / "chess_cpp.csv",
         help="Path for the CSV timing summary",
     )
     args = parser.parse_args()
@@ -769,6 +769,12 @@ def main() -> None:
             dataset_dict = cast(dict[str, Any], report_dict["dataset"])
             timings = cast(dict[str, Any], dataset_dict["timings"])
             correctness_dict = cast(dict[str, Any], dataset_dict["correctness"])
+            positions = int(dataset_dict.get("positions", 0))
+            loops = int(dataset_dict.get("loops", 0))
+            positions_total = positions * loops
+            chesscore_mean = timings["chesscore"]["mean_s"]
+            python_mean = timings["python-chess"]["mean_s"]
+            moves_stats = cast(dict[str, Any], dataset_dict["move_statistics"])
             csv_rows.append(
                 {
                     "scenario": scenario_dict["name"],
@@ -776,13 +782,13 @@ def main() -> None:
                     "loops": scenario_dict["loops"],
                     "repetitions": scenario_dict["repetitions"],
                     "mismatches": correctness_dict["mismatch_count"],
-                    "chesscore_time": timings["chesscore"]["mean_s"],
-                    "python_time": timings["python-chess"]["mean_s"],
-                    "speedup": (
-                        timings["python-chess"]["mean_s"] / timings["chesscore"]["mean_s"]
-                        if timings["chesscore"]["mean_s"] > 0
-                        else float("inf")
-                    ),
+                    "mean_moves_per_position": moves_stats.get("mean_moves", 0.0),
+                    "median_moves_per_position": moves_stats.get("median_moves", 0.0),
+                    "chesscore_time": chesscore_mean,
+                    "chesscore_positions_per_sec": (positions_total / chesscore_mean if chesscore_mean > 0 else 0.0),
+                    "python_time": python_mean,
+                    "python_positions_per_sec": (positions_total / python_mean if python_mean > 0 else 0.0),
+                    "speedup": (python_mean / chesscore_mean if chesscore_mean > 0 else float("inf")),
                 }
             )
         with args.output_csv.open("w", newline="", encoding="utf-8") as handle:

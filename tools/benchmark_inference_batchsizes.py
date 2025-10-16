@@ -37,11 +37,16 @@ def run_for_device(
     batch_sizes: Iterable[int],
     repeats: int,
     warmup: int,
+    seed: int,
 ) -> list[Measurement]:
     try:
         device = torch.device(device_name)
     except Exception:
         return []
+
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
     model = ChessNet().to(device)
     model.eval()
@@ -92,6 +97,7 @@ def main() -> None:
     parser.add_argument("--repeats", type=int, default=8, help="Timed iterations per batch size.")
     parser.add_argument("--warmup", type=int, default=2, help="Warmup iterations per batch size.")
     parser.add_argument("--devices", nargs="*", help="Optional specific devices (e.g. cpu cuda:0).")
+    parser.add_argument("--seed", type=int, default=2025, help="Random seed for synthetic inputs.")
     parser.add_argument(
         "--output-csv",
         type=Path,
@@ -106,7 +112,7 @@ def main() -> None:
 
     measurements: list[Measurement] = []
     for device_name in devices:
-        measurements.extend(run_for_device(device_name, args.batch_sizes, args.repeats, args.warmup))
+        measurements.extend(run_for_device(device_name, args.batch_sizes, args.repeats, args.warmup, args.seed))
 
     report = summarize_measurements(
         measurements,
@@ -115,6 +121,7 @@ def main() -> None:
             "repeats": args.repeats,
             "warmup": args.warmup,
             "devices": devices,
+            "seed": args.seed,
         },
     )
 

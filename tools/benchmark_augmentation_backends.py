@@ -22,9 +22,10 @@ from augmentation import Augment, POLICY_OUTPUT  # noqa: E402
 from encoder import INPUT_PLANES  # noqa: E402
 
 
-def make_random_batch(batch_size: int) -> tuple[list[np.ndarray], list[np.ndarray]]:
-    states = [np.random.rand(INPUT_PLANES, 8, 8).astype(np.float32) for _ in range(batch_size)]
-    policies = [np.random.rand(POLICY_OUTPUT).astype(np.float32) for _ in range(batch_size)]
+def make_random_batch(batch_size: int, seed: int) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    rng = np.random.default_rng(seed)
+    states = [rng.random((INPUT_PLANES, 8, 8), dtype=np.float32) for _ in range(batch_size)]
+    policies = [rng.random(POLICY_OUTPUT, dtype=np.float32) for _ in range(batch_size)]
     return states, policies
 
 
@@ -63,6 +64,7 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=64, help="Number of positions per trial.")
     parser.add_argument("--repeats", type=int, default=20, help="Timed iterations per backend.")
     parser.add_argument("--warmup", type=int, default=5, help="Warmup iterations per backend.")
+    parser.add_argument("--seed", type=int, default=2025, help="Random seed for reproducible inputs.")
     parser.add_argument(
         "--transforms",
         nargs="*",
@@ -77,7 +79,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    states, policies = make_random_batch(args.batch_size)
+    states, policies = make_random_batch(args.batch_size, args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
 
     measurements: list[Measurement] = []
     for transform in args.transforms:
@@ -124,6 +129,7 @@ def main() -> None:
             "batch_size": args.batch_size,
             "repeats": args.repeats,
             "warmup": args.warmup,
+            "seed": args.seed,
         },
     )
 

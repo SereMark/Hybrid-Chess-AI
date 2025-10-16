@@ -35,7 +35,7 @@ def available_devices(explicit: Sequence[str] | None = None) -> list[str]:
     return devices
 
 
-def run_benchmark(batch_size: int, repeats: int, warmup: int, devices: Sequence[str]) -> list[Measurement]:
+def run_benchmark(batch_size: int, repeats: int, warmup: int, devices: Sequence[str], seed: int) -> list[Measurement]:
     """Measure forward-pass latency for ChessNet across devices."""
 
     measurements: list[Measurement] = []
@@ -45,6 +45,10 @@ def run_benchmark(batch_size: int, repeats: int, warmup: int, devices: Sequence[
             device = torch.device(device_name)
         except Exception:
             continue
+
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
 
         model = ChessNet().to(device)
         model.eval()
@@ -88,6 +92,7 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size for forward passes.")
     parser.add_argument("--repeats", type=int, default=10, help="Timed iterations per device.")
     parser.add_argument("--warmup", type=int, default=3, help="Warmup iterations per device.")
+    parser.add_argument("--seed", type=int, default=2025, help="Random seed for synthetic inputs.")
     parser.add_argument(
         "--devices",
         nargs="*",
@@ -105,13 +110,14 @@ def main() -> None:
     if not devices:
         raise SystemExit("No torch devices available to benchmark.")
 
-    measurements = run_benchmark(args.batch_size, args.repeats, args.warmup, devices)
+    measurements = run_benchmark(args.batch_size, args.repeats, args.warmup, devices, args.seed)
     report = summarize_measurements(
         measurements,
         metadata={
             "batch_size": args.batch_size,
             "repeats": args.repeats,
             "warmup": args.warmup,
+            "seed": args.seed,
         },
     )
 

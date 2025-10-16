@@ -24,29 +24,39 @@ from inference import BatchedEvaluator
 from self_play import SelfPlayEngine
 
 
-def configure_lightweight_selfplay() -> None:
+def configure_lightweight_selfplay(device: torch.device) -> None:
     """Reduce default simulation parameters for quicker benchmarks."""
+
+    cpu_mode = device.type != "cuda"
+    sims = 48 if not cpu_mode else 32
+    sims_min = 24 if not cpu_mode else 16
+    decay = 320 if not cpu_mode else 160
 
     C.MCTS = replace(
         C.MCTS,
-        train_simulations=96,
-        train_simulations_min=64,
-        train_sim_decay_move_interval=512,
+        train_simulations=sims,
+        train_simulations_min=sims_min,
+        train_sim_decay_move_interval=decay,
     )
     C.SELFPLAY = replace(
         C.SELFPLAY,
-        game_max_plies=60,
-        temperature_moves=10,
+        game_max_plies=60 if not cpu_mode else 40,
+        temperature_moves=10 if not cpu_mode else 6,
         opening_random_moves=1,
     )
 
 
 def run_benchmark(
-    worker_counts: Sequence[int], games: int, repeats: int, warmup: int, device: torch.device
+    worker_counts: Sequence[int],
+    games: int,
+    repeats: int,
+    warmup: int,
+    device: torch.device,
+    seed: int,
 ) -> list[Measurement]:
-    configure_lightweight_selfplay()
+    configure_lightweight_selfplay(device)
     evaluator = BatchedEvaluator(device)
-    engine = SelfPlayEngine(evaluator)
+    engine = SelfPlayEngine(evaluator, seed=seed)
     engine._curriculum_prob = 0.0
     engine.opening_random_moves = 0
     engine.resign_enabled = False
@@ -93,6 +103,7 @@ def main() -> None:
     parser.add_argument("--repeats", type=int, default=3, help="Timed iterations per worker count.")
     parser.add_argument("--warmup", type=int, default=1, help="Warmup iterations per worker count.")
     parser.add_argument("--device", type=str, default="cpu", help="Torch device for the evaluator model.")
+    parser.add_argument("--seed", type=int, default=2025, help="Random seed for reproducible self-play sampling.")
     parser.add_argument(
         "--output-csv",
         type=Path,
@@ -102,7 +113,7 @@ def main() -> None:
     args = parser.parse_args()
 
     device = torch.device(args.device)
-    measurements = run_benchmark(args.workers, args.games, args.repeats, args.warmup, device)
+    measurements = run_benchmark(args.workers, args.games, args.repeats, args.warmup, device, args.seed)
 
     report = summarize_measurements(
         measurements,
@@ -111,6 +122,7 @@ def main() -> None:
             "games": args.games,
             "repeats": args.repeats,
             "warmup": args.warmup,
+            "seed": args.seed,
         },
     )
 

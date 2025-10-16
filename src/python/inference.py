@@ -122,7 +122,7 @@ class BatchedEvaluator:
 
     @property
     def cache_capacity(self) -> int:
-        return int(self._enc_cap)
+        return int(self._out_cap)
 
     @cache_capacity.setter
     def cache_capacity(self, value: int) -> None:
@@ -179,7 +179,7 @@ class BatchedEvaluator:
                 if key is not None and key in self._out_cache:
                     logits_cached, value_cached = self._out_cache[key]
                     moves = moves_per_position[idx]
-                    probs_out[idx] = logits_cached[: len(moves)].astype(np.float32, copy=False)
+                    probs_out[idx] = self._probs_from_cached_logits(logits_cached, moves)
                     values_out[idx] = float(value_cached)
                     hits.append(idx)
                 else:
@@ -221,9 +221,14 @@ class BatchedEvaluator:
         if misses:
             enc = self._encode_positions([positions[idx] for idx in misses])
             batch = torch.from_numpy(enc).to(self.device, dtype=torch.float32, non_blocking=False)
-            with torch.autocast(device_type=self.device.type, dtype=self._dtype, enabled=self._dtype != torch.float32):
-                logits, values = self.eval_model(batch)
-            out_values = values.detach().to(dtype=self._cache_dtype).cpu().numpy()
+            with torch.inference_mode():
+                with torch.autocast(
+                    device_type=self.device.type,
+                    dtype=self._dtype,
+                    enabled=self._dtype != torch.float32,
+                ):
+                    _, values = self.eval_model(batch)
+            out_values = values.to(dtype=self._cache_dtype).cpu().numpy()
             with self.cache_lock:
                 for dst, value in zip(misses, out_values, strict=False):
                     out[dst] = float(value)
@@ -263,8 +268,13 @@ class BatchedEvaluator:
         indices_t = torch.from_numpy(indices).to(self.device, dtype=torch.long)
         mask_t = torch.from_numpy(mask).to(self.device, dtype=torch.bool)
 
-        with torch.autocast(device_type=self.device.type, dtype=self._dtype, enabled=self._dtype != torch.float32):
-            logits, values = self.eval_model(batch_inputs)
+        with torch.inference_mode():
+            with torch.autocast(
+                device_type=self.device.type,
+                dtype=self._dtype,
+                enabled=self._dtype != torch.float32,
+            ):
+                logits, values = self.eval_model(batch_inputs)
 
         logits = logits.float()
         masked = logits.gather(1, indices_t)
@@ -276,9 +286,9 @@ class BatchedEvaluator:
         denom = ex.sum(dim=1, keepdim=True).clamp_min(1e-9)
         probs = ex / denom
 
-        probs_np = probs.detach().to(dtype=self._cache_dtype).cpu().numpy()
-        values_np = values.detach().to(dtype=self._cache_dtype).cpu().numpy()
-        logits_np = logits.detach().to(dtype=self._cache_dtype).cpu().numpy()
+        probs_np = probs.to(dtype=self._cache_dtype).cpu().numpy()
+        values_np = values.to(dtype=self._cache_dtype).cpu().numpy()
+        logits_np = logits.to(dtype=self._cache_dtype).cpu().numpy()
 
         result_probs: list[np.ndarray] = []
         for row, idx_arr in enumerate(move_indices):
@@ -354,6 +364,31 @@ class BatchedEvaluator:
                 raise RuntimeError("failed to encode position")
             arrays.append(arr)
         return np.stack(arrays, axis=0)
+
+    @staticmethod
+    def _probs_from_cached_logits(logits: np.ndarray, moves: list[Any]) -> np.ndarray:
+        if not moves:
+            return np.zeros((0,), dtype=np.float32)
+
+        encoded = encoder.encode_move_indices_batch([moves])[0].astype(np.int64, copy=False)
+        probs = np.zeros((len(moves),), dtype=np.float32)
+        if encoded.size == 0:
+            return probs
+
+        logits_vec = np.asarray(logits, dtype=np.float32).reshape(-1)
+        valid = (encoded >= 0) & (encoded < logits_vec.shape[0])
+        if not np.any(valid):
+            return probs
+
+        selected = logits_vec[encoded[valid]]
+        maxv = float(np.max(selected))
+        expd = np.exp(selected - maxv)
+        denom = float(expd.sum())
+        if not np.isfinite(denom) or denom <= 0.0:
+            probs[valid] = 1.0 / float(valid.sum())
+        else:
+            probs[valid] = (expd / max(denom, 1e-9)).astype(np.float32, copy=False)
+        return probs
 
     # ------------------------------------------------------------------ background thread
     def _coalesce_loop(self) -> None:

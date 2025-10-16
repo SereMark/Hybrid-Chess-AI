@@ -108,6 +108,7 @@ def main() -> None:
             "max_batch": args.max_batch,
             "repeats": args.repeats,
             "warmup": args.warmup,
+            "seed": args.seed,
         },
     )
 
