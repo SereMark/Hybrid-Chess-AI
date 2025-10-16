@@ -46,9 +46,9 @@ SELFPLAY:
   adjudication_persist_init: 18
   adjudication_material_margin: 8.0
   adjudication_material_margin_init: 12.0
-  simulation_scale_min: 0.4
+  simulation_scale_min: 0.2
   simulation_scale_max: 1.0
-  simulation_scale_buffer_target: 0.55
+  simulation_scale_buffer_target: 0.35
 
 REPLAY:
   capacity: 24000
@@ -79,6 +79,8 @@ MCTS:
 TRAIN:
   total_iterations: 120
   games_per_iter: 96
+  games_per_iter_scale_min: 0.5
+  games_per_iter_warmup_iters: 4
   batch_size: 112
   batch_size_min: 96
   batch_size_max: 128

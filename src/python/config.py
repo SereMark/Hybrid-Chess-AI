@@ -115,9 +115,9 @@ class SelfPlayConfig:
     adjudication_value_margin_init: float = 0.35
     adjudication_persist_init: int = 12
     adjudication_material_margin_init: float = 6.0
-    simulation_scale_min: float = 0.5
+    simulation_scale_min: float = 0.2
     simulation_scale_max: float = 1.0
-    simulation_scale_buffer_target: float = 0.6
+    simulation_scale_buffer_target: float = 0.35
 
 
 @dataclass(frozen=True)
@@ -180,6 +180,8 @@ class TrainConfig:
 
     total_iterations: int = 768
     games_per_iter: int = 48
+    games_per_iter_scale_min: float = 0.5
+    games_per_iter_warmup_iters: int = 4
     batch_size: int = 160
     batch_size_min: int = 128
     batch_size_max: int = 192

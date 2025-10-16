@@ -34,6 +34,18 @@ def _recent_sample_ratio() -> float:
     return float(np.clip(base, lo, hi))
 
 
+def _games_for_iteration(iteration: int) -> int:
+    """Scale games per iteration during warm-up to keep startup responsive."""
+    base = int(max(1, C.TRAIN.games_per_iter))
+    min_scale = float(np.clip(getattr(C.TRAIN, "games_per_iter_scale_min", 1.0), 0.1, 1.0))
+    warmup = int(max(0, getattr(C.TRAIN, "games_per_iter_warmup_iters", 0)))
+    if warmup <= 0 or min_scale >= 1.0:
+        return base
+    progress = float(np.clip(iteration / max(1, warmup), 0.0, 1.0))
+    scale = min_scale + (1.0 - min_scale) * progress
+    return max(1, int(round(base * scale)))
+
+
 # ---------------------------------------------------------------------------#
 # Public API
 
@@ -66,7 +78,8 @@ def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
 
     # Self-play
     t0 = time.time()
-    sp_stats = trainer.selfplay_engine.play_games(C.TRAIN.games_per_iter)
+    games = _games_for_iteration(trainer.iteration)
+    sp_stats = trainer.selfplay_engine.play_games(games)
     selfplay_time = time.time() - t0
     games_generated = int(sp_stats.get("games", 0))
 
