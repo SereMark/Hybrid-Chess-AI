@@ -1,11 +1,11 @@
 # Tuned for Ryzen 7 5800H (8C/16T), Laptop RTX 3070 8GB, 16GB RAM.
 
 MODEL:
-  blocks: 5
-  channels: 88
+  blocks: 7
+  channels: 96
 
 TORCH:
-  threads_intra: 12
+  threads_intra: 10
   threads_inter: 2
   amp_enabled: true
   model_channels_last: true
@@ -18,15 +18,15 @@ TORCH:
   deterministic: false
 
 EVAL:
-  batch_size_max: 160
-  coalesce_ms: 3
+  batch_size_max: 192
+  coalesce_ms: 2
   cache_capacity: 8000
   value_cache_capacity: 12000
   encode_cache_capacity: 4000
   use_fp16_cache: true
 
 SELFPLAY:
-  num_workers: 4
+  num_workers: 6
   game_max_plies: 100
   temperature_moves: 28
   temperature_high: 1.4
@@ -47,8 +47,8 @@ SELFPLAY:
   adjudication_material_margin: 7.0
   adjudication_material_margin_init: 10.0
   simulation_scale_min: 0.25
-  simulation_scale_max: 0.65
-  simulation_scale_buffer_target: 0.55
+  simulation_scale_max: 0.75
+  simulation_scale_buffer_target: 0.6
 
 REPLAY:
   capacity: 24000
@@ -65,8 +65,8 @@ RESIGN:
   playthrough_fraction: 0.2
 
 MCTS:
-  train_simulations: 96
-  train_simulations_min: 60
+  train_simulations: 160
+  train_simulations_min: 96
   train_sim_decay_move_interval: 30
   c_puct: 1.15
   c_puct_base: 19652
@@ -78,15 +78,15 @@ MCTS:
 
 TRAIN:
   total_iterations: 120
-  games_per_iter: 96
+  games_per_iter: 128
   games_per_iter_scale_min: 0.5
   games_per_iter_warmup_iters: 4
-  batch_size: 112
-  batch_size_min: 96
-  batch_size_max: 128
-  samples_per_new_game: 0.6
+  batch_size: 128
+  batch_size_min: 112
+  batch_size_max: 144
+  samples_per_new_game: 0.7
   update_steps_min: 24
-  update_steps_max: 64
+  update_steps_max: 96
   learning_rate_init: 0.00065
   learning_rate_final: 0.0003
   learning_rate_warmup_steps: 1200
