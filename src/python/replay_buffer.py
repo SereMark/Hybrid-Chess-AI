@@ -236,8 +236,13 @@ class ReplayBuffer:
             value = np.int8(int(item["value"]))
             self._entries.append(_Entry(indices, counts, value))
 
-        self._size = int(data["size"])
-        self._head = int(data["head"])
+        size_raw = int(data["size"])
+        head_raw = int(data["head"])
+        self._size = max(0, min(size_raw, self._capacity))
+        if self._size == 0:
+            self._head = 0
+        else:
+            self._head = max(0, min(head_raw, self._capacity - 1))
 
         rng_state = data.get("rng_state")
         if rng_state is not None:

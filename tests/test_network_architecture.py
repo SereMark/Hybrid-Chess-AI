@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("chesscore", reason="chesscore extension missing")
+
 import torch
 from network import INPUT_PLANES, POLICY_OUTPUT, ChessNet, ResidualBlock
 

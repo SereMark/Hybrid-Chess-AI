@@ -55,8 +55,8 @@ class Trainer:
         )
         self.optimizer = build_optimizer(self.model)
 
-        total_steps = int(C.TRAIN.total_iterations * C.TRAIN.lr_steps_per_iter_estimate)
-        warmup_steps = int(min(max(1, C.TRAIN.learning_rate_warmup_steps), max(1, total_steps - 1)))
+        total_steps = max(1, int(C.TRAIN.total_iterations * C.TRAIN.lr_steps_per_iter_estimate))
+        warmup_steps = min(max(1, int(C.TRAIN.learning_rate_warmup_steps)), max(1, total_steps - 1))
         restart_steps = (
             int(max(1, C.TRAIN.lr_restart_interval_iters * C.TRAIN.lr_steps_per_iter_estimate))
             if C.TRAIN.lr_restart_interval_iters > 0
@@ -215,7 +215,6 @@ class Trainer:
             value_capacity=min(8_000, C.EVAL.value_cache_capacity),
             encode_capacity=min(8_000, C.EVAL.encode_cache_capacity),
         )
-        ev.clear_caches()
         return ev
 
     def _configure_run_paths(self, root: Path) -> None:
@@ -246,27 +245,34 @@ class Trainer:
         candidate_eval = self._make_eval(candidate_model, cache_cap=min(256, C.EVAL.cache_capacity))
         baseline_eval = self._make_eval(baseline_model, cache_cap=min(256, C.EVAL.cache_capacity))
 
-        result = play_match(
-            candidate_eval,
-            baseline_eval,
-            games=C.ARENA.games_per_eval,
-            seed=int(self._arena_rng.integers(0, np.iinfo(np.int64).max)),
-            start_fen_fn=self.selfplay_engine.sample_start_fen,
-            pgn_dir=self.arena_dir,
-            label=f"iter{self.iteration:04d}",
-        )
+        try:
+            result = play_match(
+                candidate_eval,
+                baseline_eval,
+                games=C.ARENA.games_per_eval,
+                seed=int(self._arena_rng.integers(0, np.iinfo(np.int64).max)),
+                start_fen_fn=self.selfplay_engine.sample_start_fen,
+                pgn_dir=self.arena_dir,
+                label=f"iter{self.iteration:04d}",
+            )
+        finally:
+            candidate_eval.close()
+            baseline_eval.close()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
-        total_games = max(1, int(result.games))
+        raw_games = int(result.games)
+        denom = max(1, raw_games)
         decisive_games = result.candidate_wins + result.baseline_wins
         min_games = int(C.ARENA.gate_min_games)
         min_decisive = int(C.ARENA.gate_min_decisive)
         score_target = float(C.ARENA.gate_baseline_p + C.ARENA.gate_margin)
         draw_weight = float(np.clip(C.ARENA.gate_draw_weight, 0.0, 1.0))
-        weighted_score = (result.candidate_wins + draw_weight * result.draws) / total_games
+        weighted_score = (result.candidate_wins + draw_weight * result.draws) / denom
 
         rejection_notes: list[str] = []
-        if total_games < max(1, min_games):
-            rejection_notes.append(f"insufficient games ({total_games}/{min_games})")
+        if raw_games < max(1, min_games):
+            rejection_notes.append(f"insufficient games ({raw_games}/{min_games})")
         if decisive_games < max(1, min_decisive):
             rejection_notes.append(f"insufficient decisive games ({decisive_games}/{min_decisive})")
         if weighted_score < score_target:
@@ -288,10 +294,6 @@ class Trainer:
             result.notes.extend(rejection_notes)
         self.gate.last = result
 
-        candidate_eval.close()
-        baseline_eval.close()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
         return self.gate.last
 
     def _should_run_arena(self) -> bool:

@@ -25,13 +25,25 @@ def build_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
             no_decay.append(param)
         else:
             decay.append(param)
-    return torch.optim.SGD(
-        [{"params": decay, "weight_decay": C.TRAIN.weight_decay}, {"params": no_decay, "weight_decay": 0.0}],
-        lr=C.TRAIN.learning_rate_init,
-        momentum=C.TRAIN.momentum,
-        nesterov=True,
-        foreach=True,
-    )
+    param_groups = [
+        {"params": decay, "weight_decay": C.TRAIN.weight_decay},
+        {"params": no_decay, "weight_decay": 0.0},
+    ]
+    try:
+        return torch.optim.SGD(
+            param_groups,
+            lr=C.TRAIN.learning_rate_init,
+            momentum=C.TRAIN.momentum,
+            nesterov=True,
+            foreach=True,
+        )
+    except TypeError:
+        return torch.optim.SGD(
+            param_groups,
+            lr=C.TRAIN.learning_rate_init,
+            momentum=C.TRAIN.momentum,
+            nesterov=True,
+        )
 
 
 # ---------------------------------------------------------------------------#
@@ -88,7 +100,10 @@ class WarmupCosine:
         offset = max(0, step - self.warm)
         cycle_index, within = divmod(offset, cycle)
         progress = within / cycle
-        decay = self.restart_decay**cycle_index if self.restart_decay > 0.0 else 0.0
+        if self.restart_decay == 0.0:
+            decay = 1.0 if cycle_index == 0 else 0.0
+        else:
+            decay = self.restart_decay**cycle_index
         peak = self.base * decay
         trough = self.final * decay
         return trough + (peak - trough) * 0.5 * (1.0 + m.cos(m.pi * progress))

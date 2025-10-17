@@ -17,9 +17,8 @@ import encoder
 import numpy as np
 from encoder import POLICY_SIZE, encode_move_index
 from replay_buffer import ReplayBuffer
-from utils import flip_fen_perspective, sanitize_fen
+from utils import DEFAULT_START_FEN, flip_fen_perspective, sanitize_fen, select_visit_count_move
 
-DEFAULT_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 _MATERIAL_WEIGHTS = (1.0, 3.0, 3.0, 5.0, 9.0, 0.0)  # P,N,B,R,Q,K
 
 __all__ = ["SelfPlayEngine"]
@@ -183,13 +182,14 @@ def _policy_targets(moves: Iterable[Any], visit_counts: np.ndarray) -> tuple[np.
     """Convert visit counts into sparse policy indices and weights."""
     idx_list: list[int] = []
     cnt_list: list[int] = []
+    max16 = int(np.iinfo(np.uint16).max)
     for mv, cnt in zip(moves, visit_counts, strict=False):
         if cnt <= 0:
             continue
         mv_idx = encode_move_index(mv)
         if mv_idx is None or not (0 <= int(mv_idx) < POLICY_SIZE):
             continue
-        clamped = int(min(cnt, C.MCTS.visit_count_clamp))
+        clamped = int(min(cnt, C.MCTS.visit_count_clamp, max16))
         if clamped <= 0:
             continue
         idx_list.append(int(mv_idx))
@@ -428,7 +428,11 @@ class SelfPlayEngine:
         executor = self._get_executor()
         futures = [executor.submit(self._play_single_game, int(s)) for s in seeds]
         for f in as_completed(futures):
-            res, moves, term, visits = f.result()
+            try:
+                res, moves, term, visits = f.result()
+            except Exception as exc:
+                self.log.exception("self-play worker failed: %s", exc)
+                continue
             stats.add(result=res, moves=moves, termination=term, visits=visits)
         return stats.to_dict()
 
@@ -573,7 +577,7 @@ class SelfPlayEngine:
             if moves < self.opening_random_moves:
                 mv = legal[int(rng.integers(0, len(legal)))]
             else:
-                mv = legal[self._select_move(vc, temp, rng)]
+                mv = legal[select_visit_count_move(vc, temp, rng)]
 
             # Value and resignation/adjudication checks
             v_raw = float(self.evaluator.infer_values([position])[0])
@@ -616,6 +620,7 @@ class SelfPlayEngine:
             except Exception:
                 mcts = self._build_mcts(rng)
             moves += 1
+            resign_streak = 0
 
         if result is None:
             result = position.result()
@@ -623,7 +628,8 @@ class SelfPlayEngine:
             termination = "exhausted"
             result = ccore.DRAW
 
-        self._store_examples(examples, result)
+        if any(idx.size and cnt.size for _, idx, cnt, _ in examples):
+            self._store_examples(examples, result)
         return result, moves, termination, visit_total
 
     def _get_executor(self) -> ThreadPoolExecutor:
@@ -687,19 +693,6 @@ class SelfPlayEngine:
         scaled = max(1, int(round(sims * scale)))
         min_scaled = max(1, int(round(min_sims * scale)))
         return max(min_scaled, scaled)
-
-    @staticmethod
-    def _select_move(visit_counts: np.ndarray, temperature: float, rng: np.random.Generator) -> int:
-        if visit_counts.ndim != 1 or visit_counts.size == 0:
-            return 0
-        if temperature <= C.SELFPLAY.deterministic_temp_eps:
-            return int(np.argmax(visit_counts))
-        scaled = np.maximum(visit_counts, 0.0) ** (1.0 / temperature)
-        s = float(scaled.sum())
-        if not np.isfinite(s) or s <= 0.0:
-            return int(np.argmax(visit_counts))
-        probs = np.asarray(scaled / s, dtype=np.float64)
-        return int(rng.choice(len(probs), p=probs))
 
     def _store_examples(
         self,

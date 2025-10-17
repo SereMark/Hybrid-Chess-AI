@@ -12,8 +12,6 @@ from typing import Sequence
 import config as C
 import numpy as np
 import torch
-from checkpoint import save_checkpoint
-from trainer import Trainer
 
 RLOG = logging.getLogger("hybridchess.runtime")
 TLOG = logging.getLogger("hybridchess.trainer")
@@ -148,29 +146,34 @@ def _seed_everything(has_cuda: bool) -> None:
 
 def _configure_torch_backends(has_cuda: bool) -> None:
     """Set math precision and backend toggles according to config."""
-    cuda_backend = getattr(torch.backends, "cuda", None)
-    matmul_backend = getattr(cuda_backend, "matmul", None) if cuda_backend else None
-    matmul_precision = str(C.TORCH.cuda_matmul_fp32_precision).lower()
-
-    if has_cuda and (matmul_backend is None or not hasattr(matmul_backend, "fp32_precision")):
-        raise RuntimeError("PyTorch build is missing torch.backends.cuda.matmul.fp32_precision; upgrade PyTorch.")
-    if matmul_backend is not None and hasattr(matmul_backend, "fp32_precision"):
-        matmul_backend.fp32_precision = matmul_precision
+    prec = str(getattr(C.TORCH, "matmul_float32_precision", "medium")).lower()
+    set_precision = getattr(torch, "set_float32_matmul_precision", None)
+    if callable(set_precision) and prec in {"high", "medium", "low"}:
+        set_precision(prec)
 
     if not has_cuda:
         TLOG.warning("CUDA unavailable; training will run on CPU")
         return
-    cudnn_conv = getattr(torch.backends.cudnn, "conv", None)
-    if cudnn_conv is None or not hasattr(cudnn_conv, "fp32_precision"):
-        raise RuntimeError("PyTorch build is missing torch.backends.cudnn.conv.fp32_precision; upgrade PyTorch.")
-    cudnn_precision = str(C.TORCH.cudnn_conv_fp32_precision).lower()
-    cudnn_conv.fp32_precision = cudnn_precision
-    _set_backend_flag(
-        matmul_backend,
-        "allow_fp16_reduced_precision_reduction",
-        bool(C.TORCH.cuda_allow_fp16_reduced_reduction),
-    )
-    _set_backend_flag(torch.backends.cudnn, "benchmark", bool(C.TORCH.cudnn_benchmark))
+
+    allow_tf32_matmul = str(getattr(C.TORCH, "cuda_matmul_fp32_precision", "tf32")).lower() == "tf32"
+    allow_tf32_cudnn = str(getattr(C.TORCH, "cudnn_conv_fp32_precision", "tf32")).lower() == "tf32"
+
+    cuda_backends = getattr(torch, "backends", None)
+    cuda_backend = getattr(cuda_backends, "cuda", None)
+    matmul_backend = getattr(cuda_backend, "matmul", None)
+    cudnn_backend = getattr(cuda_backends, "cudnn", None)
+
+    if matmul_backend is not None and hasattr(matmul_backend, "allow_tf32"):
+        matmul_backend.allow_tf32 = bool(allow_tf32_matmul)
+    if matmul_backend is not None and hasattr(matmul_backend, "allow_fp16_reduced_precision_reduction"):
+        matmul_backend.allow_fp16_reduced_precision_reduction = bool(
+            getattr(C.TORCH, "cuda_allow_fp16_reduced_reduction", True)
+        )
+
+    if cudnn_backend is not None and hasattr(cudnn_backend, "allow_tf32"):
+        cudnn_backend.allow_tf32 = bool(allow_tf32_cudnn)
+    if cudnn_backend is not None and hasattr(cudnn_backend, "benchmark"):
+        cudnn_backend.benchmark = bool(getattr(C.TORCH, "cudnn_benchmark", True))
 
 
 # ---------------------------------------------------------------------------#
@@ -196,8 +199,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     intra, inter = _resolve_thread_settings()
     _apply_environment_defaults(intra, inter, deterministic)
 
+    has_cuda = False  # placeholder until torch import
+
+    # Import heavy deps after environment variables are in place
+    from checkpoint import save_checkpoint
+    from trainer import Trainer
+
     has_cuda = torch.cuda.is_available()
     _configure_torch_backends(has_cuda)
+    if deterministic and has_cuda:
+        _set_backend_flag(torch.backends.cudnn, "benchmark", False)
 
     if deterministic:
         torch.use_deterministic_algorithms(True)

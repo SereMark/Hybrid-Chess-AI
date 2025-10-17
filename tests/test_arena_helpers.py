@@ -3,9 +3,14 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-import chesscore as ccore
 import numpy as np
 import pytest
+from numpy.random import default_rng
+from utils import select_visit_count_move
+
+pytest.importorskip("chesscore", reason="chesscore extension missing")
+
+import chesscore as ccore
 from arena import (
     DEFAULT_START_FEN,
     ArenaResult,
@@ -13,20 +18,18 @@ from arena import (
     _result_to_str,
     _save_pgn,
     _ScoreTracker,
-    _select_move,
     _square_file,
     _square_name,
     _square_rank,
 )
-from numpy.random import default_rng
 
 
 def test_select_move_prefers_argmax_when_temperature_low() -> None:
     counts = np.array([1.0, 5.0, 2.0], dtype=np.float32)
     rng = default_rng(3)
-    assert _select_move(counts, temperature=0.0, rng=rng) == 1
+    assert select_visit_count_move(counts, temperature=0.0, rng=rng) == 1
 
-    empty_choice = _select_move(np.array([], dtype=np.float32), temperature=1.0, rng=rng)
+    empty_choice = select_visit_count_move(np.array([], dtype=np.float32), temperature=1.0, rng=rng)
     assert empty_choice == 0
 
 
@@ -34,7 +37,7 @@ def test_select_move_sampling_uses_probabilities() -> None:
     counts = np.array([1.0, 2.0, 3.0], dtype=np.float32)
     rng_impl = default_rng(42)
     rng_expected = default_rng(42)
-    index = _select_move(counts, temperature=1.0, rng=rng_impl)
+    index = select_visit_count_move(counts, temperature=1.0, rng=rng_impl)
 
     scaled = np.maximum(counts, 0.0) ** 1.0
     probabilities = scaled / scaled.sum()

@@ -507,9 +507,10 @@ void Position::legal_moves(MoveList& m) {
     make_move_fast(mv, undo);
 
     bool legal_ok = true;
-    if (const Bitboard king_bb = pieces[KING][Color(1 - turn)]) {
+    const Bitboard king_bb = pieces[KING][Color(1 - turn)];
+    if (king_bb) {
       const Square king_sq = lsb(king_bb);
-      legal_ok            = !is_square_attacked(king_sq, turn);
+      legal_ok             = !is_square_attacked(king_sq, turn);
     }
 
     unmake_move_fast(mv, undo);
@@ -552,18 +553,19 @@ void Position::handle_castling_rook_move(Square from, Square to, Color color) {
 void Position::execute_move_core(const Move& move, MoveInfo* undo) {
   const Square from = move.from(), to = move.to();
 
+  const int   p  = piece_at(from);
   if (undo) {
-    undo->captured_piece             = piece_at(to);
-    undo->captured_square            = to;
-    undo->old_ep_square              = ep_square;
-    undo->old_castling               = castling;
-    undo->old_hash                   = hash;
-    undo->old_occupancy_all          = occupancy_all;
+    undo->moved_piece               = p;
+    undo->captured_piece            = piece_at(to);
+    undo->captured_square           = to;
+    undo->old_ep_square             = ep_square;
+    undo->old_castling              = castling;
+    undo->old_hash                  = hash;
+    undo->old_occupancy_all         = occupancy_all;
     undo->old_occupancy_color[WHITE] = occupancy_color[WHITE];
     undo->old_occupancy_color[BLACK] = occupancy_color[BLACK];
   }
 
-  const int   p  = piece_at(from);
   const Piece pt = Piece(p / 2);
   const Color c  = Color(p % 2);
 
@@ -788,8 +790,10 @@ bool Position::is_insufficient_material() const {
   if ((wMinors == 2 && wn == 2 && bMinors == 0) || (bMinors == 2 && bn == 2 && wMinors == 0))
     return true;
 
-  if (wn == 1 && wb == 0 && bn == 1 && bb == 0) return true;
-  if (wn == 0 && bn == 0 && wb == 1 && bb == 1) return true;
+  if (wn == 1 && wb == 0 && bn == 1 && bb == 0) return true;           // N vs N
+  if (wn == 0 && bn == 0 && wb == 1 && bb == 1) return true;           // B vs B
+  if ((wb == 1 && wn == 0 && bn == 1 && bb == 0) ||                    // B vs N
+      (bb == 1 && bn == 0 && wn == 1 && wb == 0)) return true;
 
   return false;
 }

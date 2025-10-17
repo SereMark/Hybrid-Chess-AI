@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import encoder
 import numpy as np
 import pytest
-import self_play
 import torch
+
+pytest.importorskip("chesscore", reason="chesscore extension missing")
+
+import encoder
+import self_play
 from inference import BatchedEvaluator
 from self_play import SelfPlayEngine
 

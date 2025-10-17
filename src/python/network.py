@@ -17,10 +17,13 @@ __all__ = [
     "ChessNet",
 ]
 
-BOARD_SIZE: int = 8
-NSQUARES: int = 64
+BOARD_SIZE: int = int(getattr(ccore, "BOARD_SIZE", 8))
+NSQUARES: int = BOARD_SIZE * BOARD_SIZE
 INPUT_PLANES: int = int(getattr(ccore, "INPUT_PLANES", 14 * 8 + 7))
 POLICY_OUTPUT: int = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
+
+if POLICY_OUTPUT % max(1, NSQUARES) != 0:
+    raise ValueError("POLICY_SIZE must be a multiple of NSQUARES")
 
 # ---------------------------------------------------------------------------#
 # Residual blocks

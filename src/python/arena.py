@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -12,8 +13,8 @@ from typing import Any, Callable, Sequence
 import chesscore as ccore
 import config as C
 import numpy as np
+from utils import DEFAULT_START_FEN, select_visit_count_move
 
-DEFAULT_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 PGN_EVENT = "Arena Evaluation"
 
 __all__ = ["ArenaResult", "play_match"]
@@ -122,7 +123,7 @@ class _ColourRoutedEvaluator:
                 black_positions.append(pos)
                 black_moves.append(moves_per_position[i])
 
-        policy_out: list[np.ndarray] = [np.zeros((0,), dtype=np.float32)] * len(positions)
+        policy_out: list[np.ndarray] = [np.zeros((0,), dtype=np.float32) for _ in range(len(positions))]
         value_out = np.zeros((len(positions),), dtype=np.float32)
 
         if white_positions:
@@ -202,12 +203,16 @@ def play_match(
 
         start_fen = start_fen_fn(rng) if start_fen_fn is not None else DEFAULT_START_FEN
         record_moves = pgn_target is not None
-        result, moves_san = _play_single_game(
-            evaluator,
-            rng,
-            start_fen,
-            record_moves=record_moves,
-        )
+        try:
+            result, moves_san = _play_single_game(
+                evaluator,
+                rng,
+                start_fen,
+                record_moves=record_moves,
+            )
+        except Exception as exc:
+            result, moves_san = ccore.DRAW, []
+            logging.getLogger("hybridchess.arena").exception("Arena game failed: %s", exc)
 
         tracker.record(candidate_white, result)
 
@@ -278,7 +283,7 @@ def _play_single_game(
         temperature = (
             C.ARENA.temperature if moves_played < C.ARENA.temperature_moves else C.SELFPLAY.deterministic_temp_eps
         )
-        move_index = _select_move(counts, temperature, rng)
+        move_index = select_visit_count_move(counts, temperature, rng)
         move = legal_moves[move_index]
 
         if record_moves:
@@ -317,19 +322,6 @@ def _build_mcts(rng: np.random.Generator) -> ccore.MCTS:
     mcts.set_fpu_reduction(float(C.MCTS.fpu_reduction))
     mcts.seed(int(rng.integers(1, np.iinfo(np.int64).max)))
     return mcts
-
-
-def _select_move(visit_counts: np.ndarray, temperature: float, rng: np.random.Generator) -> int:
-    if visit_counts.ndim != 1 or visit_counts.size == 0:
-        return 0
-    if temperature <= C.SELFPLAY.deterministic_temp_eps:
-        return int(np.argmax(visit_counts))
-    scaled = np.maximum(visit_counts, 0.0) ** (1.0 / max(temperature, 1e-6))
-    total = float(scaled.sum())
-    if not np.isfinite(total) or total <= 0.0:
-        return int(np.argmax(visit_counts))
-    probabilities = np.asarray(scaled / total, dtype=np.float64)
-    return int(rng.choice(len(probabilities), p=probabilities))
 
 
 # ---------------------------------------------------------------------------#
@@ -430,8 +422,8 @@ def _move_to_san(
             mover_color == ccore.Color.BLACK and result == ccore.BLACK_WIN
         ):
             san += "#"
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger("hybridchess.arena").debug("Failed to compute SAN suffix: %s", exc)
     return san
 
 

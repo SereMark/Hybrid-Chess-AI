@@ -265,10 +265,13 @@ def try_resume(trainer: Any) -> None:
         base = getattr(trainer.model, "_orig_mod", trainer.model)
         base.load_state_dict(ckpt.get("model", {}), strict=True)
 
+        run_root = Path(path).resolve().parent.parent if "checkpoints" in Path(path).parts else None
+        if run_root:
+            trainer.run_root = str(run_root)
+
         if trainer.ema is not None and ckpt.get("ema") is not None:
             trainer.ema.shadow = ckpt["ema"]
 
-        run_root = Path(path).resolve().parent.parent if "checkpoints" in Path(path).parts else None
         if "best_model" in ckpt:
             trainer.best_model.load_state_dict(ckpt["best_model"], strict=True)
         elif run_root:
@@ -277,7 +280,6 @@ def try_resume(trainer: Any) -> None:
                 best_ckpt = torch.load(best_path, map_location="cpu")
                 state = best_ckpt.get("model", best_ckpt)
                 trainer.best_model.load_state_dict(state, strict=True)
-            trainer.run_root = str(run_root)
 
         trainer.best_model.eval()
 

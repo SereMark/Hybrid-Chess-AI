@@ -63,7 +63,7 @@ class Augment:
             perm = Augment._vflip_cs_plane_permutation(s_batch.shape[1])
             s_batch = s_batch[:, perm]
             turn_plane = Augment._feature_plane_indices()["turn_plane"]
-            if turn_plane < s_batch.shape[1]:
+            if 0 <= turn_plane < s_batch.shape[1]:
                 one = np.array(
                     1.0 if np.issubdtype(s_batch.dtype, np.floating) else C.DATA.u8_scale,
                     dtype=s_batch.dtype,
@@ -141,7 +141,7 @@ class Augment:
             Augment._policy_map_cache[transform] = perm
             return perm
 
-        perm = out.reshape(-1)
+        perm = out.reshape(-1).astype(np.int64, copy=True)
         Augment._policy_map_cache[transform] = perm
         return perm
 

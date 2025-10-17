@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-import encoder
 import numpy as np
 import pytest
+
+pytest.importorskip("chesscore", reason="chesscore extension missing")
+
+import encoder
 from augmentation import POLICY_OUTPUT, Augment
 
 

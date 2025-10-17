@@ -18,11 +18,13 @@ import torch
 from torch import nn
 
 __all__ = [
+    "DEFAULT_START_FEN",
     "select_autocast_dtype",
     "select_inference_dtype",
     "prepare_model",
     "sanitize_fen",
     "flip_fen_perspective",
+    "select_visit_count_move",
     "MetricsReporter",
     "format_time",
     "startup_summary",
@@ -30,6 +32,8 @@ __all__ = [
 
 _CASTLING_ORDER = "KQkq"
 _FILES = "abcdefgh"
+
+DEFAULT_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 
 # ---------------------------------------------------------------------------#
@@ -257,6 +261,30 @@ class MetricsReporter:
                 h.write("\n")
         except Exception as exc:
             raise RuntimeError("Failed to append metrics JSONL row") from exc
+
+
+def select_visit_count_move(
+    visit_counts: np.ndarray,
+    temperature: float,
+    rng: np.random.Generator,
+) -> int:
+    """Select a move index from visit counts under a temperature policy."""
+    if visit_counts.ndim != 1 or visit_counts.size == 0:
+        return 0
+    if temperature <= C.SELFPLAY.deterministic_temp_eps:
+        return int(np.argmax(visit_counts))
+
+    scaled = np.asarray(np.maximum(visit_counts, 0.0), dtype=np.float64)
+    scaled = scaled ** (1.0 / max(float(temperature), 1e-6))
+    total = float(scaled.sum())
+    if not np.isfinite(total) or total <= 0.0:
+        return int(np.argmax(visit_counts))
+
+    probabilities = np.asarray(scaled / total, dtype=np.float64)
+    try:
+        return int(rng.choice(len(probabilities), p=probabilities))
+    except Exception:
+        return int(np.argmax(visit_counts))
 
 
 def format_time(seconds: float) -> str:

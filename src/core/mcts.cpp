@@ -127,7 +127,7 @@ Node* NodePool::allocate(size_t count) {
   }
   Node* ptr = &nodes_[used_];
   used_ += count;
-  std::memset(static_cast<void*>(ptr), 0, sizeof(Node) * count);
+  std::fill(ptr, ptr + count, Node{});
   return ptr;
 }
 
@@ -170,9 +170,18 @@ void MCTS::expand_node_with_priors(Node* node,
   priors.resize(moves.size(), 0.0f);
   normalize_priors_inplace(priors);
 
-  node->first_child_index = node_pool_.get_index(node_pool_.allocate(moves.size()));
-  node->child_count = static_cast<uint16_t>(moves.size());
-  Node* children = node_pool_.get_node(node->first_child_index);
+  if (moves.size() > std::numeric_limits<uint16_t>::max()) {
+    throw std::overflow_error("too many children");
+  }
+
+  const uint32_t node_idx = node_pool_.get_index(node);
+  const uint32_t first_child = node_pool_.get_index(node_pool_.allocate(moves.size()));
+
+  Node* updated = node_pool_.get_node(node_idx);
+  updated->first_child_index = first_child;
+  updated->child_count = static_cast<uint16_t>(moves.size());
+
+  Node* children = node_pool_.get_node(first_child);
 
   for (size_t i = 0; i < moves.size(); ++i) {
     children[i] = Node{};
@@ -213,6 +222,7 @@ bool MCTS::ensure_root(const chess::Position& position) {
     root_index_ = 0;
     root_hash_ = hash;
     root_initialized_ = true;
+    root_noise_applied_ = false;
 
     Node* root = node_pool_.get_node(root_index_);
     root->first_child_index = 0;
@@ -255,10 +265,13 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position,
       throw std::runtime_error("evaluation callback returned mismatched sizes");
     }
     for (size_t i = 0; i < to_eval.size(); ++i) {
-      Node* node = node_pool_.get_node(eval_path_offsets[i]);
-      node->val_sum += eval_values[i];
+      const uint32_t node_idx = eval_path_offsets[i];
+      Node* node = node_pool_.get_node(node_idx);
       expand_node_with_priors(node, pending_moves[i], eval_priors[i]);
-      add_dirichlet_noise(node);
+      if (node_idx == root_index_ && !root_noise_applied_) {
+        add_dirichlet_noise(node);
+        root_noise_applied_ = true;
+      }
 
       float value = eval_values[i];
       for (auto it = eval_paths[i].rbegin(); it != eval_paths[i].rend(); ++it) {
@@ -277,11 +290,13 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position,
     Node* node = node_pool_.get_node(root_index_);
     int depth = 0;
     while (node->child_count > 0) {
+      if (depth >= static_cast<int>(path_buffer_.size())) {
+        throw std::runtime_error("search depth exceeded buffer capacity");
+      }
       Node* child = select_child(node);
       const uint32_t child_index = node_pool_.get_index(child);
       working_pos_.make_move_fast(child->move, undo_stack_[depth]);
       path_buffer_[depth] = child_index;
-      child->val_sum -= VIRTUAL_LOSS;
       node = child;
       ++depth;
     }
@@ -323,13 +338,15 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position,
       }
       eval_paths.push_back(std::move(path));
 
-      node->val_sum -= VIRTUAL_LOSS;
       if (static_cast<int>(to_eval.size()) >= batch_limit) {
         flush_and_expand();
       }
     }
 
     for (int i = depth - 1; i >= 0; --i) {
+      if (i >= static_cast<int>(path_buffer_.size())) {
+        throw std::runtime_error("unmake depth exceeded buffer capacity");
+      }
       working_pos_.unmake_move_fast(node_pool_.get_node(path_buffer_[i])->move, undo_stack_[i]);
     }
 
@@ -373,6 +390,7 @@ void MCTS::reset_tree() {
   root_index_ = 0;
   root_hash_ = 0;
   root_initialized_ = false;
+  root_noise_applied_ = false;
 }
 
 void MCTS::advance_root(const chess::Position& new_position, const chess::Move& played_move) {
@@ -403,6 +421,7 @@ void MCTS::advance_root(const chess::Position& new_position, const chess::Move& 
   }
   root_hash_ = new_hash;
   root_initialized_ = true;
+  root_noise_applied_ = false;
 }
 
 }  // namespace mcts

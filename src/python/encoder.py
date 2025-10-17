@@ -130,10 +130,14 @@ def _coerce_int(v: Any, default: int = 0) -> int:
 
 def _bitboard_to_mask(bb: Any) -> np.ndarray:
     """Convert a bitboard into a boolean mask aligned with plane layout."""
-    x = np.uint64(_coerce_int(bb, 0))
-    packed = np.array([x], dtype=np.uint64)
-    bits = np.unpackbits(packed.view(np.uint8), bitorder="little")
-    return bits[:NSQUARES].astype(bool, copy=False)
+    x = int(np.uint64(_coerce_int(bb, 0)))
+    nbits = NSQUARES
+    nbytes = (nbits + 7) // 8
+    packed = np.array([x], dtype=np.uint64).view(np.uint8)
+    if packed.size < nbytes:
+        packed = np.pad(packed, (0, nbytes - packed.size), mode="constant")
+    bits = np.unpackbits(packed[:nbytes], bitorder="little")[:nbits]
+    return bits.astype(bool, copy=False)
 
 
 def _state_from_position(position: Any) -> PositionState:
@@ -177,8 +181,11 @@ def _state_from_position(position: Any) -> PositionState:
 
 def _encode_move_index_python(move: Any) -> int:
     """Pure Python fallback mirroring the chesscore move encoding."""
-    f = int(getattr(move, "from_square"))
-    t = int(getattr(move, "to_square"))
+    try:
+        f = int(getattr(move, "from_square"))
+        t = int(getattr(move, "to_square"))
+    except Exception:
+        return -1
     fr, fc = divmod(f, BOARD_SIZE)
     tr, tc = divmod(t, BOARD_SIZE)
     dr, dc = tr - fr, tc - fc

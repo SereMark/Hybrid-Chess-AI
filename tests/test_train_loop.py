@@ -4,10 +4,13 @@ from dataclasses import replace
 from typing import TypedDict
 
 import config as C
-import encoder
 import numpy as np
 import pytest
 import torch
+
+pytest.importorskip("chesscore", reason="chesscore extension missing")
+
+import encoder
 from train_loop import run_training_iteration
 
 

@@ -3,10 +3,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-try:
-    import chesscore as ccore
-except ImportError:
-    ccore = None
+pytest.importorskip("chesscore", reason="chesscore extension missing")
+
+import chesscore as ccore
 
 
 def _move_by_uci(position: "ccore.Position", uci: str) -> "ccore.Move":

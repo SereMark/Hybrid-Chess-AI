@@ -87,7 +87,8 @@ private:
   mutable chess::Position working_pos_;
   mutable std::array<chess::Position::MoveInfo, 1024> undo_stack_;
   std::array<uint32_t, 1024> path_buffer_;
-  static constexpr float VIRTUAL_LOSS = 1.0f;
+  static constexpr float VIRTUAL_LOSS = 0.0f;
+  bool root_noise_applied_ = false;
   std::mt19937 rng_;
 
   uint32_t root_index_ = 0;

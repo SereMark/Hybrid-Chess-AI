@@ -182,11 +182,13 @@ def train_step(
     # Inputs
     x_u8 = np.stack(states_u8).astype(np.uint8, copy=False)
     x = torch.from_numpy(x_u8).to(trainer.device, non_blocking=True).to(dtype=torch.float32)
-    x = (x / float(C.DATA.u8_scale)).contiguous(memory_format=torch.channels_last)
+    x = x / float(C.DATA.u8_scale)
+    if trainer.device.type == "cuda":
+        x = x.contiguous(memory_format=torch.channels_last)
 
     v_i8 = np.asarray(values_i8, dtype=np.int8)
     v_target = torch.from_numpy(v_i8).to(trainer.device, non_blocking=True).to(dtype=torch.float32)
-    v_target = v_target / float(C.DATA.value_i8_scale)
+    v_target = (v_target / float(C.DATA.value_i8_scale)).clamp_(-1.0, 1.0)
 
     # One-time augmentation setup on trainer
     if not hasattr(trainer, "_aug_mirror_idx"):
@@ -212,7 +214,6 @@ def train_step(
         trainer._aug_rot_inv = _invert(rot_idx)
         trainer._aug_vflip_inv = _invert(vflip_idx)
 
-    # Stochastic spatial+policy augmentations
     if np.random.rand() < C.AUGMENT.mirror_prob:
         x = torch.flip(x, dims=[-1])
         indices_i32 = [trainer._aug_mirror_inv[np.asarray(idx, dtype=np.int64)].astype(np.int32) for idx in indices_i32]
@@ -265,7 +266,8 @@ def train_step(
 
             denom_rows = torch.zeros((x.shape[0],), device=trainer.device, dtype=torch.float32)
             denom_rows.index_add_(0, rows, cnts)
-            denom = denom_rows.index_select(0, rows).clamp_min(1e-9)
+            denom_rows.clamp_min_(1e-9)
+            denom = denom_rows.index_select(0, rows)
             weights = cnts / denom
 
             eps = float(max(0.0, C.TRAIN.loss_policy_label_smooth))
@@ -309,14 +311,14 @@ def train_step(
         grad_total = torch.nn.utils.clip_grad_norm_(trainer.model.parameters(), float(C.TRAIN.grad_clip_norm))
     except RuntimeError:
         trainer.optimizer.zero_grad(set_to_none=True)
-        trainer.scheduler.step()
+        if scaler is not None:
+            scaler.update()
         raise
 
     if torch.isnan(grad_total) or torch.isinf(grad_total):
         trainer.optimizer.zero_grad(set_to_none=True)
         if scaler is not None:
             scaler.update()  # keep scaler moving even if step is skipped
-        trainer.scheduler.step()
         return None
 
     if scaler is not None:

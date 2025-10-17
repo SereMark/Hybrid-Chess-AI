@@ -55,6 +55,9 @@ py::tuple piece_bitboards_as_tuple(const chess::Position& position) {
 
 class PythonEvaluator {
 public:
+  // Python callable: fn(positions: List[Position], legal_moves: List[List[Move]])
+  // -> (policies: Sequence[np.ndarray], values: np.ndarray)
+  // values must be from side-to-move perspective for each position.
   explicit PythonEvaluator(py::object fn) : fn_(std::move(fn)) {}
 
   void operator()(const std::vector<chess::Position>& positions,
@@ -230,7 +233,9 @@ void bind_utilities(py::module_& m) {
           const auto info = encoded.request();
           auto* data = static_cast<int32_t*>(info.ptr);
           for (size_t i = 0; i < moves.size(); ++i) {
-            data[i] = mcts::encode_move_index(moves[i]);
+            const int idx = mcts::encode_move_index(moves[i]);
+            if (idx < 0) throw std::runtime_error("encode_move_index: move not encodable");
+            data[i] = idx;
           }
           result.append(std::move(encoded));
         }
