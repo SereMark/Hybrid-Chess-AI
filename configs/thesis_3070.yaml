@@ -27,28 +27,28 @@ EVAL:
 
 SELFPLAY:
   num_workers: 6
-  game_max_plies: 180
+  game_max_plies: 190
   temperature_moves: 32
-  temperature_high: 1.4
-  temperature_low: 0.50
+  temperature_high: 1.35
+  temperature_low: 0.45
   deterministic_temp_eps: 0.01
   opening_random_moves: 2
   curriculum:
     sample_probability: 0.25
   adjudication_enabled: true
-  adjudication_warmup_iters: 6
-  adjudication_ramp_iters: 12
-  adjudication_min_plies: 96
-  adjudication_min_plies_init: 130
-  adjudication_value_margin: 0.28
-  adjudication_value_margin_init: 0.45
-  adjudication_persist_plies: 10
-  adjudication_persist_init: 14
-  adjudication_material_margin: 5.0
-  adjudication_material_margin_init: 8.0
-  simulation_scale_min: 0.35
-  simulation_scale_max: 0.8
-  simulation_scale_buffer_target: 0.5
+  adjudication_warmup_iters: 10
+  adjudication_ramp_iters: 14
+  adjudication_min_plies: 100
+  adjudication_min_plies_init: 150
+  adjudication_value_margin: 0.32
+  adjudication_value_margin_init: 0.48
+  adjudication_persist_plies: 12
+  adjudication_persist_init: 16
+  adjudication_material_margin: 6.0
+  adjudication_material_margin_init: 9.0
+  simulation_scale_min: 0.4
+  simulation_scale_max: 0.9
+  simulation_scale_buffer_target: 0.55
 
 REPLAY:
   capacity: 32000
@@ -60,7 +60,7 @@ SAMPLING:
   recent_window_frac: 0.3
 
 RESIGN:
-  enabled: true
+  enabled: false
   cooldown_iters: 12
   value_threshold: -0.25
   min_plies: 40
@@ -68,8 +68,8 @@ RESIGN:
   playthrough_fraction: 0.25
 
 MCTS:
-  train_simulations: 144
-  train_simulations_min: 80
+  train_simulations: 160
+  train_simulations_min: 112
   train_sim_decay_move_interval: 30
   c_puct: 1.15
   c_puct_base: 19652
@@ -82,14 +82,14 @@ MCTS:
 TRAIN:
   total_iterations: 24
   games_per_iter: 96
-  games_per_iter_scale_min: 0.6
+  games_per_iter_scale_min: 0.65
   games_per_iter_warmup_iters: 4
   batch_size: 128
   batch_size_min: 112
   batch_size_max: 144
-  samples_per_new_game: 0.5
-  update_steps_min: 16
-  update_steps_max: 60
+  samples_per_new_game: 0.55
+  update_steps_min: 18
+  update_steps_max: 64
   learning_rate_init: 0.00065
   learning_rate_final: 0.0003
   learning_rate_warmup_steps: 720
@@ -104,17 +104,17 @@ TRAIN:
 
 ARENA:
   eval_every_iters: 8
-  games_per_eval: 32
-  mcts_simulations: 128
+  games_per_eval: 40
+  mcts_simulations: 160
   temperature: 0.45
-  temperature_moves: 10
+  temperature_moves: 12
   gate_baseline_p: 0.50
-  gate_margin: 0.006
-  gate_min_games: 24
-  gate_min_decisive: 3
+  gate_margin: 0.008
+  gate_min_games: 32
+  gate_min_decisive: 4
   gate_draw_weight: 0.45
   resign_enable: false
-  max_game_plies: 160
+  max_game_plies: 170
 
 LOG:
   checkpoint_interval_iters: 24
