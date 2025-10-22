@@ -6,7 +6,7 @@ import contextlib
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -460,7 +460,8 @@ def _save_pgn(
 ) -> Path:
     filename = f"{label}_g{game_index + 1:02d}.pgn"
     path = directory / filename
-    date_str = datetime.utcnow().strftime("%Y.%m.%d")
+    # Use timezone-aware UTC date to avoid deprecation warnings
+    date_str = datetime.now(timezone.utc).strftime("%Y.%m.%d")
     headers: list[tuple[str, str]] = [
         ("Event", PGN_EVENT),
         ("Site", "Local"),
