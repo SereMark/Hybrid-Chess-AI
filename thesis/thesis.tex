@@ -515,10 +515,10 @@ A sakkmag felelős továbbá a szabályosság ellenőrzéséért (pl.~király ne
 A keresőmotor a Monte Carlo Tree Search (MCTS) algoritmust valósítja meg PUCT kiválasztási stratégiával. A C++ implementáció kritikus optimalizációkat tartalmaz a Python-alapú megoldásokhoz képest:
 
 \begin{itemize}
-    \item \textbf{Konkurencia-kezelés (virtuális veszteség):} A \texttt{VIRTUAL\_LOSS = 1.0} beállítás lehetővé teszi a függőben lévő kiértékelések hatékony kezelését, míg a rendszerszintű párhuzamosítást aszinkron munkaszálak biztosítják.
-    \item \textbf{Kötegelt levélkiértékelés:} A levélcsomópontok kötegelve kerülnek kiértékelésre; a C++ oldal int32 tömbökbe gyűjti a pozíciókat, majd egyetlen tenzorként adja át a Python rétegnek.
-    \item \textbf{Robusztus memóriakezelés:} A NodePool indexalapú, vektoralapú allokációja biztosítja, hogy az átméretezés a pointerek érvényességének megtartása mellett is skálázható legyen.
-    \item \textbf{Nullösszegű visszaterjesztés:} A Backpropagate rutin minden szinten előjelet vált ($\text{value} = -\text{value}$), biztosítva az ellenfél szemszögének helyes kezelését.
+\item \textbf{Konkurencia-kezelés (virtuális veszteség):} A \texttt{VIRTUAL\_LOSS = 1.0} paraméterrel a kiválasztott csomópontok értékösszegét ideiglenesen negatív irányba tolja el a rendszer, így az éppen kiértékelés alatt álló útvonalak átmenetileg kevésbé vonzóak a további szimulációk számára. Ez a klasszikus MCTS \emph{virtual loss} technika hatékonyan kezeli a függőben lévő, kötegelt neurális kiértékeléseket, és csökkenti annak esélyét, hogy a párhuzamos szimulációk ugyanarra az ágra koncentrálódjanak.
+\item \textbf{Kötegelt levélkiértékelés:} A levélcsomópontok kötegelve kerülnek kiértékelésre; a C++ oldal int32 tömbökbe gyűjti a pozíciókat, majd egyetlen tenzorként adja át a Python rétegnek.
+\item \textbf{Robusztus memóriakezelés:} A NodePool indexalapú, vektoralapú allokációja biztosítja, hogy az átméretezés a pointerek érvényességének megtartása mellett is skálázható legyen.
+\item \textbf{Nullösszegű visszaterjesztés:} A Backpropagate rutin minden szinten előjelet vált ($\text{value} = -\text{value}$), biztosítva az ellenfél szemszögének helyes kezelését.
 \end{itemize}
 
 \subsection{Bemeneti reprezentáció és hálózat}
