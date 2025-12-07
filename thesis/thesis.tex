@@ -466,10 +466,7 @@ A megvalósítás során a kritikus útvonalhoz tartozó komponenseket (bitboard
 
 A sikerkritériumok három kategóriába sorolhatók:
 \begin{itemize}
-  \item \textbf{Teljesítmény:} a pozíció/mp-ben és áteresztőképességben mért mutatók javítása a Python-alapú kiinduló megoldáshoz képest
-      (python-chess sakkmag, tisztán Python MCTS, nem optimalizált neurális következtetés), a komponensekre kitűzött
-      $\geq\num{5}$-szörös (sakkmag), $\geq\num{3}$-szoros (MCTS) és $\geq\num{10}$-szeres (GPU-következtetés)
-      gyorsulási célértékek teljesítésével.
+  \item \textbf{Teljesítmény:} a pozíció/mp-ben és áteresztőképességben mért mutatók jelentős javítása a Python-alapú kiinduló megoldáshoz képest (python-chess sakkmag, tisztán Python MCTS, nem optimalizált neurális következtetés).
   \item \textbf{Tanulás:} belső metrikák csökkenése (a policy-veszteség legalább 40\%-os, az érték-veszteség legalább 50\%-os relatív javulása).
   \item \textbf{Mérnöki:} automatikus metrika-naplózás (CSV/JSONL), YAML-konfigurációk és unit tesztek megléte.
 \end{itemize}
