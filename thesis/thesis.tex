@@ -1,4 +1,4 @@
-﻿%!TeX program = xelatex
+%!TeX program = xelatex
 \documentclass[12pt,a4paper]{report}
 
 \usepackage{iftex}
@@ -150,7 +150,7 @@
 \fancyhead[L]{\nouppercase\leftmark}
 \rfoot{\thepage}
 \renewcommand{\headrulewidth}{0pt}
-\renewcommand{\chaptermark}[1]{\markboth{\thechapter. fejezet – #1}{}}
+\renewcommand{\chaptermark}[1]{\markboth{\thechapter. fejezet #1}{}}
 \setlength{\headheight}{14.5pt}
 \fancypagestyle{plain}{%
   \fancyhf{}%
@@ -270,7 +270,7 @@ teljesen automatizált benchmark- és reprodukciós feldolgozási lánc kialakí
 
 Azonos hardverkörnyezetben öt különböző konfiguráció került tesztelésre. A \textbf{Nagy Entrópia} konfiguráció rövid futási idő alatt is 1249-es, saját skálán mért Elo-pontszámot ért el, és felülmúlta a mohó heurisztikát, miközben a mélyebb, de kevésbé változatos keresést alkalmazó beállítások gyengébben teljesítettek. Méréseim igazolták, hogy rövid futási idő esetén a generált játszmák sokszínűségét biztosító stratégia fontosabb, mint a puszta keresési mélység.
 
-A dolgozat öt kutatási kérdésre (RQ1–RQ5) keresi a választ, amelyek a rendszer mérnöki teljesítményét, skálázhatóságát, tanulási dinamikáját, az adatdiverzitást és a kísérletek reprodukálhatóságát vizsgálják.
+A dolgozat öt kutatási kérdésre (RQ1-től RQ5-ig) keresi a választ, amelyek a rendszer mérnöki teljesítményét, skálázhatóságát, tanulási dinamikáját, az adatdiverzitást és a kísérletek reprodukálhatóságát vizsgálják.
 
 \textbf{Kulcsszavak:} AlphaZero, Monte Carlo fakeresés (MCTS), megerősítéses tanulás (RL), hibrid architektúra, GPU-gyorsítás, kísérleti validáció
 \vfill
@@ -317,7 +317,7 @@ Az AlphaZero~\cite{silver2017chess} 2017-ben látványosan bemutatta, hogy a meg
 
 A dolgozat fő motivációja a technológia elérhetővé tétele hallgatók és kutatócsoportok számára. A cél egy olyan, korlátos erőforrásokra optimalizált mérnöki megközelítés kidolgozása, amely lehetővé teszi, hogy egyetlen fogyasztói GPU-n is érdemi kísérleteket lehessen végezni AlphaZero-típusú sakkágensekkel.
 
-A dolgozat azt vizsgálja, hogy egy NVIDIA RTX 3070 Laptop GPU-val, korlátozott – körülbelül 15~órás – tanítási időkeretben milyen architekturális és hiperparaméter-beli kompromisszumokkal hozható létre működőképes, önjátszással tanuló sakkprogram. Az értékelés során öt eltérő konfiguráció kerül összehasonlításra a keresési mélység, az entrópia-alapú exploráció és a frissítési gyakoriság szempontjából.
+A dolgozat azt vizsgálja, hogy egy NVIDIA RTX 3070 Laptop GPU-val, korlátozott, körülbelül 15~órás tanítási időkeretben milyen architekturális és hiperparaméter-beli kompromisszumokkal hozható létre működőképes, önjátszással tanuló sakkprogram. Az értékelés során öt eltérő konfiguráció kerül összehasonlításra a keresési mélység, az entrópia-alapú exploráció és a frissítési gyakoriság szempontjából.
 
 A dolgozat főbb eredményei és hozzájárulásai az alábbiakban foglalhatók össze:
 \begin{itemize}
@@ -328,11 +328,11 @@ A dolgozat főbb eredményei és hozzájárulásai az alábbiakban foglalhatók 
 \end{itemize}
 
 \medskip
-A szakdolgozat készítése során két generatív mesterségesintelligencia-alapú nyelvi modellt használtam kizárólag kiegészítő segédeszközként: az OpenAI ChatGPT-t (GPT-5.1 modell) és a Google Gemini 3-at. Alkalmazásuk a tanulási folyamat támogatására korlátozódott (szakirodalom gyors áttekintése, nyelvi–stiláris ellenőrzés), nem a dolgozat érdemi tartalmának előállítására. Konkrétan vázlatos összefoglalók készítése, alapfogalmak tisztázása, valamint nyelvhelyességi javaslatok kérése során vettem igénybe ezeket az eszközöket. Nem használtam őket bekezdések vagy fejezetek automatikus létrehozására, és nem vettem igénybe az MI-t az algoritmusok, a forráskód vagy a szakmai következtetések megalkotásához; ezek a saját, önálló munkám eredményei.
+A szakdolgozat készítése során két generatív mesterségesintelligencia-alapú nyelvi modellt használtam kizárólag kiegészítő segédeszközként: az OpenAI ChatGPT-t (GPT-5.1 modell) és a Google Gemini 3-at. Alkalmazásuk a tanulási folyamat támogatására korlátozódott (szakirodalom gyors áttekintése, nyelvi-stiláris ellenőrzés), nem a dolgozat érdemi tartalmának előállítására. Konkrétan vázlatos összefoglalók készítése, alapfogalmak tisztázása, valamint nyelvhelyességi javaslatok kérése során vettem igénybe ezeket az eszközöket. Nem használtam őket bekezdések vagy fejezetek automatikus létrehozására, és nem vettem igénybe az MI-t az algoritmusok, a forráskód vagy a szakmai következtetések megalkotásához; ezek a saját, önálló munkám eredményei.
 
-Az MI által javasolt tartalmakat minden esetben kritikusan, segédeszközként kezeltem: a kapott információkat független, hivatkozott források alapján ellenőriztem, a nyelvi javaslatokat pedig a dolgozat érvrendszeréhez és saját megfogalmazásomhoz igazítva építettem be. A dolgozat tartalmáért és esetleges hibáiért teljes egészében én vállalom a felelősséget. Az MI használata az „A mesterséges intelligencia elfogadható és felelős használata a Szegedi Tudományegyetemen – Hallgatói segédlet” című útmutatóban rögzített alapelvekkel összhangban, a hallgatói önálló munka elsődlegességét tiszteletben tartva történt.
+Az MI által javasolt tartalmakat minden esetben kritikusan, segédeszközként kezeltem: a kapott információkat független, hivatkozott források alapján ellenőriztem, a nyelvi javaslatokat pedig a dolgozat érvrendszeréhez és saját megfogalmazásomhoz igazítva építettem be. A dolgozat tartalmáért és esetleges hibáiért teljes egészében én vállalom a felelősséget. Az MI használata az „A mesterséges intelligencia elfogadható és felelős használata a Szegedi Tudományegyetemen Hallgatói segédlet a mesterséges intelligencia tanulásban történő tudatos, hatékony és etikus alkalmazásához” című útmutatóban rögzített alapelvekkel összhangban, a hallgatói önálló munka elsődlegességét tiszteletben tartva történt.
 
-A dolgozat felépítése a következő: az \textbf{Irodalmi áttekintés} fejezet a kapcsolódó szakirodalmat foglalja össze. Ezt követi a \textbf{Célkitűzések és módszertan} fejezet, amely meghatározza az RQ1–RQ5 kutatási kérdéseket és a kísérleti elrendezést. A \textbf{Rendszer tervezése és implementáció} fejezet részletesen bemutatja a hibrid architektúrát és a teljesítménykritikus komponensek tervezési döntéseit. Az \ref{ch:experiments}.\ fejezet az öt vizsgált forgatókönyv eredményeit ismerteti, végül pedig a \textbf{Megbeszélés és korlátok} fejezet a skálázhatósági tapasztalatokat és a kutatási tanulságokat összegzi.
+A dolgozat felépítése a következő: az \textbf{Irodalmi áttekintés} fejezet a kapcsolódó szakirodalmat foglalja össze. Ezt követi a \textbf{Célkitűzések és módszertan} fejezet, amely meghatározza az RQ1-től RQ5-ig terjedő kutatási kérdéseket és a kísérleti elrendezést. A \textbf{Rendszer tervezése és implementáció} fejezet részletesen bemutatja a hibrid architektúrát és a teljesítménykritikus komponensek tervezési döntéseit. Az \ref{ch:experiments}.\ fejezet az öt vizsgált forgatókönyv eredményeit ismerteti, végül pedig a \textbf{Megbeszélés és korlátok} fejezet a skálázhatósági tapasztalatokat és a kutatási tanulságokat összegzi.
 
 
 \chapter{Irodalmi áttekintés}
@@ -341,7 +341,7 @@ A dolgozat felépítése a következő: az \textbf{Irodalmi áttekintés} fejeze
 
 A számítógépes sakk Shannon úttörő munkájával indult \cite{shannon1950chess}, aki két fő megközelítést különböztetett meg: az „A-típusú” stratégiát, amely minden lehetséges lépést megvizsgál egy adott mélységig, és a „B-típusú” stratégiát, amely szelektíven csak az ígéretesnek ítélt lépésekre fókuszál. A sakkmotorok fejlődése évtizedekig az A-típusú (nyers erő, \textit{brute-force}) megközelítés finomhangolását jelentette.
 
-A klasszikus sakkprogramok működési elve a Minimax-elven alapul. Mivel a sakkjátékfa Shannon által becsült komplexitása nagyságrendileg $10^{120}$ lehetséges játék~\cite{shannon1950chess}, a teljes játékfa bejárása gyakorlatilag lehetetlen (miközben a lehetséges sakktáblapozíciók száma is óriási, $\approx 10^{43}$--$10^{47}$ nagyságrend), ezért a programok korlátozott mélységű keresést végeznek. A levelekben heurisztikus kiértékelő függvényt (\textit{evaluation function}) alkalmaznak. Ez a függvény jellemzően az anyagelőny, a pozicionális tényezők (pl.~gyalogszerkezet, tisztek aktivitása) és a biztonság (pl.~királyszárny) súlyozott összegeként áll elő, amelyet nagymesterek és programozók évtizedeken át finomhangoltak.
+A klasszikus sakkprogramok működési elve a Minimax-elven alapul. Mivel a sakkjátékfa Shannon által becsült komplexitása nagyságrendileg $10^{120}$ lehetséges játék~\cite{shannon1950chess}, a teljes játékfa bejárása gyakorlatilag lehetetlen (miközben a lehetséges sakktáblapozíciók száma is óriási, $\approx 10^{43}$ és $10^{47}$ közötti nagyságrend), ezért a programok korlátozott mélységű keresést végeznek. A levelekben heurisztikus kiértékelő függvényt (\textit{evaluation function}) alkalmaznak. Ez a függvény jellemzően az anyagelőny, a pozicionális tényezők (pl.~gyalogszerkezet, tisztek aktivitása) és a biztonság (pl.~királyszárny) súlyozott összegeként áll elő, amelyet nagymesterek és programozók évtizedeken át finomhangoltak.
 
 A keresési tér hatékony bejárását az alfa-béta vágás (Alpha-Beta pruning) \cite{knuth1975alphabeta} teszi lehetővé, amely matematikailag garantáltan ugyanazt az eredményt adja, mint a teljes Minimax. Az irreleváns ágak levágásával (ahol a lépés már biztosan rosszabb, mint egy korábban talált alternatíva) a módszer ideális rendezés esetén nagyjából a négyzetgyökére csökkenti a keresési fa effektív elágazási tényezőjét. A modern motorok ezt tovább javítják olyan heurisztikákkal, mint a null-move vágás \cite{cpwNullMove} (ahol a lépés jogának átadása mellett keresés történik, feltételezve, hogy ha így is előny áll fenn, az eredeti állás még jobb) és a késői lépésredukció (Late Move Reductions, LMR)~\cite{cpwLMR}.
 
@@ -372,7 +372,7 @@ A PUCT (UCT variáns döntési prior (\textit{policy prior}) súlyozással) alap
 c_{\text{puct}} = \log\left(\frac{N(s) + c_{\text{base}} + 1}{c_{\text{base}}}\right) + c_{\text{init}}
 \label{eq:cpuct}
 \end{equation}
-ahol tipikusan $c_{\text{base}} = \num{19652}$ és $c_{\text{init}} \approx 1\text{--}3$ (míg jelen rendszerben konkrétan $c_{\text{init}}=\num{1.55}$). Ez biztosítja, hogy ritkábban látogatott állapotokban nagyobb exploráció történjen, tipikusan $c_{\text{puct}} \in [1, 5]$ tartományban (lásd \eqref{eq:cpuct}).
+ahol tipikusan $c_{\text{base}} = \num{19652}$, és $c_{\text{init}}$ tipikusan 1 és 3 közötti érték (míg jelen rendszerben konkrétan $c_{\text{init}}=\num{1.55}$). Ez biztosítja, hogy ritkábban látogatott állapotokban nagyobb exploráció történjen, tipikusan $c_{\text{puct}} \in [1, 5]$ tartományban (lásd \eqref{eq:cpuct}).
 
 A PUCT akció-kiválasztási formula:
 \[
@@ -385,7 +385,7 @@ Dirichlet zaj biztosítja az explorációt a gyökérben. Az AlphaZero \cite{sil
 
 Az AlphaZero tanítási folyamata négy iterálódó fázisból áll~\cite{silver2017chess}. Az \textbf{önjátszás} (self-play) fázisban a jelenlegi modell játszik önmaga ellen változatos kezdőpozíciókból. Minden lépésnél az MCTS 800 szimulációt végez, amely a neurális háló értékeléseit használja levelekben~\cite{silver2017chess}. A lépésválasztás hőmérséklettel módosított látogatási eloszlásból történik mintavételezéssel ($\tau > 1$ korai játékban, $\tau \to 0$ késői játékban), biztosítva a diverzitást. A játék végén a kimenetel ($z \in \{-1, 0, +1\}$) minden pozíció értékcéljává válik.
 
-Az \textbf{adattárolás} fázisban a pozíció-lépésirány-kimenetel hármasokat visszajátszási pufferben gyűjtik. Az AlphaGo Zero~\cite{silver2017go} kiegészítő anyaga explicit módon a legutóbbi $\sim$\num{500000} játékot tartalmazó visszajátszási puffert ír elő. Az AlphaZero-tanulmányok~\cite{silver2017chess,silver2018science} ugyanennek a tanítási protokollnak az adaptációi, de a konkrét pufferméretet nem minden esetben részletezik. A közösségi reimplementációk ezért jellemzően 500k--1M közötti puffert alkalmaznak. A minták $(\boldsymbol{s}_t, \boldsymbol{\pi}_t, z_t)$ formában tárolódnak, ahol $\boldsymbol{s}_t$ a bemeneti reprezentáció (8 történeti lépés), $\boldsymbol{\pi}_t$ az MCTS látogatási eloszlás (policy target), és $z_t$ a végső kimenetel a $t$-edik pozíció nézőpontjából.
+Az \textbf{adattárolás} fázisban a pozíció-lépésirány-kimenetel hármasokat visszajátszási pufferben gyűjtik. Az AlphaGo Zero~\cite{silver2017go} kiegészítő anyaga explicit módon a legutóbbi $\sim$\num{500000} játékot tartalmazó visszajátszási puffert ír elő. Az AlphaZero-tanulmányok~\cite{silver2017chess,silver2018science} ugyanennek a tanítási protokollnak az adaptációi, de a konkrét pufferméretet nem minden esetben részletezik. A közösségi reimplementációk ezért jellemzően 500k és 1M közötti puffert alkalmaznak. A minták $(\boldsymbol{s}_t, \boldsymbol{\pi}_t, z_t)$ formában tárolódnak, ahol $\boldsymbol{s}_t$ a bemeneti reprezentáció (8 történeti lépés), $\boldsymbol{\pi}_t$ az MCTS látogatási eloszlás (policy target), és $z_t$ a végső kimenetel a $t$-edik pozíció nézőpontjából.
 
 A \textbf{tanítási fázis} mini-kötegeken optimalizálja a hálót. A veszteségfüggvény \cite{silver2017chess} három tagból áll:
 \begin{equation*}
@@ -407,7 +407,7 @@ Az AlphaZero-típusú rendszerek számos tipikus hibamóddal rendelkeznek, amely
 
 \textbf{Exploráció-kizsákmányolás egyensúly}: Túl konzervatív exploráció (alacsony Dirichlet zaj, magas $c_{\text{puct}}$) korai konvergenciát okoz rossz lokális optimumba. Túl agresszív exploráció véletlenszerű játékot eredményez, lassítva a tanulást. Az optimális paraméterek játékonként változnak: sakkban $\alpha = \num{0.3}$, shogiban $\alpha = \num{0.15}$, Go-ban $\alpha = \num{0.03}$, amelyeket az AlphaZero cikk \cite{silver2017chess} és az AlphaGo Zero cikk \cite{silver2017go} részletesen dokumentál (a kiegészítő anyagokban), és amelyeket a közösségi AlphaZero-típusú implementációk gyakorlatban is megerősítettek.
 
-\textbf{Aréna-értékelés zajérzékenysége}: Kis meccsszám ($< 100$ játék) nagy varianciát eredményez a becslésben. Két azonos erejű modell mérkőzése esetén a kimenetel közel 50\%--50\%, így 100 játék esetén a 95\%-os konfidenciaintervallum $\pm 10\%$. Konzervatív küszöb (55\%+) és nagy meccsszám (400+) csökkenti a hamis pozitív előléptetéseket.
+\textbf{Aréna-értékelés zajérzékenysége}: Kis meccsszám ($< 100$ játék) nagy varianciát eredményez a becslésben. Két azonos erejű modell mérkőzése esetén a kimenetel közel azonos, nagyjából 50\%-os arány mindkét fél számára, így 100 játék esetén a 95\%-os konfidenciaintervallum $\pm 10\%$. Konzervatív küszöb (55\%+) és nagy meccsszám (400+) csökkenti a hamis pozitív előléptetéseket.
 
 \textbf{Számítási költség skálázódása}: Az AlphaZero eredeti sakkfuttatása mintegy 9~órás volt, 5000 első generációs TPU-t használva az önjátszásos adatok generálására és 16 második generációs TPU-t a háló tanítására~\cite{silver2018science}. Közösségi becslések szerint ez több tízmilliónyi önjátszásos játszmát eredményezhetett, ami egyetlen fogyasztói GPU-n nagyságrendileg éveket venne igénybe. Kompromisszumok szükségesek: kevesebb iteráció, kisebb háló, kevesebb MCTS szimuláció, kisebb puffer.
 
@@ -415,11 +415,11 @@ Az AlphaZero-típusú rendszerek számos tipikus hibamóddal rendelkeznek, amely
 
 A Leela Chess Zero \cite{lczero} nyílt forráskódú közösségi projekt, amely az AlphaZero-módszertant valósítja meg elosztott önkéntes GPU-kon. Több ezer önkéntes GPU-idejét aggregálva a projekt 2018 óta több milliárd önjátszásos játszmát generált (2024 vége / 2025 eleje szerint >2,5 milliárd játszma, folyamatosan növekvő tendenciával).
 
-\textbf{Hálóarchitektúra evolúció}: Az LC0 kezdetben kisebb reziduális hálókat használt (pl.~6 reziduális blokk 64--128 csatornával), majd fokozatosan 15, 20 és később $\sim$40 blokkos hálókra nőtt több tízmillió paraméterrel. A 2020-as évek közepére a legmodernebb LC0/LZ hálók $\sim$40 vagy több blokkot és nagyobb csatornaszámokat használnak, gyakran tízmilliós paraméterszámmal, Squeeze-and-Excitation (SE, csatornaválasztó modul)~\cite{hu2018senet} rétegekkel kiegészítve. Ez arra utal, hogy a sakkhoz szükséges reprezentációs kapacitás jelentős, és a kisebb hálók (5--10 blokk) csak korlátozott játékerőt érnek el.
+\textbf{Hálóarchitektúra evolúció}: Az LC0 kezdetben kisebb reziduális hálókat használt (pl.~6 reziduális blokk 64 és 128 csatornával), majd fokozatosan 15, 20 és később $\sim$40 blokkos hálókra nőtt több tízmillió paraméterrel. A 2020-as évek közepére a legmodernebb LC0/LZ hálók $\sim$40 vagy több blokkot és nagyobb csatornaszámokat használnak, gyakran tízmilliós paraméterszámmal, Squeeze-and-Excitation (SE, csatornaválasztó modul)~\cite{hu2018senet} rétegekkel kiegészítve. Ez arra utal, hogy a sakkhoz szükséges reprezentációs kapacitás jelentős, és a kisebb hálók (5 és 10 blokk között) csak korlátozott játékerőt érnek el.
 
 \textbf{Tanítási trükkök}: A KataGo \cite{wu2019katago} és az LC0 projekt számos fejlesztést vezetett be az AlphaZero eredeti receptjéhez képest. A szakirodalomban \emph{Q-ratio} néven emlegetett, a KataGo-ban \cite{wu2019katago} kifejlesztett módszer súlyozott átlagot képez a háló értékbecslése ($v$) és az MCTS Q-értéke között, csökkentve az értékfej kollapszust. Az LC0 projekt emellett \emph{FPU reductiont} (First-Play Urgency csökkentés) és \emph{smart pruningot} (intelligens levágás) vezetett be a gyakorlatban: az FPU reduction agresszívebb explorációt biztosít nem látogatott csomópontokhoz, a smart pruning korai levágást alkalmaz alacsony prior-ú lépésekre, gyorsítva a keresést minőségvesztés nélkül.
 
-\textbf{Adatmennyiség vs. hálókapacitás}: Az LC0 tapasztalata, hogy a hálóméret növelése csak akkor hasznos, ha az adatmennyiség arányosan nő. Korai fázisban (< 10M játék) a kis hálók (6--10 blokk) gyorsabban tanulnak. Nagyobb adatbázissal (100M+ játék) a nagy hálók (20--40 blokk) előnybe kerülnek, de konvergenciájuk lassabb. Ez alátámasztja a tanterv alapú tanulás (\textit{curriculum learning})~\cite{bengio2009curriculum} megközelítést: kezdjük kis hálóval, majd növeljük a kapacitást konvergencia után.
+\textbf{Adatmennyiség vs. hálókapacitás}: Az LC0 tapasztalata, hogy a hálóméret növelése csak akkor hasznos, ha az adatmennyiség arányosan nő. Korai fázisban (< 10M játék) a kis hálók (6 és 10 blokk között) gyorsabban tanulnak. Nagyobb adatbázissal (100M+ játék) a nagy hálók (20 és 40 blokk között) előnybe kerülnek, de konvergenciájuk lassabb. Ez alátámasztja a tanterv alapú tanulás (\textit{curriculum learning})~\cite{bengio2009curriculum} megközelítést: kezdjük kis hálóval, majd növeljük a kapacitást konvergencia után.
 
 \textbf{Elosztott infrastruktúra}: Az LC0 szerver-kliens architektúrát használ: központi szerver osztja ki a tanítási súlyokat és gyűjti az önjátszás adatokat, kliensek (önkéntes GPU-k) generálják a játékokat és küldik vissza. Ez lehetővé teszi a skálázódást, de késleltetést és koordinációs költséget vezet be. Egyetlen GPU-s megközelítés (jelen dolgozat) elkerüli ezt a bonyolultságot, de korlátozott adatgenerálási sebességgel rendelkezik.
 
@@ -448,16 +448,16 @@ A munka öt fő célkitűzése:
   \item \textbf{A kísérletek reprodukálhatóságának biztosítása} benchmarkokkal és konfigurációkkal.
 \end{enumerate}
 
-\section{Kutatási kérdések (RQ1–RQ5)}
+\section{Kutatási kérdések (RQ1-től RQ5-ig)}
 \label{sec:kutatasi-kerdesek}
 
-A célkitűzésekből öt kutatási kérdés (RQ1–RQ5) adódik:
+A célkitűzésekből öt kutatási kérdés (RQ1-től RQ5-ig) adódik:
 \begin{description}
-  \item[RQ1 -- Teljesítmény:] Milyen komponens-szintű gyorsulások érhetők el a hibrid architektúrával?
-  \item[RQ2 -- Skálázhatóság:] Hogyan skálázódik a rendszer a párhuzamosítással, és melyek a szűk keresztmetszetek?
-  \item[RQ3 -- Tanulási dinamika:] Mutat-e a rendszer belső tanulási jeleket (a policy- és value-veszteség tartós csökkenése, valamint az arénamérkőzések győzelmi arányainak javulása) rövid (egynapos) tanítási horizonton?
-  \item[RQ4 -- Adatdiverzitás:] Milyen mértékben biztosítja a nyitókönyvvel~\cite{lichess} indított önjátszás és az explorációs beállítások együttese a pozíciók kellő sokszínűségét?
-  \item[RQ5 -- Reprodukálhatóság:] Mennyire támogatja a rendszer felépítése és az automatizált eszközlánc a futások reprodukálhatóságát (azonos beállítások mellett)?
+  \item[RQ1, Teljesítmény:] Milyen komponens-szintű gyorsulások érhetők el a hibrid architektúrával?
+  \item[RQ2, Skálázhatóság:] Hogyan skálázódik a rendszer a párhuzamosítással, és melyek a szűk keresztmetszetek?
+  \item[RQ3, Tanulási dinamika:] Mutat-e a rendszer belső tanulási jeleket (a policy- és value-veszteség tartós csökkenése, valamint az arénamérkőzések győzelmi arányainak javulása) rövid (egynapos) tanítási horizonton?
+  \item[RQ4, Adatdiverzitás:] Milyen mértékben biztosítja a nyitókönyvvel~\cite{lichess} indított önjátszás és az explorációs beállítások együttese a pozíciók kellő sokszínűségét?
+  \item[RQ5, Reprodukálhatóság:] Mennyire támogatja a rendszer felépítése és az automatizált eszközlánc a futások reprodukálhatóságát (azonos beállítások mellett)?
 \end{description}
 
 A dolgozat célja \textbf{nem} egy versenyképes sakkprogram létrehozása, hanem az AlphaZero-módszertan \textbf{megvalósíthatóságának} demonstrálása korlátozott erőforrásokkal, valamint a rendszer \textbf{mérnöki teljesítményének} jellemzése.
@@ -485,7 +485,7 @@ A kísérleti elrendezés három pillérre épül:
     \item Végül ablációs vizsgálatok készültek nyitókönyvvel és anélkül, erősen lecsökkentett gyorsítótár-kapacitással (gyakorlatilag gyorsítótár nélküli konfigurációkban), exponenciális mozgóátlag (\textit{Exponential Moving Average}, EMA) és közvetlen súlyok összehasonlításával, valamint a játszma-kiértékelés progresszív és fix változataival.
 \end{enumerate}
 
-A következő fejezet a fenti célok és módszertan megvalósítását mutatja be: a hibrid architektúra részleteit, a teljesítménykritikus komponensek tervezési döntéseit, valamint a széles körben alkalmazott optimalizációs technikákat. A \ref{sec:kutatasi-kerdesek}. szakaszban megfogalmazott RQ1–RQ5 kérdéseket az \ref{ch:experiments}. fejezet értékeli ki.
+A következő fejezet a fenti célok és módszertan megvalósítását mutatja be: a hibrid architektúra részleteit, a teljesítménykritikus komponensek tervezési döntéseit, valamint a széles körben alkalmazott optimalizációs technikákat. A \ref{sec:kutatasi-kerdesek}. szakaszban megfogalmazott, RQ1-től RQ5-ig terjedő kérdéseket az \ref{ch:experiments}. fejezet értékeli ki.
 
 \chapter{Rendszer tervezése és implementáció}
 
@@ -651,7 +651,7 @@ A mérések alapján az \textbf{RQ1}-re válaszolva kijelenthető, hogy a hibrid
 
 Az önjátszás párhuzamosítása során jól megfigyelhető az Amdahl-törvény hatása~\cite{amdahl1967} (\Fig{fig:nps_scaling}). Az ábra bal oldali grafikonja az önjátszás teljesítményének skálázódását mutatja a szálak számának függvényében. A játszma/mp érték a szálak számával nő (1 szálon $\approx$0.5, 6 szálon $\approx$1.8 játszma/mp), azonban a mért gyorsulás jelentősen elmarad az elméleti lineáris maximumtól (szaggatott vonal): 6 szálnál a gyorsulás nagyjából 3.5$\times$, a várható 6$\times$ helyett. Ez a Python GIL, a szálak közti szinkronizáció és az adatmozgatás többletköltségei miatt fellépő párhuzamosítási veszteségekre utal.
 
-A jobb oldali grafikon a keresési sebességet (NPS) ábrázolja a kötegméret függvényében. A görbe egyértelmű maximumot mutat 64-es kötegméretnél ($\approx$25\,000 NPS), amely az adott hardveren az optimális munkapontot jelenti. Kisebb kötegeknél (1--4) a keretrendszer fix költségei dominálnak, ezért csak $\sim$20\,000 NPS érhető el. 8 és 32 között meredek emelkedés figyelhető meg, ahogy a kötegelt feldolgozás jobban kihasználja az erőforrásokat, míg 128 és 256 esetén a várakozási idők, a memóriasávszélesség és a cache-hatások miatt ismét csökken a hatékonyság. A 4$\to$8 közötti lokális törés, illetve az átmeneti visszaesés $\sim$20\,000 NPS körül arra utal, hogy a kötegelt végrehajtás inicializációs költségei a kis-közepes tartományban még jelentősen terhelik a rendszert.
+A jobb oldali grafikon a keresési sebességet (NPS) ábrázolja a kötegméret függvényében. A görbe egyértelmű maximumot mutat 64-es kötegméretnél ($\approx$25\,000 NPS), amely az adott hardveren az optimális munkapontot jelenti. Kisebb kötegeknél (1 és 4 közötti kötegméret esetén) a keretrendszer fix költségei dominálnak, ezért csak $\sim$20\,000 NPS érhető el. 8 és 32 között meredek emelkedés figyelhető meg, ahogy a kötegelt feldolgozás jobban kihasználja az erőforrásokat, míg 128 és 256 esetén a várakozási idők, a memóriasávszélesség és a cache-hatások miatt ismét csökken a hatékonyság. A 4$\to$8 közötti lokális törés, illetve az átmeneti visszaesés $\sim$20\,000 NPS körül arra utal, hogy a kötegelt végrehajtás inicializációs költségei a kis-közepes tartományban még jelentősen terhelik a rendszert.
 
 \begin{figure}[htbp]
   \centering
@@ -678,15 +678,15 @@ Munkaszálak & Játszma/mp \\
 
 A \Tab{tab:scaling} alapján a 6 szálas konfiguráció \textbf{\num{3.5}-szörös gyorsulást} nyújt az egyszálúhoz képest, ami alátámasztja a párhuzamos architektúra hatékonyságát, még ha a skálázódás nem is tökéletesen lineáris.
 
-A skálázódást vizsgáló \textbf{RQ2} eredményei azt mutatják, hogy az önjátszás teljesítménye 6 munkaszálon kb.\ \num{3.5}-szörösére nőtt az egyszálú futtatáshoz képest, a keresési sebesség (NPS) pedig 64-es kötegméretig skálázódik jól, ahol eléri a $\sim$\num{25000} NPS körüli csúcsot; a további skálázást elsősorban a Python GIL és a host–device adatmozgatás korlátozza.
+A skálázódást vizsgáló \textbf{RQ2} eredményei azt mutatják, hogy az önjátszás teljesítménye 6 munkaszálon kb.\ \num{3.5}-szörösére nőtt az egyszálú futtatáshoz képest, a keresési sebesség (NPS) pedig 64-es kötegméretig skálázódik jól, ahol eléri a $\sim$\num{25000} NPS körüli csúcsot; a további skálázást elsősorban a Python GIL és a host és a device közötti adatmozgatás korlátozza.
 
 \subsection{RQ3: Tanulási dinamika és bajnokság}
 
-A tanulási dinamikát az \Fig{fig:training_dynamics} foglalja össze: a bal oldali ábrák a stratégiai (policy) veszteséget, a jobb oldaliak az értékbecslési (value) MSE-t mutatják, felül az iterációk, alul az eltelt futási idő függvényében. A stratégiai veszteség szempontjából a \textbf{Nagy Áteresztőképesség} (zöld) konfiguráció adja a legjobb eredményt: a keresztentrópia kb.\ 2{,}7 körüli értéken stabilizálódik. Ezt követi a \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Entrópia} (narancs) 3{,}3--3{,}5 közötti végértékkel. A \textbf{Hatékonyság} (lila) és különösen a \textbf{Referencia} (kék) konfigurációk ugyan az első $\sim$50 iterációban gyorsan csökkennek, utána azonban 4{,}2--4{,}6 közötti platóra állnak be, ami arra utal, hogy a gyakori frissítések miatt a politika viszonylag korán „megfagy”.
+A tanulási dinamikát az \Fig{fig:training_dynamics} foglalja össze: a bal oldali ábrák a stratégiai (policy) veszteséget, a jobb oldaliak az értékbecslési (value) MSE-t mutatják, felül az iterációk, alul az eltelt futási idő függvényében. A stratégiai veszteség szempontjából a \textbf{Nagy Áteresztőképesség} (zöld) konfiguráció adja a legjobb eredményt: a keresztentrópia kb.\ 2{,}7 körüli értéken stabilizálódik. Ezt követi a \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Entrópia} (narancs) 3{,}3 és 3{,}5 közötti végértékkel. A \textbf{Hatékonyság} (lila) és különösen a \textbf{Referencia} (kék) konfigurációk ugyan az első $\sim$50 iterációban gyorsan csökkennek, utána azonban 4{,}2 és 4{,}6 közötti platóra állnak be, ami arra utal, hogy a gyakori frissítések miatt a politika viszonylag korán „megfagy”.
 
-Az értékbecslési veszteség eltérő mintázatot mutat. A \textbf{Nagy Áteresztőképesség} MSE-je nagyon alacsony, $\sim$0{,}05--0{,}07 tartományban marad. A \textbf{Hatékonyság} konfiguráció lassabban, de hasonlóan alacsony szintre (kb.\ 0{,}08--0{,}1) konvergál. A \textbf{Referencia} és a \textbf{Mély Keresés} görbéje valamivel magasabban, nagyjából 0{,}1--0{,}15 körül stabilizálódik, míg a \textbf{Nagy Entrópia} esetén a veszteség a 100. iteráció után ismét növekedni kezd, és a tanítás végére $\sim$0{,}25--0{,}3 körüli értékre áll be. Ez arra utal, hogy a tartósan magas exploráció ugyan javítja a politika sokféleségét, de a value-fej tanulását a zajos, nem stacionárius célok megnehezítik.
+Az értékbecslési veszteség eltérő mintázatot mutat. A \textbf{Nagy Áteresztőképesség} MSE-je nagyon alacsony, $\sim$0{,}05 és 0{,}07 közötti tartományban marad. A \textbf{Hatékonyság} konfiguráció lassabban, de hasonlóan alacsony szintre (kb.\ 0{,}08 és 0{,}1 közötti tartományba) konvergál. A \textbf{Referencia} és a \textbf{Mély Keresés} görbéje valamivel magasabban, nagyjából 0{,}1 és 0{,}15 közötti tartományban stabilizálódik, míg a \textbf{Nagy Entrópia} esetén a veszteség a 100. iteráció után ismét növekedni kezd, és a tanítás végére $\sim$0{,}25 és 0{,}3 közötti értékre áll be. Ez arra utal, hogy a tartósan magas exploráció ugyan javítja a politika sokféleségét, de a value-fej tanulását a zajos, nem stacionárius célok megnehezítik.
 
-Az időalapú összehasonlítás (alsó sor) a fenti trendeket futásidővel súlyozza. A \textbf{Hatékonyság} konfiguráció fejezi be leggyorsabban a tanulást (kb.\ 9~óra), de közben magas stratégiai veszteségen marad, és a későbbi Elo-mérések alapján ez a konfiguráció teljesít a leggyengébben. A többi konfiguráció 14--18~óra körüli futási időt igényel: a \textbf{Nagy Áteresztőképesség} és a \textbf{Mély Keresés} a leghosszabb, de ezek adják a legalacsonyabb végső stratégiai veszteséget. A \textbf{Nagy Áteresztőképesség} így a futásidő és a végső teljesítmény között kedvező kompromisszumot jelent, míg a \textbf{Referencia} konfiguráció hosszabb idő alatt is lényegesen rosszabb politikán marad.
+Az időalapú összehasonlítás (alsó sor) a fenti trendeket futásidővel súlyozza. A \textbf{Hatékonyság} konfiguráció fejezi be leggyorsabban a tanulást (kb.\ 9~óra), de közben magas stratégiai veszteségen marad, és a későbbi Elo-mérések alapján ez a konfiguráció teljesít a leggyengébben. A többi konfiguráció 14 és 18 óra közötti futási időt igényel: a \textbf{Nagy Áteresztőképesség} és a \textbf{Mély Keresés} a leghosszabb, de ezek adják a legalacsonyabb végső stratégiai veszteséget. A \textbf{Nagy Áteresztőképesség} így a futásidő és a végső teljesítmény között kedvező kompromisszumot jelent, míg a \textbf{Referencia} konfiguráció hosszabb idő alatt is lényegesen rosszabb politikán marad.
 
 \begin{figure}[htbp]
   \centering
@@ -695,9 +695,9 @@ Az időalapú összehasonlítás (alsó sor) a fenti trendeket futásidővel sú
   \label{fig:training_dynamics}
 \end{figure}
 
-Az arénamérkőzések eredményeit az \Fig{fig:evaluation_win_rate} szemlélteti. Az átlagos győzelmi arány az első 20--30 iterációban gyorsan konvergál az 50\%-os, kiegyenlített szint közelébe, és ezt követően mind az öt konfiguráció nagyon hasonló tartományban marad. A \textbf{Referencia} (kék) kb.\ 60\% körüli kezdő értékről fokozatosan esik vissza $\sim$50\% alá. A \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Áteresztőképesség} (zöld) végig enyhén 50\% fölött, míg a \textbf{Nagy Entrópia} (narancs) és a \textbf{Hatékonyság} (lila) közvetlenül az 50\%-os vonal körül stabilizálódik. A tanítás végére a görbék mindössze néhány százalékpontos különbséggel, nagyjából 48--52\% között helyezkednek el, ezért a konfigurációk közötti eltérések a mérési bizonytalanságon belül maradnak.
+Az arénamérkőzések eredményeit az \Fig{fig:evaluation_win_rate} szemlélteti. Az átlagos győzelmi arány az első 20 és 30 közötti iterációban gyorsan konvergál az 50\%-os, kiegyenlített szint közelébe, és ezt követően mind az öt konfiguráció nagyon hasonló tartományban marad. A \textbf{Referencia} (kék) kb.\ 60\% körüli kezdő értékről fokozatosan esik vissza $\sim$50\% alá. A \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Áteresztőképesség} (zöld) végig enyhén 50\% fölött, míg a \textbf{Nagy Entrópia} (narancs) és a \textbf{Hatékonyság} (lila) közvetlenül az 50\%-os vonal körül stabilizálódik. A tanítás végére a görbék mindössze néhány százalékpontos különbséggel, nagyjából 48 és 52\% között helyezkednek el, ezért a konfigurációk közötti eltérések a mérési bizonytalanságon belül maradnak.
 
-Az árnyékolt sávok az iterációnkénti 24 arénapartiból számolt 95\%-os konfidenciaintervallumokat jelölik. A sávok nagy szélessége (tipikusan kb.\ $\pm$20--25 százalékpont) azt mutatja, hogy az egyes iterációk közti ingadozások jelentős része statisztikai zaj, nem pedig tartós teljesítménykülönbség. Ez alátámasztja a folyamatos tanulás választását a szigorú arénakapuzással szemben: ilyen zajos becslések mellett az előreléptetési döntések megbízhatatlanok lettek volna, ezért a jelen kísérletekben az arénakapuzást kikapcsolva hagytam, és az arénamérkőzéseket csak mérőszámként használtam.
+Az árnyékolt sávok az iterációnkénti 24 arénapartiból számolt 95\%-os konfidenciaintervallumokat jelölik. A sávok nagy szélessége (tipikusan kb.\ $\pm$20 és 25 százalékpont közötti érték) azt mutatja, hogy az egyes iterációk közti ingadozások jelentős része statisztikai zaj, nem pedig tartós teljesítménykülönbség. Ez alátámasztja a folyamatos tanulás választását a szigorú arénakapuzással szemben: ilyen zajos becslések mellett az előreléptetési döntések megbízhatatlanok lettek volna, ezért a jelen kísérletekben az arénakapuzást kikapcsolva hagytam, és az arénamérkőzéseket csak mérőszámként használtam.
 
 \begin{figure}[htbp]
   \centering
@@ -724,21 +724,21 @@ A \textbf{Hatékonyság} modell 1164 Elo-val a mezőny végén végzett, és mé
 \end{figure}
 
 \textbf{Elemzés:}
-A körmérkőzéses bajnokság eredményei szerint a Nagy Entrópia konfiguráció (1249 Elo) teljesített a legjobban, egyedüliként megelőzve a Mohó (\textit{Greedy}) ágenst (1228 Elo). A többi tanult konfiguráció szűk sávban, 1192--1198 Elo között helyezkedik el, közvetlenül a Mohó alatt, míg a Véletlen és Hatékonyság ügynökök 1164--1169 Elo tartományban zártak. Rövid (250--300 iterációs) tanítási ciklusban a legfőbb veszély nem a lassú konvergencia, hanem a \textbf{lokális optimumba ragadás} (pl.\ passzív döntetlenek). A magas explorációs beállítások (Dirichlet-zaj $\alpha=0.5$, $c_{\text{puct}}=2.5$) biztosították a kockázatosabb, de informatívabb ágak felderítését.
+A körmérkőzéses bajnokság eredményei szerint a Nagy Entrópia konfiguráció (1249 Elo) teljesített a legjobban, egyedüliként megelőzve a Mohó (\textit{Greedy}) ágenst (1228 Elo). A többi tanult konfiguráció szűk sávban, 1192 és 1198 Elo között helyezkedik el, közvetlenül a Mohó alatt, míg a Véletlen és Hatékonyság ügynökök 1164 és 1169 Elo tartományban zártak. Rövid, 250 és 300 iteráció közötti tanítási ciklusban a legfőbb veszély nem a lassú konvergencia, hanem a \textbf{lokális optimumba ragadás} (pl.\ passzív döntetlenek). A magas explorációs beállítások (Dirichlet-zaj $\alpha=0.5$, $c_{\text{puct}}=2.5$) biztosították a kockázatosabb, de informatívabb ágak felderítését.
 
 Fontos ugyanakkor kiemelni, hogy a bajnokság korlátozott játszmaszáma miatt az Elo-becslések bizonytalansága várhatóan több tíz pont nagyságrendű. A kisebb különbségek (például 1164 versus 1169 Elo) ezért inkább jelzésértékűek, mintsem statisztikailag egyértelműen szignifikáns eltérések; a konfigurációk relatív sorrendje megbízhatóbb információt ad, mint az abszolút értékek.
 
 Ezzel szemben a Hatékonyság konfiguráció, amely a „hatékonyságot” célozta (gyakori frissítések, kis köteg), instabillá vált és a legrosszabb eredményt nyújtotta. Teljesítménye még a Random ágenst is alulmúlta. Ebből arra következtetek, hogy korlátozott pufferkapacitás és agresszív frissítési stratégia mellett a hálózat nem képes stabilan megtartani a korábban tanult mintázatokat (katasztrofális felejtés), ezért az ilyen beállítások gyakorlatban kerülendők.
 
-A tanulási dinamikára vonatkozó \textbf{RQ3} kapcsán az látszik, hogy a policy- és value-veszteséggörbék mind az öt konfiguráció esetén jól látható csökkenést mutatnak, különösen a \textbf{Nagy Áteresztőképesség} és \textbf{Mély Keresés} beállításoknál, ami azt jelzi, hogy rövid (9--18 órás) tanítási horizonton is kimutatható, stabil tanulás zajlik.
+A tanulási dinamikára vonatkozó \textbf{RQ3} kapcsán az látszik, hogy a policy- és value-veszteséggörbék mind az öt konfiguráció esetén jól látható csökkenést mutatnak, különösen a \textbf{Nagy Áteresztőképesség} és \textbf{Mély Keresés} beállításoknál, ami azt jelzi, hogy rövid, 9 és 18 óra közötti tanítási horizonton is kimutatható, stabil tanulás zajlik.
 
 \subsection{RQ4: Adatdiverzitás}
 
-Az \Fig{fig:game_length_dist} a lejátszott játszmák hosszának eloszlását mutatja fél-lépésekben. A \textbf{Mély Keresés} (sárga) konfiguráció sűrűségfüggvénye adja a legmagasabb csúcsot: a maximum kb.\ 0{,}036 körül alakul, nagyjából 45--50 fél-lépésnél. A \textbf{Hatékonyság} (lila) eloszlása a legkeskenyebb és legkoncentráltabb: csúcsa kb.\ 35--40 fél-lépés között jelenik meg, ami arra utal, hogy a gyakori gradiens-frissítések (\texttt{samples\_per\_new\_game} = 8) és a kisebb kötegméret gyors, de viszonylag egyoldalú konvergenciához vezettek -- a játszmák többsége hasonló hosszúságú, kevés változatos végjátékkal.
+Az \Fig{fig:game_length_dist} a lejátszott játszmák hosszának eloszlását mutatja fél-lépésekben. A \textbf{Mély Keresés} (sárga) konfiguráció sűrűségfüggvénye adja a legmagasabb csúcsot: a maximum kb.\ 0{,}036 körül alakul, nagyjából 45 és 50 fél-lépés között. A \textbf{Hatékonyság} (lila) eloszlása a legkeskenyebb és legkoncentráltabb: csúcsa kb.\ 35 és 40 fél-lépés között jelenik meg, ami arra utal, hogy a gyakori gradiens-frissítések (\texttt{samples\_per\_new\_game} = 8) és a kisebb kötegméret gyors, de viszonylag egyoldalú konvergenciához vezettek, így a játszmák többsége hasonló hosszúságú, kevés változatos végjátékkal.
 
 A legmarkánsabban eltérő viselkedést a \textbf{Nagy Entrópia} (narancs) konfiguráció mutatja, amelynek eloszlása egyértelműen \emph{bimodális}: egy első csúcs látható kb.\ 50 fél-lépésnél, míg egy második, laposabb csúcs kb.\ 110 fél-lépés körül jelenik meg. Az első csúcs a középjátékban lezáruló partikat, a második a hosszú, végjátékig elnyúló játszmákat reprezentálja. A magas exploráció ($c_{\text{puct}} = 2.5$, Dirichlet $\alpha = 0.5$) egyrészt lehetővé teszi a döntő taktikai ütközéseket, másrészt gyakran megakadályozza a korai lépésismétléses döntetleneket, így széles skálán, sokféle pozíciót lefedve tud tanulni a modell. Ez a diverzitás összhangban van a konfiguráció kiemelkedő Elo-eredményével.
 
-A \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Áteresztőképesség} (zöld) eloszlásai hasonló, egymóduszú görbéket adnak: a tömegük zöme 40--60 fél-lépés között helyezkedik el, a \textbf{Nagy Áteresztőképesség} csúcsa azonban kissé jobbra tolódik, ami arra utal, hogy a sekélyebb keresés (64 szimuláció) ritkábban dönt el partikat már a középjátékban. A \textbf{Referencia} (kék) konfiguráció eloszlása a két szélsőség között helyezkedik el, mind csúcsmagasságban, mind pozícióban, ami jól illeszkedik a baseline jellegéhez.
+A \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Áteresztőképesség} (zöld) eloszlásai hasonló, egymóduszú görbéket adnak: a tömegük zöme 40 és 60 fél-lépés között helyezkedik el, a \textbf{Nagy Áteresztőképesség} csúcsa azonban kissé jobbra tolódik, ami arra utal, hogy a sekélyebb keresés (64 szimuláció) ritkábban dönt el partikat már a középjátékban. A \textbf{Referencia} (kék) konfiguráció eloszlása a két szélsőség között helyezkedik el, mind csúcsmagasságban, mind pozícióban, ami jól illeszkedik a baseline jellegéhez.
 
 \begin{figure}[htbp]
   \centering
@@ -759,7 +759,7 @@ A mérések szerint a rendszer technikai teljesítménye (\num{56887} pozíció/
 
 \chapter{Megbeszélés és korlátok}
 
-Ebben a fejezetben az RQ1–RQ5 kérdésekre kapott eredményeket értelmezem, majd kitérek a módszertan korlátaira.
+Ebben a fejezetben az RQ1-től RQ5-ig terjedő kérdésekre kapott eredményeket értelmezem, majd kitérek a módszertan korlátaira.
 
 \section{Eredmények értelmezése}
 
@@ -769,19 +769,19 @@ Az exploráció dominanciája elsősorban az RQ3 (tanulási dinamika) és RQ4 (a
 
 \subsection{A rendszer skálázhatósága}
 
-A rendszer skálázhatósága (RQ1, RQ2) tekintetében a kötegelt levélértékelés és a \texttt{Virtual Loss}-ra épülő konkurenciakezelés együtt \textbf{\num{3.5}-szörös} önjátszás-gyorsulást adott 6 szálon, miközben megőrizte a fa diverzitását. A NodePool indexalapú, vektoralapú allokációja biztosítja, hogy az átméretezés a pointerek érvényessége mellett is skálázható legyen. A fő szűk keresztmetszetek a Python GIL és a host--device adatmozgatás jelentik, ami jelzi, hogy több GPU vagy teljesen natív önjátszás további gyorsulást hozhat.
+A rendszer skálázhatósága (RQ1, RQ2) tekintetében a kötegelt levélértékelés és a \texttt{Virtual Loss}-ra épülő konkurenciakezelés együtt \textbf{\num{3.5}-szörös} önjátszás-gyorsulást adott 6 szálon, miközben megőrizte a fa diverzitását. A NodePool indexalapú, vektoralapú allokációja biztosítja, hogy az átméretezés a pointerek érvényessége mellett is skálázható legyen. A fő szűk keresztmetszetek a Python GIL és a host és a device közötti adatmozgatás jelentik, ami jelzi, hogy több GPU vagy teljesen natív önjátszás további gyorsulást hozhat.
 
 \section{Korlátok}
 
 \subsection{Abszolút játékerő}
 
-Bár a rendszer a saját, zárt skálán mért 1249 Elo-pontszámmal legyőzte a mohó (Greedy) ágenst, ez a szint nagyjából egy erősebb amatőr játékosnak felel meg, és nem hasonlítható közvetlenül sem a FIDE-, sem az online szerverek Elo-értékeihez. Az 1249-es Elo-érték így kizárólag a dolgozatban definiált, zárt bajnokságon belül értelmezhető. A modell képes alapvető pozíciós elvek követésére (például a gyalogstruktúra védelmére), de hiányzik belőle a mély taktikai számolás képessége, amelyhez nagyságrendileg több (milliós nagyságrendű) önjátszásos játszmára lenne szükség. A szakirodalomban tipikusan több tízezer–millió játszmára épülő, standardizált ellenfelek elleni méréseket használnak FIDE-közeli skálákhoz; jelen dolgozat keretében ilyen típusú, külső, Stockfish-alapú Elo-kalibrációt tudatosan nem végeztem.
+Bár a rendszer a saját, zárt skálán mért 1249 Elo-pontszámmal legyőzte a mohó (Greedy) ágenst, ez a szint nagyjából egy erősebb amatőr játékosnak felel meg, és nem hasonlítható közvetlenül sem a FIDE-, sem az online szerverek Elo-értékeihez. Az 1249-es Elo-érték így kizárólag a dolgozatban definiált, zárt bajnokságon belül értelmezhető. A modell képes alapvető pozíciós elvek követésére (például a gyalogstruktúra védelmére), de hiányzik belőle a mély taktikai számolás képessége, amelyhez nagyságrendileg több (milliós nagyságrendű) önjátszásos játszmára lenne szükség. A szakirodalomban tipikusan több tízezer, sőt akár milliós nagyságrendű játszmára épülő, standardizált ellenfelek elleni méréseket használnak FIDE-közeli skálákhoz; jelen dolgozat keretében ilyen típusú, külső, Stockfish-alapú Elo-kalibrációt tudatosan nem végeztem.
 
 Ez összhangban áll a Célkitűzések fejezetben megfogalmazott korlátozott hatókörrel: a cél a módszertan megvalósíthatóságának demonstrálása volt, nem pedig versenyképes motor fejlesztése.
 
 \subsection{Számítási horizont}
 
-A 300~iteráció és a 9--18~órás futási idő a „megvalósíthatósági bizonyítás” kategóriájába esik. Az AlphaZero eredeti tanulmánya több ezer TPU-t használt, nagyságrendekkel nagyobb önjátszásos adatmennyiség mellett. Bár kísérleti validációval sikerült igazolni a módszertant, a versenyképes szint elérése ezen a hardveren hónapokat venne igénybe.
+A 300~iteráció és a 9 és 18 óra közötti futási idő a „megvalósíthatósági bizonyítás” kategóriájába esik. Az AlphaZero eredeti tanulmánya több ezer TPU-t használt, nagyságrendekkel nagyobb önjátszásos adatmennyiség mellett. Bár kísérleti validációval sikerült igazolni a módszertant, a versenyképes szint elérése ezen a hardveren hónapokat venne igénybe.
 
 \chapter{Összefoglalás}
 
@@ -789,16 +789,16 @@ A dolgozat egy fogyasztói hardverre optimalizált, AlphaZero-típusú sakkprogr
 
 A fejlesztés három fő pillére az architekturális egyszerűsítés („Mindig világos” kanonikus nézet), a virtuális veszteségre épülő konkurenciakezelés és a kötegelt levélértékelés volt. Ezek együtt biztosítják a szükséges sebességet a korlátos erőforrású környezetben. Az öt konfigurációt lefedő kísérleti validáció megmutatta, hogy a magas entrópiájú keresés hozza a legjobb eredményt a rendelkezésre álló adat- és időkeret mellett.
 
-Az RQ1–RQ5 kutatási kérdésekre adott válaszok az alábbiakban foglalhatók össze:
+Az RQ1-től RQ5-ig terjedő kutatási kérdésekre adott válaszok az alábbiakban foglalhatók össze:
 \begin{enumerate}
-\item \textbf{RQ1 – Teljesítmény:} a C++23-alapú sakkmag \num{56887} pozíció/mp sebességet ért el, míg a GPU-alapú neurális következtetés \num{81519} pozíció/mp áteresztőképességet biztosított nagy kötegméreteknél. Ez legalább \num{5.3}-szoros gyorsulást jelent a sakkmag esetén a Python-alapú megoldáshoz képest, és nagyságrendileg tízszeresnél nagyobb gyorsulást a neurális következtetésben, ami elegendő az önjátszásos tanításhoz egynapos időkeretben.
-\item \textbf{RQ2 – Skálázhatóság:} az önjátszás teljesítménye 6 munkaszálon kb.\ \num{3.5}-szörösére nőtt az egyszálú futtatáshoz képest, a keresési sebesség (NPS) pedig 64-es kötegméretig skálázódik jól, ahol eléri a $\sim$\num{25000} NPS körüli csúcsot; a további skálázást a Python GIL és a host–device adatmozgatás korlátozza.
-\item \textbf{RQ3 – Tanulási dinamika:} a policy- és value-veszteség mind az öt vizsgált konfiguráció esetén jelentősen csökkent, különösen a \textbf{Nagy Áteresztőképesség} és \textbf{Mély Keresés} beállításoknál, ami azt mutatja, hogy rövid tanítási horizonton is érdemi, mérhető tanulás zajlik.
-\item \textbf{RQ4 – Adatdiverzitás:} a magas explorációs beállításokkal futó \textbf{Nagy Entrópia} konfiguráció bimodális játszmahossz-eloszlást és sokkal változatosabb tanítóadatot eredményezett, és a mérések alapján kis előnnyel felülmúlta a mohó heurisztikát a saját Elo-skálán, ami alátámasztja az adatdiverzitás szerepét korlátozott erőforrások mellett.
-\item \textbf{RQ5 – Reprodukálhatóság:} a teljesen automatizált benchmark- és artefaktumgeneráló szkriptek, valamint a YAML-konfigurációk rögzítik a hardver- és hiperparaméter-beállításokat, így a kísérleti futtatások más környezetben is megismételhetők, legfeljebb kisebb, a sztochasztikusságból adódó Elo-szórással.
+\item \textbf{RQ1, Teljesítmény:} a C++23-alapú sakkmag \num{56887} pozíció/mp sebességet ért el, míg a GPU-alapú neurális következtetés \num{81519} pozíció/mp áteresztőképességet biztosított nagy kötegméreteknél. Ez legalább \num{5.3}-szoros gyorsulást jelent a sakkmag esetén a Python-alapú megoldáshoz képest, és nagyságrendileg tízszeresnél nagyobb gyorsulást a neurális következtetésben, ami elegendő az önjátszásos tanításhoz egynapos időkeretben.
+\item \textbf{RQ2, Skálázhatóság:} az önjátszás teljesítménye 6 munkaszálon kb.\ \num{3.5}-szörösére nőtt az egyszálú futtatáshoz képest, a keresési sebesség (NPS) pedig 64-es kötegméretig skálázódik jól, ahol eléri a $\sim$\num{25000} NPS körüli csúcsot; a további skálázást a Python GIL és a host és a device közötti adatmozgatás korlátozza.
+\item \textbf{RQ3, Tanulási dinamika:} a policy- és value-veszteség mind az öt vizsgált konfiguráció esetén jelentősen csökkent, különösen a \textbf{Nagy Áteresztőképesség} és \textbf{Mély Keresés} beállításoknál, ami azt mutatja, hogy rövid tanítási horizonton is érdemi, mérhető tanulás zajlik.
+\item \textbf{RQ4, Adatdiverzitás:} a magas explorációs beállításokkal futó \textbf{Nagy Entrópia} konfiguráció bimodális játszmahossz-eloszlást és sokkal változatosabb tanítóadatot eredményezett, és a mérések alapján kis előnnyel felülmúlta a mohó heurisztikát a saját Elo-skálán, ami alátámasztja az adatdiverzitás szerepét korlátozott erőforrások mellett.
+\item \textbf{RQ5, Reprodukálhatóság:} a teljesen automatizált benchmark- és artefaktumgeneráló szkriptek, valamint a YAML-konfigurációk rögzítik a hardver- és hiperparaméter-beállításokat, így a kísérleti futtatások más környezetben is megismételhetők, legfeljebb kisebb, a sztochasztikusságból adódó Elo-szórással.
 \end{enumerate}
 
-A dolgozat elsődleges hozzájárulása egy nyílt forráskódú, dokumentált keretrendszer, amely referenciapontot nyújt az AlphaZero-módszertan korlátozott erőforrású megvalósításához. A jövőbeli fejlesztési irányok közé tartozik a jelenlegi 6 blokkos háló fokozatos skálázása 10--20 blokkos méretig, és annak vizsgálata, hogy az itt bemutatott paraméterezés mellett hogyan változik a tanulási dinamika. További lehetőség a tanult környezetmodellek (pl.\ MuZero-típusú megközelítések) bevezetése, ahol a környezetmodell is tanulható lenne. Emellett fontos jövőbeli lépés lehet a rendszer adaptálása elosztott (kliens–szerver) környezetre. Ezek a fejlesztések közelebb vihetnek egy olyan AlphaZero-típusú sakkmotorhoz, amely már nemcsak kísérleti, hanem gyakorlati szempontból is versenyképes játékerőt képvisel.
+A dolgozat elsődleges hozzájárulása egy nyílt forráskódú, dokumentált keretrendszer, amely referenciapontot nyújt az AlphaZero-módszertan korlátozott erőforrású megvalósításához. A jövőbeli fejlesztési irányok közé tartozik a jelenlegi 6 blokkos háló fokozatos skálázása 10 és 20 blokk közötti méretig, és annak vizsgálata, hogy az itt bemutatott paraméterezés mellett hogyan változik a tanulási dinamika. További lehetőség a tanult környezetmodellek (pl.\ MuZero-típusú megközelítések) bevezetése, ahol a környezetmodell is tanulható lenne. Emellett fontos jövőbeli lépés lehet a rendszer adaptálása elosztott (kliens-szerver) környezetre. Ezek a fejlesztések közelebb vihetnek egy olyan AlphaZero-típusú sakkmotorhoz, amely már nemcsak kísérleti, hanem gyakorlati szempontból is versenyképes játékerőt képvisel.
 
 \clearpage
 \phantomsection
@@ -811,31 +811,31 @@ A dolgozat elsődleges hozzájárulása egy nyílt forráskódú, dokumentált k
 \bibitem{amdahl1967}
 Amdahl, G. M.
 Validity of the Single Processor Approach to Achieving Large Scale Computing Capabilities.
-In: \emph{Proceedings of the April 18--20, 1967, Spring Joint Computer Conference}, 483--485 (1967).\\
+In: \emph{Proceedings of the April 18-20, 1967, Spring Joint Computer Conference}, 483-485 (1967).\\
 \doi{10.1145/1465482.1465560}
 
 \bibitem{auer2002ucb}
 Auer, P., Cesa-Bianchi, N., Fischer, P.
 Finite-time Analysis of the Multiarmed Bandit Problem.
-\emph{Machine Learning} 47:235--256 (2002).\\
+\emph{Machine Learning} 47:235-256 (2002).\\
 \doi{10.1023/A:1013689704352}
 
 \bibitem{bengio2009curriculum}
 Bengio, Y., Louradour, J., Collobert, R., Weston, J.
 Curriculum Learning.
-In: \emph{ICML '09}, 41--48 (2009).\\
+In: \emph{ICML '09}, 41-48 (2009).\\
 \doi{10.1145/1553374.1553380}
 
 \bibitem{browne2012}
 Browne, C. B., Powley, E., Whitehouse, D., \emph{et al.}
 A Survey of Monte Carlo Tree Search Methods.
-\emph{IEEE Transactions on Computational Intelligence and AI in Games} 4(1):1--43 (2012).\\
+\emph{IEEE Transactions on Computational Intelligence and AI in Games} 4(1):1-43 (2012).\\
 \doi{10.1109/TCIAIG.2012.2186810}
 
 \bibitem{campbell2002deepblue}
 Campbell, M., Hoane, A. J., Hsu, F.-H.
 Deep Blue.
-\emph{Artificial Intelligence} 134(1--2):57--83 (2002).\\
+\emph{Artificial Intelligence} 134(1-2):57-83 (2002).\\
 \doi{10.1016/S0004-3702(01)00129-1}
 
 \bibitem{cpwLMR}
@@ -853,7 +853,7 @@ Utolsó megtekintés: 2025. 12. 07.
 \bibitem{coulom2006cg}
 Coulom, R.
 Efficient Selectivity and Backup Operators in Monte-Carlo Tree Search.
-In: \emph{Computers and Games 2006}, LNCS 4630, 72--83 (2007).\\
+In: \emph{Computers and Games 2006}, LNCS 4630, 72-83 (2007).\\
 \doi{10.1007/978-3-540-75538-8_7}
 
 \bibitem{crazyara}
@@ -870,37 +870,37 @@ In: \emph{NIPS Workshop on Online Trading of Exploration and Exploitation} (2006
 \bibitem{gelly2007rave}
 Gelly, S., Silver, D.
 Combining Online and Offline Knowledge in UCT.
-In: \emph{ICML '07}, 273--280 (2007).\\
+In: \emph{ICML '07}, 273-280 (2007).\\
 \doi{10.1145/1273496.1273531}
 
 \bibitem{he2016resnet}
 He, K., Zhang, X., Ren, S., Sun, J.
 Deep Residual Learning for Image Recognition.
-In: \emph{CVPR 2016}, 770--778 (2016).\\
+In: \emph{CVPR 2016}, 770-778 (2016).\\
 \doi{10.1109/CVPR.2016.90}
 
 \bibitem{hu2018senet}
 Hu, J., Shen, L., Sun, G.
 Squeeze-and-Excitation Networks.
-In: \emph{CVPR 2018}, 7132--7141 (2018).\\
+In: \emph{CVPR 2018}, 7132-7141 (2018).\\
 \doi{10.1109/CVPR.2018.00745}
 
 \bibitem{pybind11}
 Jakob, W., Rhinelander, J., Moldovan, D.
-pybind11 -- Seamless operability between C++11 and Python.\\
+pybind11: Seamless operability between C++11 and Python.\\
 \url{https://github.com/pybind/pybind11}.\\
 Utolsó megtekintés: 2025. 12. 07.
 
 \bibitem{knuth1975alphabeta}
 Knuth, D. E., Moore, R. W.
 An Analysis of Alpha-Beta Pruning.
-\emph{Artificial Intelligence} 6(4):293--326 (1975).\\
+\emph{Artificial Intelligence} 6(4):293-326 (1975).\\
 \doi{10.1016/0004-3702(75)90019-3}
 
 \bibitem{kocsis2006uct}
 Kocsis, L., Szepesvári, C.
 Bandit Based Monte-Carlo Planning.
-In: \emph{ECML 2006}, LNCS 4212, 282--293 (2006).\\
+In: \emph{ECML 2006}, LNCS 4212, 282-293 (2006).\\
 \doi{10.1007/11871842_29}
 
 \bibitem{lczero}
@@ -939,7 +939,7 @@ Utolsó megtekintés: 2025. 12. 07.
 \bibitem{pytorch}
 Paszke, A., Gross, S., Massa, F., \emph{et al.}
 PyTorch: An Imperative Style, High-Performance Deep Learning Library.
-In: \emph{Advances in Neural Information Processing Systems 32} (NeurIPS 2019), 8024--8035.\\
+In: \emph{Advances in Neural Information Processing Systems 32} (NeurIPS 2019), 8024-8035.\\
 \url{https://proceedings.neurips.cc/paper/2019/hash/bdbca288fee7f92f2bfa9f7012727740-Abstract.html}.\\
 Utolsó megtekintés: 2025. 12. 07.
 
@@ -951,19 +951,19 @@ Utolsó megtekintés: 2025. 12. 07.
 \bibitem{schrittwieser2020muzero}
 Schrittwieser, J., Antonoglou, I., Hubert, T., \emph{et al.}
 Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model.
-\emph{Nature} 588(7839):604--609 (2020).\\
+\emph{Nature} 588(7839):604-609 (2020).\\
 \doi{10.1038/s41586-020-03051-4}
 
 \bibitem{shannon1950chess}
 Shannon, C. E.
 Programming a Computer for Playing Chess.
-\emph{Philosophical Magazine} 41(314):256--275 (1950).\\
+\emph{Philosophical Magazine} 41(314):256-275 (1950).\\
 \doi{10.1080/14786445008521796}
 
 \bibitem{silver2016alphago}
 Silver, D., Huang, A., Maddison, C. J., \emph{et al.}
 Mastering the Game of Go with Deep Neural Networks and Tree Search.
-\emph{Nature} 529:484--489 (2016).\\
+\emph{Nature} 529:484-489 (2016).\\
 \doi{10.1038/nature16961}
 
 \bibitem{silver2017chess}
@@ -976,13 +976,13 @@ Utolsó megtekintés: 2025. 12. 07.
 \bibitem{silver2017go}
 Silver, D., Schrittwieser, J., Simonyan, K., \emph{et al.}
 Mastering the Game of Go without Human Knowledge.
-\emph{Nature} 550:354--359 (2017).\\
+\emph{Nature} 550:354-359 (2017).\\
 \doi{10.1038/nature24270}
 
 \bibitem{silver2018science}
 Silver, D., Hubert, T., Schrittwieser, J., \emph{et al.}
 A General Reinforcement Learning Algorithm that Masters Chess, Shogi, and Go Through Self-Play.
-\emph{Science} 362(6419):1140--1144 (2018).\\
+\emph{Science} 362(6419):1140-1144 (2018).\\
 \doi{10.1126/science.aar6404}
 
 \bibitem{stockfish}
@@ -1007,13 +1007,13 @@ Utolsó megtekintés: 2025. 12. 07.
 \bibitem{harris2020numpy}
 Harris, C. R., \emph{et al.}
 Array Programming with NumPy.
-\emph{Nature} 585(7825):357--362 (2020).\\
+\emph{Nature} 585(7825):357-362 (2020).\\
 \doi{10.1038/s41586-020-2649-2}
 
 \bibitem{hunter2007matplotlib}
 Hunter, J. D.
 Matplotlib: A 2D Graphics Environment.
-\emph{Computing in Science \& Engineering} 9(3):90--95 (2007).\\
+\emph{Computing in Science \& Engineering} 9(3):90-95 (2007).\\
 \doi{10.1109/MCSE.2007.55}
 
 \bibitem{waskom2021seaborn}
