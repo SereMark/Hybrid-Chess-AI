@@ -48,11 +48,11 @@ system_fonts = [f.name for f in fm.fontManager.ttflist]
 has_times = 'Times New Roman' in system_fonts
 
 if has_times:
-    logger.info("Font 'Times New Roman' found.")
+    logger.info("A 'Times New Roman' betűtípus elérhető.")
     serif_fonts = ['Times New Roman']
 else:
-    logger.error("CRITICAL ERROR: 'Times New Roman' font not found.")
-    sys.exit("Execution stopped: Font requirement not met.")
+    logger.error("KRITIKUS HIBA: A 'Times New Roman' betűtípus nem található.")
+    sys.exit("A futás leállítva: a betűtípus-követelmény nem teljesült.")
 
 plt.rcParams.update({
     'font.family': 'serif',
@@ -114,7 +114,7 @@ class RunData:
 def save_figure(fig: plt.Figure, name: str) -> None:
     path = FIGURES_OUT / f"{name}.pdf"
     fig.savefig(path)
-    logger.info(f"Saved figure: {path}")
+    logger.info(f"Ábra elmentve: {path}")
 
 def ema(data: List[float], alpha: float = 0.1) -> List[float]:
     if not data:
@@ -149,7 +149,7 @@ def generate_run_labels(runs: List[RunData]) -> None:
                 continue
             diff_keys.append(key)
 
-    logger.info(f"Distinguishing config keys: {diff_keys}")
+    logger.info(f"Megkülönböztető konfigurációs kulcsok: {diff_keys}")
 
     known_names = set(RUN_NAME_MAPPING.values())
     for r, cfg in zip(runs, configs):
@@ -246,7 +246,7 @@ def load_run_data() -> List[RunData]:
                                 m[k] = v
                         metrics.append(m)
             except Exception as e:
-                logger.warning(f"Failed to read metrics for {p.name}: {e}")
+                logger.warning(f"Nem sikerült beolvasni a metrikákat ehhez: {p.name}: {e}")
 
         if not metrics:
             continue
@@ -489,15 +489,15 @@ def plot_tournament_elo() -> None:
         save_figure(fig, "tournament_elo")
         plt.close(fig)
     except Exception as e:
-        logger.error(f"Tournament plot error: {e}")
+        logger.error(f"Hiba a bajnoki ábra készítésekor: {e}")
 
 def main() -> None:
-    logger.info("Starting Artifact Generation...")
+    logger.info("Eredmény-generálás indítása...")
 
     runs = load_run_data()
     generate_run_labels(runs)
 
-    logger.info(f"Loaded {len(runs)} runs.")
+    logger.info(f"Betöltött futások száma: {len(runs)}.")
 
     plot_training_metrics(runs)
     plot_win_rates(runs)
@@ -505,7 +505,7 @@ def main() -> None:
     plot_system_scaling()
     plot_tournament_elo()
 
-    logger.info(f"Artifact generation complete. Figures saved to: {FIGURES_OUT}")
+    logger.info(f"Eredmény-generálás kész. Az ábrák ide kerültek: {FIGURES_OUT}")
 
 if __name__ == '__main__':
     main()
