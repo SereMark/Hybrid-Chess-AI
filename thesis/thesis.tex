@@ -471,8 +471,6 @@ A sikerkritériumok három kategóriába sorolhatók:
   \item \textbf{Mérnöki:} automatikus metrika-naplózás (CSV/JSONL), YAML-konfigurációk és unit tesztek megléte.
 \end{itemize}
 
-\textbf{Numerikus küszöbértékek indoklása:} Ezeket a célértékeket ($\geq$\num{5}-szörös, $\geq$\num{3}-szoros, $\geq$\num{10}-szeres) az RTX 3070 Laptop GPU hardveres korlátai alapján, előzetes mérésekre alapozva határoztam meg. Az ötszörös sakkmag-gyorsulás tükrözi a C++-natív kód és a Python-implementációk közötti tipikus különbséget bitboard-műveletekre. A háromszoros MCTS-gyorsulási cél azt jelzi, hogy a fa-bejárási optimalizációk (gyorsítótár, látogatásszám-korlátozás) jelentős hozamot adnak. A tízszeres GPU-következtetési célérték nagy kötegméreteknél (a mérésekben $b=\num{512}$ esetén) elérhető, kihasználva a GPU párhuzamosságát. A veszteségcsökkenési célok a policy-fej esetén >40\%-os, az értékfej esetén >50\%-os relatív csökkenést céloznak, ami empirikusan elegendőnek bizonyult a tanulási folyamat kimutatásához.
-
 A fenti célkitűzéseket a későbbi fejezetekben bemutatott kísérleti eredmények alapján értékelem, különösen az RQ1 (teljesítmény) és RQ3 (tanulási dinamika) kapcsán. A játékerő hosszú távú növekedésének és Elo-alapú külső validációnak a vizsgálata a dolgozat hatókörén kívül esik; a fókusz a technikai megvalósíthatóságon és a komponens-teljesítményen van.
 
 A kísérleti elrendezés három pillérre épül:
