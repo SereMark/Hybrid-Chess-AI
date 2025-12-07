@@ -324,7 +324,7 @@ A dolgozat főbb eredményei és hozzájárulásai az alábbiakban foglalhatók 
   \item \textbf{Architekturális egyszerűsítés:} A „Mindig világos” kanonikus nézet (\textit{Canonical Always White}) bevezetésével a bemeneti állapottér komplexitása érdemben csökken, ami mérsékli az erőforrás-igényes adataugmentáció szükségességét.
   \item \textbf{Hibrid architektúra:} A rendszer a számításigényes feladatokat (lépésgenerálás, MCTS) nagy teljesítményű C++23 kóddal, míg a tanítást és a kötegelt kiértékelést rugalmas, PyTorch-alapú környezetben valósítja meg. A két réteg között egy vékony, minimális adatmásolást igénylő illesztőfelület biztosítja a hatékony adatcserét.
   \item \textbf{Eredmények röviden:} A \textbf{Nagy Entrópia} konfiguráció érte el a legjobb, saját skálán mért Elo-pontszámot, és a mérések alapján kis, de kimutatható előnyt mutatott a többi beállítással szemben, ami a diverzitás fontosságára utal rövid tanítási horizonton.
-  \item \textbf{Reprodukálhatóság:} A teljes fejlesztési lánc nyílt forráskódként elérhető; tartalmazza a C++/Python implementációt, a konfigurálható YAML-leírókat és az automatizált mérési eszközöket.
+  \item \textbf{Reprodukálhatóság:} Teljesen automatizált benchmark- és artefaktumgeneráló szkriptek, valamint verziózott YAML-konfigurációk rögzítik a hardver- és hiperparaméter-beállításokat, így a kísérleti futtatások azonos beállítások mellett más környezetben is megismételhetők.
 \end{itemize}
 
 \medskip
@@ -425,7 +425,7 @@ A Leela Chess Zero \cite{lczero} nyílt forráskódú közösségi projekt, amel
 
 \section{Közösségi implementációk és hardveroptimalizáció}
 
-A Leela Chess Zero \cite{lczero} nyílt forráskódú, elosztott közösségi projekt, amely kezdetben az AlphaZero-nál kompaktabb, $\sim$\num{1858} kimenetes lépéskódolást használt, szemben az AlphaZero \num{4672}-es ($73\times64$) kódolásával. Az újabb LC0 hálók azonban már jellemzően AlphaZero-stílusú, $73\times8\times8$ policy fejet alkalmaznak. A KataGo \cite{wu2019katago} és MuZero \cite{schrittwieser2020muzero} kifinomult tanítási technikákat vezetett be. Kulcsfontosságú mérnöki technikák: kötegelt feldolgozás, \texttt{channels\_last} (csatorna-utolsó) memória, vegyes precizió \cite{micikevicius2018amp}, aszinkron feldolgozási láncok, gyorsítótár. Hibrid C++/Python architektúrák \cite{pybind11} egyensúlyban tartják a sebességet és fejlesztési hatékonyságot.
+A Leela Chess Zero (LC0, \cite{lczero}) kezdetben az AlphaZero-nál kompaktabb, $\sim$\num{1858} kimenetes lépéskódolást használt, szemben az AlphaZero \num{4672}-es ($73\times64$) kódolásával. Az újabb LC0 hálók azonban már jellemzően AlphaZero-stílusú, $73\times8\times8$ policy fejet alkalmaznak. A KataGo \cite{wu2019katago} és MuZero \cite{schrittwieser2020muzero} kifinomult tanítási technikákat vezetett be. Kulcsfontosságú mérnöki technikák: kötegelt feldolgozás, \texttt{channels\_last} (csatorna-utolsó) memória, vegyes precizió \cite{micikevicius2018amp}, aszinkron feldolgozási láncok, gyorsítótár. Hibrid C++/Python architektúrák \cite{pybind11} egyensúlyban tartják a sebességet és fejlesztési hatékonyságot.
 
 \section{Kutatási rés}
 
@@ -643,7 +643,7 @@ GPU (CUDA) & Float16 & 512 & \textbf{\num{81519}} \\
     \item \textbf{MCTS-skálázódás:} A keresési sebesség (NPS) a kötegméret növelésével mérsékelten nő 64-es méretig, ahol eléri a \textbf{\num{25000} NPS} körüli csúcsot, majd csökken; a skálázódás nem lineáris.
 \end{itemize}
 
-\textbf{Erőforrás-hatékonyság:} A rendszer energiahatékonysága a „Hatékonyság” forgatókönyv alapján került vizsgálatra. A 300~iterációs teljes tanítási ciklus futási ideje \textbf{\num{9.1}~óra} volt az RTX 3070 Laptop GPU-n. A becsült energiafogyasztás (\SI{220}{\watt} TDP mellett) nagyságrendileg \textbf{\SI{2,0}{\kilo\watt\hour}}, ami azt mutatja, hogy a módszertan otthoni környezetben is alkalmazható, mérsékelt energiaigénnyel; a hosszabb futások arányosan több energiát igényeltek.
+\textbf{Erőforrás-hatékonyság:} A rendszer energiahatékonysága a „Hatékonyság” forgatókönyv alapján került vizsgálatra. A 300~iterációs teljes tanítási ciklus futási ideje \textbf{\num{9.1}~óra} volt az RTX 3070 Laptop GPU-n. A becsült energiafogyasztás (\SI{220}{\watt} TDP mellett) nagyságrendileg \textbf{\SI{2.0}{\kilo\watt\hour}}, ami azt mutatja, hogy a módszertan otthoni környezetben is alkalmazható, mérsékelt energiaigénnyel; a hosszabb futások arányosan több energiát igényeltek.
 
 A mérések alapján az \textbf{RQ1}-re válaszolva kijelenthető, hogy a hibrid C++/Python architektúra a sakkmagban \num{5.3}-szoros gyorsulást, a neurális következtetésben pedig nagykötegű futtatás mellett nagyságrendileg tízszeresnél nagyobb sebességnövekedést eredményezett a Python-alapú kiinduló megoldáshoz képest. Ez a teljesítmény elegendő az egynapos önjátszásos tanítási ciklus megvalósításához.
 
@@ -798,7 +798,7 @@ Az RQ1-től RQ5-ig terjedő kutatási kérdésekre adott válaszok az alábbiakb
 \item \textbf{RQ5, Reprodukálhatóság:} a teljesen automatizált benchmark- és artefaktumgeneráló szkriptek, valamint a YAML-konfigurációk rögzítik a hardver- és hiperparaméter-beállításokat, így a kísérleti futtatások más környezetben is megismételhetők, legfeljebb kisebb, a sztochasztikusságból adódó Elo-szórással.
 \end{enumerate}
 
-A dolgozat elsődleges hozzájárulása egy nyílt forráskódú, dokumentált keretrendszer, amely referenciapontot nyújt az AlphaZero-módszertan korlátozott erőforrású megvalósításához. A jövőbeli fejlesztési irányok közé tartozik a jelenlegi 6 blokkos háló fokozatos skálázása 10 és 20 blokk közötti méretig, és annak vizsgálata, hogy az itt bemutatott paraméterezés mellett hogyan változik a tanulási dinamika. További lehetőség a tanult környezetmodellek (pl.\ MuZero-típusú megközelítések) bevezetése, ahol a környezetmodell is tanulható lenne. Emellett fontos jövőbeli lépés lehet a rendszer adaptálása elosztott (kliens-szerver) környezetre. Ezek a fejlesztések közelebb vihetnek egy olyan AlphaZero-típusú sakkmotorhoz, amely már nemcsak kísérleti, hanem gyakorlati szempontból is versenyképes játékerőt képvisel.
+A dolgozat elsődleges hozzájárulása egy keretrendszer, amely referenciapontot nyújt az AlphaZero-módszertan korlátozott erőforrású megvalósításához. A jövőbeli fejlesztési irányok közé tartozik a jelenlegi 6 blokkos háló fokozatos skálázása 10 és 20 blokk közötti méretig, és annak vizsgálata, hogy az itt bemutatott paraméterezés mellett hogyan változik a tanulási dinamika. További lehetőség a tanult környezetmodellek (pl.\ MuZero-típusú megközelítések) bevezetése, ahol a környezetmodell is tanulható lenne. Emellett fontos jövőbeli lépés lehet a rendszer adaptálása elosztott (kliens-szerver) környezetre. Ezek a fejlesztések közelebb vihetnek egy olyan AlphaZero-típusú sakkmotorhoz, amely már nemcsak kísérleti, hanem gyakorlati szempontból is versenyképes játékerőt képvisel.
 
 \clearpage
 \phantomsection
@@ -811,31 +811,31 @@ A dolgozat elsődleges hozzájárulása egy nyílt forráskódú, dokumentált k
 \bibitem{amdahl1967}
 Amdahl, G. M.
 Validity of the Single Processor Approach to Achieving Large Scale Computing Capabilities.
-In: \emph{Proceedings of the April 18-20, 1967, Spring Joint Computer Conference}, 483-485 (1967).\\
+In: \emph{Proceedings of the April 18--20, 1967, Spring Joint Computer Conference}, 483--485 (1967).\\
 \doi{10.1145/1465482.1465560}
 
 \bibitem{auer2002ucb}
 Auer, P., Cesa-Bianchi, N., Fischer, P.
 Finite-time Analysis of the Multiarmed Bandit Problem.
-\emph{Machine Learning} 47:235-256 (2002).\\
+\emph{Machine Learning} 47(2--3):235--256 (2002).\\
 \doi{10.1023/A:1013689704352}
 
 \bibitem{bengio2009curriculum}
 Bengio, Y., Louradour, J., Collobert, R., Weston, J.
 Curriculum Learning.
-In: \emph{ICML '09}, 41-48 (2009).\\
+In: \emph{Proceedings of the 26th International Conference on Machine Learning (ICML 2009)}, 41--48 (2009).\\
 \doi{10.1145/1553374.1553380}
 
 \bibitem{browne2012}
 Browne, C. B., Powley, E., Whitehouse, D., \emph{et al.}
 A Survey of Monte Carlo Tree Search Methods.
-\emph{IEEE Transactions on Computational Intelligence and AI in Games} 4(1):1-43 (2012).\\
+\emph{IEEE Transactions on Computational Intelligence and AI in Games} 4(1):1--43 (2012).\\
 \doi{10.1109/TCIAIG.2012.2186810}
 
 \bibitem{campbell2002deepblue}
 Campbell, M., Hoane, A. J., Hsu, F.-H.
 Deep Blue.
-\emph{Artificial Intelligence} 134(1-2):57-83 (2002).\\
+\emph{Artificial Intelligence} 134(1--2):57--83 (2002).\\
 \doi{10.1016/S0004-3702(01)00129-1}
 
 \bibitem{cpwLMR}
@@ -853,36 +853,36 @@ Utolsó megtekintés: 2025. 12. 07.
 \bibitem{coulom2006cg}
 Coulom, R.
 Efficient Selectivity and Backup Operators in Monte-Carlo Tree Search.
-In: \emph{Computers and Games 2006}, LNCS 4630, 72-83 (2007).\\
+In: \emph{Proceedings of the 5th International Conference on Computers and Games (CG 2006)}, LNCS 4630, 72--83 (2007).\\
 \doi{10.1007/978-3-540-75538-8_7}
 
 \bibitem{crazyara}
 Czech, J., Willig, M., Beyer, A., Kersting, K., Fürnkranz, J.
-Learning to Play the Chess Variant Crazyhouse Above World Champion Level With Deep Neural Networks and Human Data.
+Learning to Play the Chess Variant Crazyhouse Above World Champion Level with Deep Neural Networks and Human Data.
 \emph{Frontiers in Artificial Intelligence} 3:24 (2020).\\
 \doi{10.3389/frai.2020.00024}
 
 \bibitem{gelly2006mogo}
 Gelly, S., Wang, Y.
 Exploration Exploitation in Go: UCT for Monte-Carlo Go.
-In: \emph{NIPS Workshop on Online Trading of Exploration and Exploitation} (2006).
+In: \emph{NIPS 2006 Workshop on Online Trading of Exploration and Exploitation}, Whistler, Canada (2006).
 
 \bibitem{gelly2007rave}
 Gelly, S., Silver, D.
 Combining Online and Offline Knowledge in UCT.
-In: \emph{ICML '07}, 273-280 (2007).\\
+In: \emph{Proceedings of the 24th International Conference on Machine Learning (ICML 2007)}, 273--280 (2007).\\
 \doi{10.1145/1273496.1273531}
 
 \bibitem{he2016resnet}
 He, K., Zhang, X., Ren, S., Sun, J.
 Deep Residual Learning for Image Recognition.
-In: \emph{CVPR 2016}, 770-778 (2016).\\
+In: \emph{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR 2016)}, 770--778 (2016).\\
 \doi{10.1109/CVPR.2016.90}
 
 \bibitem{hu2018senet}
 Hu, J., Shen, L., Sun, G.
 Squeeze-and-Excitation Networks.
-In: \emph{CVPR 2018}, 7132-7141 (2018).\\
+In: \emph{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR 2018)}, 7132--7141 (2018).\\
 \doi{10.1109/CVPR.2018.00745}
 
 \bibitem{pybind11}
@@ -894,17 +894,17 @@ Utolsó megtekintés: 2025. 12. 07.
 \bibitem{knuth1975alphabeta}
 Knuth, D. E., Moore, R. W.
 An Analysis of Alpha-Beta Pruning.
-\emph{Artificial Intelligence} 6(4):293-326 (1975).\\
+\emph{Artificial Intelligence} 6(4):293--326 (1975).\\
 \doi{10.1016/0004-3702(75)90019-3}
 
 \bibitem{kocsis2006uct}
 Kocsis, L., Szepesvári, C.
 Bandit Based Monte-Carlo Planning.
-In: \emph{ECML 2006}, LNCS 4212, 282-293 (2006).\\
+In: \emph{Machine Learning: ECML 2006}, LNCS 4212, 282--293 (2006).\\
 \doi{10.1007/11871842_29}
 
 \bibitem{lczero}
-Leela Chess Zero (LCZero). Open-source neural network chess engine.\\
+Leela Chess Zero (Lc0). Open-source neural network chess engine.\\
 Project: \url{https://lczero.org/}.\\
 GitHub: \url{https://github.com/LeelaChessZero}.\\
 Utolsó megtekintés: 2025. 12. 07.
@@ -931,39 +931,40 @@ Utolsó megtekintés: 2025. 12. 07.
 
 \bibitem{nasu2018nnue}
 Nasu, Y.
-Efficiently Updatable Neural Network-based Evaluation Function for Computer Shogi.
-Technical document, 28th World Computer Shogi Championship, 2018.\\
+Efficiently Updatable Neural-Network-based Evaluation Function for computer Shogi.
+Technical report, 28th World Computer Shogi Championship, 2018.\\
 \url{https://github.com/asdfjkl/nnue}.\\
 Utolsó megtekintés: 2025. 12. 07.
 
 \bibitem{pytorch}
 Paszke, A., Gross, S., Massa, F., \emph{et al.}
 PyTorch: An Imperative Style, High-Performance Deep Learning Library.
-In: \emph{Advances in Neural Information Processing Systems 32} (NeurIPS 2019), 8024-8035.\\
+In: \emph{Advances in Neural Information Processing Systems 32} (NeurIPS 2019), 8024--8035.\\
 \url{https://proceedings.neurips.cc/paper/2019/hash/bdbca288fee7f92f2bfa9f7012727740-Abstract.html}.\\
 Utolsó megtekintés: 2025. 12. 07.
 
 \bibitem{pythonchess}
-python-chess.\\
+Fiekas, N.
+python-chess: a chess library for Python.\\
 \url{https://python-chess.readthedocs.io}.\\
 Utolsó megtekintés: 2025. 12. 07.
 
 \bibitem{schrittwieser2020muzero}
 Schrittwieser, J., Antonoglou, I., Hubert, T., \emph{et al.}
 Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model.
-\emph{Nature} 588(7839):604-609 (2020).\\
+\emph{Nature} 588(7839):604--609 (2020).\\
 \doi{10.1038/s41586-020-03051-4}
 
 \bibitem{shannon1950chess}
 Shannon, C. E.
 Programming a Computer for Playing Chess.
-\emph{Philosophical Magazine} 41(314):256-275 (1950).\\
+\emph{The London, Edinburgh, and Dublin Philosophical Magazine and Journal of Science} 41(314):256--275 (1950).\\
 \doi{10.1080/14786445008521796}
 
 \bibitem{silver2016alphago}
 Silver, D., Huang, A., Maddison, C. J., \emph{et al.}
 Mastering the Game of Go with Deep Neural Networks and Tree Search.
-\emph{Nature} 529:484-489 (2016).\\
+\emph{Nature} 529(7587):484--489 (2016).\\
 \doi{10.1038/nature16961}
 
 \bibitem{silver2017chess}
@@ -976,17 +977,18 @@ Utolsó megtekintés: 2025. 12. 07.
 \bibitem{silver2017go}
 Silver, D., Schrittwieser, J., Simonyan, K., \emph{et al.}
 Mastering the Game of Go without Human Knowledge.
-\emph{Nature} 550:354-359 (2017).\\
+\emph{Nature} 550(7676):354--359 (2017).\\
 \doi{10.1038/nature24270}
 
 \bibitem{silver2018science}
 Silver, D., Hubert, T., Schrittwieser, J., \emph{et al.}
 A General Reinforcement Learning Algorithm that Masters Chess, Shogi, and Go Through Self-Play.
-\emph{Science} 362(6419):1140-1144 (2018).\\
+\emph{Science} 362(6419):1140--1144 (2018).\\
 \doi{10.1126/science.aar6404}
 
 \bibitem{stockfish}
-Stockfish Chess Engine.\\
+Stockfish developers.
+Stockfish chess engine.\\
 \url{https://stockfishchess.org}.\\
 Utolsó megtekintés: 2025. 12. 07.
 
@@ -1000,20 +1002,20 @@ Utolsó megtekintés: 2025. 12. 07.
 \bibitem{zobrist1970}
 Zobrist, A. L.
 A New Hashing Method with Application for Game Playing.
-\emph{Technical Report 88}, Computer Sciences Department, University of Wisconsin (1970).\\
+\emph{Technical Report 88}, Computer Sciences Department, University of Wisconsin, Madison, WI (1970).\\
 \url{https://research.cs.wisc.edu/techreports/1970/TR88.pdf}.\\
 Utolsó megtekintés: 2025. 12. 07.
 
 \bibitem{harris2020numpy}
 Harris, C. R., \emph{et al.}
 Array Programming with NumPy.
-\emph{Nature} 585(7825):357-362 (2020).\\
+\emph{Nature} 585(7825):357--362 (2020).\\
 \doi{10.1038/s41586-020-2649-2}
 
 \bibitem{hunter2007matplotlib}
 Hunter, J. D.
 Matplotlib: A 2D Graphics Environment.
-\emph{Computing in Science \& Engineering} 9(3):90-95 (2007).\\
+\emph{Computing in Science \& Engineering} 9(3):90--95 (2007).\\
 \doi{10.1109/MCSE.2007.55}
 
 \bibitem{waskom2021seaborn}
