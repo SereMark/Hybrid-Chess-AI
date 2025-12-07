@@ -17,8 +17,6 @@ SEED: int = 0
 
 @dataclass(frozen=True)
 class LoggingConfig:
-    """Filesystem and console settings for long runs."""
-
     level: str = "INFO"
     runs_dir: str = "runs"
     archive_checkpoints: bool = True
@@ -29,8 +27,6 @@ class LoggingConfig:
 
 @dataclass(frozen=True)
 class TorchConfig:
-    """Runtime directives influencing PyTorch backend behaviour."""
-
     amp_enabled: bool = True
     matmul_float32_precision: str = "medium"
     cuda_matmul_fp32_precision: str = "tf32"
@@ -45,32 +41,26 @@ class TorchConfig:
 
 @dataclass(frozen=True)
 class DataConfig:
-    """Numeric conventions for encoding states and targets."""
-
     u8_scale: float = 255.0
     value_i8_scale: float = 127.0
 
 
 @dataclass(frozen=True)
 class ModelConfig:
-    """Network architecture hyperparameters."""
-
-    blocks: int = 5
+    blocks: int = 6
     channels: int = 96
     value_conv_channels: int = 12
-    value_hidden_dim: int = 320
+    value_hidden_dim: int = 256
 
 
 @dataclass(frozen=True)
 class EvalConfig:
-    """Inference batching and caching settings."""
-
-    batch_size_max: int = 192
-    coalesce_ms: int = 20
+    batch_size_max: int = 256
+    coalesce_ms: int = 15
     cache_capacity: int = 512
     arena_cache_capacity: int = 512
-    encode_cache_capacity: int = 16_000
-    value_cache_capacity: int = 40_000
+    encode_cache_capacity: int = 32_000
+    value_cache_capacity: int = 64_000
     use_fp16_cache: bool = True
 
 
@@ -85,21 +75,17 @@ DEFAULT_CURRICULUM_FENS: Tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class CurriculumConfig:
-    """Optional curriculum to bias self-play openings."""
-
     sample_probability: float = 0.30
     fens: Tuple[str, ...] = field(default_factory=lambda: DEFAULT_CURRICULUM_FENS)
 
 
 @dataclass(frozen=True)
 class SelfPlayConfig:
-    """Self-play generation parameters."""
-
-    num_workers: int = 2
-    game_max_plies: int = 90
-    temperature_moves: int = 40
-    temperature_high: float = 1.60
-    temperature_low: float = 0.65
+    num_workers: int = 3
+    game_max_plies: int = 100
+    temperature_moves: int = 30
+    temperature_high: float = 1.50
+    temperature_low: float = 0.60
     deterministic_temp_eps: float = 0.01
     opening_book_path: str | None = "opening_book.json"
     curriculum: CurriculumConfig = field(default_factory=CurriculumConfig)
@@ -122,106 +108,79 @@ class SelfPlayConfig:
 
 @dataclass(frozen=True)
 class ReplayConfig:
-    """Replay buffer sizing."""
-
-    capacity: int = 8_000
+    capacity: int = 40_000
 
 
 @dataclass(frozen=True)
 class SamplingConfig:
-    """Batch sampling policy mixing fresh and historical games."""
-
-    recent_ratio: float = 0.65
+    recent_ratio: float = 0.75
     recent_ratio_min: float = 0.55
-    recent_ratio_max: float = 0.75
-    recent_window_frac: float = 0.25
-
-
-@dataclass(frozen=True)
-class AugmentConfig:
-    """Symmetry-based data augmentation options."""
-
-    mirror_prob: float = 0.50
-    rot180_prob: float = 0.25
-    vflip_prob: float = 0.25
+    recent_ratio_max: float = 0.85
+    recent_window_frac: float = 0.20
 
 
 @dataclass(frozen=True)
 class MCTSConfig:
-    """Monte-Carlo Tree Search hyperparameters."""
-
-    train_simulations: int = 96
+    train_simulations: int = 128
     train_simulations_min: int = 32
     train_sim_decay_move_interval: int = 24
     c_puct: float = 1.35
     c_puct_base: float = 19652.0
     c_puct_init: float = 1.55
-    dirichlet_alpha: float = 0.40
-    dirichlet_weight: float = 0.30
-    fpu_reduction: float = 0.11
+    dirichlet_alpha: float = 0.30
+    dirichlet_weight: float = 0.25
+    fpu_reduction: float = 0.2
     visit_count_clamp: int = 65535
 
 
 @dataclass(frozen=True)
 class ResignConfig:
-    """Automatic resignation policy."""
-
     enabled: bool = True
-    value_threshold: float = -0.05
-    min_plies: int = 22
+    value_threshold: float = -0.90
+    min_plies: int = 20
     cooldown_iters: int = 4
     consecutive_required: int = 2
-    playthrough_fraction: float = 0.15
+    playthrough_fraction: float = 0.10
 
 
 @dataclass(frozen=True)
 class TrainConfig:
-    """End-to-end training schedule."""
-
-    total_iterations: int = 768
-    games_per_iter: int = 48
+    total_iterations: int = 400
+    games_per_iter: int = 64
     games_per_iter_scale_min: float = 0.5
     games_per_iter_warmup_iters: int = 4
-    batch_size: int = 160
+    batch_size: int = 256
     batch_size_min: int = 128
-    batch_size_max: int = 192
-    learning_rate_init: float = 7.5e-4
-    learning_rate_final: float = 3.0e-4
-    learning_rate_warmup_steps: int = 720
-    lr_steps_per_iter_estimate: int = 60
+    batch_size_max: int = 256
+    learning_rate_init: float = 2.0e-3
+    learning_rate_final: float = 2.0e-4
+    learning_rate_warmup_steps: int = 1000
+    lr_steps_per_iter_estimate: int = 80
     lr_restart_interval_iters: int = 0
     lr_restart_decay: float = 1.0
-    weight_decay: float = 1.5e-4
+    weight_decay: float = 1.0e-4
     momentum: float = 0.90
-    grad_clip_norm: float = 1.35
+    grad_clip_norm: float = 2.0
     loss_policy_weight: float = 1.0
     loss_value_weight: float = 1.0
-    loss_policy_label_smooth: float = 0.015
-    loss_entropy_coef: float = 3.0e-4
+    loss_policy_label_smooth: float = 0.0
+    loss_entropy_coef: float = 2.0e-4
     loss_entropy_iters: int = 256
-    loss_entropy_min_coef: float = 2.0e-4
+    loss_entropy_min_coef: float = 1.0e-4
     ema_enabled: bool = True
-    ema_decay: float = 0.9995
-    samples_per_new_game: float = 0.60
-    update_steps_min: int = 24
-    update_steps_max: int = 60
+    ema_decay: float = 0.999
+    samples_per_new_game: float = 1.5
+    update_steps_min: int = 32
+    update_steps_max: int = 128
 
 
 @dataclass(frozen=True)
 class ArenaConfig:
-    """Evaluation and gating schedule."""
-
     eval_every_iters: int = 8
     games_per_eval: int = 12
     mcts_simulations: int = 160
     temperature: float = 0.40
-    temperature_moves: int = 12
-    draw_score: float = 0.50
-    gate_baseline_p: float = 0.500
-    gate_margin: float = 0.004
-    gate_min_games: int = 12
-    gate_min_decisive: int = 4
-    gate_draw_weight: float = 0.40
+    temperature_moves: int = 24
     max_game_plies: int = 110
     resign_enable: bool = False
 
@@ -234,7 +193,6 @@ EVAL = EvalConfig()
 SELFPLAY = SelfPlayConfig()
 REPLAY = ReplayConfig()
 SAMPLING = SamplingConfig()
-AUGMENT = AugmentConfig()
 MCTS = MCTSConfig()
 RESIGN = ResignConfig()
 TRAIN = TrainConfig()
@@ -267,18 +225,16 @@ def _load_payload_from_path(path: Path) -> Mapping[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(path)
     if path.suffix.lower() not in {".yaml", ".yml"}:
-        raise ValueError(f"Unsupported configuration format: {path.suffix}")
+        raise ValueError(f"Nem támogatott konfigurációs formátum: {path.suffix}")
     if yaml is None:
-        raise RuntimeError("PyYAML is required. Install it with 'pip install pyyaml'.")
+        raise RuntimeError("A PyYAML csomag szükséges.")
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping):
-        raise TypeError(f"Configuration in {path} must be a mapping")
+        raise TypeError(f"A(z) {path} konfigurációjának leképezésnek (mappingnek) kell lennie")
     return payload
 
 
 class ConfigManager:
-    """Manages configuration state and file overrides."""
-
     def __init__(self, defaults: Mapping[str, Any]) -> None:
         self._defaults = {k: _clone(v) for k, v in defaults.items()}
         self._state = {k: _clone(v) for k, v in defaults.items()}
@@ -353,7 +309,6 @@ DEFAULTS: dict[str, Any] = {
     "SELFPLAY": SELFPLAY,
     "REPLAY": REPLAY,
     "SAMPLING": SAMPLING,
-    "AUGMENT": AUGMENT,
     "MCTS": MCTS,
     "RESIGN": RESIGN,
     "TRAIN": TRAIN,

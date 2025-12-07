@@ -1,5 +1,3 @@
-"""CLI entrypoint for Hybrid Chess AI training."""
-
 from __future__ import annotations
 
 import argparse
@@ -16,17 +14,11 @@ import torch
 RLOG = logging.getLogger("hybridchess.runtime")
 TLOG = logging.getLogger("hybridchess.trainer")
 
-CLI_DESCRIPTION = "Hybrid Chess AI training entrypoint"
+CLI_DESCRIPTION = "Hibrid sakk MI tanítási belépési pont"
 __all__ = ["main"]
 
 
-# ---------------------------------------------------------------------------#
-# CLI parsing
-# ---------------------------------------------------------------------------#
-
-
 def _parse_args(args: Sequence[str]) -> argparse.Namespace:
-    """Define CLI and parse arguments."""
     parser = argparse.ArgumentParser(description=CLI_DESCRIPTION)
     parser.add_argument(
         "-c",
@@ -34,7 +26,10 @@ def _parse_args(args: Sequence[str]) -> argparse.Namespace:
         action="append",
         dest="configs",
         default=[],
-        help="Base configuration file(s), YAML. First replaces defaults; later ones overlay.",
+        help=(
+            "Alap konfigurációs fájl(ok), YAML. Az első felülírja az alapértelmezéseket, "
+            "a továbbiak egymásra rétegződnek."
+        ),
     )
     parser.add_argument(
         "-o",
@@ -42,50 +37,43 @@ def _parse_args(args: Sequence[str]) -> argparse.Namespace:
         action="append",
         dest="overrides",
         default=[],
-        help="Override configuration file(s), applied after all base configs.",
+        help="Felülbíráló konfigurációs fájl(ok), az összes alap konfiguráció után kerülnek alkalmazásra.",
     )
     parser.add_argument(
         "--resume",
         action="store_true",
-        help="Resume training from the most recent checkpoint.",
+        help="Edzés folytatása a legutóbbi mentési pontról.",
     )
     parser.add_argument(
         "--device",
         type=str,
         default=None,
-        help="Device string for torch (e.g. 'cuda', 'cuda:0', 'cpu').",
+        help="Torch eszköz karakterlánc (pl. 'cuda', 'cuda:0', 'cpu').",
     )
     return parser.parse_args(list(args))
 
 
 def _apply_cli_configs(parsed: argparse.Namespace) -> None:
-    """Load base configs in order, then apply overrides."""
     loaded: list[str] = []
     for idx, path in enumerate(parsed.configs):
         try:
             C.load_file(path, replace=(idx == 0))
             loaded.append(str(path))
         except Exception as exc:
-            RLOG.error("Failed to load config %s: %s", path, exc)
+            RLOG.error("Nem sikerült betölteni a(z) %s konfigurációt: %s", path, exc)
             raise
     for path in parsed.overrides:
         try:
             C.load_file(path)
             loaded.append(str(path))
         except Exception as exc:
-            RLOG.error("Failed to load override %s: %s", path, exc)
+            RLOG.error("Nem sikerült betölteni a(z) %s felülbíráló fájlt: %s", path, exc)
             raise
     if loaded:
-        RLOG.info("Loaded configuration overlays: %s", ", ".join(loaded))
-
-
-# ---------------------------------------------------------------------------#
-# Runtime preparation
-# ---------------------------------------------------------------------------#
+        RLOG.info("Betöltött konfiguráció felülbírálások: %s", ", ".join(loaded))
 
 
 def _resolve_thread_settings() -> tuple[int, int]:
-    """Derive intra- and inter-op thread counts from CPU logical cores and config hints."""
     logical = os.cpu_count() or 1
 
     if C.TORCH.threads_intra > 0:
@@ -104,7 +92,6 @@ def _resolve_thread_settings() -> tuple[int, int]:
 
 
 def _apply_environment_defaults(threads_intra: int, threads_inter: int, deterministic: bool) -> None:
-    """Set minimal env defaults without overriding user-provided values."""
     os.environ.setdefault("OMP_NUM_THREADS", str(threads_intra))
     os.environ.setdefault("MKL_NUM_THREADS", str(max(1, min(threads_intra, threads_inter * 2))))
     if deterministic:
@@ -112,7 +99,6 @@ def _apply_environment_defaults(threads_intra: int, threads_inter: int, determin
 
 
 def _configure_logging() -> int:
-    """Install a single stdout handler at the configured level."""
     level = getattr(logging, str(C.LOG.level).upper(), logging.INFO)
     root = logging.getLogger()
     root.setLevel(level)
@@ -126,13 +112,11 @@ def _configure_logging() -> int:
 
 
 def _set_backend_flag(module: object, attr: str, value: bool) -> None:
-    """Assign module.attr = value only if the attribute exists (PyTorch-version-safe)."""
     if hasattr(module, attr):
         setattr(module, attr, value)
 
 
 def _seed_everything(has_cuda: bool) -> None:
-    """Seed Python, NumPy, and PyTorch when SEED != 0."""
     if C.SEED == 0:
         return
     import random as _py_random
@@ -145,14 +129,13 @@ def _seed_everything(has_cuda: bool) -> None:
 
 
 def _configure_torch_backends(has_cuda: bool) -> None:
-    """Set math precision and backend toggles according to config."""
     prec = str(getattr(C.TORCH, "matmul_float32_precision", "medium")).lower()
     set_precision = getattr(torch, "set_float32_matmul_precision", None)
     if callable(set_precision) and prec in {"high", "medium", "low"}:
         set_precision(prec)
 
     if not has_cuda:
-        TLOG.warning("CUDA unavailable; training will run on CPU")
+        TLOG.warning("A CUDA nem érhető el; az edzés CPU-n fog futni")
         return
 
     allow_tf32_matmul = str(getattr(C.TORCH, "cuda_matmul_fp32_precision", "tf32")).lower() == "tf32"
@@ -176,32 +159,20 @@ def _configure_torch_backends(has_cuda: bool) -> None:
         cudnn_backend.benchmark = bool(getattr(C.TORCH, "cudnn_benchmark", True))
 
 
-# ---------------------------------------------------------------------------#
-# Entrypoint
-# ---------------------------------------------------------------------------#
-
-
 def main(argv: Sequence[str] | None = None) -> int:
-    """Orchestrate setup and start training."""
     args = list(argv if argv is not None else sys.argv[1:])
 
-    # Configure logging early so config-load errors are visible
     _configure_logging()
     parsed = _parse_args(args)
     _apply_cli_configs(parsed)
-    # Reconfigure to reflect LOG.level from configs
     _configure_logging()
 
-    # Determinism preference: explicit flag wins, otherwise seed!=0 implies deterministic
     det_cfg = getattr(C.TORCH, "deterministic", None)
     deterministic = bool(det_cfg is True or (det_cfg is None and C.SEED != 0))
 
     intra, inter = _resolve_thread_settings()
     _apply_environment_defaults(intra, inter, deterministic)
 
-    has_cuda = False  # placeholder until torch import
-
-    # Import heavy deps after environment variables are in place
     from checkpoint import save_checkpoint
     from trainer import Trainer
 
@@ -222,7 +193,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         trainer.train()
     except KeyboardInterrupt:
-        TLOG.warning("Interrupted; saving checkpoint")
+        TLOG.warning("Megszakítás; mentési pont készítése")
         save_checkpoint(trainer)
         return 130
     finally:

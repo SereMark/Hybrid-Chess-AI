@@ -1,5 +1,3 @@
-"""Arena evaluation between a candidate network and the current baseline."""
-
 from __future__ import annotations
 
 import contextlib
@@ -24,15 +22,8 @@ _PIECE_SAN = {0: "", 1: "N", 2: "B", 3: "R", 4: "Q", 5: "K"}
 _PROMO_SAN = {"q": "Q", "r": "R", "b": "B", "n": "N"}
 
 
-# ---------------------------------------------------------------------------#
-# Result containers
-# ---------------------------------------------------------------------------#
-
-
 @dataclass(slots=True)
 class ArenaResult:
-    """Summary of an arena match outcome."""
-
     games: int
     candidate_wins: int
     baseline_wins: int
@@ -46,8 +37,6 @@ class ArenaResult:
 
 @dataclass(slots=True)
 class _ScoreTracker:
-    """Tracks aggregate match statistics for the arena."""
-
     total_games: int
     candidate_wins: int = 0
     baseline_wins: int = 0
@@ -88,23 +77,28 @@ class _ScoreTracker:
         )
 
 
-# ---------------------------------------------------------------------------#
-# Routed evaluator
-# ---------------------------------------------------------------------------#
-
-
 class _ColourRoutedEvaluator:
-    """Dispatches evaluation requests to side-specific evaluators."""
-
     def __init__(self, white_eval: Any, black_eval: Any) -> None:
         self._white = white_eval
         self._black = black_eval
 
     def infer_positions_legal(
-        self, positions: list[Any], moves_per_position: list[list[Any]]
+        self,
+        positions: list[Any],
+        moves_per_position: list[list[Any]] | np.ndarray,
+        counts: list[int] | None = None,
     ) -> tuple[list[np.ndarray], np.ndarray]:
         if not positions:
             return [], np.zeros((0,), dtype=np.float32)
+
+        if counts is not None:
+            flat_moves = moves_per_position
+            moves_expanded: list[Any] = []
+            offset = 0
+            for c in counts:
+                moves_expanded.append(flat_moves[offset : offset + c])
+                offset += c
+            moves_per_position = moves_expanded
 
         white_indices: list[int] = []
         black_indices: list[int] = []
@@ -172,11 +166,6 @@ class _ColourRoutedEvaluator:
         return values
 
 
-# ---------------------------------------------------------------------------#
-# Public API
-# ---------------------------------------------------------------------------#
-
-
 def play_match(
     candidate_eval: Any,
     baseline_eval: Any,
@@ -187,7 +176,6 @@ def play_match(
     pgn_dir: Path | None = None,
     label: str | None = None,
 ) -> ArenaResult:
-    """Run a head-to-head arena match and report aggregate statistics."""
     requested_games = int(max(0, games))
     rng = np.random.default_rng(seed)
     tracker = _ScoreTracker(requested_games)
@@ -212,7 +200,7 @@ def play_match(
             )
         except Exception as exc:
             result, moves_san = ccore.DRAW, []
-            logging.getLogger("hybridchess.arena").exception("Arena game failed: %s", exc)
+            logging.getLogger("hybridchess.arena").exception("Az aréna játszma hibával leállt: %s", exc)
 
         tracker.record(candidate_white, result)
 
@@ -232,11 +220,6 @@ def play_match(
     return tracker.to_result(elapsed_s=elapsed)
 
 
-# ---------------------------------------------------------------------------#
-# Game loop helpers
-# ---------------------------------------------------------------------------#
-
-
 def _play_single_game(
     evaluator: _ColourRoutedEvaluator,
     rng: np.random.Generator,
@@ -244,7 +227,6 @@ def _play_single_game(
     *,
     record_moves: bool,
 ) -> tuple[ccore.Result, list[str]]:
-    """Play a single arena game and optionally return SAN moves."""
     position = ccore.Position()
     try:
         position.from_fen(start_fen)
@@ -322,11 +304,6 @@ def _build_mcts(rng: np.random.Generator) -> ccore.MCTS:
     mcts.set_fpu_reduction(float(C.MCTS.fpu_reduction))
     mcts.seed(int(rng.integers(1, np.iinfo(np.int64).max)))
     return mcts
-
-
-# ---------------------------------------------------------------------------#
-# SAN helpers
-# ---------------------------------------------------------------------------#
 
 
 def _square_file(square: int) -> int:
@@ -418,18 +395,16 @@ def _move_to_san(
         next_position = ccore.Position(position)
         next_position.make_move(move)
         result = next_position.result()
+
         if (mover_color == ccore.Color.WHITE and result == ccore.WHITE_WIN) or (
             mover_color == ccore.Color.BLACK and result == ccore.BLACK_WIN
         ):
             san += "#"
+        elif next_position.in_check():
+            san += "+"
     except Exception as exc:
-        logging.getLogger("hybridchess.arena").debug("Failed to compute SAN suffix: %s", exc)
+        logging.getLogger("hybridchess.arena").debug("Nem sikerült kiszámítani a SAN utójelet: %s", exc)
     return san
-
-
-# ---------------------------------------------------------------------------#
-# PGN helpers
-# ---------------------------------------------------------------------------#
 
 
 def _prepare_pgn_directory(path: Path | None) -> Path | None:
@@ -460,7 +435,6 @@ def _save_pgn(
 ) -> Path:
     filename = f"{label}_g{game_index + 1:02d}.pgn"
     path = directory / filename
-    # Use timezone-aware UTC date to avoid deprecation warnings
     date_str = datetime.now(timezone.utc).strftime("%Y.%m.%d")
     headers: list[tuple[str, str]] = [
         ("Event", PGN_EVENT),

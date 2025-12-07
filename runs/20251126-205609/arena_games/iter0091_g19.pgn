@@ -1,0 +1,11 @@
+[Event "Arena Evaluation"]
+[Site "Local"]
+[Date "2025.11.27"]
+[Round "19"]
+[White "Candidate"]
+[Black "Baseline"]
+[Result "1/2-1/2"]
+[SetUp "1"]
+[FEN "r1b1kb1r/pp1n1ppp/2p1pn2/q5B1/2pP4/2N1P3/PP1N1PPP/R2QKB1R w KQkq - 0 8"]
+
+1. h4 h5 2. g3 a6 3. a3 g6 4. b4 b5 5. Qe2 Be7 6. Bg2 Rh7 7. Rb1 Rb8 8. Rg1 Rh6 9. a4 Ra8 10. Ra1 Kd8 11. Rb1 Rb8 12. Ra1 Ra8 13. Rb1 Rb8 14. Ra1 Ra8 1/2-1/2

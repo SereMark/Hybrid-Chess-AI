@@ -8,7 +8,7 @@ def test_replay_buffer_push_sample_and_truncation() -> None:
     buf = ReplayBuffer(capacity=4, planes=2, height=2, width=2)
     state = np.ones((2, 2, 2), dtype=np.uint8)
     idx = np.array([1, 2, 3], dtype=np.int32)
-    cnt = np.array([10, 5], dtype=np.uint16)  # shorter -> truncation
+    cnt = np.array([10, 5], dtype=np.uint16)
     buf.push(state, idx, cnt, 1)
     s, il, cl, v = buf.sample(batch_size=1, recent_ratio=1.0, recent_window_frac=1.0)
     assert len(s) == len(il) == len(cl) == len(v) == 1
@@ -35,12 +35,12 @@ def test_replay_buffer_recent_sampling_bias() -> None:
         buf.push(state, [i], [1], i)
 
     states_recent, *_ = buf.sample(batch_size=4, recent_ratio=1.0, recent_window_frac=0.5)
-    assert states_recent
+    assert len(states_recent) > 0
     recent_set = {int(s[0, 0, 0]) for s in states_recent}
     assert recent_set.issubset({2, 3})
 
     states_stale, *_ = buf.sample(batch_size=4, recent_ratio=0.0, recent_window_frac=0.5)
-    assert states_stale
+    assert len(states_stale) > 0
     stale_set = {int(s[0, 0, 0]) for s in states_stale}
     assert stale_set.issubset({0, 1})
 
@@ -51,7 +51,6 @@ def test_replay_buffer_state_dict_roundtrip_preserves_rng() -> None:
         state = np.full((1, 1, 1), i, dtype=np.uint8)
         buf.push(state, [i], [1], i)
 
-    # Advance RNG before snapshot to ensure state captured
     _ = buf.sample(batch_size=2, recent_ratio=0.5, recent_window_frac=1.0)
     snapshot = buf.state_dict()
 

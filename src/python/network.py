@@ -1,5 +1,3 @@
-"""Model definitions for the Hybrid Chess neural network."""
-
 from __future__ import annotations
 
 import chesscore as ccore
@@ -23,15 +21,10 @@ INPUT_PLANES: int = int(getattr(ccore, "INPUT_PLANES", 14 * 8 + 7))
 POLICY_OUTPUT: int = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
 
 if POLICY_OUTPUT % max(1, NSQUARES) != 0:
-    raise ValueError("POLICY_SIZE must be a multiple of NSQUARES")
-
-# ---------------------------------------------------------------------------#
-# Residual blocks
+    raise ValueError("A POLICY_SIZE értékének az NSQUARES egész számú többszörösének kell lennie")
 
 
 class ResidualBlock(nn.Module):
-    """2×Conv3x3 + BN + ReLU with skip."""
-
     def __init__(self, channels: int) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
@@ -39,36 +32,27 @@ class ResidualBlock(nn.Module):
         self.conv2 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(channels)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # NCHW
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         s = x
         x = F.relu(self.bn1(self.conv1(x)))
         x = self.bn2(self.conv2(x))
         return F.relu(x + s)
 
 
-# ---------------------------------------------------------------------------#
-# Chess network
-
-
 class ChessNet(nn.Module):
-    """ResNet-style policy+value head."""
-
     def __init__(self, num_blocks: int | None = None, channels: int | None = None) -> None:
         super().__init__()
         b = int(C.MODEL.blocks if num_blocks is None else num_blocks)
         c = int(C.MODEL.channels if channels is None else channels)
-        pplanes = POLICY_OUTPUT // NSQUARES
 
         self.conv_in = nn.Conv2d(INPUT_PLANES, c, 3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(c)
         self.residual_stack = nn.Sequential(*[ResidualBlock(c) for _ in range(b)])
 
-        # Policy head
-        self.policy_conv = nn.Conv2d(c, pplanes, 1, bias=False)
-        self.policy_bn = nn.BatchNorm2d(pplanes)
-        self.policy_fc = nn.Linear(pplanes * NSQUARES, POLICY_OUTPUT)
+        self.policy_conv = nn.Conv2d(c, 2, 1, bias=False)
+        self.policy_bn = nn.BatchNorm2d(2)
+        self.policy_fc = nn.Linear(2 * NSQUARES, POLICY_OUTPUT)
 
-        # Value head
         vch = int(C.MODEL.value_conv_channels)
         vhid = int(C.MODEL.value_hidden_dim)
         self.value_conv = nn.Conv2d(c, vch, 1, bias=False)
@@ -78,9 +62,9 @@ class ChessNet(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
             elif isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
             elif isinstance(m, nn.BatchNorm2d):

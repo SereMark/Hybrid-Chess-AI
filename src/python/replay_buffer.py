@@ -1,5 +1,3 @@
-"""Replay buffer storing encoded self-play positions."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,16 +11,12 @@ __all__ = ["ReplayBuffer"]
 
 @dataclass(slots=True)
 class _Entry:
-    """Sparse policy targets paired with a value."""
-
     indices: np.ndarray
     counts: np.ndarray
     value: np.int8
 
 
 class ReplayBuffer:
-    """Fixed-capacity ring buffer that supports recent-biased sampling."""
-
     def __init__(
         self,
         capacity: int,
@@ -41,29 +35,23 @@ class ReplayBuffer:
         self._head = 0
         self._rng = np.random.default_rng(seed)
 
-    # ------------------------------------------------------------------ public API
     @property
     def capacity(self) -> int:
-        """Maximum number of samples the buffer can store."""
         return self._capacity
 
     @property
     def size(self) -> int:
-        """Current number of stored samples."""
         return self._size
 
     def seed(self, seed: int | np.random.SeedSequence | None) -> None:
-        """Seed the internal RNG used for sampling."""
         self._rng = np.random.default_rng(seed)
 
     def clear(self) -> None:
-        """Remove all samples but keep capacity."""
         self._size = 0
         self._head = 0
         self._entries = [None] * self._capacity
 
     def set_capacity(self, capacity: int) -> None:
-        """Resize the buffer while retaining the most recent samples."""
         capacity = int(max(1, capacity))
         if capacity == self._capacity:
             return
@@ -93,7 +81,6 @@ class ReplayBuffer:
         counts: Sequence[int] | np.ndarray,
         value: int | np.integer,
     ) -> None:
-        """Insert a self-play sample, truncating sparse arrays to a common length."""
         position = self._head
         self._states[position] = self._validate_state(state)
 
@@ -115,7 +102,6 @@ class ReplayBuffer:
         recent_ratio: float,
         recent_window_frac: float,
     ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray], list[np.int8]]:
-        """Draw a batch as (states, policy indices, counts, values)."""
         if self._size == 0:
             return ([], [], [], [])
 
@@ -139,7 +125,13 @@ class ReplayBuffer:
             picks.extend(self._rng.choice(stale_candidates, size=stale_samples, replace=True).tolist())
         self._rng.shuffle(picks)
 
-        states: list[np.ndarray] = []
+        if not picks:
+            return ([], [], [], [])
+
+        picks_arr = np.asarray(picks, dtype=np.intp)
+        states_arr = self._states[picks_arr].copy()
+
+        states_out: list[np.ndarray] = [states_arr[i].copy() for i in range(states_arr.shape[0])]
         indices_out: list[np.ndarray] = []
         counts_out: list[np.ndarray] = []
         values_out: list[np.int8] = []
@@ -148,39 +140,32 @@ class ReplayBuffer:
             entry = self._entries[pos]
             if entry is None:
                 continue
-            states.append(self._states[pos].copy())
             indices_out.append(entry.indices.copy())
             counts_out.append(entry.counts.copy())
             values_out.append(np.int8(entry.value))
 
-        return states, indices_out, counts_out, values_out
+        return states_out, indices_out, counts_out, values_out
 
-    # ------------------------------------------------------------------ internals
     def _ordered_positions(self) -> list[int]:
-        """Return buffer indices ordered from oldest to newest."""
         if self._size == 0:
             return []
         start = (self._head - self._size) % self._capacity
         return [(start + offset) % self._capacity for offset in range(self._size)]
 
     def _validate_state(self, state: np.ndarray) -> np.ndarray:
-        """Validate input state shape and dtype."""
         array = np.asarray(state, dtype=np.uint8)
         if array.shape != self._state_shape:
-            raise ValueError(f"state shape {array.shape} does not match {self._state_shape}")
+            raise ValueError(f"a state tömb alakja {array.shape} nem egyezik a várt {self._state_shape} alakzattal")
         return array
 
     @staticmethod
     def _validate_sparse(values: Iterable[int], *, dtype: DTypeLike) -> np.ndarray:
-        """Ensure sparse index/count arrays are one-dimensional."""
         array = np.asarray(values, dtype=dtype)
         if array.ndim != 1:
-            raise ValueError("sparse arrays must be 1D")
+            raise ValueError("a ritka (sparse) tömböknek egydimenziósaknak kell lenniük")
         return array
 
-    # ------------------------------------------------------------------ serialization
     def state_dict(self) -> dict[str, Any]:
-        """Return a serialisable snapshot of the buffer state."""
         entries: list[dict[str, Any] | None] = []
         for entry in self._entries:
             if entry is None:
@@ -204,7 +189,6 @@ class ReplayBuffer:
         }
 
     def load_state_dict(self, data: Mapping[str, Any]) -> None:
-        """Restore buffer contents from ``state_dict`` payload."""
         capacity = int(data["capacity"])
         state_shape_raw = tuple(int(v) for v in data["state_shape"])
         if len(state_shape_raw) != 3:
@@ -219,12 +203,12 @@ class ReplayBuffer:
         states_arr = np.asarray(data["states"], dtype=np.uint8)
         expected_shape = (capacity,) + state_shape
         if states_arr.shape != expected_shape:
-            raise ValueError(f"state array shape {states_arr.shape} does not match expected {expected_shape}")
+            raise ValueError(f"a state tömb alakja {states_arr.shape} nem egyezik a várt {expected_shape} alakzattal")
         self._states[:] = states_arr
 
         entries_serialized = list(data["entries"])
         if len(entries_serialized) != capacity:
-            raise ValueError("entries length does not match capacity")
+            raise ValueError("az entries lista hossza nem egyezik a kapacitással")
 
         self._entries = []
         for item in entries_serialized:

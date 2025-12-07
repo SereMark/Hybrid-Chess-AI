@@ -1,0 +1,71 @@
+# FUTAM 1: REFERENCIA (kontroll)
+# Cél: 7 000 parti / ~15 óra
+# Hardvercél: RTX 3070 Mobile + Ryzen 5800H
+
+MODEL:
+  blocks: 6
+  channels: 96
+  value_conv_channels: 12
+  value_hidden_dim: 256
+
+TORCH:
+  threads_intra: 8
+  threads_inter: 2
+  amp_enabled: true
+  model_channels_last: true
+  eval_model_channels_last: true
+  matmul_float32_precision: high
+  cudnn_benchmark: true
+
+EVAL:
+  batch_size_max: 256
+  coalesce_ms: 5
+  cache_capacity: 16000
+  value_cache_capacity: 32000
+  use_fp16_cache: true
+
+MCTS:
+  train_simulations: 128
+  train_simulations_min: 32
+  c_puct: 1.35
+  dirichlet_alpha: 0.3
+  dirichlet_weight: 0.25
+  fpu_reduction: 0.0
+  visit_count_clamp: 65535
+
+TRAIN:
+  total_iterations: 300
+  games_per_iter: 64
+  batch_size: 256
+  samples_per_new_game: 2.0
+  learning_rate_init: 0.002
+  learning_rate_final: 0.0002
+  learning_rate_warmup_steps: 1000
+  ema_enabled: true
+  ema_decay: 0.999
+
+SELFPLAY:
+  num_workers: 6
+  temperature_high: 1.25
+  temperature_low: 0.50
+  opening_random_moves: 2
+  adjudication_enabled: true
+  adjudication_warmup_iters: 4
+  adjudication_ramp_iters: 10
+  adjudication_min_plies: 100
+  adjudication_value_margin: 0.85
+  adjudication_value_margin_init: 0.95
+  adjudication_material_margin: 3.0
+
+REPLAY:
+  capacity: 50000
+
+ARENA:
+  eval_every_iters: 7
+  games_per_eval: 24
+  mcts_simulations: 128
+  resign_enable: false
+
+LOG:
+  checkpoint_interval_iters: 14
+  metrics_csv_enable: true

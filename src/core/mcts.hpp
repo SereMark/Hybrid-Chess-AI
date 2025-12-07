@@ -1,7 +1,5 @@
 #pragma once
 
-// Hybrid Chess AI - Monte Carlo Tree Search declarations
-
 #include "chess.hpp"
 
 #include <array>
@@ -16,13 +14,7 @@ constexpr float POLICY_EPSILON = 1e-8f;
 constexpr float DIRICHLET_EPSILON = 1e-10f;
 constexpr int POLICY_SIZE = 73 * 64;
 
-// ---------------------------------------------------------------------------
-// Utility helpers
-
-int encode_move_index(const chess::Move& move);
-
-// ---------------------------------------------------------------------------
-// Tree structures
+int encode_move_index(const chess::Move& move, bool flip = false);
 
 struct alignas(32) Node {
   uint32_t first_child_index = 0;
@@ -56,7 +48,8 @@ public:
 
   using EvalLegalBatchFn =
       std::function<void(const std::vector<chess::Position>&,
-                         const std::vector<std::vector<chess::Move>>&,
+                         const std::vector<int32_t>&,
+                         const std::vector<int>&,
                          std::vector<std::vector<float>>&,
                          std::vector<float>&)>;
 
@@ -85,9 +78,9 @@ private:
 
   NodePool node_pool_;
   mutable chess::Position working_pos_;
-  mutable std::array<chess::Position::MoveInfo, 1024> undo_stack_;
-  std::array<uint32_t, 1024> path_buffer_;
-  static constexpr float VIRTUAL_LOSS = 0.0f;
+  mutable std::vector<chess::Position::MoveInfo> undo_stack_;
+  std::vector<uint32_t> path_buffer_;
+  static constexpr float VIRTUAL_LOSS = 1.0f;
   bool root_noise_applied_ = false;
   std::mt19937 rng_;
 
@@ -100,6 +93,7 @@ private:
                                const std::vector<float>& priors);
   void add_dirichlet_noise(Node* node);
   bool ensure_root(const chess::Position& position);
+  void backpropagate(const std::vector<uint32_t>& path, float value);
 };
 
-}  // namespace mcts
+}

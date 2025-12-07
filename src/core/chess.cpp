@@ -1,5 +1,3 @@
-// Hybrid Chess AI - Core chess implementation
-
 #include "chess.hpp"
 
 #include <cctype>
@@ -754,6 +752,12 @@ Result Position::result() {
   return in_check ? (turn == WHITE ? BLACK_WIN : WHITE_WIN) : DRAW;
 }
 
+bool Position::in_check() const {
+  if (!pieces[KING][turn]) return false;
+  const Square king_sq = lsb(pieces[KING][turn]);
+  return is_square_attacked(king_sq, Color(1 - turn));
+}
+
 int Position::count_repetitions() const {
   int c = 0;
   for (auto it = history.rbegin(); it != history.rend(); ++it)
@@ -787,15 +791,8 @@ bool Position::is_insufficient_material() const {
       (bMinors == 1 && wMinors == 0 && (bn == 1 || bb == 1)))
     return true;
 
-  if ((wMinors == 2 && wn == 2 && bMinors == 0) || (bMinors == 2 && bn == 2 && wMinors == 0))
-    return true;
-
-  if (wn == 1 && wb == 0 && bn == 1 && bb == 0) return true;           // N vs N
-  if (wn == 0 && bn == 0 && wb == 1 && bb == 1) return true;           // B vs B
-  if ((wb == 1 && wn == 0 && bn == 1 && bb == 0) ||                    // B vs N
-      (bb == 1 && bn == 0 && wn == 1 && wb == 0)) return true;
 
   return false;
 }
 
-} // namespace chess
+}

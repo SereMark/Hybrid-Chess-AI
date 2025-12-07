@@ -14,8 +14,7 @@ namespace py = pybind11;
 
 namespace detail {
 
-constexpr char kModuleDoc[] =
-    "Bindings for the high-performance C++ chess core used by Hybrid Chess AI.";
+constexpr char kModuleDoc[] = "Python-kötések a C++-ban írt sakkmaghoz.";
 
 std::string square_to_string(int square) {
   if (square < 0 || square >= chess::NSQUARES) {
@@ -55,26 +54,28 @@ py::tuple piece_bitboards_as_tuple(const chess::Position& position) {
 
 class PythonEvaluator {
 public:
-  // Python callable: fn(positions: List[Position], legal_moves: List[List[Move]])
-  // -> (policies: Sequence[np.ndarray], values: np.ndarray)
-  // values must be from side-to-move perspective for each position.
   explicit PythonEvaluator(py::object fn) : fn_(std::move(fn)) {}
 
   void operator()(const std::vector<chess::Position>& positions,
-                  const std::vector<std::vector<chess::Move>>& moves,
+                  const std::vector<int32_t>& encoded_moves,
+                  const std::vector<int>& counts,
                   std::vector<std::vector<float>>& policies,
                   std::vector<float>& values) const {
+
     py::gil_scoped_acquire acquire;
 
-    py::list moves_py;
-    for (const auto& mv : moves) {
-      moves_py.append(py::cast(mv));
+    py::array_t<int32_t> flat_arr(static_cast<py::ssize_t>(encoded_moves.size()));
+    std::memcpy(flat_arr.mutable_data(), encoded_moves.data(), encoded_moves.size() * sizeof(int32_t));
+
+    py::list counts_py;
+    for (int c : counts) {
+      counts_py.append(c);
     }
 
-    const py::object result = fn_(positions, moves_py);
+    const py::object result = fn_(positions, flat_arr, counts_py);
     const auto tuple = result.cast<py::tuple>();
     if (tuple.size() != 2) {
-      throw py::value_error("evaluator must return a tuple of (policies, values)");
+      throw py::value_error("a kiértékelőnek egy (policies, values) tuple-t kell visszaadnia");
     }
 
     const auto batch_size = static_cast<py::ssize_t>(positions.size());
@@ -83,12 +84,12 @@ public:
         tuple[1].cast<py::array_t<float, py::array::c_style | py::array::forcecast>>();
 
     if (py::len(pol_seq) != batch_size) {
-      throw py::value_error("policies must be a sequence with batch dimension first");
+      throw py::value_error("a policies szekvenciának batch-dimenzióval kell kezdődnie");
     }
 
     const auto val_info = val_arr.request();
     if (val_info.ndim != 1 || val_info.shape[0] != batch_size) {
-      throw py::value_error("values must be a 1D array matching the batch size");
+      throw py::value_error("a values tömbnek egydimenziósnak kell lennie, és egyeznie kell a batch méretével");
     }
     const auto* value_ptr = static_cast<const float*>(val_info.ptr);
     values.assign(value_ptr, value_ptr + static_cast<size_t>(batch_size));
@@ -100,13 +101,16 @@ public:
           pol_seq[i].cast<py::array_t<float, py::array::c_style | py::array::forcecast>>();
       const auto arr_info = arr.request();
       if (arr_info.ndim != 1) {
-        throw py::value_error("each policy vector must be one-dimensional");
+        throw py::value_error("minden policy-vektornak egydimenziósnak kell lennie");
       }
+
       const size_t count = static_cast<size_t>(arr_info.shape[0]);
-      const size_t expected = moves[static_cast<size_t>(i)].size();
+      const size_t expected = static_cast<size_t>(counts[static_cast<size_t>(i)]);
       if (count != expected) {
-        throw py::value_error("policy length must equal number of legal moves for each position");
+        throw py::value_error(
+            "a policy hossznak meg kell egyeznie az adott állásból lehetséges szabályos lépések számával");
       }
+
       const auto* policy_ptr = static_cast<const float*>(arr_info.ptr);
       policies.emplace_back(policy_ptr, policy_ptr + count);
     }
@@ -138,7 +142,7 @@ void bind_enums(py::module_& m) {
 }
 
 void bind_move(py::module_& m) {
-  py::class_<chess::Move>(m, "Move", "Compact chess move representation.")
+  py::class_<chess::Move>(m, "Move", "Kompakt sakklépés-ábrázolás.")
       .def(py::init<>())
       .def(py::init<chess::Square, chess::Square, chess::Piece>(),
            py::arg("from_square"),
@@ -162,26 +166,38 @@ void bind_move(py::module_& m) {
 }
 
 void bind_position(py::module_& m) {
-  py::class_<chess::Position>(m, "Position", "Mutable chess position with fast move generation.")
+  py::class_<chess::Position>(m, "Position", "Módosítható sakkállás gyors lépésgenerálással.")
       .def(py::init<>())
       .def(py::init<const chess::Position&>(), py::arg("other"))
-      .def("reset", &chess::Position::reset, "Reset the position to the initial board state.")
-      .def("from_fen", &chess::Position::from_fen, py::arg("fen"), "Load a position from a FEN string.")
-      .def("to_fen", &chess::Position::to_fen, "Serialize the position to FEN.")
+      .def("reset", &chess::Position::reset,
+           "Visszaállítja az állást a kezdeti táblaállapotra.")
+      .def("from_fen", &chess::Position::from_fen, py::arg("fen"),
+           "Állás betöltése FEN karakterláncból.")
+      .def("to_fen", &chess::Position::to_fen,
+           "Az állás FEN-formátumú karakterlánccá alakítása.")
       .def("legal_moves",
            [](chess::Position& position) { return copy_moves(position.legal_moves()); },
-           "Return a list of legal moves from the current position.")
-      .def("make_move", &chess::Position::make_move, py::arg("move"), "Apply a move and return the result.")
-      .def("result", &chess::Position::result, "Return the current game result.")
-      .def("count_repetitions", &chess::Position::repetition_count, "How many times this position has repeated.")
-      .def_property_readonly("pieces", &piece_bitboards_as_tuple, "Bitboards (white, black) for each piece type.")
+           "Visszaadja a jelenlegi állásból lehetséges szabályos lépések listáját.")
+      .def("make_move", &chess::Position::make_move, py::arg("move"),
+           "Alkalmazza a lépést, és visszaadja az eredményt.")
+      .def("result", &chess::Position::result,
+           "Visszaadja a játék aktuális eredményét.")
+      .def("in_check", &chess::Position::in_check,
+           "Megvizsgálja, hogy a lépésen lévő fél sakkban áll-e.")
+      .def("count_repetitions", &chess::Position::repetition_count,
+           "Megadja, hogy ez az állás hányszor ismétlődött.")
+      .def_property_readonly(
+          "pieces", &piece_bitboards_as_tuple,
+          "Bitboardok (világos, sötét) minden bábutípushoz.")
       .def_property_readonly("turn", &chess::Position::get_turn)
       .def_property_readonly("castling", &chess::Position::get_castling)
       .def_property_readonly("ep_square", &chess::Position::get_ep_square)
       .def_property_readonly("halfmove", &chess::Position::get_halfmove)
       .def_property_readonly("fullmove", &chess::Position::get_fullmove)
       .def_property_readonly("hash", &chess::Position::get_hash)
-      .def("__repr__", [](const chess::Position& position) { return "Position(" + position.to_fen() + ")"; })
+      .def("__repr__", [](const chess::Position& position) {
+        return "Position(" + position.to_fen() + ")";
+      })
       .def("__str__", &chess::Position::to_fen)
       .def(py::pickle(
           [](const chess::Position& position) { return position.to_fen(); },
@@ -193,13 +209,14 @@ void bind_position(py::module_& m) {
 }
 
 void bind_mcts(py::module_& m) {
-  py::class_<mcts::MCTS>(m, "MCTS", "Monte Carlo Tree Search engine.")
+  py::class_<mcts::MCTS>(m, "MCTS", "Monte Carlo fa-keresés (MCTS) motor.")
       .def(py::init<int, float, float, float>(),
            py::arg("simulations") = 800,
            py::arg("c_puct") = 1.0f,
            py::arg("dirichlet_alpha") = 0.3f,
            py::arg("dirichlet_weight") = 0.25f)
-      .def("seed", &mcts::MCTS::seed, py::arg("seed"), "Seed the internal RNG.")
+      .def("seed", &mcts::MCTS::seed, py::arg("seed"),
+           "Inicializálja a belső véletlenszám-generátort.")
       .def(
           "search_batched_legal",
           [](mcts::MCTS& engine, const chess::Position& position, py::object evaluator, int max_batch) {
@@ -210,7 +227,7 @@ void bind_mcts(py::module_& m) {
           py::arg("position"),
           py::arg("evaluator"),
           py::arg("max_batch") = 64,
-          "Run batched MCTS search given a Python evaluator callback.")
+          "Csoportosított MCTS-keresést futtat a megadott Python kiértékelő callbackkel.")
       .def("set_simulations", &mcts::MCTS::set_simulations, py::arg("simulations"))
       .def("set_c_puct", &mcts::MCTS::set_c_puct, py::arg("c_puct"))
       .def("set_dirichlet_params", &mcts::MCTS::set_dirichlet_params, py::arg("alpha"), py::arg("weight"))
@@ -221,32 +238,40 @@ void bind_mcts(py::module_& m) {
 }
 
 void bind_utilities(py::module_& m) {
-  m.def("encode_move_index", &mcts::encode_move_index, py::arg("move"),
-        "Encode a move into an index compatible with network policy outputs.");
+  m.def("encode_move_index", &mcts::encode_move_index, py::arg("move"), py::arg("flip") = false,
+        "Egy lépést olyan indexszé kódol, amely kompatibilis a hálózat policy-kimeneteivel.");
 
   m.def(
       "encode_move_indices_batch",
-      [](const std::vector<std::vector<chess::Move>>& moves_lists) {
+      [](const std::vector<std::vector<chess::Move>>& moves_lists, const std::vector<int>& turns) {
+        if (moves_lists.size() != turns.size()) {
+          throw std::invalid_argument(
+              "a moves_lists és a turns paraméterek méretének azonosnak kell lennie");
+        }
         py::list result;
-        for (const auto& moves : moves_lists) {
+        for (size_t k = 0; k < moves_lists.size(); ++k) {
+          const auto& moves = moves_lists[k];
+          const bool flip = (turns[k] == static_cast<int>(chess::BLACK));
           py::array_t<int32_t> encoded(static_cast<py::ssize_t>(moves.size()));
           const auto info = encoded.request();
           auto* data = static_cast<int32_t*>(info.ptr);
           for (size_t i = 0; i < moves.size(); ++i) {
-            const int idx = mcts::encode_move_index(moves[i]);
-            if (idx < 0) throw std::runtime_error("encode_move_index: move not encodable");
+            const int idx = mcts::encode_move_index(moves[i], flip);
+            if (idx < 0) {
+              throw std::runtime_error("encode_move_index: a lépés nem kódolható");
+            }
             data[i] = idx;
           }
           result.append(std::move(encoded));
         }
         return result;
       },
-      py::arg("moves_lists"),
-      "Vectorised helper that encodes a batch of legal move lists.");
+      py::arg("moves_lists"), py::arg("turns"),
+      "Vektorizált segédfüggvény, amely egy batch-nyi szabályos lépéslistát kódol, és sötét lépésénél tükrözi a lépéseket.");
 
-  m.def("uci_of_move", &move_to_uci, py::arg("move"), "Convert a move to UCI notation.");
+  m.def("uci_of_move", &move_to_uci, py::arg("move"),
+        "Egy lépést UCI jelölésre alakít.");
 
-  // Export constants used by Python.
   m.attr("POLICY_SIZE") = mcts::POLICY_SIZE;
   m.attr("BOARD_SIZE") = chess::BOARD_SIZE;
   m.attr("NSQUARES") = chess::NSQUARES;
@@ -259,7 +284,7 @@ void bind_utilities(py::module_& m) {
   m.attr("DRAW") = chess::DRAW;
 }
 
-}  // namespace detail
+}
 
 PYBIND11_MODULE(chesscore, m) {
   m.doc() = detail::kModuleDoc;

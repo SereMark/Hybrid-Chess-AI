@@ -1,5 +1,3 @@
-"""Checkpoint management utilities for persisting trainer state."""
-
 from __future__ import annotations
 
 import contextlib
@@ -18,20 +16,13 @@ from torch.amp import GradScaler
 __all__ = ["get_run_root", "save_checkpoint", "save_best_model", "try_resume"]
 
 
-# ---------------------------------------------------------------------------#
-# Path helpers
-# ---------------------------------------------------------------------------#
-
-
 def _timestamped_path(base_path: str, iteration: int | None = None) -> str:
-    """Append iteration and wall time to a checkpoint path for archival saves."""
     stem, ext = os.path.splitext(base_path)
     tag = f"_iter{int(iteration):05d}" if iteration is not None else ""
     return f"{stem}{tag}_{int(time.time())}{ext or '.pt'}"
 
 
 def _resolve_run_root(trainer: Any) -> str:
-    """Return (and cache on trainer) the directory used for the current run."""
     existing = getattr(trainer, "run_root", None)
     if existing:
         return str(existing)
@@ -43,12 +34,10 @@ def _resolve_run_root(trainer: Any) -> str:
 
 
 def get_run_root(trainer: Any) -> str:
-    """Public accessor that delegates to `_resolve_run_root`."""
     return _resolve_run_root(trainer)
 
 
 def _experiment_paths(trainer: Any, iteration: int | None = None) -> dict[str, str]:
-    """Construct canonical file paths for the current experiment run."""
     root = _resolve_run_root(trainer)
     paths = {
         "root": root,
@@ -61,13 +50,7 @@ def _experiment_paths(trainer: Any, iteration: int | None = None) -> dict[str, s
     return paths
 
 
-# ---------------------------------------------------------------------------#
-# Metadata serialisation
-# ---------------------------------------------------------------------------#
-
-
 def _write_config_snapshot(snapshot: dict[str, Any], config_dir: Path) -> None:
-    """Persist merged configuration alongside the run metadata."""
     config_dir.mkdir(parents=True, exist_ok=True)
     (config_dir / "merged.json").write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
     try:
@@ -80,7 +63,6 @@ def _write_config_snapshot(snapshot: dict[str, Any], config_dir: Path) -> None:
 
 
 def _write_metadata(trainer: Any, artifacts: dict[str, str]) -> None:
-    """Write run metadata describing the latest checkpoint."""
     meta = {
         "iteration": int(trainer.iteration),
         "total_games": int(trainer.total_games),
@@ -114,7 +96,6 @@ def _write_metadata(trainer: Any, artifacts: dict[str, str]) -> None:
         "SELFPLAY",
         "REPLAY",
         "SAMPLING",
-        "AUGMENT",
         "MCTS",
         "RESIGN",
         "TRAIN",
@@ -132,16 +113,7 @@ def _write_metadata(trainer: Any, artifacts: dict[str, str]) -> None:
     _write_config_snapshot(snapshot, meta_path.parent / "config")
 
 
-# ---------------------------------------------------------------------------#
-# Checkpoint persistence
-# ---------------------------------------------------------------------------#
-
-# ---------------------------------------------------------------------------#
-# Checkpoint persistence
-
-
 def save_checkpoint(trainer: Any) -> None:
-    """Persist full trainer state."""
     try:
         artifacts = _experiment_paths(trainer, trainer.iteration)
         ckpt_path = artifacts["checkpoint"]
@@ -168,7 +140,6 @@ def save_checkpoint(trainer: Any) -> None:
             "scheduler": {"t": int(trainer.scheduler.t), "total": int(trainer.scheduler.total)},
             "scaler": trainer.scaler.state_dict(),
             "ema": trainer.ema.shadow if trainer.ema is not None else None,
-            "gate": {"accepted": int(trainer.gate.accepted), "rejected": int(trainer.gate.rejected)},
             "selfplay_state": selfplay_state,
             "arena_rng_state": arena_state,
             "rng": {
@@ -184,13 +155,12 @@ def save_checkpoint(trainer: Any) -> None:
         if C.LOG.archive_checkpoints and "checkpoint_archive" in artifacts:
             torch.save(payload, artifacts["checkpoint_archive"])
         _write_metadata(trainer, artifacts)
-        trainer.log.info("[CKPT] saved -> %s", ckpt_path)
+        trainer.log.info("[MENTÉS] mentve -> %s", ckpt_path)
     except Exception as exc:
-        trainer.log.warning("Checkpoint save failed: %s", exc)
+        trainer.log.warning("A mentési pont elmentése sikertelen: %s", exc)
 
 
 def save_best_model(trainer: Any) -> None:
-    """Persist best-model snapshot."""
     try:
         artifacts = _experiment_paths(trainer, trainer.iteration)
         best_path = artifacts["best_model"]
@@ -203,21 +173,12 @@ def save_best_model(trainer: Any) -> None:
         tmp = f"{best_path}.tmp"
         torch.save(payload, tmp)
         os.replace(tmp, best_path)
-        trainer.log.info("[BEST] saved -> %s", best_path)
+        trainer.log.info("[LEGJOBB] modell mentve -> %s", best_path)
     except Exception as exc:
-        trainer.log.warning("Best-model save failed: %s", exc)
-
-
-# ---------------------------------------------------------------------------#
-# Checkpoint restoration
-# ---------------------------------------------------------------------------#
-
-# ---------------------------------------------------------------------------#
-# Checkpoint restoration
+        trainer.log.warning("A legjobb modell mentése sikertelen: %s", exc)
 
 
 def _collect_candidate_paths(trainer: Any) -> list[str]:
-    """Return an ordered list of possible resume checkpoint paths."""
     candidates: list[str] = []
     env_root = os.environ.get("HYBRID_CHESS_RESUME")
     if env_root:
@@ -241,7 +202,6 @@ def _collect_candidate_paths(trainer: Any) -> list[str]:
 
 
 def try_resume(trainer: Any) -> None:
-    """Restore trainer state from latest checkpoint if available."""
     candidates = _collect_candidate_paths(trainer)
     seen: set[str] = set()
     path: str | None = None
@@ -257,7 +217,7 @@ def try_resume(trainer: Any) -> None:
             break
 
     if path is None:
-        trainer.log.info("[CKPT] none found; fresh run")
+        trainer.log.info("[MENTÉS] nem található mentési pont; új futás indul")
         return
 
     try:
@@ -299,10 +259,6 @@ def try_resume(trainer: Any) -> None:
         if elapsed_s > 0.0:
             trainer.start_time = time.time() - elapsed_s
 
-        gate = ckpt.get("gate", {})
-        trainer.gate.accepted = int(gate.get("accepted", 0))
-        trainer.gate.rejected = int(gate.get("rejected", 0))
-
         rng = ckpt.get("rng", {})
         if "py" in rng:
             __import__("random").setstate(rng["py"])
@@ -318,7 +274,7 @@ def try_resume(trainer: Any) -> None:
             try:
                 trainer.selfplay_engine.load_state_dict(sp_state)
             except Exception as exc:
-                trainer.log.warning("[CKPT] self-play restore failed: %s", exc)
+                trainer.log.warning("[MENTÉS] az önjátszó állapotának visszaállítása sikertelen: %s", exc)
 
         trainer.selfplay_engine.update_adjudication(trainer.iteration)
 
@@ -327,8 +283,8 @@ def try_resume(trainer: Any) -> None:
             try:
                 trainer._arena_rng.bit_generator.state = arena_state
             except Exception as exc:
-                trainer.log.warning("[CKPT] arena RNG restore failed: %s", exc)
+                trainer.log.warning("[MENTÉS] az aréna RNG állapotának visszaállítása sikertelen: %s", exc)
 
-        trainer.log.info("[CKPT] resumed from %s @ iter %s", path, trainer.iteration)
+        trainer.log.info("[FOLYTATÁS] innen: %s @ iter %s", path, trainer.iteration)
     except Exception as exc:
-        trainer.log.warning("[CKPT] resume failed: %s", exc)
+        trainer.log.warning("[FOLYTATÁS] sikertelen: %s", exc)

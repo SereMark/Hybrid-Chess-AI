@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-pytest.importorskip("chesscore", reason="chesscore extension missing")
+pytest.importorskip("chesscore", reason="hiányzik a chesscore kiterjesztés")
 
 import encoder
 import self_play

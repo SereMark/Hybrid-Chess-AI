@@ -1,5 +1,3 @@
-"""Optimiser, scheduler, and EMA helpers for Hybrid Chess."""
-
 from __future__ import annotations
 
 from typing import Any, cast
@@ -9,13 +7,8 @@ import torch
 
 __all__ = ["build_optimizer", "WarmupCosine", "EMA"]
 
-# ---------------------------------------------------------------------------#
-# Optimiser factory
-# ---------------------------------------------------------------------------#
-
 
 def build_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
-    """Construct an SGD optimiser with selective weight decay."""
     decay: list[torch.nn.Parameter] = []
     no_decay: list[torch.nn.Parameter] = []
     for name, param in model.named_parameters():
@@ -46,14 +39,7 @@ def build_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
         )
 
 
-# ---------------------------------------------------------------------------#
-# Scheduler
-# ---------------------------------------------------------------------------#
-
-
 class WarmupCosine:
-    """Cosine annealing schedule with a warmup ramp and optional restarts."""
-
     def __init__(
         self,
         optimizer: Any,
@@ -74,14 +60,12 @@ class WarmupCosine:
         self.t = 0
 
     def step(self) -> None:
-        """Advance the scheduler by one step and update the optimiser LR."""
         self.t += 1
         lr = self._lr_at(self.t)
         for group in self.opt.param_groups:
             group["lr"] = lr
 
     def set_total_steps(self, total_steps: int) -> None:
-        """Allow extending the total horizon while keeping warmup valid."""
         self.total = max(self.t + 1, int(total_steps))
         if self.warm >= self.total:
             self.warm = max(1, self.total - 1)
@@ -109,14 +93,7 @@ class WarmupCosine:
         return trough + (peak - trough) * 0.5 * (1.0 + m.cos(m.pi * progress))
 
 
-# ---------------------------------------------------------------------------#
-# Exponential moving average
-# ---------------------------------------------------------------------------#
-
-
 class EMA:
-    """Maintain an exponential moving average of model parameters."""
-
     def __init__(self, model: torch.nn.Module, decay: float | None = None) -> None:
         self.decay = float(C.TRAIN.ema_decay if decay is None else decay)
         base = _unwrap(model)
@@ -124,7 +101,6 @@ class EMA:
 
     @torch.no_grad()
     def update(self, model: torch.nn.Module) -> None:
-        """Blend the given model parameters into the EMA."""
         base = _unwrap(model)
         for name, tensor in base.state_dict().items():
             if not torch.is_floating_point(tensor):
@@ -135,12 +111,10 @@ class EMA:
             self.shadow[name].mul_(self.decay).add_(tensor.detach(), alpha=1.0 - self.decay)
 
     def copy_to(self, model: torch.nn.Module) -> None:
-        """Overwrite the model parameters with the EMA shadow."""
         _unwrap(model).load_state_dict(self.shadow, strict=True)
 
 
 def _unwrap(model: torch.nn.Module) -> torch.nn.Module:
-    """Return the underlying module, handling AMP and DDP wrappers."""
     base = getattr(model, "_orig_mod", model)
     if hasattr(base, "module"):
         base = base.module

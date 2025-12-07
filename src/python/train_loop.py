@@ -1,5 +1,3 @@
-"""Core training loop that drives self-play sampling and optimisation."""
-
 from __future__ import annotations
 
 import time
@@ -13,12 +11,8 @@ from torch.amp import GradScaler
 
 __all__ = ["run_training_iteration", "train_step"]
 
-# ---------------------------------------------------------------------------#
-# Schedules
-
 
 def _entropy_coefficient(iteration: int) -> float:
-    """Linearly anneal the entropy coefficient towards the configured floor."""
     start = float(C.TRAIN.loss_entropy_coef)
     floor = float(C.TRAIN.loss_entropy_min_coef)
     horizon = max(1, int(C.TRAIN.loss_entropy_iters))
@@ -27,7 +21,6 @@ def _entropy_coefficient(iteration: int) -> float:
 
 
 def _recent_sample_ratio() -> float:
-    """Return the recent-sample ratio constrained to configured bounds."""
     base = float(C.SAMPLING.recent_ratio)
     lo = float(C.SAMPLING.recent_ratio_min)
     hi = float(C.SAMPLING.recent_ratio_max)
@@ -35,7 +28,6 @@ def _recent_sample_ratio() -> float:
 
 
 def _games_for_iteration(iteration: int) -> int:
-    """Scale games per iteration during warm-up to keep startup responsive."""
     base = int(max(1, C.TRAIN.games_per_iter))
     min_scale = float(np.clip(getattr(C.TRAIN, "games_per_iter_scale_min", 1.0), 0.1, 1.0))
     warmup = int(max(0, getattr(C.TRAIN, "games_per_iter_warmup_iters", 0)))
@@ -46,12 +38,7 @@ def _games_for_iteration(iteration: int) -> int:
     return max(1, int(round(base * scale)))
 
 
-# ---------------------------------------------------------------------------#
-# Public API
-
-
 def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
-    """Execute one training iteration of self-play generation and optimisation."""
     buf_capacity = max(1, trainer.selfplay_engine.get_capacity())
     buf_size = trainer.selfplay_engine.size()
     buf_fill = buf_size / buf_capacity
@@ -59,31 +46,27 @@ def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
     recent_ratio = _recent_sample_ratio()
     recent_window = float(np.clip(C.SAMPLING.recent_window_frac, 0.0, 1.0))
 
-    # Resignation policy
     if not C.RESIGN.enabled:
         trainer.selfplay_engine.enable_resign(False)
         trainer.selfplay_engine.resign_consecutive = 0
-        resign_status = "disabled"
+        resign_status = "kikapcsolva"
     elif trainer.iteration < C.RESIGN.cooldown_iters:
         trainer.selfplay_engine.enable_resign(False)
         trainer.selfplay_engine.resign_consecutive = 0
-        resign_status = "warmup"
+        resign_status = "bemelegítés"
     else:
         trainer.selfplay_engine.enable_resign(True)
         trainer.selfplay_engine.set_resign_params(C.RESIGN.value_threshold, C.RESIGN.min_plies)
         trainer.selfplay_engine.resign_consecutive = int(max(1, C.RESIGN.consecutive_required))
-        resign_status = "enabled"
+        resign_status = "engedélyezve"
 
     trainer.selfplay_engine.update_adjudication(trainer.iteration)
-
-    # Self-play
     t0 = time.time()
     games = _games_for_iteration(trainer.iteration)
     sp_stats = trainer.selfplay_engine.play_games(games)
     selfplay_time = time.time() - t0
     games_generated = int(sp_stats.get("games", 0))
 
-    # Planned optimiser steps this iteration
     batches_target = max(
         int(C.TRAIN.update_steps_min),
         min(
@@ -92,7 +75,6 @@ def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
         ),
     )
 
-    # Training
     policy_losses: list[float] = []
     value_losses: list[float] = []
     entropies: list[float] = []
@@ -102,7 +84,7 @@ def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
     t1 = time.time()
     for _ in range(batches_target):
         batch = trainer.selfplay_engine.sample_batch(trainer.train_batch_size, recent_ratio, recent_window)
-        if not batch[0]:
+        if len(batch[0]) == 0:
             break
         result = train_step(trainer, batch)
         if result is None:
@@ -114,8 +96,6 @@ def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
         entropies.append(entr)
         optimizer_steps += 1
     train_time = time.time() - t1
-
-    # Aggregates
     if optimizer_steps == 0:
         avgP = avgV = avgE = avgG = stdP = stdV = stdE = stdG = 0.0
     else:
@@ -168,19 +148,17 @@ def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
     }
 
 
-# ---------------------------------------------------------------------------#
-# Training step
 def train_step(
     trainer: Any,
     batch_data: tuple[list[Any], list[np.ndarray], list[np.ndarray], list[np.ndarray]],
 ) -> tuple[float, float, float, float] | None:
-    """Perform one optimisation step and return `(policy, value, grad, entropy)`."""
     states_u8, indices_i32, counts_u16, values_i8 = batch_data
-    if not states_u8:
+    if len(states_u8) == 0:
         return None
-
-    # Inputs
-    x_u8 = np.stack(states_u8).astype(np.uint8, copy=False)
+    if isinstance(states_u8, np.ndarray):
+        x_u8 = states_u8.astype(np.uint8, copy=False)
+    else:
+        x_u8 = np.stack(states_u8).astype(np.uint8, copy=False)
     x = torch.from_numpy(x_u8).to(trainer.device, non_blocking=True).to(dtype=torch.float32)
     x = x / float(C.DATA.u8_scale)
     if trainer.device.type == "cuda":
@@ -189,46 +167,6 @@ def train_step(
     v_i8 = np.asarray(values_i8, dtype=np.int8)
     v_target = torch.from_numpy(v_i8).to(trainer.device, non_blocking=True).to(dtype=torch.float32)
     v_target = (v_target / float(C.DATA.value_i8_scale)).clamp_(-1.0, 1.0)
-
-    # One-time augmentation setup on trainer
-    if not hasattr(trainer, "_aug_mirror_idx"):
-        from augmentation import Augment as _Aug
-
-        def _invert(perm: np.ndarray) -> np.ndarray:
-            out = np.empty_like(perm, dtype=np.int64)
-            out[perm.astype(np.int64)] = np.arange(perm.size, dtype=np.int64)
-            return out
-
-        mirror_idx = _Aug._policy_index_permutation("mirror")
-        rot_idx = _Aug._policy_index_permutation("rot180")
-        vflip_idx = _Aug._policy_index_permutation("vflip_cs")
-        plane_perm = _Aug._vflip_cs_plane_permutation(x.shape[1])
-        feat_idx = _Aug._feature_plane_indices()
-
-        trainer._turn_plane_idx = int(feat_idx.get("turn_plane", x.shape[1]))
-        trainer._aug_mirror_idx = torch.tensor(mirror_idx, dtype=torch.long, device=trainer.device)
-        trainer._aug_rot_idx = torch.tensor(rot_idx, dtype=torch.long, device=trainer.device)
-        trainer._aug_vflip_idx = torch.tensor(vflip_idx, dtype=torch.long, device=trainer.device)
-        trainer._aug_plane_perm = torch.tensor(plane_perm, dtype=torch.long, device=trainer.device)
-        trainer._aug_mirror_inv = _invert(mirror_idx)
-        trainer._aug_rot_inv = _invert(rot_idx)
-        trainer._aug_vflip_inv = _invert(vflip_idx)
-
-    if np.random.rand() < C.AUGMENT.mirror_prob:
-        x = torch.flip(x, dims=[-1])
-        indices_i32 = [trainer._aug_mirror_inv[np.asarray(idx, dtype=np.int64)].astype(np.int32) for idx in indices_i32]
-    if np.random.rand() < C.AUGMENT.rot180_prob:
-        x = torch.flip(x, dims=[-2, -1])
-        indices_i32 = [trainer._aug_rot_inv[np.asarray(idx, dtype=np.int64)].astype(np.int32) for idx in indices_i32]
-    if np.random.rand() < C.AUGMENT.vflip_prob:
-        x = torch.flip(x, dims=[-2])
-        x = x.index_select(1, trainer._aug_plane_perm)
-        if 0 <= trainer._turn_plane_idx < x.shape[1]:
-            x[:, trainer._turn_plane_idx] = 1.0 - x[:, trainer._turn_plane_idx]
-        indices_i32 = [trainer._aug_vflip_inv[np.asarray(idx, dtype=np.int64)].astype(np.int32) for idx in indices_i32]
-        v_target = -v_target
-
-    # Forward + losses (AMP aware)
     trainer.model.train()
     autocast_device = trainer.device.type
     autocast_enabled = bool(getattr(trainer, "_amp_enabled", False))
@@ -241,7 +179,6 @@ def train_step(
         value_pred = value_pred.reshape(-1)
         log_probs = F.log_softmax(policy_logits, dim=1)
 
-        # Sparse cross-entropy via indexed rows/cols with counts as weights
         rows_np: list[np.ndarray] = []
         cols_np: list[np.ndarray] = []
         cnts_np: list[np.ndarray] = []
@@ -294,7 +231,6 @@ def train_step(
             - _entropy_coefficient(trainer.iteration) * entropy
         )
 
-    # Backward + step (AMP aware)
     trainer.optimizer.zero_grad(set_to_none=True)
     scaler_obj = getattr(trainer, "scaler", None)
     scaler: GradScaler | None = None
@@ -318,7 +254,7 @@ def train_step(
     if torch.isnan(grad_total) or torch.isinf(grad_total):
         trainer.optimizer.zero_grad(set_to_none=True)
         if scaler is not None:
-            scaler.update()  # keep scaler moving even if step is skipped
+            scaler.update()
         return None
 
     if scaler is not None:

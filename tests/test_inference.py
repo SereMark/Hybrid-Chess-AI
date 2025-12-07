@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-pytest.importorskip("chesscore", reason="chesscore extension missing")
+pytest.importorskip("chesscore", reason="hiányzik a chesscore kiterjesztés")
 
 from inference import BatchedEvaluator
 
@@ -45,7 +45,7 @@ def test_batched_evaluator_refresh_clears_caches(ensure_chesscore) -> None:
         pos = ensure_chesscore.Position()
         _ = ev.infer_values([pos])
         before = ev.get_metrics()["cache_misses_total"]
-        ev.refresh_from(ev.eval_model)  # no-op weights, but clears caches
+        ev.refresh_from(ev.eval_model)
         _ = ev.infer_values([pos])
         after = ev.get_metrics()["cache_misses_total"]
         assert after >= before + 1
@@ -58,7 +58,6 @@ def test_batched_evaluator_handles_shutdown_and_coalesce(ensure_chesscore) -> No
     pos = ensure_chesscore.Position()
     moves = [list(pos.legal_moves())]
 
-    # Force immediate shutdown to trigger error path
     ev.close()
     with pytest.raises(RuntimeError):
         ev.infer_positions_legal([pos], moves)

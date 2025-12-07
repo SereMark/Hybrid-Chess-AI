@@ -1,2 +1,0 @@
-scenario,positions,max_random_plies,simulations,max_batch,repetitions,cpp_time_s,python_time_s,cpp_positions_per_s,python_positions_per_s,speedup_cpp_over_python,alignment_mean_l1,alignment_top_match_pct
-mcts,120,70,192,24,2,0.4717344000000594,2.5030404500002987,254.38043102217028,47.94169427025667,5.306037571141692,0.29353600297925475,3.125

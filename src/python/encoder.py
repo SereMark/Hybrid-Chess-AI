@@ -1,5 +1,3 @@
-"""Position encoders and policy indexing helpers matched to chesscore bindings."""
-
 from __future__ import annotations
 
 import numbers
@@ -26,7 +24,8 @@ __all__ = [
     "encode_position",
     "encode_batch",
     "encode_move_index",
-    "encode_move_indices_batch",
+    "encode_canonical_move",
+    "encode_canonical_move_indices_batch",
     "BOARD_SIZE",
     "INPUT_PLANES",
     "POLICY_SIZE",
@@ -35,14 +34,13 @@ __all__ = [
 
 @dataclass(slots=True)
 class PositionState:
-    """Lightweight snapshot of the information required for encoding."""
-
     boards: Dict[str, Tuple[np.ndarray, np.ndarray]]
     turn: int
     castling: int
     ep_square: int | None
     halfmove: int
     fullmove: int
+    repetition: int
 
 
 _EMPTY_MASK = np.zeros(NSQUARES, dtype=bool)
@@ -55,17 +53,48 @@ _HAS_NATIVE_MOVE_ENCODE = hasattr(ccore, "encode_move_index")
 _HAS_NATIVE_MOVE_BATCH = hasattr(ccore, "encode_move_indices_batch")
 
 
-# ---------------------------------------------------------------------------#
-# Position encoding
-# ---------------------------------------------------------------------------#
+def _flip_state(st: PositionState) -> PositionState:
+    new_boards = {}
+    for name, (w, b) in st.boards.items():
+        w_flipped = w.reshape(8, 8)[::-1, :].flatten()
+        b_flipped = b.reshape(8, 8)[::-1, :].flatten()
+        new_boards[name] = (b_flipped, w_flipped)
+
+    new_ep = (st.ep_square ^ 56) if st.ep_square is not None else None
+
+    c = st.castling
+    new_c = 0
+    if c & 1:
+        new_c |= 4
+    if c & 2:
+        new_c |= 8
+    if c & 4:
+        new_c |= 1
+    if c & 8:
+        new_c |= 2
+
+    return PositionState(
+        boards=new_boards,
+        turn=0,
+        castling=new_c,
+        ep_square=new_ep,
+        halfmove=st.halfmove,
+        fullmove=st.fullmove,
+        repetition=st.repetition,
+    )
 
 
 def encode_position(position: PositionLike, history: Sequence[PositionLike] | None = None) -> np.ndarray:
-    """Encode a position (optionally with history) to `(INPUT_PLANES, 8, 8)` floats."""
+    current_st = _ensure_state(position)
+    must_flip = current_st.turn == 1
+
     states: list[PositionState] = []
     if history:
-        states.extend(_ensure_state(entry) for entry in history)
-    states.append(_ensure_state(position))
+        for entry in history:
+            st = _ensure_state(entry)
+            states.append(_flip_state(st) if must_flip else st)
+
+    states.append(_flip_state(current_st) if must_flip else current_st)
 
     out = np.zeros((INPUT_PLANES, NSQUARES), dtype=np.float32)
     avail = min(HISTORY_LENGTH, len(states))
@@ -79,19 +108,16 @@ def encode_position(position: PositionLike, history: Sequence[PositionLike] | No
 
 
 def encode_batch(positions: Sequence[Any]) -> np.ndarray:
-    """Vectorised wrapper around `encode_position` for sequences of positions."""
     if not positions:
         return np.zeros((0, INPUT_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=np.float32)
     return np.stack([encode_position(position) for position in positions], axis=0)
 
 
 def _ensure_state(position: Any) -> PositionState:
-    """Return a `PositionState` wrapper, converting from bindings where necessary."""
     return position if isinstance(position, PositionState) else _state_from_position(position)
 
 
 def _write_piece_planes(st: PositionState, base: int, out_flat: np.ndarray) -> None:
-    """Populate piece occupancy planes for both colours."""
     for i, name in enumerate(PIECE_NAMES):
         w, b = st.boards.get(name, (_EMPTY_MASK, _EMPTY_MASK))
         pw = base + i * 2
@@ -101,9 +127,14 @@ def _write_piece_planes(st: PositionState, base: int, out_flat: np.ndarray) -> N
         if b.any():
             out_flat[pb, b] = 1.0
 
+    if st.ep_square is not None and 0 <= st.ep_square < NSQUARES:
+        out_flat[base + 12, st.ep_square] = 1.0
+
+    if st.repetition >= 2:
+        out_flat[base + 13, :] = 1.0
+
 
 def _write_aux_planes(st: PositionState, out_flat: np.ndarray) -> None:
-    """Write side-to-move, move counters, and castling rights planes."""
     base = HISTORY_LENGTH * PLANES_PER_POSITION
     out_flat[base, :] = 1.0 if st.turn == 0 else 0.0
     out_flat[base + 1, :] = min(1.0, st.fullmove / 100.0)
@@ -113,7 +144,6 @@ def _write_aux_planes(st: PositionState, out_flat: np.ndarray) -> None:
 
 
 def _coerce_int(v: Any, default: int = 0) -> int:
-    """Convert a value to `int`, returning `default` on failure."""
     if isinstance(v, numbers.Integral):
         return int(v)
     if isinstance(v, np.generic):
@@ -129,7 +159,6 @@ def _coerce_int(v: Any, default: int = 0) -> int:
 
 
 def _bitboard_to_mask(bb: Any) -> np.ndarray:
-    """Convert a bitboard into a boolean mask aligned with plane layout."""
     x = int(np.uint64(_coerce_int(bb, 0)))
     nbits = NSQUARES
     nbytes = (nbits + 7) // 8
@@ -141,10 +170,9 @@ def _bitboard_to_mask(bb: Any) -> np.ndarray:
 
 
 def _state_from_position(position: Any) -> PositionState:
-    """Extract minimal encoding state from a `ccore.Position` or equivalent."""
     pieces_obj = getattr(position, "pieces", None)
     if pieces_obj is None:
-        raise TypeError("position lacks 'pieces'")
+        raise TypeError("a pozíció objektumnak nincs 'pieces' attribútuma")
     try:
         seq = list(pieces_obj)
     except TypeError:
@@ -169,18 +197,36 @@ def _state_from_position(position: Any) -> PositionState:
             ep_sq = e
     halfmove = _coerce_int(getattr(position, "halfmove", 0), 0)
     fullmove = max(1, _coerce_int(getattr(position, "fullmove", 1), 1))
+
+    repetition = 0
+    count_fn = getattr(position, "count_repetitions", None)
+    if callable(count_fn):
+        repetition = _coerce_int(count_fn(), 0)
+    elif hasattr(position, "repetition_count"):
+        val = getattr(position, "repetition_count")
+        repetition = _coerce_int(val() if callable(val) else val, 0)
+
     return PositionState(
-        boards=boards, turn=turn, castling=castling, ep_square=ep_sq, halfmove=halfmove, fullmove=fullmove
+        boards=boards,
+        turn=turn,
+        castling=castling,
+        ep_square=ep_sq,
+        halfmove=halfmove,
+        fullmove=fullmove,
+        repetition=repetition,
     )
 
 
-# ---------------------------------------------------------------------------#
-# Move indexing
-# ---------------------------------------------------------------------------#
+class _FakeMove:
+    __slots__ = ("from_square", "to_square", "promotion")
+
+    def __init__(self, f: int, t: int, p: int) -> None:
+        self.from_square = f
+        self.to_square = t
+        self.promotion = p
 
 
 def _encode_move_index_python(move: Any) -> int:
-    """Pure Python fallback mirroring the chesscore move encoding."""
     try:
         f = int(getattr(move, "from_square"))
         t = int(getattr(move, "to_square"))
@@ -214,7 +260,6 @@ def _encode_move_index_python(move: Any) -> int:
 
 
 def encode_move_index(move: Any) -> int:
-    """Return the canonical 73x64 policy index for a move, or -1 if unsupported."""
     if _HAS_NATIVE_MOVE_ENCODE:
         try:
             return int(ccore.encode_move_index(move))
@@ -223,13 +268,35 @@ def encode_move_index(move: Any) -> int:
     return _encode_move_index_python(move)
 
 
-def encode_move_indices_batch(moves_lists: Sequence[Iterable[Any]]) -> list[np.ndarray]:
-    """Vectorised encoding for batches of move lists supporting the Python fallback."""
+def encode_canonical_move(move: Any, turn: int) -> int:
+    flip = turn == 1
+    if _HAS_NATIVE_MOVE_ENCODE:
+        try:
+            return int(ccore.encode_move_index(move, flip))
+        except Exception:
+            pass
+
+    if flip:
+        try:
+            f = int(getattr(move, "from_square"))
+            t = int(getattr(move, "to_square"))
+            p = int(getattr(move, "promotion", 0))
+            return _encode_move_index_python(_FakeMove(f ^ 56, t ^ 56, p))
+        except Exception:
+            return -1
+    return _encode_move_index_python(move)
+
+
+def encode_canonical_move_indices_batch(moves_lists: Sequence[Iterable[Any]], turns: Sequence[int]) -> list[np.ndarray]:
     materialised = [list(moves) for moves in moves_lists]
     if _HAS_NATIVE_MOVE_BATCH:
         try:
-            native = ccore.encode_move_indices_batch(materialised)
+            native = ccore.encode_move_indices_batch(materialised, turns)
             return [np.asarray(arr, dtype=np.int32) for arr in native]
         except Exception:
             pass
-    return [np.asarray([encode_move_index(move) for move in moves], dtype=np.int32) for moves in materialised]
+
+    return [
+        np.asarray([encode_canonical_move(move, t) for move in moves], dtype=np.int32)
+        for moves, t in zip(materialised, turns)
+    ]

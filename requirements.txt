@@ -1,20 +1,12 @@
-# Core numerical stack
 numpy
-
-# Deep learning backend (CPU baseline; reinstall with CUDA wheel per README)
 torch==2.8.0
-
-# Native bindings build integration
 pybind11
-
-# Chess tooling and testing
 python-chess
 pytest
-
-# Configuration parsing
 pyyaml
-
-# Linting, formatting, type checking
+matplotlib
+seaborn
+pandas
 ruff
 black
 mypy

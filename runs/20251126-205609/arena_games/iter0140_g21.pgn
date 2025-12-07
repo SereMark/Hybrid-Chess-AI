@@ -1,0 +1,11 @@
+[Event "Arena Evaluation"]
+[Site "Local"]
+[Date "2025.11.27"]
+[Round "21"]
+[White "Candidate"]
+[Black "Baseline"]
+[Result "1/2-1/2"]
+[SetUp "1"]
+[FEN "rn1qkbnr/ppp1pppp/8/3p4/2P3b1/8/PP1PPPBP/RNBQK1NR b KQkq - 0 3"]
+
+1. g6 a3 2. h5 h4 3. a6 Nf3 4. b5 b4 5. Qd7 Nc3 6. Nc6 e4 7. Nf6 Qe2 8. e5 Nxd5 9. Nd4 d3 10. c5 Bd2 11. Be7 Kf1 12. Rg8 Rh3 13. Ra7 Qe3 14. Qd6 Ra2 15. Kf8 Nxe5 16. Nxd5 cxd5 17. Rh8 f4 18. Rg8 f5 19. Rh8 Ra1 20. Rg8 Rb1 21. Rh8 Ra1 22. Rg8 Rb1 23. Rh8 Ra1 1/2-1/2

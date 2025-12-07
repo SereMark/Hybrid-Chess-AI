@@ -1,5 +1,3 @@
-"""Utility helpers for device setup, FEN manipulation, and metric reporting."""
-
 from __future__ import annotations
 
 import contextlib
@@ -36,13 +34,7 @@ _FILES = "abcdefgh"
 DEFAULT_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 
-# ---------------------------------------------------------------------------#
-# Device helpers
-# ---------------------------------------------------------------------------#
-
-
 def _cuda_supports_bf16() -> bool:
-    """Return True when CUDA reports BF16 support."""
     if not torch.cuda.is_available():
         return False
     checker = getattr(torch.cuda, "is_bf16_supported", None)
@@ -54,22 +46,15 @@ def _cuda_supports_bf16() -> bool:
 
 
 def select_autocast_dtype(device: torch.device) -> torch.dtype:
-    """Return the preferred autocast dtype for the given device."""
     if device.type != "cuda":
         return torch.bfloat16
     return torch.bfloat16 if _cuda_supports_bf16() else torch.float16
 
 
 def select_inference_dtype(device: torch.device, *, cpu_dtype: torch.dtype = torch.float32) -> torch.dtype:
-    """Return the evaluation dtype, using CPU override when CUDA is absent."""
     if device.type != "cuda":
         return cpu_dtype
     return select_autocast_dtype(device)
-
-
-# ---------------------------------------------------------------------------#
-# Model preparation
-# ---------------------------------------------------------------------------#
 
 
 def prepare_model(
@@ -81,7 +66,6 @@ def prepare_model(
     eval_mode: bool = False,
     freeze: bool = False,
 ) -> nn.Module:
-    """Move a model to device and apply layout/dtype/mode toggles."""
     model = model.to(device)
     if dtype is not None:
         model = model.to(dtype=dtype)
@@ -94,13 +78,7 @@ def prepare_model(
     return model
 
 
-# ---------------------------------------------------------------------------#
-# FEN helpers
-# ---------------------------------------------------------------------------#
-
-
 def _flip_square(square: str) -> str:
-    """Flip algebraic square notation across the central ranks/files."""
     if not square or square == "-":
         return "-"
     sq = square.strip()
@@ -118,7 +96,6 @@ def _flip_square(square: str) -> str:
 
 
 def _swap_castling_rights(rights: str) -> str:
-    """Swap castling rights between white and black."""
     if not rights or rights == "-":
         return "-"
     swapped: list[str] = []
@@ -131,7 +108,6 @@ def _swap_castling_rights(rights: str) -> str:
 
 
 def sanitize_fen(fen: str) -> str:
-    """Normalise a FEN string to ensure all mandatory fields are present."""
     parts = fen.strip().split()
     board = parts[0] if len(parts) > 0 else "8/8/8/8/8/8/8/8"
     side = parts[1] if len(parts) > 1 else "w"
@@ -143,17 +119,13 @@ def sanitize_fen(fen: str) -> str:
 
 
 def _revrow(row: str) -> str:
-    """Reverse a FEN row while preserving run-length encoding."""
-    # expand digits to cells
     cells: list[str] = []
     for ch in row:
         if ch.isdigit():
             cells.extend(["1"] * int(ch))
         else:
             cells.append(ch)
-    # reverse and swap case of pieces
     cells = [c.swapcase() if c.isalpha() else c for c in cells[::-1]]
-    # recompress digits
     out: list[str] = []
     run = 0
     for c in cells:
@@ -170,7 +142,6 @@ def _revrow(row: str) -> str:
 
 
 def flip_fen_perspective(fen: str) -> str:
-    """Mirror a FEN so that the opposite side to move becomes primary."""
     board, side, castling, ep, halfmove, fullmove, *rest = sanitize_fen(fen).split()
     rows = board.split("/")
     flipped_board = "/".join(_revrow(r) for r in rows[::-1])
@@ -190,13 +161,7 @@ def flip_fen_perspective(fen: str) -> str:
     return " ".join(components)
 
 
-# ---------------------------------------------------------------------------#
-# JSON helpers
-# ---------------------------------------------------------------------------#
-
-
 def _json_safe(value: object) -> object:
-    """Convert values to JSON-compatible equivalents."""
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     if isinstance(value, Path):
@@ -212,15 +177,8 @@ def _json_safe(value: object) -> object:
     return str(value)
 
 
-# ---------------------------------------------------------------------------#
-# Metrics reporting
-# ---------------------------------------------------------------------------#
-
-
 @dataclass(slots=True)
 class MetricsReporter:
-    """Append-only reporter writing CSV and optional JSONL."""
-
     csv_path: str
     jsonl_path: str | None = None
 
@@ -246,7 +204,7 @@ class MetricsReporter:
                     writer.writeheader()
                 writer.writerow(row)
         except Exception as exc:
-            raise RuntimeError("Failed to append metrics row") from exc
+            raise RuntimeError("Nem sikerült hozzáfűzni a metrikasort a fájlhoz") from exc
 
     def _append_jsonl(self, row: Mapping[str, object]) -> None:
         if not self.jsonl_path:
@@ -260,7 +218,7 @@ class MetricsReporter:
                 json.dump(safe_row, h, separators=(",", ":"))
                 h.write("\n")
         except Exception as exc:
-            raise RuntimeError("Failed to append metrics JSONL row") from exc
+            raise RuntimeError("Nem sikerült hozzáfűzni a metrikasort a JSONL fájlhoz") from exc
 
 
 def select_visit_count_move(
@@ -268,7 +226,6 @@ def select_visit_count_move(
     temperature: float,
     rng: np.random.Generator,
 ) -> int:
-    """Select a move index from visit counts under a temperature policy."""
     if visit_counts.ndim != 1 or visit_counts.size == 0:
         return 0
     if temperature <= C.SELFPLAY.deterministic_temp_eps:
@@ -288,7 +245,6 @@ def select_visit_count_move(
 
 
 def format_time(seconds: float) -> str:
-    """Duration formatter supporting seconds/minutes/hours."""
     v = float(seconds)
     if v < 60:
         return f"{v:.1f}s"
@@ -297,49 +253,41 @@ def format_time(seconds: float) -> str:
     return f"{v / 3600:.1f}h"
 
 
-# ---------------------------------------------------------------------------#
-# Logging helpers
-# ---------------------------------------------------------------------------#
-
-
 def startup_summary(trainer: Any) -> str:
-    """Summarise runtime configuration for logging at trainer start-up."""
     has_cuda = bool(trainer.device.type == "cuda" and torch.cuda.is_available())
     amp_enabled = bool(getattr(trainer, "_amp_enabled", C.TORCH.amp_enabled))
-    autocast_mode = "fp16" if amp_enabled else "off"
+    autocast_mode = "fp16" if amp_enabled else "kikapcsolva"
     params_m = sum(p.numel() for p in trainer.model.parameters()) / 1e6
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     device_name = getattr(trainer, "device_name", str(trainer.device))
     lines = [
-        f"[{timestamp}] Hybrid Chess AI training",
-        f"device={device_name} ({trainer.device}) cuda={'yes' if has_cuda else 'no'} autocast={autocast_mode} "
-        f"params={params_m:.2f}M replay={C.REPLAY.capacity:,}",
+        f"[{timestamp}] Hibrid sakk MI edzés",
+        f"eszköz={device_name} ({trainer.device}) cuda={'igen' if has_cuda else 'nem'} autocast={autocast_mode} "
+        f"paraméterek={params_m:.2f}M visszajátszási_tár={C.REPLAY.capacity:,}",
         " ".join(
             [
-                f"train iters={C.TRAIN.total_iterations}",
-                f"games/iter={C.TRAIN.games_per_iter}",
-                f"batch={trainer.train_batch_size}",
+                f"edző iterációk={C.TRAIN.total_iterations}",
+                f"játszmák/iter={C.TRAIN.games_per_iter}",
+                f"batch_méret={trainer.train_batch_size}",
                 f"lr={C.TRAIN.learning_rate_init:.2e}->{C.TRAIN.learning_rate_final:.2e}",
                 f"grad_clip={C.TRAIN.grad_clip_norm}",
             ]
         ),
         " ".join(
             [
-                f"self-play workers={C.SELFPLAY.num_workers}",
-                f"sims={C.MCTS.train_simulations}->{C.MCTS.train_simulations_min}",
-                f"temp_moves={C.SELFPLAY.temperature_moves}",
-                f"max_plies={C.SELFPLAY.game_max_plies}",
-                f"adj_margin={C.SELFPLAY.adjudication_value_margin}",
-                f"adj_warmup={C.SELFPLAY.adjudication_warmup_iters}",
-                f"adj_ramp={C.SELFPLAY.adjudication_ramp_iters}",
+                f"önjátszó szálak={C.SELFPLAY.num_workers}",
+                f"szimulációk={C.MCTS.train_simulations}->{C.MCTS.train_simulations_min}",
+                f"hőmérséklet_lépések={C.SELFPLAY.temperature_moves}",
+                f"max_lépésszám={C.SELFPLAY.game_max_plies}",
+                f"elbírálási_margó={C.SELFPLAY.adjudication_value_margin}",
+                f"elbírálási_bemelegítés={C.SELFPLAY.adjudication_warmup_iters}",
+                f"elbírálási_rámpa={C.SELFPLAY.adjudication_ramp_iters}",
             ]
         ),
         " ".join(
             [
-                f"arena every={C.ARENA.eval_every_iters}",
-                f"games={C.ARENA.games_per_eval}",
-                f"gate_baseline={C.ARENA.gate_baseline_p:.3f}",
-                f"margin={C.ARENA.gate_margin:.3f}",
+                f"aréna minden={C.ARENA.eval_every_iters}. iteráció",
+                f"játszmák={C.ARENA.games_per_eval}",
             ]
         ),
         f"metrics_csv={getattr(getattr(trainer, 'metrics', None), 'csv_path', '')}",

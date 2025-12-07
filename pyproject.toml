@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hybrid-chess-ai"
 version = "0.1.0"
-description = "AlphaZero-style chess reinforcement learning stack with pybind11 chess core and PyTorch network."
+description = "AlphaZero-stílusú sakk megerősítéses tanulási verem pybind11 sakkmaggal és PyTorch hálózattal."
 readme = "README.md"
 license = { text = "Proprietary" }
 requires-python = ">=3.13"

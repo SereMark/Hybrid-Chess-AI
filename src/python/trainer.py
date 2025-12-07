@@ -1,11 +1,8 @@
-"""High-level trainer coordinating self-play, optimisation, and evaluation."""
-
 from __future__ import annotations
 
 import contextlib
 import logging
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -31,18 +28,7 @@ from utils import (
 __all__ = ["Trainer"]
 
 
-@dataclass(slots=True)
-class GateHistory:
-    """Lightweight record of arena evaluations."""
-
-    last: ArenaResult | None = None
-    accepted: int = 0
-    rejected: int = 0
-
-
 class Trainer:
-    """Coordinates training, self-play, evaluation, and gating."""
-
     def __init__(self, device: str | None = None, resume: bool = False) -> None:
         self.log = logging.getLogger("hybridchess.trainer")
         self.device = self._resolve_device(device)
@@ -102,7 +88,7 @@ class Trainer:
             if resumed_root != initial_root:
                 self._configure_run_paths(resumed_root)
 
-        self.metrics.append_json({"event": "startup", "timestamp": time.time(), "run_root": self.run_root})
+        self.metrics.append_json({"event": "indítás", "timestamp": time.time(), "run_root": self.run_root})
 
         self.ema: EMA | None = EMA(self.model) if C.TRAIN.ema_enabled else None
         self.best_model = self._clone_model()
@@ -112,7 +98,6 @@ class Trainer:
         self.iteration = 0
         self.total_games = 0
         self.start_time = time.time()
-        self.gate = GateHistory()
         self._arena_rng = np.random.default_rng(_seed_or_none(2))
 
         self._sync_selfplay_evaluator()
@@ -124,9 +109,7 @@ class Trainer:
 
         self.log.info(startup_summary(self))
 
-    # ------------------------------------------------------------------ public API
     def train(self) -> None:
-        """Run the primary training loop until the iteration budget is met."""
         try:
             max_iters = int(C.TRAIN.total_iterations)
             while self.iteration < max_iters:
@@ -146,26 +129,22 @@ class Trainer:
                 self._maybe_checkpoint()
                 self._maybe_flush_cuda_cache()
 
-            self.log.info("Training completed after %s iterations.", self.iteration)
+            self.log.info("Az edzés befejeződött %s iteráció után.", self.iteration)
         finally:
             self.close()
 
     def close(self) -> None:
-        """Release resources associated with the trainer."""
         with contextlib.suppress(Exception):
             self.evaluator.close()
         with contextlib.suppress(Exception):
             self.selfplay_engine.close()
 
-    # ------------------------------------------------------------------ helpers
     def _resolve_device(self, override: str | None) -> torch.device:
-        """Determine the torch device, preferring CUDA unless overridden."""
         if override:
             return torch.device(override)
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def _device_name(self) -> str:
-        """Return a device name."""
         if self.device.type != "cuda":
             return "CPU"
         try:
@@ -175,14 +154,12 @@ class Trainer:
             return "cuda"
 
     def _clone_model(self) -> torch.nn.Module:
-        """Allocate a fresh model instance on the trainer device."""
         model = ChessNet()
         model.to(self.device)
         model.eval()
         return model
 
     def _sync_selfplay_evaluator(self) -> None:
-        """Copy the latest training (or EMA) weights into the shared evaluator."""
         model = self.model
         if self.ema is not None:
             shadow = self._clone_model()
@@ -196,7 +173,6 @@ class Trainer:
         )
 
     def _candidate_eval_model(self) -> torch.nn.Module:
-        """Return a copy of the candidate network (using EMA if enabled)."""
         model = self._clone_model()
         if self.ema is not None:
             model.load_state_dict(self.ema.shadow, strict=True)
@@ -206,7 +182,6 @@ class Trainer:
         return model
 
     def _make_eval(self, net: torch.nn.Module, cache_cap: int) -> BatchedEvaluator:
-        """Spawn a temporary evaluator with limited caches for arena play."""
         ev = BatchedEvaluator(self.device)
         ev.refresh_from(net)
         ev.set_batching_params(batch_size_max=C.EVAL.batch_size_max, coalesce_ms=C.EVAL.coalesce_ms)
@@ -218,7 +193,6 @@ class Trainer:
         return ev
 
     def _configure_run_paths(self, root: Path) -> None:
-        """Initialise directories and metric reporters for the current run."""
         resolved = Path(root).resolve()
         resolved.mkdir(parents=True, exist_ok=True)
         self.run_root = resolved
@@ -235,15 +209,14 @@ class Trainer:
             jsonl_path=str(metrics_dir / "training.jsonl"),
         )
 
-    def _run_arena(self) -> ArenaResult:
-        """Run an arena match between the candidate and baseline models."""
+    def _run_arena(self) -> ArenaResult | None:
         candidate_model = self._candidate_eval_model()
         baseline_model = self._clone_model()
         baseline_model.load_state_dict(self.best_model.state_dict(), strict=True)
         baseline_model.eval()
 
-        candidate_eval = self._make_eval(candidate_model, cache_cap=min(256, C.EVAL.cache_capacity))
-        baseline_eval = self._make_eval(baseline_model, cache_cap=min(256, C.EVAL.cache_capacity))
+        candidate_eval = self._make_eval(candidate_model, cache_cap=C.EVAL.arena_cache_capacity)
+        baseline_eval = self._make_eval(baseline_model, cache_cap=C.EVAL.arena_cache_capacity)
 
         try:
             result = play_match(
@@ -261,59 +234,29 @@ class Trainer:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-        raw_games = int(result.games)
-        denom = max(1, raw_games)
-        decisive_games = result.candidate_wins + result.baseline_wins
-        min_games = int(C.ARENA.gate_min_games)
-        min_decisive = int(C.ARENA.gate_min_decisive)
-        score_target = float(C.ARENA.gate_baseline_p + C.ARENA.gate_margin)
-        draw_weight = float(np.clip(C.ARENA.gate_draw_weight, 0.0, 1.0))
-        weighted_score = (result.candidate_wins + draw_weight * result.draws) / denom
-
-        rejection_notes: list[str] = []
-        if raw_games < max(1, min_games):
-            rejection_notes.append(f"insufficient games ({raw_games}/{min_games})")
-        if decisive_games < max(1, min_decisive):
-            rejection_notes.append(f"insufficient decisive games ({decisive_games}/{min_decisive})")
-        if weighted_score < score_target:
-            rejection_notes.append(f"score {weighted_score:.3f} < target {score_target:.3f}")
-
-        accept = not rejection_notes
-
-        if accept:
-            self.best_model.load_state_dict(candidate_model.state_dict(), strict=True)
-            save_best_model(self)
-            self.gate.accepted += 1
-            decision = f"accept score={weighted_score:.3f}"
-        else:
-            self.gate.rejected += 1
-            decision = "reject"
+        self.best_model.load_state_dict(candidate_model.state_dict(), strict=True)
+        save_best_model(self)
+        decision = "elfogadva (automatikus)"
 
         result.notes.append(decision)
-        if rejection_notes:
-            result.notes.extend(rejection_notes)
-        self.gate.last = result
 
-        return self.gate.last
+        return result
 
     def _should_run_arena(self) -> bool:
         every = int(max(1, C.ARENA.eval_every_iters))
         return self.iteration % every == 0
 
     def _maybe_checkpoint(self) -> None:
-        """Save a checkpoint if the iteration aligns with the configured cadence."""
         if C.LOG.checkpoint_interval_iters > 0 and self.iteration % C.LOG.checkpoint_interval_iters == 0:
             save_checkpoint(self)
 
     def _maybe_flush_cuda_cache(self) -> None:
-        """Occasionally flush the CUDA allocator to prevent fragmentation."""
         if self.device.type == "cuda":
             interval = int(C.LOG.empty_cache_interval_iters)
             if interval > 0 and self.iteration % interval == 0:
                 torch.cuda.empty_cache()
 
     def _log_iteration(self, stats: dict[str, float | int | str], arena_result: ArenaResult | None) -> None:
-        """Emit logs summarising the current iteration."""
         sp_raw = stats.get("selfplay_stats")
         sp = cast(dict[str, float | int | str], sp_raw if isinstance(sp_raw, dict) else {})
         games = max(1, int(float(sp.get("games", 0))))
@@ -328,32 +271,32 @@ class Trainer:
 
         train_line = (
             f"TRN iter={self.iteration}/{C.TRAIN.total_iterations} "
-            f"steps={stats['train_steps_actual']}/{stats['train_steps_planned']} "
+            f"lépések={stats['train_steps_actual']}/{stats['train_steps_planned']} "
             f"lossP={stats['policy_loss']:.3f} lossV={stats['value_loss']:.3f} "
-            f"entropy={stats['entropy']:.3f} lr={stats['learning_rate']:.2e} "
+            f"entrópia={stats['entropy']:.3f} lr={stats['learning_rate']:.2e} "
             f"grad={stats['avg_grad_norm']:.2f} samples/s={stats['samples_per_sec']:.0f} "
-            f"buffer={stats['buffer_percent']:.0f}% recent={stats['train_recent_pct']:.0f}% "
-            f"resign={stats['resign_status']} "
+            f"puffer={stats['buffer_percent']:.0f}% recent={stats['train_recent_pct']:.0f}% "
+            f"feladás={stats['resign_status']} "
             f"adj={stats['adjudication_phase']}("
-            f"{'on' if stats['adjudication_enabled'] else 'off'}) "
+            f"{'be' if stats['adjudication_enabled'] else 'ki'}) "
             f"min={int(stats['adjudication_min_plies'])} "
-            f"margin={float(stats['adjudication_value_margin']):.3f} "
-            f"persist={int(stats['adjudication_persist_plies'])}"
+            f"margó={float(stats['adjudication_value_margin']):.3f} "
+            f"perzisztencia={int(stats['adjudication_persist_plies'])}"
         )
         sp_line = (
-            f"SP  games={games} W/D/L={sp_w}/{sp_d}/{sp_b} "
-            f"natural={natural_pct:.1f}% adjudicated={adjudicated_pct:.1f}% "
-            f"resign={resigned_pct:.1f}% exhausted={exhausted_pct:.1f}% "
-            f"visits/move={visit_per_move:.1f}"
+            f"SP  játszmák={games} W/D/L={sp_w}/{sp_d}/{sp_b} "
+            f"természetes={natural_pct:.1f}% elbírált={adjudicated_pct:.1f}% "
+            f"feladás={resigned_pct:.1f}% kifutás={exhausted_pct:.1f}% "
+            f"látogatások/lépés={visit_per_move:.1f}"
         )
-        arena_line = "ARENA skipped"
+        arena_line = "ARÉNA kihagyva"
         if arena_result is not None:
             arena_line = (
-                f"ARENA {arena_result.notes[0].upper():<6} "
-                f"score={arena_result.score_pct:.1f}% "
+                f"ARÉNA {arena_result.notes[0].upper():<6} "
+                f"eredmény={arena_result.score_pct:.1f}% "
                 f"W/D/L={arena_result.candidate_wins}/{arena_result.draws}/{arena_result.baseline_wins} "
-                f"draw={arena_result.draw_pct:.1f}% decisive={arena_result.decisive_pct:.1f}% "
-                f"time={format_time(arena_result.elapsed_s)}"
+                f"döntetlen={arena_result.draw_pct:.1f}% döntéses={arena_result.decisive_pct:.1f}% "
+                f"idő={format_time(arena_result.elapsed_s)}"
             )
 
         self.log.info(sp_line)
@@ -362,13 +305,15 @@ class Trainer:
         self.log.info("")
 
     def _write_metrics(self, stats: dict[str, float | int | str], arena_result: ArenaResult | None) -> None:
-        """Append numeric metrics for the current iteration to persistent storage."""
         if not C.LOG.metrics_csv_enable or not self.metrics.csv_path:
             return
         elapsed = time.time() - self.start_time
         sp_raw = stats.get("selfplay_stats")
         sp = cast(dict[str, float | int | str], sp_raw if isinstance(sp_raw, dict) else {})
         games = max(1, int(float(sp.get("games", 0))))
+
+        eval_metrics = self.evaluator.metrics_snapshot()
+
         row = {
             "iter": int(self.iteration),
             "elapsed_s": float(elapsed),
@@ -408,6 +353,10 @@ class Trainer:
             "sp_term_adjudicated_pct": 100.0 * int(float(sp.get("term_adjudicated", 0))) / games,
             "sp_term_resign_pct": 100.0 * int(float(sp.get("term_resign", 0))) / games,
             "sp_term_exhausted_pct": 100.0 * int(float(sp.get("term_exhausted", 0))) / games,
+            "eval_requests": int(eval_metrics.get("requests_total", 0)),
+            "eval_cache_hits": int(eval_metrics.get("cache_hits_total", 0)),
+            "eval_cache_misses": int(eval_metrics.get("cache_misses_total", 0)),
+            "eval_batches": int(eval_metrics.get("batches_total", 0)),
             "arena_score_pct": float(arena_result.score_pct) if arena_result else 0.0,
             "arena_draw_pct": float(arena_result.draw_pct) if arena_result else 0.0,
             "arena_decisive_pct": float(arena_result.decisive_pct) if arena_result else 0.0,

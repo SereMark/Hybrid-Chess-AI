@@ -13,7 +13,6 @@ class DummyTrainer:
         self.device = torch.device("cpu")
         self.device_name = "cpu"
         self.start_time = 0.0
-        self.gate = type("Gate", (), {"accepted": 0, "rejected": 0})()
         self.metrics = type("Metrics", (), {"csv_path": str(run_root / "metrics" / "training.csv")})()
         self.model = torch.nn.Linear(2, 2)
         self.best_model = torch.nn.Linear(2, 2)

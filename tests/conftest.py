@@ -19,7 +19,7 @@ except ImportError:
 @pytest.fixture(scope="session")
 def ensure_chesscore() -> object:
     if chesscore is None:
-        pytest.skip("chesscore extension missing")
+        pytest.skip("hiányzik a chesscore modul")
     return chesscore
 
 

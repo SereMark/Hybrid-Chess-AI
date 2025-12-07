@@ -1,9 +1,5 @@
 #pragma once
 
-// Hybrid Chess AI - Core chess primitives
-// Provides the position representation, move lists, and helper utilities
-// used by the PyTorch trainer and the C++ MCTS engine.
-
 #include <bit>
 #include <cstdint>
 #include <string>
@@ -11,7 +7,7 @@
 
 namespace mcts {
 class MCTS;
-}  // namespace mcts
+}
 
 namespace chess {
 
@@ -106,6 +102,7 @@ public:
   [[nodiscard]] inline uint16_t get_fullmove() const noexcept { return fullmove; }
   [[nodiscard]] inline Hash     get_hash() const noexcept { return hash; }
   [[nodiscard]] inline Bitboard get_pieces(Piece p, Color c) const noexcept { return pieces[p][c]; }
+  [[nodiscard]] bool            in_check() const;
 
 private:
   alignas(64) Bitboard pieces[6][2]{};
@@ -191,4 +188,4 @@ extern Bitboard king_attack_table[64];
 
 void init_tables();
 
-}  // namespace chess
+}

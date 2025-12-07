@@ -1,12 +1,9 @@
 #include "mcts.hpp"
 
-// Hybrid Chess AI - Monte Carlo Tree Search implementation
-
 #include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <random>
 #include <stdexcept>
 #include <vector>
@@ -89,7 +86,7 @@ void normalize_priors_inplace(std::vector<float>& priors) {
   }
 }
 
-}  // namespace
+}
 
 float Node::ucb(float c_puct, float sqrt_visits, float parent_q, float fpu) const {
   const float q = (visits > 0) ? (val_sum / visits) : (parent_q - fpu);
@@ -135,7 +132,15 @@ Node* NodePool::get_node(uint32_t index) { return &nodes_[index]; }
 
 uint32_t NodePool::get_index(Node* node) { return static_cast<uint32_t>(node - nodes_.data()); }
 
-int encode_move_index(const chess::Move& move) { return encode_move_73x64(move); }
+int encode_move_index(const chess::Move& move, bool flip) {
+  if (!flip) {
+    return encode_move_73x64(move);
+  }
+  const int from = move.from() ^ 56;
+  const int to = move.to() ^ 56;
+  const chess::Move flipped(from, to, move.promotion());
+  return encode_move_73x64(flipped);
+}
 
 Node* MCTS::select_child(Node* parent) {
   Node* children = node_pool_.get_node(parent->first_child_index);
@@ -171,7 +176,7 @@ void MCTS::expand_node_with_priors(Node* node,
   normalize_priors_inplace(priors);
 
   if (moves.size() > std::numeric_limits<uint16_t>::max()) {
-    throw std::overflow_error("too many children");
+    throw std::overflow_error("túl sok gyerek");
   }
 
   const uint32_t node_idx = node_pool_.get_index(node);
@@ -235,18 +240,44 @@ bool MCTS::ensure_root(const chess::Position& position) {
   return true;
 }
 
+void MCTS::backpropagate(const std::vector<uint32_t>& path, float value) {
+  for (auto it = path.rbegin(); it != path.rend(); ++it) {
+    Node* path_node = node_pool_.get_node(*it);
+    path_node->visits--;
+    path_node->val_sum += VIRTUAL_LOSS;
+    path_node->update(value);
+    value = -value;
+  }
+  value = -value;
+
+  Node* root_node = node_pool_.get_node(root_index_);
+  root_node->visits--;
+  root_node->val_sum += VIRTUAL_LOSS;
+  root_node->update(value);
+}
+
 std::vector<int> MCTS::search_batched_legal(const chess::Position& position,
                                             const EvalLegalBatchFn& eval_fn,
                                             int max_batch) {
   if (max_batch <= 0) {
-    throw std::invalid_argument("max_batch must be > 0");
+    throw std::invalid_argument("max_batch > 0 legyen");
   }
 
   ensure_root(position);
   working_pos_ = position;
 
+  if (!root_noise_applied_) {
+    Node* root = node_pool_.get_node(root_index_);
+    if (root->child_count > 0) {
+      add_dirichlet_noise(root);
+      root_noise_applied_ = true;
+    }
+  }
+
   std::vector<chess::Position> to_eval;
   std::vector<std::vector<chess::Move>> pending_moves;
+  std::vector<int32_t> pending_encoded;
+  std::vector<int> pending_counts;
   std::vector<std::vector<float>> eval_priors;
   std::vector<float> eval_values;
   std::vector<uint32_t> eval_path_offsets;
@@ -260,44 +291,83 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position,
     }
     eval_priors.clear();
     eval_values.clear();
-    eval_fn(to_eval, pending_moves, eval_priors, eval_values);
+    
+    eval_fn(to_eval, pending_encoded, pending_counts, eval_priors, eval_values);
+    
     if (eval_priors.size() != pending_moves.size() || eval_values.size() != pending_moves.size()) {
-      throw std::runtime_error("evaluation callback returned mismatched sizes");
+      throw std::runtime_error("az értékelési callback visszatérési méretei nem egyeznek");
     }
     for (size_t i = 0; i < to_eval.size(); ++i) {
       const uint32_t node_idx = eval_path_offsets[i];
       Node* node = node_pool_.get_node(node_idx);
       expand_node_with_priors(node, pending_moves[i], eval_priors[i]);
+
+      node = node_pool_.get_node(node_idx);
+
       if (node_idx == root_index_ && !root_noise_applied_) {
         add_dirichlet_noise(node);
         root_noise_applied_ = true;
       }
 
       float value = eval_values[i];
-      for (auto it = eval_paths[i].rbegin(); it != eval_paths[i].rend(); ++it) {
-        node_pool_.get_node(*it)->update(value);
-        value = -value;
-      }
-      node_pool_.get_node(root_index_)->update(value);
+      value = -value;
+      
+      backpropagate(eval_paths[i], value);
     }
     to_eval.clear();
     pending_moves.clear();
+    pending_encoded.clear();
+    pending_counts.clear();
     eval_path_offsets.clear();
     eval_paths.clear();
   };
 
   for (int sim = 0; sim < simulations_; ++sim) {
     Node* node = node_pool_.get_node(root_index_);
+    node->visits++;
+    node->val_sum -= VIRTUAL_LOSS;
+
     int depth = 0;
-    while (node->child_count > 0) {
+    uint32_t current_node_idx = root_index_;
+
+    while (true) {
+      node = node_pool_.get_node(current_node_idx);
+
+      if (node->child_count == 0) {
+        bool pending = false;
+        for (uint32_t idx : eval_path_offsets) {
+          if (idx == current_node_idx) {
+            pending = true;
+            break;
+          }
+        }
+
+        if (pending) {
+          flush_and_expand();
+          node = node_pool_.get_node(current_node_idx);
+          if (node->child_count > 0) {
+            continue;
+          }
+          break;
+        }
+        break;
+      }
+
       if (depth >= static_cast<int>(path_buffer_.size())) {
-        throw std::runtime_error("search depth exceeded buffer capacity");
+        size_t new_size = path_buffer_.size() * 2;
+        path_buffer_.resize(new_size);
+        undo_stack_.resize(new_size);
       }
       Node* child = select_child(node);
+      
+      child->visits++;
+      child->val_sum -= VIRTUAL_LOSS;
+
       const uint32_t child_index = node_pool_.get_index(child);
       working_pos_.make_move_fast(child->move, undo_stack_[depth]);
       path_buffer_[depth] = child_index;
-      node = child;
+      
+      current_node_idx = child_index;
       ++depth;
     }
 
@@ -305,27 +375,40 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position,
     if (terminal != chess::ONGOING) {
       float v;
       if (terminal == chess::DRAW) {
-        v = 0.0f;
+          v = 0.0f;
       } else {
         v = (terminal == chess::WHITE_WIN) ? 1.0f : -1.0f;
         if (working_pos_.get_turn() == chess::BLACK) {
           v = -v;
         }
       }
-      for (int i = depth - 1; i >= 0; --i) {
-        node_pool_.get_node(path_buffer_[i])->update(v);
-        v = -v;
+      v = -v;
+
+      std::vector<uint32_t> path;
+      path.reserve(depth);
+      for(int i = 0; i < depth; ++i) {
+        path.push_back(path_buffer_[i]);
       }
-      node_pool_.get_node(root_index_)->update(v);
+      backpropagate(path, v);
+
     } else {
       chess::MoveList legal_moves;
       working_pos_.legal_moves(legal_moves);
 
       std::vector<chess::Move> moves;
       moves.reserve(legal_moves.size());
+      
+      const bool flip = (working_pos_.get_turn() == chess::BLACK);
       for (size_t i = 0; i < legal_moves.size(); ++i) {
         moves.push_back(legal_moves[i]);
+        const int idx = encode_move_index(legal_moves[i], flip);
+        if (idx < 0) {
+            pending_encoded.push_back(-1); 
+        } else {
+            pending_encoded.push_back(static_cast<int32_t>(idx));
+        }
       }
+      pending_counts.push_back(static_cast<int>(legal_moves.size()));
 
       eval_path_offsets.push_back(node_pool_.get_index(node));
       to_eval.push_back(working_pos_);
@@ -345,13 +428,9 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position,
 
     for (int i = depth - 1; i >= 0; --i) {
       if (i >= static_cast<int>(path_buffer_.size())) {
-        throw std::runtime_error("unmake depth exceeded buffer capacity");
+         break; 
       }
       working_pos_.unmake_move_fast(node_pool_.get_node(path_buffer_[i])->move, undo_stack_[i]);
-    }
-
-    if (!to_eval.empty()) {
-      flush_and_expand();
     }
   }
 
@@ -377,6 +456,8 @@ MCTS::MCTS(int simulations, float c_puct, float alpha, float weight)
   node_pool_.reset();
   rng_.seed(1337u);
   root_initialized_ = false;
+  undo_stack_.resize(1024);
+  path_buffer_.resize(1024);
 }
 
 void MCTS::set_c_puct_params(float base, float init) {
@@ -424,4 +505,4 @@ void MCTS::advance_root(const chess::Position& new_position, const chess::Move& 
   root_noise_applied_ = false;
 }
 
-}  // namespace mcts
+}
