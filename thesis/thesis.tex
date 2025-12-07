@@ -240,7 +240,7 @@
 \addcontentsline{toc}{chapter}{Feladatkiírás}
 \noindent\textbf{Téma megnevezése:} Neurális hálózatokat és Monte Carlo fakeresést kombináló hibrid sakkrobot fejlesztése nyitókönyv integrációval
 
-\noindent\textbf{Feladat rövid leírása:} Olyan AlphaZero-típusú~\cite{silver2017chess} sakkprogram megvalósítása, amelyben a lépésgenerálás és a PUCT-alapú Monte Carlo fakeresés (MCTS) C++ nyelven valósul meg. A lépésirány- és értékbecslést reziduális konvolúciós neurális háló (CNN) végzi. A rendszer támogassa az önjátszásos tanítást, a kötegelt kiértékelést, a telemetriai méréseket, valamint az arénamérkőzésekre épülő modellkapuzást. A nyitókönyv biztosítsa a kezdőállások minél nagyobb sokféleségét.
+\noindent\textbf{Feladat rövid leírása:} Olyan AlphaZero-típusú~\cite{silver2017chess} sakkprogram megvalósítása, amelyben a lépésgenerálás és a PUCT-alapú Monte Carlo fakeresés (MCTS) C++ nyelven valósul meg. A lépésirány- és értékbecslést reziduális konvolúciós neurális háló (CNN) végzi. A rendszer támogassa az önjátszásos tanítást, a kötegelt kiértékelést, a telemetriai méréseket, valamint az arénamérkőzéseken alapuló modellértékelést és monitorozást. A nyitókönyv biztosítsa a kezdőállások minél nagyobb sokféleségét.
 
 \noindent\textbf{Részfeladatok:}
 \begin{enumerate}
@@ -395,7 +395,7 @@ ahol $\boldsymbol{p}$ és $v$ a háló kimenetei, $\lambda_v$ tipikusan 1, $\lam
 
 A modern AlphaZero-típusú reimplementációk gyakran bemelegítési szakasszal (\textit{warmup}) és koszinuszos ütemezésű csökkenéssel kombinált stratégiát (SGDR-szerű \cite{loshchilov2017sgdr} ütemezés újraindítás nélkül) használnak. Jelen dolgozat is ezt a megközelítést követi.
 
-Az \textbf{aréna-értékelés} (\textit{arena evaluation}) fázisban a jelölt modellt a jelenlegi bázismodellel szemben tesztelik. Az AlphaZero 400 játékot játszott, és 55\%-os küszöbbel fogadta el az új modellt~\cite{silver2017chess}. A konzervatív küszöb biztosítja, hogy csak egyértelműen jobb modellek lépjenek elő, csökkentve a zajból eredő fluktuációt. A gyakorlatban ez azt jelenti, hogy a tanulás nem monoton: sok iteráció után sem lép elő új modell, ha nem mutat egyértelmű javulást.
+Az \textbf{aréna-értékelés} (\textit{arena evaluation}) fogalma a szakirodalomban két, egymástól elkülönülő szerepben jelenik meg. Az AlphaGo Zero~\cite{silver2017go} tanítási protokolljában az úgynevezett aréna-kapuzás (\textit{arena gating}) döntötte el, hogy egy jelölt háló átveheti-e az önjátszásban használt „best player” szerepét: minden új háló 400 játszmát játszott az aktuális legjobb ellen, és csak akkor lépett elő, ha a győzelmi aránya meghaladta az 55\%-ot. Ez a konzervatív küszöb csökkentette a zajból eredő fluktuációt, ugyanakkor a tanulást nem tette monoton növekvővé: sok iteráció is eltelhetett új „best player” nélkül. Az AlphaZero-tanulmányok~\cite{silver2017chess,silver2018science} ezzel szemben kifejezetten elhagyják ezt a kapuzási lépést: az önjátszásos adatok generálására mindig az éppen legutóbb tanított hálót használják, és az aréna jellegű tornákat csak utólagos erősségmérésre (pl.\ Elo-becslés Stockfish vagy AlphaGo-változatok ellen) alkalmazzák, nem pedig a további önjátszásban használt modell kiválasztására.
 
 \subsection{Ismert tipikus hibamódok és kihívások}
 
@@ -407,13 +407,13 @@ Az AlphaZero-típusú rendszerek számos tipikus hibamóddal rendelkeznek, amely
 
 \textbf{Exploráció-kizsákmányolás egyensúly}: Túl konzervatív exploráció (alacsony Dirichlet zaj, magas $c_{\text{puct}}$) korai konvergenciát okoz rossz lokális optimumba. Túl agresszív exploráció véletlenszerű játékot eredményez, lassítva a tanulást. Az optimális paraméterek játékonként változnak: sakkban $\alpha = \num{0.3}$, shogiban $\alpha = \num{0.15}$, Go-ban $\alpha = \num{0.03}$, amelyeket az AlphaZero cikk \cite{silver2017chess} és az AlphaGo Zero cikk \cite{silver2017go} részletesen dokumentál (a kiegészítő anyagokban), és amelyeket a közösségi AlphaZero-típusú implementációk gyakorlatban is megerősítettek.
 
-\textbf{Aréna-értékelés zajérzékenysége}: Kis meccsszám ($< 100$ játék) nagy varianciát eredményez a becslésben. Két azonos erejű modell mérkőzése esetén a kimenetel közel azonos, nagyjából 50\%-os arány mindkét fél számára, így 100 játék esetén a 95\%-os konfidenciaintervallum $\pm 10\%$. Konzervatív küszöb (55\%+) és nagy meccsszám (400+) csökkenti a hamis pozitív előléptetéseket.
+\textbf{Aréna-értékelés zajérzékenysége}: Kis meccsszám ($< 100$ játék) nagy varianciát eredményez a becslésben. Két azonos erejű modell mérkőzése esetén a kimenetel közel azonos, nagyjából 50\%-os arány mindkét fél számára, így 100 játék esetén a 95\%-os konfidenciaintervallum $\pm 10\%$. Az AlphaGo Zero által alkalmazott konzervatív küszöb (55\%+ győzelmi arány) és nagy meccsszám (400+ arénaparti) csökkenti a hamis pozitív előléptetéseket; az AlphaZero esetében ehelyett folyamatos, kapuzás nélküli önjátszás zajlik, és az arénajellegű tornák csak külső erősségmérésre szolgálnak.
 
 \textbf{Számítási költség skálázódása}: Az AlphaZero eredeti sakkfuttatása mintegy 9~órás volt, 5000 első generációs TPU-t használva az önjátszásos adatok generálására és 16 második generációs TPU-t a háló tanítására~\cite{silver2018science}. Közösségi becslések szerint ez több tízmilliónyi önjátszásos játszmát eredményezhetett, ami egyetlen fogyasztói GPU-n nagyságrendileg éveket venne igénybe. Kompromisszumok szükségesek: kevesebb iteráció, kisebb háló, kevesebb MCTS szimuláció, kisebb puffer.
 
 \subsection{Leela Chess Zero tanulságok}
 
-A Leela Chess Zero \cite{lczero} nyílt forráskódú közösségi projekt, amely az AlphaZero-módszertant valósítja meg elosztott önkéntes GPU-kon. Több ezer önkéntes GPU-idejét aggregálva a projekt 2018 óta több milliárd önjátszásos játszmát generált (2024 vége / 2025 eleje szerint >2,5 milliárd játszma, folyamatosan növekvő tendenciával).
+A Leela Chess Zero \cite{lczero} nyílt forráskódú közösségi projekt, amely az AlphaZero-módszertant valósítja meg elosztott önkéntes GPU-kon. Több ezer önkéntes GPU-idejét aggregálva a projekt 2018 óta több milliárd önjátszásos játszmát generált.
 
 \textbf{Hálóarchitektúra evolúció}: Az LC0 kezdetben kisebb reziduális hálókat használt (pl.~6 reziduális blokk 64 és 128 csatornával), majd fokozatosan 15, 20 és később $\sim$40 blokkos hálókra nőtt több tízmillió paraméterrel. A 2020-as évek közepére a legmodernebb LC0/LZ hálók $\sim$40 vagy több blokkot és nagyobb csatornaszámokat használnak, gyakran tízmilliós paraméterszámmal, Squeeze-and-Excitation (SE, csatornaválasztó modul)~\cite{hu2018senet} rétegekkel kiegészítve. Ez arra utal, hogy a sakkhoz szükséges reprezentációs kapacitás jelentős, és a kisebb hálók (5 és 10 blokk között) csak korlátozott játékerőt érnek el.
 
@@ -495,7 +495,7 @@ A rendszer hibrid felépítésű: a számításigényes komponensek (bitboard sa
 
 A rendszer alapvető tervezési elve a \textbf{kanonikus reprezentáció}, azaz a „Mindig világos” nézet: a hálózat kizárólag a világos szemszögéből látja a táblát. Sötét lépése esetén a táblát és a lépéseket a bemeneti kódolás során a rendszer tükrözi (vertikális tükrözés + színcsere), majd a hálózat kimenetét (policy) visszatükrözi. Ez a megoldás felére csökkenti az állapottér komplexitását és feleslegessé teszi a heurisztikus adat-augmentációt.
 
-A tanulási ciklus folyamatos tanulást valósít meg, azaz a hálózat a futás teljes időtartama alatt frissül. Bár a rendszer támogatja az arénakapuzási mechanizmust, a kísérletekben ez ki volt kapcsolva: az arénamérkőzések csak mérőszámot szolgáltattak, minden jelölt modell automatikusan elfogadásra került:
+A tanulási ciklus folyamatos, AlphaZero-stílusú tanulást valósít meg: a hálózat a futás teljes időtartama alatt frissül, és az önjátszás mindig az éppen legfrissebb (EMA-val súlyozott) modellt használja. A klasszikus AlphaGo Zero-féle aréna-kapuzással szemben itt nincs olyan küszöbérték, amely az arénamérkőzések eredménye alapján engedélyezné vagy elutasítaná a jelölt modellt. Az arénamérkőzések a gyakorlatban kizárólag értékelő metrikaként szolgálnak: rendszeres időközönként az aktuális modell egy korábbi pillanatfelvétel ellen játszik, az eredményekből pedig győzelmi arányt, döntetlenarányt és futásidőt számolok:
 \begin{enumerate}
   \item \textbf{Önjátszás:} Aszinkron munkaszálak generálják a játszmákat a legfrissebb hálózattal.
   \item \textbf{Adatgyűjtés:} A generált játszmák egy körkörös visszajátszási pufferbe kerülnek (\num{50000}-es kapacitás, nagy áteresztőképességű konfiguráció esetén \num{80000}).
@@ -562,7 +562,7 @@ A jelenlegi hálóarchitektúra főbb jellemzői a következők:
 \end{itemize}
 
 \subsection{Tanítási folyamat}
-A rendszer a „folyamatos tanulás” paradigmát követi. Az arénakapuzás funkció implementálásra került, azonban a kísérleti futtatások során kikapcsolt állapotban volt, mivel jelentős mértékben lassítja a konvergenciát. A hálózat minden iterációban frissül.
+A rendszer a „folyamatos tanulás” paradigmát követi. A self-play és a tanítás egy időben zajlik, a hálózat súlyai minden iterációban frissülnek, és az önjátszást mindig a legutóbbi modell végzi.
 
 A veszteségfüggvény:
 \begin{equation*}
@@ -697,7 +697,7 @@ Az időalapú összehasonlítás (alsó sor) a fenti trendeket futásidővel sú
 
 Az arénamérkőzések eredményeit az \Fig{fig:evaluation_win_rate} szemlélteti. Az átlagos győzelmi arány az első 20 és 30 közötti iterációban gyorsan konvergál az 50\%-os, kiegyenlített szint közelébe, és ezt követően mind az öt konfiguráció nagyon hasonló tartományban marad. A \textbf{Referencia} (kék) kb.\ 60\% körüli kezdő értékről fokozatosan esik vissza $\sim$50\% alá. A \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Áteresztőképesség} (zöld) végig enyhén 50\% fölött, míg a \textbf{Nagy Entrópia} (narancs) és a \textbf{Hatékonyság} (lila) közvetlenül az 50\%-os vonal körül stabilizálódik. A tanítás végére a görbék mindössze néhány százalékpontos különbséggel, nagyjából 48 és 52\% között helyezkednek el, ezért a konfigurációk közötti eltérések a mérési bizonytalanságon belül maradnak.
 
-Az árnyékolt sávok az iterációnkénti 24 arénapartiból számolt 95\%-os konfidenciaintervallumokat jelölik. A sávok nagy szélessége (tipikusan kb.\ $\pm$20 és 25 százalékpont közötti érték) azt mutatja, hogy az egyes iterációk közti ingadozások jelentős része statisztikai zaj, nem pedig tartós teljesítménykülönbség. Ez alátámasztja a folyamatos tanulás választását a szigorú arénakapuzással szemben: ilyen zajos becslések mellett az előreléptetési döntések megbízhatatlanok lettek volna, ezért a jelen kísérletekben az arénakapuzást kikapcsolva hagytam, és az arénamérkőzéseket csak mérőszámként használtam.
+Az árnyékolt sávok az iterációnkénti 24 arénapartiból számolt 95\%-os konfidenciaintervallumokat jelölik. A sávok nagy szélessége (tipikusan kb.\ $\pm$20 és 25 százalékpont közötti érték) azt mutatja, hogy az egyes iterációk közti ingadozások jelentős része statisztikai zaj, nem pedig tartós teljesítménykülönbség. Ez alátámasztja a folyamatos, AlphaZero-stílusú tanulás választását az AlphaGo Zero-féle szigorú aréna-kapuzással szemben. Ilyen zajos becslések mellett az előreléptetési döntések megbízhatatlanok lettek volna, ezért a jelen kísérletekben az arénamérkőzéseket kizárólag mérőszámként használtam, és nem engedtem, hogy a self-play modell kiválasztásáról döntsenek.
 
 \begin{figure}[htbp]
   \centering
