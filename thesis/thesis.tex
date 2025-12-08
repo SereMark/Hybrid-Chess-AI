@@ -259,11 +259,11 @@
 \addcontentsline{toc}{chapter}{\abstractname}
 Dolgozatomban egy neurális hálózatokat és Monte Carlo fakeresést kombináló, AlphaZero-típusú hibrid sakkprogram fejlesztését mutatom be korlátozott erőforrású környezetben.
 
-Az AlphaZero-típusú, megerősítéses tanuláson (\textit{reinforcement learning}, RL) alapuló sakkprogramok gyakorlati reprodukálása jellemzően ipari léptékű számítási kapacitást (például TPU-klasztereket) igényel. Ez a forrásigény megnehezíti a módszertan elérhetőségét egyetemi kutatók és hobbifejlesztők számára. Dolgozatomban azt vizsgálom, hogy egyetlen fogyasztói GPU-n (RTX~3070 Laptop) és körülbelül 15~órás tanítási időkeretben milyen mérnöki döntésekkel valósítható meg egy kísérleti célokra alkalmas, AlphaZero-típusú sakkprogram.
+Az AlphaZero-típusú, megerősítéses tanuláson (\textit{reinforcement learning}, RL) alapuló sakkprogramok gyakorlati reprodukálása jellemzően ipari léptékű számítási kapacitást (például TPU-klasztereket) igényel. Ez a forrásigény megnehezíti a módszertan elérhetőségét egyetemi kutatók és hobbifejlesztők számára. Azt vizsgálom, hogy egyetlen fogyasztói GPU-n (RTX~3070 Laptop) és körülbelül 15~órás tanítási időkeretben milyen mérnöki döntésekkel valósítható meg egy kísérleti célokra alkalmas, AlphaZero-típusú sakkprogram.
 
 Az általam bemutatott rendszer C++23-alapú sakkmotort és PUCT-alapú Monte Carlo fakeresést (MCTS) kombinál egy PyTorch-ban implementált, reziduális konvolúciós neurális hálózattal (CNN). A megoldás kötegelt kiértékelést, önjátszást és arénamérkőzéseket alkalmaz. A korlátozott erőforrások és az adatdiverzitás közötti egyensúly megteremtése érdekében a rendszer tömör bemeneti reprezentációt és nyitókönyvet~\cite{lichess} használ.
 
-Dolgozatom főbb hozzájárulásai a következők: korlátos erőforrásokra optimalizált,
+Munkám főbb hozzájárulásai a következők: korlátos erőforrásokra optimalizált,
 C++/Python hibrid AlphaZero-típusú sakkmotor megvalósítása; a „Mindig világos”
 kanonikus nézet (\textit{Canonical Always White}) bevezetése és indoklása a rendszerben; öt
 különböző konfiguráció szisztematikus kísérleti összehasonlítása; valamint egy
