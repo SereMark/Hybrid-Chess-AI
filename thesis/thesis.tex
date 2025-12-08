@@ -395,12 +395,12 @@ Az \textbf{önjátszás} (self-play) szakaszban az aktuális modell játszik ön
 Az \textbf{adattárolás} fázisban a pozíció-lépésirány-kimenetel hármasokat visszajátszási pufferben gyűjtik. Az AlphaGo Zero~\cite{silver2017go} kiegészítő anyaga explicit módon a legutóbbi $\sim$\num{500000} játékot tartalmazó visszajátszási puffert ír elő. Az AlphaZero-tanulmányok~\cite{silver2017chess,silver2018science} ugyanennek a tanítási protokollnak az adaptációi, de a konkrét pufferméretet nem minden esetben részletezik. A közösségi reimplementációk ezért jellemzően 500k és 1M közötti puffert alkalmaznak. A minták $(\boldsymbol{s}_t, \boldsymbol{\pi}_t, z_t)$ formában tárolódnak, ahol $\boldsymbol{s}_t$ a bemeneti reprezentáció (8 történeti lépés), $\boldsymbol{\pi}_t$ az MCTS látogatási eloszlás (policy target), és $z_t$ a végső kimenetel a $t$-edik pozíció nézőpontjából.
 
 A \textbf{tanítási fázis} mini-kötegeken optimalizálja a hálót. A veszteségfüggvény \cite{silver2017chess} három tagból áll:
-\begin{equation}
+\begin{equation*}
 \mathcal{L} =
   \underbrace{-\boldsymbol{\pi}^T \log \boldsymbol{p}}_{\text{policy-veszteség}}
   + \underbrace{\lambda_v (z - v)^2}_{\text{értékveszteség}}
   + \underbrace{\lambda_c \lVert\boldsymbol{\theta}\rVert^2}_{\text{L2 regularizációs tag}}
-\end{equation}
+\end{equation*}
 ahol $\boldsymbol{p}$ és $v$ a háló kimenetei, $\lambda_v$ tipikusan 1, $\lambda_c$ a súlycsökkenés koefficiense ($10^{-4}$). A gyakorlatban $\lambda_v = 1$, ezért dolgozatomban a $\mathcal{L}_{\text{val}}$ definíciójában elhagyom. Az AlphaZero az eredeti cikkben \cite{silver2017chess} momentumos SGD-t és lépcsőzetes (\textit{stepwise}) ütemezést alkalmaz a tanulási rátára.
 
 A modern AlphaZero-típusú reimplementációk gyakran bemelegítési szakasszal (\textit{warmup}) és koszinuszos ütemezésű csökkenéssel kombinált stratégiát (SGDR-szerű \cite{loshchilov2017sgdr} ütemezés újraindítás nélkül) használnak. Dolgozatomban is ezt a megközelítést követem.
