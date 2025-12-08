@@ -393,12 +393,12 @@ Az AlphaZero tanítási folyamata négy, egymást követő fázis iterálásán 
 Az \textbf{adattárolás} fázisban a pozíció-lépésirány-kimenetel hármasokat visszajátszási pufferben gyűjtik. Az AlphaGo Zero~\cite{silver2017go} kiegészítő anyaga explicit módon a legutóbbi $\sim$\num{500000} játékot tartalmazó visszajátszási puffert ír elő. Az AlphaZero-tanulmányok~\cite{silver2017chess,silver2018science} ugyanennek a tanítási protokollnak az adaptációi, de a konkrét pufferméretet nem minden esetben részletezik. A közösségi reimplementációk ezért jellemzően 500k és 1M közötti puffert alkalmaznak. A minták $(\boldsymbol{s}_t, \boldsymbol{\pi}_t, z_t)$ formában tárolódnak, ahol $\boldsymbol{s}_t$ a bemeneti reprezentáció (8 történeti lépés), $\boldsymbol{\pi}_t$ az MCTS látogatási eloszlás (policy target), és $z_t$ a végső kimenetel a $t$-edik pozíció nézőpontjából.
 
 A \textbf{tanítási fázis} mini-kötegeken optimalizálja a hálót. A veszteségfüggvény \cite{silver2017chess} három tagból áll:
-\begin{align*}
-\mathcal{L} ={}&
-  \underbrace{-\boldsymbol{\pi}^T \log \boldsymbol{p}}_{\text{policy-veszteség (döntési veszteség)}} \\
-&+ \underbrace{\lambda_v (z - v)^2}_{\text{értékveszteség (értékbecslési veszteség)}} \\
-&+ \underbrace{\lambda_c \lVert\boldsymbol{\theta}\rVert^2}_{\text{regularizációs tag (L2 súlybüntetés, \textit{L2 weight regularization})}}
-\end{align*}
+\begin{equation}
+\mathcal{L} =
+  \underbrace{-\boldsymbol{\pi}^T \log \boldsymbol{p}}_{\text{policy-veszteség}}
+  + \underbrace{\lambda_v (z - v)^2}_{\text{értékveszteség}}
+  + \underbrace{\lambda_c \lVert\boldsymbol{\theta}\rVert^2}_{\text{L2 regularizációs tag}}
+\end{equation}
 ahol $\boldsymbol{p}$ és $v$ a háló kimenetei, $\lambda_v$ tipikusan 1, $\lambda_c$ a súlycsökkenés koefficiense ($10^{-4}$). A gyakorlatban $\lambda_v = 1$, ezért dolgozatomban a $\mathcal{L}_{\text{val}}$ definíciójában elhagyom. Az AlphaZero az eredeti cikkben \cite{silver2017chess} momentumos SGD-t és lépcsőzetes (\textit{stepwise}) ütemezést alkalmaz a tanulási rátára.
 
 A modern AlphaZero-típusú reimplementációk gyakran bemelegítési szakasszal (\textit{warmup}) és koszinuszos ütemezésű csökkenéssel kombinált stratégiát (SGDR-szerű \cite{loshchilov2017sgdr} ütemezés újraindítás nélkül) használnak. Dolgozatomban is ezt a megközelítést követem.
@@ -770,8 +770,8 @@ A Python-környezet főbb csomagjai a \texttt{requirements.txt}-ben rögzítette
 A rendszer globális \texttt{SEED} paramétere (\texttt{config.SEED}) határozza meg, hogy a futás determinisztikus módban történjen-e.
 Amennyiben a \texttt{SEED} értéke nem nulla, a \texttt{main.py} a tanítás indításakor inicializálja a Python beépített \texttt{random} modulját, a \texttt{NumPy} véletlenszám-generátorát, valamint a \texttt{torch} CPU- és GPU-RNG-it a megadott maggal.
 Ezzel párhuzamosan beállítja a \texttt{torch.use\_deterministic\_algorithms(True)} opciót, a \texttt{CUBLAS\_WORKSPACE\_CONFIG} környezeti változót, letiltja a \texttt{cuDNN} adaptív \texttt{benchmark} módját, illetve a logikai processzorszámhoz igazítja az intra- és inter-op szálak számát.
-Ez a kombináció gyakorlatban közel determinisztikus viselkedést eredményez ugyanazon hardveren, miközben elismerem, hogy egyes, GPU-n futó műveletek és a párhuzamos önjátszás miatt bitpontosan azonos futások nem minden esetben garantálhatók.
-A teljesítménymérések és Elo-becslések emiatt várhatóan néhány tíz pont nagyságrendű szórást mutatnak; ezt a dolgozatban kvalitatívan is jelzem.
+Ez a kombináció gyakorlatban közel determinisztikus viselkedést eredményez ugyanazon hardveren, viszont egyes, GPU-n futó műveletek és a párhuzamos önjátszás miatt bitpontosan azonos futások nem minden esetben garantálhatók.
+A teljesítménymérések és Elo-becslések emiatt várhatóan néhány tíz pont nagyságrendű szórást mutatnak.
 
 Az elemző és benchmark szkriptek külön dedikált magokat használnak.
 A \texttt{tools/benchmarks.py} modulban az inferencia-benchmark rögzített \texttt{2025}-ös Torch-maggal fut, az önjátszás áteresztőképességét mérő komponens a \texttt{SelfPlayEngine} belső RNG-jét \texttt{123}-as maggal inicializálja, míg a C++ sakkmag- és MCTS-benchmarkok véletlen FEN-állásait szintén paraméterezhető, alapértelmezésben \texttt{2025}-ös mag vezérli.
@@ -781,7 +781,7 @@ Az arénamérkőzésekre épülő bajnokság \texttt{NumPy} \texttt{default\_rng
 \noindent\textbf{Artefaktum- és ábragenerálás.}
 Minden, a dolgozatban szereplő tanítási metrika, eloszlás és Elo-összehasonlítás automatikusan generált.
 A tanítás során a rendszer iterációnként CSV- és JSONL-formátumban naplózza a legfontosabb mutatókat (veszteségek, önjátszás- és tanítási idők, puffer- és resign-statisztikák), az arénamérkőzések PGN-fájljai pedig iterációnként elkülönített könyvtárakba kerülnek.
-A \texttt{tools/generate\_artifacts.py} szkript ezeket az állományokat olvassa be, a konfigurációs metaadatokkal együtt, majd egységes betűtípus- és stílusbeállítások mellett automatikusan készíti el a dolgozatban hivatkozott ábrákat (tanulási dinamika, skálázódási görbék, játszmahossz-eloszlás, bajnoki Elo-eredmények).
+A \texttt{tools/generate\_artifacts.py} szkript ezeket az állományokat olvassa be, a konfigurációs metaadatokkal együtt, majd egységes betűtípus- és stílusbeállítások mellett automatikusan készíti el az ábrákat (tanulási dinamika, skálázódási görbék, játszmahossz-eloszlás, bajnoki Elo-eredmények).
 
 A fenti mechanizmusok eredményeként a kísérletek reprodukálása a gyakorlatban a következő, jól definiált lépésekre bontható:
 \begin{enumerate}
