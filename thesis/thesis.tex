@@ -760,7 +760,7 @@ A reprodukálhatóságot három szinten támogattam: (1) verziózott konfigurác
 
 \medskip
 \noindent\textbf{Konfigurációk és futtatási környezet.}
-Minden kísérleti futás \texttt{YAML}-alapú konfigurációs fájlokból indul (\texttt{configs/run1\_baseline.yaml}...\texttt{run5\_aggressive\_updates.yaml}), amelyeket a \texttt{main.py} belépési pont \texttt{--config} és \texttt{--override} kapcsolókkal rétegez egymásra.
+Minden kísérleti futás \texttt{YAML}-alapú konfigurációs fájlokból indul, amelyeket a \texttt{main.py} belépési pont \texttt{--config} és \texttt{--override} kapcsolókkal rétegez egymásra.
 A konfigurációkezelő komponens minden futás elején egy \emph{végleges}, már felülbírált konfigurációt állít elő, amelyet a rendszer a \texttt{runs/\textless{}azonosító\textgreater{}/config/merged.\{yaml,json\}} állományokba ment.
 Így a dolgozatban szereplő öt forgatókönyv (Referencia, Mély Keresés, Nagy Áteresztőképesség, Nagy Entrópia, Hatékonyság) minden hiperparaméter-beállítása (MCTS-szimulációk száma, kötegméret, explorációs paraméterek stb.) visszakereshető és más gépen is pontosan újrahasználható.
 A Python-környezet főbb csomagjai a \texttt{requirements.txt}-ben rögzítettek; a kritikus függőség, a PyTorch, fix verzióval (\texttt{torch==2.8.0}) szerepel.
