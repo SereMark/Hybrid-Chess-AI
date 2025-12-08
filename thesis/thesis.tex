@@ -269,7 +269,7 @@ kanonikus nézet (\textit{Canonical Always White}) bevezetése és indoklása a 
 különböző konfiguráció szisztematikus kísérleti összehasonlítása; valamint egy
 teljesen automatizált benchmark- és reprodukciós feldolgozási lánc kialakítása.
 
-Azonos hardverkörnyezetben öt különböző konfiguráció került tesztelésre. A \textbf{Nagy Entrópia} konfiguráció rövid futási idő alatt is 1249-es, saját skálán mért Elo-pontszámot ért el, és felülmúlta a mohó heurisztikát, miközben a mélyebb, de kevésbé változatos keresést alkalmazó beállítások gyengébben teljesítettek. Méréseim azt jelzik, hogy rövid futási idő esetén a generált játszmák sokszínűségét biztosító stratégia fontosabb, mint a puszta keresési mélység.
+Azonos hardverkörnyezetben öt különböző konfiguráció került tesztelésre. A \textbf{Nagy Entrópia} konfiguráció rövid futási idő alatt is 1249-es, saját skálán mért Elo-pontszámot (Elo-értéket, a sakkban használt relatív erősségmutatót) ért el, és felülmúlta a mohó heurisztikát, miközben a mélyebb, de kevésbé változatos keresést alkalmazó beállítások gyengébben teljesítettek. Méréseim azt jelzik, hogy rövid futási idő esetén a generált játszmák sokszínűségét biztosító stratégia fontosabb, mint a puszta keresési mélység.
 
 Dolgozatomban öt kutatási kérdésre (RQ1-től RQ5-ig) keresem a választ, amelyek a rendszer mérnöki teljesítményét, skálázhatóságát, tanulási dinamikáját, az adatdiverzitást és a kísérletek reprodukálhatóságát vizsgálják.
 
@@ -575,7 +575,7 @@ A veszteségfüggvény:
 \begin{equation*}
 \mathcal{L} = \mathcal{L}_{\text{pol}} + \mathcal{L}_{\text{val}} - \lambda_{\text{entropy}} \cdot \mathcal{H}(p) + \lambda_c \cdot \lVert\theta\rVert^2
 \end{equation*}
-ahol $\mathcal{L}_{\text{pol}}$ a keresztentrópia, $\mathcal{L}_{\text{val}}$ a négyzetes hiba (MSE), $\lambda_{\text{entropy}} \approx 2\cdot 10^{-4}$ az entrópia-regularizációs tag súlya, amely a negatív előjel miatt a hálózat kimeneti politikájának entrópiájának növelésére ösztönöz, gátolva a túl korai konvergenciát. A veszteségfüggvény az AlphaZero-ban használt formulát követi, kiegészítve ezzel az entrópia-taggal. A korábbi AlphaZero-jellegű rendszerekben használt táblaszimmetriákra épülő tükrözéses adataugmentáció helyett a kanonikus nézet biztosítja a szimmetria-invarianciát.
+ahol $\mathcal{L}_{\text{pol}}$ a keresztentrópia, $\mathcal{L}_{\text{val}}$ a négyzetes hiba (MSE), $\lambda_{\text{entropy}} \approx 2\cdot 10^{-4}$ az entrópia-regularizációs tag súlya, amely a negatív előjel miatt a hálózat kimeneti döntési stratégiájának entrópiájának növelésére ösztönöz, gátolva a túl korai konvergenciát. A veszteségfüggvény az AlphaZero-ban használt formulát követi, kiegészítve ezzel az entrópia-taggal. A korábbi AlphaZero-jellegű rendszerekben használt táblaszimmetriákra épülő tükrözéses adataugmentáció helyett a kanonikus nézet biztosítja a szimmetria-invarianciát.
 
 A következő fejezet a fenti architektúra alapján lefuttatott kísérleteket és az azokból származó eredményeket mutatja be.
 
@@ -657,9 +657,9 @@ A mérések alapján az \textbf{RQ1}-re válaszolva kijelenthető, hogy a hibrid
 
 Az önjátszás párhuzamosítása során jól megfigyelhető az Amdahl-törvény hatása~\cite{amdahl1967} (\Fig{fig:nps_scaling}). Az ábra bal oldali grafikonja az önjátszás teljesítményének skálázódását mutatja a szálak számának függvényében. A játszma/mp érték a szálak számával nő (1 szálon $\approx$0.5, 6 szálon $\approx$1.8 játszma/mp), azonban a mért gyorsulás jelentősen elmarad az elméleti lineáris maximumtól (szaggatott vonal). 6 szálnál a gyorsulás nagyjából 3.5$\times$, a várható 6$\times$ helyett. Ez a Python GIL, a szálak közti szinkronizáció és az adatmozgatás többletköltségei miatt fellépő párhuzamosítási veszteségekre utal.
 
-A jobb oldali grafikon a keresési sebességet (NPS) ábrázolja a kötegméret függvényében. A görbe egyértelmű maximumot mutat 64-es kötegméretnél ($\approx$25\,000 NPS), amely az adott hardveren az optimális munkapontot jelenti. Kisebb kötegeknél (1 és 4 közötti kötegméret esetén) a keretrendszer fix költségei dominálnak, ezért csak $\sim$20\,000 NPS érhető el. 8 és 32 között meredek emelkedés figyelhető meg, ahogy a kötegelt feldolgozás jobban kihasználja az erőforrásokat, míg 128 és 256 esetén a várakozási idők, a memóriasávszélesség és a cache-hatások miatt ismét csökken a hatékonyság. A 4$\to$8 közötti lokális törés, illetve az átmeneti visszaesés $\sim$20\,000 NPS körül arra utal, hogy a kötegelt végrehajtás inicializációs költségei a kis-közepes tartományban még jelentősen terhelik a rendszert.
+A jobb oldali grafikon a keresési sebességet (NPS) ábrázolja a kötegméret függvényében. A görbe egyértelmű maximumot mutat 64-es kötegméretnél ($\approx$25\,000 NPS), amely az adott hardveren az optimális munkapontot jelenti. Kisebb kötegeknél (1 és 4 közötti kötegméret esetén) a keretrendszer fix költségei dominálnak, ezért csak $\sim$20\,000 NPS érhető el. 8 és 32 között meredek emelkedés figyelhető meg, ahogy a kötegelt feldolgozás jobban kihasználja az erőforrásokat, míg 128 és 256 esetén a várakozási idők, a memóriasávszélesség és a cache-hatások miatt ismét csökken a hatékonyság. A 4 körüli lokális törés, illetve az átmeneti visszaesés arra utal, hogy a kötegelt végrehajtás inicializációs költségei a kis-közepes tartományban még jelentősen terhelik a rendszert.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.8\textwidth]{nps_scaling}
   \caption{A keresési sebesség (NPS) és az önjátszás skálázódása.}
@@ -688,13 +688,13 @@ A skálázódást vizsgáló \textbf{RQ2} eredményei azt mutatják, hogy az ön
 
 \subsection{RQ3: Tanulási dinamika és bajnokság}
 
-A tanulási dinamikát az \Fig{fig:training_dynamics} foglalja össze. A bal oldali ábrák a stratégiai (policy) veszteséget, a jobb oldaliak az értékbecslési (value) MSE-t mutatják, felül az iterációk, alul az eltelt futási idő függvényében. A stratégiai veszteség szempontjából a \textbf{Nagy Áteresztőképesség} (zöld) konfiguráció adja a legjobb eredményt, a keresztentrópia kb.\ 2{,}7 körüli értéken stabilizálódik. Ezt követi a \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Entrópia} (narancs) 3{,}3 és 3{,}5 közötti végértékkel. A \textbf{Hatékonyság} (lila) és különösen a \textbf{Referencia} (kék) konfigurációk ugyan az első $\sim$50 iterációban gyorsan csökkennek, utána azonban 4{,}2 és 4{,}6 közötti platóra állnak be, ami arra utal, hogy a gyakori frissítések miatt a politika viszonylag korán „megfagy”. A görbék lokális fluktuációi természetesek a kis adatmennyiség és a rövid tanítási horizont miatt; az iterációról iterációra történő ingadozás jelentős része tanítási zajnak tekinthető, ezért a konfigurációk közötti különbségek értelmezésekor elsősorban a tartós trendekre (tartósan alacsonyabb, stabil szintekre) támaszkodom.
+A tanulási dinamikát az \Fig{fig:training_dynamics} foglalja össze. A bal oldali ábrák a stratégiai (policy) veszteséget, a jobb oldaliak az értékbecslési (value) MSE-t mutatják, felül az iterációk, alul az eltelt futási idő függvényében. A stratégiai veszteség szempontjából a \textbf{Nagy Áteresztőképesség} (zöld) konfiguráció adja a legjobb eredményt, a keresztentrópia kb.\ 2{,}7 körüli értéken stabilizálódik. Ezt követi a \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Entrópia} (narancs) 3{,}3 és 3{,}5 közötti végértékkel. A \textbf{Hatékonyság} (lila) és különösen a \textbf{Referencia} (kék) konfigurációk ugyan az első $\sim$50 iterációban gyorsan csökkennek, utána azonban 4{,}2 és 4{,}6 közötti platóra állnak be, ami arra utal, hogy a gyakori frissítések miatt a döntési stratégia viszonylag korán „megfagy”. A görbék lokális fluktuációi természetesek a kis adatmennyiség és a rövid tanítási horizont miatt; az iterációról iterációra történő ingadozás jelentős része tanítási zajnak tekinthető, ezért a konfigurációk közötti különbségek értelmezésekor elsősorban a tartós trendekre (tartósan alacsonyabb, stabil szintekre) támaszkodom.
 
-Az értékbecslési veszteség eltérő mintázatot mutat. A \textbf{Nagy Áteresztőképesség} MSE-je nagyon alacsony, $\sim$0{,}05 és 0{,}07 közötti tartományban marad. A \textbf{Hatékonyság} konfiguráció lassabban, de hasonlóan alacsony szintre (kb.\ 0{,}08 és 0{,}1 közötti tartományba) konvergál. A \textbf{Referencia} és a \textbf{Mély Keresés} görbéje valamivel magasabban, nagyjából 0{,}1 és 0{,}15 közötti tartományban stabilizálódik, míg a \textbf{Nagy Entrópia} esetén a veszteség a 100. iteráció után ismét növekedni kezd, és a tanítás végére $\sim$0{,}25 és 0{,}3 közötti értékre áll be. Ez arra utal, hogy a tartósan magas exploráció ugyan javítja a politika sokféleségét, de a value-fej tanulását a zajos, nem stacionárius célok megnehezítik.
+Az értékbecslési veszteség eltérő mintázatot mutat. A \textbf{Nagy Áteresztőképesség} MSE-je nagyon alacsony, $\sim$0{,}05 és 0{,}07 közötti tartományban marad. A \textbf{Hatékonyság} konfiguráció lassabban, de hasonlóan alacsony szintre (kb.\ 0{,}08 és 0{,}1 közötti tartományba) konvergál. A \textbf{Referencia} és a \textbf{Mély Keresés} görbéje valamivel magasabban, nagyjából 0{,}1 és 0{,}15 közötti tartományban stabilizálódik, míg a \textbf{Nagy Entrópia} esetén a veszteség a 100. iteráció után ismét növekedni kezd, és a tanítás végére $\sim$0{,}25 és 0{,}3 közötti értékre áll be. Ez arra utal, hogy a tartósan magas exploráció ugyan javítja a döntési stratégia sokféleségét, de a value-fej tanulását a zajos, időben változó célok megnehezítik.
 
-Az időalapú összehasonlítás (alsó sor) a fenti trendeket futásidővel súlyozza. A \textbf{Hatékonyság} konfiguráció fejezi be leggyorsabban a tanulást (kb.\ 9~óra), de közben magas stratégiai veszteségen marad, és a későbbi Elo-mérések alapján ez a konfiguráció teljesít a leggyengébben. A többi konfiguráció 14 és 18 óra közötti futási időt igényel. A \textbf{Nagy Áteresztőképesség} és a \textbf{Mély Keresés} a leghosszabb, de ezek adják a legalacsonyabb végső stratégiai veszteséget. A \textbf{Nagy Áteresztőképesség} így a futásidő és a végső teljesítmény között kedvező kompromisszumot jelent, míg a \textbf{Referencia} konfiguráció hosszabb idő alatt is lényegesen rosszabb politikán marad.
+Az időalapú összehasonlítás (alsó sor) a fenti trendeket futásidővel súlyozza. A \textbf{Hatékonyság} konfiguráció fejezi be leggyorsabban a tanulást (kb.\ 9~óra), de közben magas stratégiai veszteségen marad, és a későbbi Elo-mérések alapján ez a konfiguráció teljesít a leggyengébben. A többi konfiguráció 14 és 18 óra közötti futási időt igényel. A \textbf{Nagy Áteresztőképesség} és a \textbf{Mély Keresés} a leghosszabb, de ezek adják a legalacsonyabb végső stratégiai veszteséget. A \textbf{Nagy Áteresztőképesség} így a futásidő és a végső teljesítmény között kedvező kompromisszumot jelent, míg a \textbf{Referencia} konfiguráció hosszabb idő alatt is lényegesen rosszabb döntési stratégián marad.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.95\textwidth]{training_dynamics}
   \caption{Tanulási dinamika: policy- és value-veszteségek az iterációk függvényében.}
@@ -705,7 +705,7 @@ Az arénamérkőzések eredményeit az \Fig{fig:evaluation_win_rate} szemléltet
 
 Az árnyékolt sávok az iterációnkénti 24 arénapartiból számolt 95\%-os konfidenciaintervallumokat jelölik. A sávok nagy szélessége (tipikusan kb.\ $\pm$20 és 25 százalékpont közötti érték) azt mutatja, hogy az egyes iterációk közti ingadozások jelentős része statisztikai zaj, nem pedig tartós teljesítménykülönbség. Ez alátámasztja a folyamatos, AlphaZero-stílusú tanulás választását az AlphaGo Zero-féle szigorú aréna-kapuzással szemben. Ilyen zajos becslések mellett az előreléptetési döntések megbízhatatlanok lettek volna, ezért a jelen kísérletekben az arénamérkőzéseket kizárólag mérőszámként használtam, és nem engedtem, hogy a self-play modell kiválasztásáról döntsenek.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.8\textwidth]{evaluation_win_rate}
   \caption{Győzelmi arányok alakulása a tanítás során (95\% konfidenciaintervallummal).}
@@ -718,23 +718,19 @@ A modellek relatív játékerejét körmérkőzéses (round-robin) bajnokságban
     \item \textbf{Mohó (\textit{Greedy}):} egyszerű, anyagelőnyt maximalizáló heurisztika.
 \end{itemize}
 
-A bajnokság végeredményét az \Fig{fig:tournament_elo} mutatja Elo-pontszámok formájában. A \textbf{Nagy Entrópia} konfiguráció (1249 Elo) bizonyult a legerősebb tanult modellnek, és egyedüliként múlja felül a \textbf{Mohó} heurisztikát (1228 Elo). Ez megerősíti azt a következtetést, hogy a rendelkezésre álló rövid tanítási időben a nagyobb diverzitás (magas politika-entrópia) fontosabb tényező, mint a puszta keresési mélység vagy sebesség.
-
-A \textbf{Hatékonyság} modell 1164 Elo-val a mezőny végén végzett, és még a \textbf{Véletlen} ágensnél is gyengébbnek bizonyult (1169 Elo; a becsült Elo-pontszám alapján, a mérési zajt figyelembe véve). Ez arra utal, hogy a túl agresszív frissítési stratégia a hálózat instabil, irányt tévesztett tanulásához vezetett (katasztrofális felejtés vagy rossz lokális optimum). A többi tanult konfiguráció (\textbf{Referencia} 1192, \textbf{Mély Keresés} 1195, \textbf{Nagy Áteresztőképesség} 1198 Elo) szűk sávban, közvetlenül a \textbf{Mohó} ügynök alatt csoportosul; ez jelzi, hogy bár mindegyik modell elsajátított egy használható sakkstratégiát, a rendelkezésre álló időben egyik sem tudott a kézzel tervezett heurisztikánál érdemben erősebb játékot kialakítani.
-
-\begin{figure}[htbp]
+A bajnokság végeredményét az \Fig{fig:tournament_elo} mutatja Elo-pontszámok formájában.
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.8\textwidth]{tournament_elo}
   \caption{A bajnokság végeredménye (Elo-pontszámok).}
   \label{fig:tournament_elo}
 \end{figure}
 
-\textbf{Elemzés:}
-A körmérkőzéses bajnokság eredményei szerint a Nagy Entrópia konfiguráció (1249 Elo) teljesített a legjobban, egyedüliként megelőzve a Mohó (\textit{Greedy}) ágenst (1228 Elo). A többi tanult konfiguráció szűk sávban, 1192 és 1198 Elo között helyezkedik el, közvetlenül a Mohó alatt, míg a Véletlen és Hatékonyság ügynökök 1164 és 1169 Elo tartományban zártak. Rövid, 250 és 300 iteráció közötti tanítási ciklusban a legfőbb veszély nem a lassú konvergencia, hanem a \textbf{lokális optimumba ragadás} (pl.\ passzív döntetlenek). A magas explorációs beállítások (Dirichlet-zaj $\alpha=0.5$, $c_{\text{puct}}=2.5$) biztosították a kockázatosabb, de informatívabb ágak felderítését.
+A körmérkőzéses bajnokság eredményei szerint a \textbf{Nagy Entrópia} konfiguráció (1249 Elo) teljesített a legjobban, egyedüliként megelőzve a \textbf{Mohó} (\textit{Greedy}) ágenst (1228 Elo). A többi tanult konfiguráció (\textbf{Referencia} 1192, \textbf{Mély Keresés} 1195, \textbf{Nagy Áteresztőképesség} 1198 Elo) szűk sávban, közvetlenül a Mohó alatt csoportosul; ez jelzi, hogy bár mindegyik modell elsajátított egy használható sakkstratégiát, a rendelkezésre álló időben egyik sem tudott a kézzel tervezett heurisztikánál érdemben erősebb játékot kialakítani.
+
+A \textbf{Hatékonyság} modell 1164 Elo-val a mezőny végén végzett, és még a \textbf{Véletlen} ágensnél is gyengébbnek bizonyult (1169 Elo; a becsült Elo-pontszám alapján, a mérési zajt figyelembe véve). Ez arra utal, hogy a túl agresszív frissítési stratégia a hálózat instabil, irányt tévesztett tanulásához vezethet (katasztrofális felejtés vagy rossz lokális optimum), ezért az ilyen beállítások gyakorlatban kerülendők.
 
 Fontos ugyanakkor kiemelni, hogy a bajnokság korlátozott játszmaszáma miatt az Elo-becslések bizonytalansága várhatóan több tíz pont nagyságrendű. A kisebb különbségek (például 1164 versus 1169 Elo) ezért inkább jelzésértékűek, mintsem statisztikailag egyértelműen szignifikáns eltérések; a konfigurációk relatív sorrendje megbízhatóbb információt ad, mint az abszolút értékek.
-
-Ezzel szemben a Hatékonyság konfiguráció, amely a „hatékonyságot” célozta (gyakori frissítések, kis köteg), instabillá vált és a legrosszabb eredményt nyújtotta. Teljesítménye még a Random ágenst is alulmúlta. Ebből arra következtetek, hogy korlátozott pufferkapacitás és agresszív frissítési stratégia mellett a hálózat nem képes stabilan megtartani a korábban tanult mintázatokat (katasztrofális felejtés), ezért az ilyen beállítások gyakorlatban kerülendők.
 
 A tanulási dinamikára vonatkozó \textbf{RQ3} kapcsán az látszik, hogy a policy- és value-veszteséggörbék mind az öt konfiguráció esetén jól látható csökkenést mutatnak, különösen a \textbf{Nagy Áteresztőképesség} és \textbf{Mély Keresés} beállításoknál, ami azt jelzi, hogy rövid, 9 és 18 óra közötti tanítási horizonton kimutatható, stabil tanulás zajlik. Az \Fig{fig:training_dynamics} görbéi alapján a policy-veszteség a tanítás elején mért értékéhez képest a legtöbb konfigurációnál nagyságrendileg 40\%-os, míg az értékveszteség 50\%-os relatív javulást mutat; ez vizuálisan összhangban van a 3.\ fejezetben megfogalmazott sikerkritériumok nagyságrendjével.
 
@@ -746,7 +742,7 @@ A legmarkánsabban eltérő viselkedést a \textbf{Nagy Entrópia} (narancs) kon
 
 A \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Áteresztőképesség} (zöld) eloszlásai hasonló, egymóduszú görbéket adnak. A tömegük zöme 40 és 60 fél-lépés között helyezkedik el, a \textbf{Nagy Áteresztőképesség} csúcsa azonban kissé jobbra tolódik, ami arra utal, hogy a sekélyebb keresés (64 szimuláció) ritkábban dönt el partikat már a középjátékban. A \textbf{Referencia} (kék) konfiguráció eloszlása a két szélsőség között helyezkedik el, mind csúcsmagasságban, mind pozícióban, ami jól illeszkedik a baseline jellegéhez.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.8\textwidth]{game_length_dist}
   \caption{A lejátszott játszmák hosszának eloszlása (fél-lépésekben).}
