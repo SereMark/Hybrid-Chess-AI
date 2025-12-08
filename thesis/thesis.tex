@@ -246,7 +246,7 @@
 \begin{enumerate}
   \item Bitboard-alapú sakkmag és szabályosságellenőrzés implementálása korszerű C++-ban (C++23).
   \item PUCT-alapú MCTS megvalósítása adaptív paraméterezéssel, Dirichlet-zajjal és kötegelt kiértékelő interfésszel.
-  \item Reziduális CNN tervezése és betanítása önjátszásból származó adatra; aszinkron, automatikus kevert pontosságú (AMP) inferencia.
+  \item Reziduális CNN tervezése és betanítása önjátszásból származó adatra; aszinkron, automatikus kevert pontosságú (AMP) inferencia az önjátszás és az arénamérkőzések során.
   \item Visszajátszási puffer, eredménymegállapítás (adjudikáció), feladás és arénamérkőzések implementálása, valamint telemetria.
   \item Teljesítménymérés és összehasonlítás kiinduló megoldásokkal; reprodukálhatóság megvalósítása
 \end{enumerate}
@@ -264,11 +264,11 @@ A bemutatott rendszer C++23-alapú sakkmotort és PUCT-alapú Monte Carlo fakere
 
 A dolgozat főbb hozzájárulásai a következők: korlátos erőforrásokra optimalizált,
 C++/Python hibrid AlphaZero-típusú sakkmotor megvalósítása; a „Mindig világos”
-kanonikus nézet (\textit{Canonical Always White}) bemutatása és elemzése; öt
+kanonikus nézet (\textit{Canonical Always White}) bevezetése és indoklása a rendszerben; öt
 különböző konfiguráció szisztematikus kísérleti összehasonlítása; valamint egy
 teljesen automatizált benchmark- és reprodukciós feldolgozási lánc kialakítása.
 
-Azonos hardverkörnyezetben öt különböző konfiguráció került tesztelésre. A \textbf{Nagy Entrópia} konfiguráció rövid futási idő alatt is 1249-es, saját skálán mért Elo-pontszámot ért el, és felülmúlta a mohó heurisztikát, miközben a mélyebb, de kevésbé változatos keresést alkalmazó beállítások gyengébben teljesítettek. Méréseim igazolták, hogy rövid futási idő esetén a generált játszmák sokszínűségét biztosító stratégia fontosabb, mint a puszta keresési mélység.
+Azonos hardverkörnyezetben öt különböző konfiguráció került tesztelésre. A \textbf{Nagy Entrópia} konfiguráció rövid futási idő alatt is 1249-es, saját skálán mért Elo-pontszámot ért el, és felülmúlta a mohó heurisztikát, miközben a mélyebb, de kevésbé változatos keresést alkalmazó beállítások gyengébben teljesítettek. Méréseim azt jelzik, hogy rövid futási idő esetén a generált játszmák sokszínűségét biztosító stratégia fontosabb, mint a puszta keresési mélység.
 
 A dolgozat öt kutatási kérdésre (RQ1-től RQ5-ig) keresi a választ, amelyek a rendszer mérnöki teljesítményét, skálázhatóságát, tanulási dinamikáját, az adatdiverzitást és a kísérletek reprodukálhatóságát vizsgálják.
 
@@ -467,7 +467,7 @@ A megvalósítás során a kritikus útvonalhoz tartozó komponenseket (bitboard
 A sikerkritériumok három kategóriába sorolhatók:
 \begin{itemize}
   \item \textbf{Teljesítmény:} a pozíció/mp-ben és áteresztőképességben mért mutatók jelentős javítása a Python-alapú kiinduló megoldáshoz képest (python-chess sakkmag, tisztán Python MCTS, nem optimalizált neurális következtetés).
-  \item \textbf{Tanulás:} belső metrikák csökkenése (a policy-veszteség legalább 40\%-os, az érték-veszteség legalább 50\%-os relatív javulása).
+\item \textbf{Tanulás:} belső metrikák jelentős csökkenése (a policy-veszteség legalább 40\% körüli, az érték-veszteség pedig nagyjából 50\% körüli relatív javulása).
   \item \textbf{Mérnöki:} automatikus metrika-naplózás (CSV/JSONL), YAML-konfigurációk és unit tesztek megléte.
 \end{itemize}
 
@@ -480,7 +480,7 @@ A kísérleti elrendezés három pillérre épül:
     \item Végül ablációs vizsgálatok készültek nyitókönyvvel és anélkül, erősen lecsökkentett gyorsítótár-kapacitással (gyakorlatilag gyorsítótár nélküli konfigurációkban), exponenciális mozgóátlag (\textit{Exponential Moving Average}, EMA) és közvetlen súlyok összehasonlításával, valamint a játszma-kiértékelés progresszív és fix változataival.
 \end{enumerate}
 
-A következő fejezet a fenti célok és módszertan megvalósítását mutatja be: a hibrid architektúra részleteit, a teljesítménykritikus komponensek tervezési döntéseit, valamint a széles körben alkalmazott optimalizációs technikákat. A \ref{sec:kutatasi-kerdesek}. szakaszban megfogalmazott, RQ1-től RQ5-ig terjedő kérdéseket az \ref{ch:experiments}. fejezet értékeli ki.
+A következő fejezet a fenti célok és módszertan megvalósítását mutatja be: a hibrid architektúra részleteit, a teljesítménykritikus komponensek tervezési döntéseit, valamint a széles körben alkalmazott optimalizációs technikákat. A \ref{sec:kutatasi-kerdesek}. szakaszban megfogalmazott, RQ1-től RQ5-ig terjedő kérdéseket az \ref{ch:experiments}. fejezet értékeli ki, a 7.\ fejezet pedig ezeket egyenként összegzi és kontextusba helyezi.
 
 \chapter{Rendszer tervezése és implementáció}
 
@@ -488,13 +488,13 @@ A következő fejezet a fenti célok és módszertan megvalósítását mutatja 
 
 A rendszer hibrid felépítésű: a számításigényes komponensek (bitboard sakkmag, virtuális veszteségre (\textit{virtual loss}) épülő konkurencia-kezelésű MCTS-motor) C++23-ban íródtak, míg a neurális háló tanítása és következtetése Pythonra épülő PyTorch környezetben történik. A C++ és a Python közötti interfészt a \texttt{pybind11} könyvtár biztosítja, amely lapos tömbök használatával gyakorlatilag másolásmentes adatcserét tesz lehetővé. A numerikus adatok hatékony kezelését a \texttt{NumPy}~\cite{harris2020numpy} csomag biztosítja, míg a kísérleti eredmények vizualizációját a \texttt{matplotlib}~\cite{hunter2007matplotlib} és \texttt{seaborn}~\cite{waskom2021seaborn} könyvtárak támogatják.
 
-A rendszer alapvető tervezési elve a \textbf{kanonikus reprezentáció}, azaz a „Mindig világos” nézet: a hálózat kizárólag a világos szemszögéből látja a táblát. Sötét lépése esetén a táblát és a lépéseket a bemeneti kódolás során a rendszer tükrözi (vertikális tükrözés + színcsere), majd a hálózat kimenetét (policy) visszatükrözi. Ez a megoldás felére csökkenti az állapottér komplexitását és feleslegessé teszi a heurisztikus adat-augmentációt.
+A rendszer alapvető tervezési elve a \textbf{kanonikus reprezentáció}, azaz a „Mindig világos” nézet: a hálózat kizárólag a világos szemszögéből látja a táblát. Sötét lépése esetén a táblát és a lépéseket a bemeneti kódolás során a rendszer tükrözi (vertikális tükrözés + színcsere), majd a hálózat kimenetét (policy) visszatükrözi. Ez a megoldás felére csökkenti az állapottér komplexitását és feleslegessé teszi a heurisztikus adat-augmentációt. Az önjátszás során a kezdőállások egy részét véletlenszerűen a sötét játékos szemszögéből (FEN-tükrözéssel) veszem, de a kanonikus kódolás miatt ez a hálózat számára ekvivalens bemenetet eredményez. A dolgozat keretei között ezt a kanonikus nézetet nem hasonlítottam közvetlen, nem-kanonikus baseline-hoz; a választást szakirodalmi és mérnöki szempontok (állapottér-csökkenés, egyszerűbb pipeline) indokolják.
 
-A tanulási ciklus folyamatos, AlphaZero-stílusú tanulást valósít meg: a hálózat a futás teljes időtartama alatt frissül, és az önjátszás mindig az éppen legfrissebb (EMA-val súlyozott) modellt használja. A klasszikus AlphaGo Zero-féle aréna-kapuzással szemben itt nincs olyan küszöbérték, amely az arénamérkőzések eredménye alapján engedélyezné vagy elutasítaná a jelölt modellt. Az arénamérkőzések a gyakorlatban kizárólag értékelő metrikaként szolgálnak: rendszeres időközönként az aktuális modell egy korábbi pillanatfelvétel ellen játszik, az eredményekből pedig győzelmi arányt, döntetlenarányt és futásidőt számolok:
+A tanulási ciklus folyamatos, AlphaZero-stílusú tanulást valósít meg: iteratív lépésekben ismétlődnek az önjátszás–tanítás–értékelés fázisai, a hálózat súlyai pedig a futás teljes időtartama alatt frissülnek, és az önjátszás mindig az éppen legfrissebb (EMA-val súlyozott) modellt használja. A klasszikus AlphaGo Zero-féle aréna-kapuzással szemben itt nincs olyan küszöbérték, amely az arénamérkőzések eredménye alapján engedélyezné vagy elutasítaná a jelölt modellt. Az arénamérkőzések a gyakorlatban kizárólag értékelő metrikaként szolgálnak: rendszeres időközönként az aktuális modell egy korábbi pillanatfelvétel ellen játszik, az eredményekből pedig győzelmi arányt, döntetlenarányt és futásidőt számolok:
 \begin{enumerate}
   \item \textbf{Önjátszás:} Aszinkron munkaszálak generálják a játszmákat a legfrissebb hálózattal.
   \item \textbf{Adatgyűjtés:} A generált játszmák egy körkörös visszajátszási pufferbe kerülnek (\num{50000}-es kapacitás, nagy áteresztőképességű konfiguráció esetén \num{80000}).
-  \item \textbf{Tanítás:} A GPU folyamatosan mintavételez a pufferből és frissíti a hálózat súlyait SGD optimalizálóval.
+  \item \textbf{Tanítás:} Minden iterációban a GPU mini-kötegekben mintavételez a pufferből, és momentumos SGD optimalizálóval frissíti a hálózat súlyait.
   \item \textbf{Szinkronizáció:} Az önjátszó szálak rendszeres időközönként átveszik az új súlyokat.
 \end{enumerate}
 
@@ -597,7 +597,7 @@ A kiértékelés során öt kísérleti forgatókönyv került vizsgálatra, hog
 
 \subsection{RQ1: Rendszer teljesítmény}
 
-A C++23-ra történő áttérés és a \texttt{virtual loss}-alapú konkurenciakezelés bevezetése számottevő sebességnövekedést eredményezett (lásd \Tab{tab:chess_cpp_bench}).
+A C++23-ra történő áttérés és a virtuális veszteségre épülő konkurenciakezelés bevezetése számottevő sebességnövekedést eredményezett (lásd \Tab{tab:chess_cpp_bench}).
 
 \begin{table}[htbp]
 \centering
@@ -677,7 +677,7 @@ A skálázódást vizsgáló \textbf{RQ2} eredményei azt mutatják, hogy az ön
 
 \subsection{RQ3: Tanulási dinamika és bajnokság}
 
-A tanulási dinamikát az \Fig{fig:training_dynamics} foglalja össze: a bal oldali ábrák a stratégiai (policy) veszteséget, a jobb oldaliak az értékbecslési (value) MSE-t mutatják, felül az iterációk, alul az eltelt futási idő függvényében. A stratégiai veszteség szempontjából a \textbf{Nagy Áteresztőképesség} (zöld) konfiguráció adja a legjobb eredményt: a keresztentrópia kb.\ 2{,}7 körüli értéken stabilizálódik. Ezt követi a \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Entrópia} (narancs) 3{,}3 és 3{,}5 közötti végértékkel. A \textbf{Hatékonyság} (lila) és különösen a \textbf{Referencia} (kék) konfigurációk ugyan az első $\sim$50 iterációban gyorsan csökkennek, utána azonban 4{,}2 és 4{,}6 közötti platóra állnak be, ami arra utal, hogy a gyakori frissítések miatt a politika viszonylag korán „megfagy”.
+A tanulási dinamikát az \Fig{fig:training_dynamics} foglalja össze: a bal oldali ábrák a stratégiai (policy) veszteséget, a jobb oldaliak az értékbecslési (value) MSE-t mutatják, felül az iterációk, alul az eltelt futási idő függvényében. A stratégiai veszteség szempontjából a \textbf{Nagy Áteresztőképesség} (zöld) konfiguráció adja a legjobb eredményt: a keresztentrópia kb.\ 2{,}7 körüli értéken stabilizálódik. Ezt követi a \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Entrópia} (narancs) 3{,}3 és 3{,}5 közötti végértékkel. A \textbf{Hatékonyság} (lila) és különösen a \textbf{Referencia} (kék) konfigurációk ugyan az első $\sim$50 iterációban gyorsan csökkennek, utána azonban 4{,}2 és 4{,}6 közötti platóra állnak be, ami arra utal, hogy a gyakori frissítések miatt a politika viszonylag korán „megfagy”. A görbék lokális fluktuációi természetesek a kis adatmennyiség és a rövid tanítási horizont miatt; az iterációról iterációra történő ingadozás jelentős része tanítási zajnak tekinthető, ezért a konfigurációk közötti különbségek értelmezésekor elsősorban a tartós trendekre (tartósan alacsonyabb, stabil szintekre) támaszkodom.
 
 Az értékbecslési veszteség eltérő mintázatot mutat. A \textbf{Nagy Áteresztőképesség} MSE-je nagyon alacsony, $\sim$0{,}05 és 0{,}07 közötti tartományban marad. A \textbf{Hatékonyság} konfiguráció lassabban, de hasonlóan alacsony szintre (kb.\ 0{,}08 és 0{,}1 közötti tartományba) konvergál. A \textbf{Referencia} és a \textbf{Mély Keresés} görbéje valamivel magasabban, nagyjából 0{,}1 és 0{,}15 közötti tartományban stabilizálódik, míg a \textbf{Nagy Entrópia} esetén a veszteség a 100. iteráció után ismét növekedni kezd, és a tanítás végére $\sim$0{,}25 és 0{,}3 közötti értékre áll be. Ez arra utal, hogy a tartósan magas exploráció ugyan javítja a politika sokféleségét, de a value-fej tanulását a zajos, nem stacionárius célok megnehezítik.
 
@@ -725,7 +725,7 @@ Fontos ugyanakkor kiemelni, hogy a bajnokság korlátozott játszmaszáma miatt 
 
 Ezzel szemben a Hatékonyság konfiguráció, amely a „hatékonyságot” célozta (gyakori frissítések, kis köteg), instabillá vált és a legrosszabb eredményt nyújtotta. Teljesítménye még a Random ágenst is alulmúlta. Ebből arra következtetek, hogy korlátozott pufferkapacitás és agresszív frissítési stratégia mellett a hálózat nem képes stabilan megtartani a korábban tanult mintázatokat (katasztrofális felejtés), ezért az ilyen beállítások gyakorlatban kerülendők.
 
-A tanulási dinamikára vonatkozó \textbf{RQ3} kapcsán az látszik, hogy a policy- és value-veszteséggörbék mind az öt konfiguráció esetén jól látható csökkenést mutatnak, különösen a \textbf{Nagy Áteresztőképesség} és \textbf{Mély Keresés} beállításoknál, ami azt jelzi, hogy rövid, 9 és 18 óra közötti tanítási horizonton is kimutatható, stabil tanulás zajlik.
+A tanulási dinamikára vonatkozó \textbf{RQ3} kapcsán az látszik, hogy a policy- és value-veszteséggörbék mind az öt konfiguráció esetén jól látható csökkenést mutatnak, különösen a \textbf{Nagy Áteresztőképesség} és \textbf{Mély Keresés} beállításoknál, ami azt jelzi, hogy rövid, 9 és 18 óra közötti tanítási horizonton is kimutatható, stabil tanulás zajlik. Az \Fig{fig:training_dynamics} görbéi alapján a policy-veszteség a tanítás elején mért értékéhez képest a legtöbb konfigurációnál nagyságrendileg 40\% körüli, míg az értékveszteség 50\% körüli relatív javulást mutat; ez vizuálisan összhangban van a 3.\ fejezetben megfogalmazott sikerkritériumok nagyságrendjével.
 
 \subsection{RQ4: Adatdiverzitás}
 
@@ -764,7 +764,7 @@ Az exploráció dominanciája elsősorban az RQ3 (tanulási dinamika) és RQ4 (a
 
 \subsection{A rendszer skálázhatósága}
 
-A rendszer skálázhatósága (RQ1, RQ2) tekintetében a kötegelt levélértékelés és a \texttt{Virtual Loss}-ra épülő konkurenciakezelés együtt \textbf{\num{3.5}-szörös} önjátszás-gyorsulást adott 6 szálon, miközben megőrizte a fa diverzitását. A NodePool indexalapú, vektoralapú allokációja biztosítja, hogy az átméretezés a pointerek érvényessége mellett is skálázható legyen. A fő szűk keresztmetszetek a Python GIL és a host és a device közötti adatmozgatás jelentik, ami jelzi, hogy több GPU vagy teljesen natív önjátszás további gyorsulást hozhat.
+A rendszer skálázhatósága (RQ1, RQ2) tekintetében a kötegelt levélértékelés és a virtuális veszteségre épülő konkurenciakezelés együtt \textbf{\num{3.5}-szörös} önjátszás-gyorsulást adott 6 szálon, miközben megőrizte a fa diverzitását. A NodePool indexalapú, vektoralapú allokációja biztosítja, hogy az átméretezés a pointerek érvényessége mellett is skálázható legyen. A fő szűk keresztmetszetek a Python GIL és a host és a device közötti adatmozgatás jelentik, ami jelzi, hogy több GPU vagy teljesen natív önjátszás további gyorsulást hozhat.
 
 \section{Korlátok}
 
@@ -782,14 +782,14 @@ A 300~iteráció és a 9 és 18 óra közötti futási idő a „megvalósíthat
 
 A dolgozat egy fogyasztói hardverre optimalizált, AlphaZero-típusú sakkprogramot mutatott be. A rendszer C++23-alapú keresőt és PyTorch-alapú tanítási modult egyesít, kifejezetten egy RTX 3070 Laptop GPU környezetére tervezve.
 
-A fejlesztés három fő pillére az architekturális egyszerűsítés („Mindig világos” kanonikus nézet), a virtuális veszteségre épülő konkurenciakezelés és a kötegelt levélértékelés volt. Ezek együtt biztosítják a szükséges sebességet a korlátos erőforrású környezetben. Az öt konfigurációt lefedő kísérleti validáció megmutatta, hogy a magas entrópiájú keresés hozza a legjobb eredményt a rendelkezésre álló adat- és időkeret mellett.
+A fejlesztés három fő pillére az architekturális egyszerűsítés („Mindig világos” kanonikus nézet), a virtuális veszteségre épülő konkurenciakezelés és a kötegelt levélértékelés volt. Ez a kanonikus nézet ésszerű mérnöki kompromisszumként értelmezhető: jelen munka kvalitatívan vizsgálja a hatását, de nem választja el teljesen a többi architekturális döntés hatásától. Ezek együtt biztosítják a szükséges sebességet a korlátos erőforrású környezetben. Az öt konfigurációt lefedő kísérleti validáció megmutatta, hogy a magas entrópiájú keresés hozza a legjobb eredményt a rendelkezésre álló adat- és időkeret mellett.
 
 Az RQ1-től RQ5-ig terjedő kutatási kérdésekre adott válaszok az alábbiakban foglalhatók össze:
 \begin{enumerate}
 \item \textbf{RQ1, Teljesítmény:} a C++23-alapú sakkmag \num{56887} pozíció/mp sebességet ért el, míg a GPU-alapú neurális következtetés \num{81519} pozíció/mp áteresztőképességet biztosított nagy kötegméreteknél. Ez legalább \num{5.3}-szoros gyorsulást jelent a sakkmag esetén a Python-alapú megoldáshoz képest, és nagyságrendileg tízszeresnél nagyobb gyorsulást a neurális következtetésben, ami elegendő az önjátszásos tanításhoz egynapos időkeretben.
 \item \textbf{RQ2, Skálázhatóság:} az önjátszás teljesítménye 6 munkaszálon kb.\ \num{3.5}-szörösére nőtt az egyszálú futtatáshoz képest, a keresési sebesség (NPS) pedig 64-es kötegméretig skálázódik jól, ahol eléri a $\sim$\num{25000} NPS körüli csúcsot; a további skálázást a Python GIL és a host és a device közötti adatmozgatás korlátozza.
 \item \textbf{RQ3, Tanulási dinamika:} a policy- és value-veszteség mind az öt vizsgált konfiguráció esetén jelentősen csökkent, különösen a \textbf{Nagy Áteresztőképesség} és \textbf{Mély Keresés} beállításoknál, ami azt mutatja, hogy rövid tanítási horizonton is érdemi, mérhető tanulás zajlik.
-\item \textbf{RQ4, Adatdiverzitás:} a magas explorációs beállításokkal futó \textbf{Nagy Entrópia} konfiguráció bimodális játszmahossz-eloszlást és sokkal változatosabb tanítóadatot eredményezett, és a mérések alapján kis előnnyel felülmúlta a mohó heurisztikát a saját Elo-skálán, ami alátámasztja az adatdiverzitás szerepét korlátozott erőforrások mellett.
+\item \textbf{RQ4, Adatdiverzitás:} a magas explorációs beállításokkal futó \textbf{Nagy Entrópia} konfiguráció bimodális játszmahossz-eloszlást és sokkal változatosabb tanítóadatot eredményezett, és a mérések alapján kis előnnyel felülmúlta a mohó heurisztikát a saját Elo-skálán, ami alátámasztja az adatdiverzitás szerepét korlátozott erőforrások mellett. Az itt közölt Elo-értékek a korlátozott játszmaszám miatt becslések, várhatóan néhány tíz pontos bizonytalansággal.
 \item \textbf{RQ5, Reprodukálhatóság:} a teljesen automatizált benchmark- és artefaktumgeneráló szkriptek, valamint a YAML-konfigurációk rögzítik a hardver- és hiperparaméter-beállításokat, így a kísérleti futtatások más környezetben is megismételhetők, legfeljebb kisebb, a sztochasztikusságból adódó Elo-szórással.
 \end{enumerate}
 
