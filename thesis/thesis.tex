@@ -393,9 +393,12 @@ Az AlphaZero tanítási folyamata négy, egymást követő fázis iterálásán 
 Az \textbf{adattárolás} fázisban a pozíció-lépésirány-kimenetel hármasokat visszajátszási pufferben gyűjtik. Az AlphaGo Zero~\cite{silver2017go} kiegészítő anyaga explicit módon a legutóbbi $\sim$\num{500000} játékot tartalmazó visszajátszási puffert ír elő. Az AlphaZero-tanulmányok~\cite{silver2017chess,silver2018science} ugyanennek a tanítási protokollnak az adaptációi, de a konkrét pufferméretet nem minden esetben részletezik. A közösségi reimplementációk ezért jellemzően 500k és 1M közötti puffert alkalmaznak. A minták $(\boldsymbol{s}_t, \boldsymbol{\pi}_t, z_t)$ formában tárolódnak, ahol $\boldsymbol{s}_t$ a bemeneti reprezentáció (8 történeti lépés), $\boldsymbol{\pi}_t$ az MCTS látogatási eloszlás (policy target), és $z_t$ a végső kimenetel a $t$-edik pozíció nézőpontjából.
 
 A \textbf{tanítási fázis} mini-kötegeken optimalizálja a hálót. A veszteségfüggvény \cite{silver2017chess} három tagból áll:
-\begin{equation*}
-\mathcal{L} = \underbrace{-\boldsymbol{\pi}^T \log \boldsymbol{p}}_{\text{policy-veszteség (döntési veszteség)}} + \underbrace{\lambda_v (z - v)^2}_{\text{értékveszteség (értékbecslési veszteség)}} + \underbrace{\lambda_c \lVert\boldsymbol{\theta}\rVert^2}_{\text{regularizációs tag (L2 súlybüntetés, \textit{L2 weight regularization})}}
-\end{equation*}
+\begin{align*}
+\mathcal{L} ={}&
+  \underbrace{-\boldsymbol{\pi}^T \log \boldsymbol{p}}_{\text{policy-veszteség (döntési veszteség)}} \\
+&+ \underbrace{\lambda_v (z - v)^2}_{\text{értékveszteség (értékbecslési veszteség)}} \\
+&+ \underbrace{\lambda_c \lVert\boldsymbol{\theta}\rVert^2}_{\text{regularizációs tag (L2 súlybüntetés, \textit{L2 weight regularization})}}
+\end{align*}
 ahol $\boldsymbol{p}$ és $v$ a háló kimenetei, $\lambda_v$ tipikusan 1, $\lambda_c$ a súlycsökkenés koefficiense ($10^{-4}$). A gyakorlatban $\lambda_v = 1$, ezért dolgozatomban a $\mathcal{L}_{\text{val}}$ definíciójában elhagyom. Az AlphaZero az eredeti cikkben \cite{silver2017chess} momentumos SGD-t és lépcsőzetes (\textit{stepwise}) ütemezést alkalmaz a tanulási rátára.
 
 A modern AlphaZero-típusú reimplementációk gyakran bemelegítési szakasszal (\textit{warmup}) és koszinuszos ütemezésű csökkenéssel kombinált stratégiát (SGDR-szerű \cite{loshchilov2017sgdr} ütemezés újraindítás nélkül) használnak. Dolgozatomban is ezt a megközelítést követem.
@@ -736,11 +739,11 @@ A tanulási dinamikára vonatkozó \textbf{RQ3} kapcsán az látszik, hogy a pol
 
 \subsection{RQ4: Adatdiverzitás}
 
-Az \Fig{fig:game_length_dist} a lejátszott játszmák hosszának eloszlását mutatja fél-lépésekben. A \textbf{Mély Keresés} (sárga) konfiguráció sűrűségfüggvénye adja a legmagasabb csúcsot. A maximum kb.\ 0{,}036 körül alakul, nagyjából 45 és 50 fél-lépés között. A \textbf{Hatékonyság} (lila) eloszlása a legkeskenyebb és legkoncentráltabb, csúcsa kb.\ 35 és 40 fél-lépés között jelenik meg, ami arra utal, hogy a gyakori gradiens-frissítések (\texttt{samples\_per\_new\_game} = 8) és a kisebb kötegméret gyors, de viszonylag egyoldalú konvergenciához vezettek, így a játszmák többsége hasonló hosszúságú, kevés változatos végjátékkal.
+Az \Fig{fig:game_length_dist} a lejátszott játszmák hosszának eloszlását mutatja fél-lépésekben. A \textbf{Mély Keresés} (sárga) konfiguráció sűrűségfüggvénye adja a legmagasabb csúcsot. A maximum kb.\ 0{,}036 körül alakul, nagyjából 45 és 50 fél-lépés között. A \textbf{Hatékonyság} (lila) eloszlása a legkeskenyebb és legkoncentráltabb, csúcsa kb.\ 40 fél-lépés körül jelenik meg, ami arra utal, hogy a gyakori gradiens-frissítések (\texttt{samples\_per\_new\_game} = 8) és a kisebb kötegméret gyors, de viszonylag egyoldalú konvergenciához vezettek, így a játszmák többsége hasonló hosszúságú, kevés változatos végjátékkal.
 
-A legmarkánsabban eltérő viselkedést a \textbf{Nagy Entrópia} (narancs) konfiguráció mutatja, amelynek eloszlása egyértelműen \emph{bimodális}. Egy első csúcs látható kb.\ 50 fél-lépésnél, míg egy második, laposabb csúcs kb.\ 110 fél-lépés körül jelenik meg. Az első csúcs a középjátékban lezáruló partikat, a második a hosszú, végjátékig elnyúló játszmákat reprezentálja. A magas exploráció ($c_{\text{puct}} = 2.5$, Dirichlet $\alpha = 0.5$) egyrészt lehetővé teszi a döntő taktikai ütközéseket, másrészt gyakran megakadályozza a korai lépésismétléses döntetleneket, így széles skálán, sokféle pozíciót lefedve tud tanulni a modell. Ez a diverzitás összhangban van a konfiguráció kiemelkedő Elo-eredményével.
+A legmarkánsabban eltérő viselkedést a \textbf{Nagy Entrópia} (narancs) konfiguráció mutatja, amelynek eloszlása egyértelműen \emph{bimodális}. Egy első csúcs látható kb.\ 50 fél-lépésnél, míg egy második, alacsonyabb csúcs kb.\ 110 fél-lépés körül jelenik meg. Az első csúcs a középjátékban lezáruló partikat, a második a hosszú, végjátékig elnyúló játszmákat reprezentálja. A magas exploráció ($c_{\text{puct}} = 2.5$, Dirichlet $\alpha = 0.5$) egyrészt lehetővé teszi a döntő taktikai ütközéseket, másrészt gyakran megakadályozza a korai lépésismétléses döntetleneket, így széles skálán, sokféle pozíciót lefedve tud tanulni a modell. Ez a diverzitás összhangban van a konfiguráció kiemelkedő Elo-eredményével.
 
-A \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Áteresztőképesség} (zöld) eloszlásai hasonló, egymóduszú görbéket adnak. A tömegük zöme 40 és 60 fél-lépés között helyezkedik el, a \textbf{Nagy Áteresztőképesség} csúcsa azonban kissé jobbra tolódik, ami arra utal, hogy a sekélyebb keresés (64 szimuláció) ritkábban dönt el partikat már a középjátékban. A \textbf{Referencia} (kék) konfiguráció eloszlása a két szélsőség között helyezkedik el, mind csúcsmagasságban, mind pozícióban, ami jól illeszkedik a baseline jellegéhez.
+A \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Áteresztőképesség} (zöld) eloszlásai hasonló, egymóduszú görbéket adnak. A tömegük zöme 40 és 60 fél-lépés között helyezkedik el, a \textbf{Nagy Áteresztőképesség} csúcsa azonban kissé jobbra tolódik, ami arra utal, hogy a sekélyebb keresés (64 szimuláció) ritkábban dönt el partikat már a középjátékban. A \textbf{Referencia} (kék) konfiguráció eloszlása a két szélsőség között helyezkedik el, mind csúcsmagasságban, mind pozícióban, ami jól illeszkedik a referencia jellegéhez.
 
 \begin{figure}[H]
   \centering
@@ -752,9 +755,43 @@ A \textbf{Mély Keresés} (sárga) és a \textbf{Nagy Áteresztőképesség} (z�
 Az adatdiverzitást firtató \textbf{RQ4}-re a válasz, hogy a magas explorációs paraméterekkel futó \textbf{Nagy Entrópia} konfiguráció sokkal változatosabb, bimodális játszmahossz-eloszlást produkál, ami szélesebb pozíciókészletet eredményez. A Nagy Entrópia konfiguráció bimodális játszmahossz-eloszlása jól rezonál az RQ3 alatt mért Elo-előnnyel. A sokszínűbb tanítópozíciók rövid tanítási horizonton fontosabbnak bizonyultak, mint a puszta keresési mélység növelése.
 
 \subsection{RQ5: Reprodukálhatóság}
-A kísérletek reprodukálhatóságát a teljesen automatizált szkriptek (\texttt{benchmarks.py}, \texttt{generate\_artifacts.py}) és a YAML-konfigurációs fájlok biztosítják, amelyek minden futtatási paramétert rögzítenek. Minden kísérlet egy YAML-konfigurációs fájlhoz kötött, a benchmark- és artefaktumgeneráló szkriptek pedig automatikusan hozzák létre a táblázatokat és ábrákat. A véletlen inicializálás miatt újrafuttatáskor kis Elo-szórás várható.
 
-Végül, a reprodukálhatóságot érintő \textbf{RQ5} tekintetében elmondható, hogy a teljesen automatizált benchmark- és artefaktumgeneráló szkriptek, valamint a YAML-konfigurációk révén a tanítási és mérési futtatások más gépeken is megismételhetők, az eltérést elsősorban a sztochasztikus komponensek okozzák.
+A reprodukálhatóságot három szinten támogattam: (1) verziózott konfigurációs állományokkal, (2) expliciten kezelt véletlenszám-generátorokkal és determinisztikus beállításokkal, valamint (3) teljesen automatizált benchmark- és ábrageneráló eszközlánccal.
+
+\medskip
+\noindent\textbf{Konfigurációk és futtatási környezet.}
+Minden kísérleti futás \texttt{YAML}-alapú konfigurációs fájlokból indul (\texttt{configs/run1\_baseline.yaml}--\texttt{run5\_aggressive\_updates.yaml}), amelyeket a \texttt{main.py} belépési pont \texttt{--config} és \texttt{--override} kapcsolókkal rétegez egymásra.
+A konfigurációkezelő komponens minden futás elején egy \emph{végleges}, már felülbírált konfigurációt állít elő, amelyet a rendszer a \texttt{runs/\textless{}azonosító\textgreater{}/config/merged.\{yaml,json\}} állományokba ment.
+Így a dolgozatban szereplő öt forgatókönyv (Referencia, Mély Keresés, Nagy Áteresztőképesség, Nagy Entrópia, Hatékonyság) minden hiperparaméter-beállítása (MCTS-szimulációk száma, kötegméret, explorációs paraméterek stb.) visszakereshető és más gépen is pontosan újrahasználható.
+A Python-környezet főbb csomagjai a \texttt{requirements.txt}-ben rögzítettek; a kritikus függőség, a PyTorch, fix verzióval (\texttt{torch==2.8.0}) szerepel.
+
+\medskip
+\noindent\textbf{Véletlenszám-generátorok és determinisztika.}
+A rendszer globális \texttt{SEED} paramétere (\texttt{config.SEED}) határozza meg, hogy a futás determinisztikus módban történjen-e.
+Amennyiben a \texttt{SEED} értéke nem nulla, a \texttt{main.py} a tanítás indításakor inicializálja a Python beépített \texttt{random} modulját, a \texttt{NumPy} véletlenszám-generátorát, valamint a \texttt{torch} CPU- és GPU-RNG-it a megadott maggal.
+Ezzel párhuzamosan beállítja a \texttt{torch.use\_deterministic\_algorithms(True)} opciót, a \texttt{CUBLAS\_WORKSPACE\_CONFIG} környezeti változót, letiltja a \texttt{cuDNN} adaptív \texttt{benchmark} módját, illetve a logikai processzorszámhoz igazítja az intra- és inter-op szálak számát.
+Ez a kombináció gyakorlatban közel determinisztikus viselkedést eredményez ugyanazon hardveren, miközben elismerem, hogy egyes, GPU-n futó műveletek és a párhuzamos önjátszás miatt bitpontosan azonos futások nem minden esetben garantálhatók.
+A teljesítménymérések és Elo-becslések emiatt várhatóan néhány tíz pont nagyságrendű szórást mutatnak; ezt a dolgozatban kvalitatívan is jelzem.
+
+Az elemző és benchmark szkriptek külön dedikált magokat használnak.
+A \texttt{tools/benchmarks.py} modulban az inferencia-benchmark rögzített \texttt{2025}-ös Torch-maggal fut, az önjátszás áteresztőképességét mérő komponens a \texttt{SelfPlayEngine} belső RNG-jét \texttt{123}-as maggal inicializálja, míg a C++ sakkmag- és MCTS-benchmarkok véletlen FEN-állásait szintén paraméterezhető, alapértelmezésben \texttt{2025}-ös mag vezérli.
+Az arénamérkőzésekre épülő bajnokság \texttt{NumPy} \texttt{default\_rng(2025)} generátorral készül, így a párosítások sorrendje és a lépésválasztások sztochasztikus komponense is kontrollált.
+
+\medskip
+\noindent\textbf{Artefaktum- és ábragenerálás.}
+Minden, a dolgozatban szereplő tanítási metrika, eloszlás és Elo-összehasonlítás automatikusan generált.
+A tanítás során a rendszer iterációnként CSV- és JSONL-formátumban naplózza a legfontosabb mutatókat (veszteségek, önjátszás- és tanítási idők, puffer- és resign-statisztikák), az arénamérkőzések PGN-fájljai pedig iterációnként elkülönített könyvtárakba kerülnek.
+A \texttt{tools/generate\_artifacts.py} szkript ezeket az állományokat olvassa be, a konfigurációs metaadatokkal együtt, majd egységes betűtípus- és stílusbeállítások mellett automatikusan készíti el a dolgozatban hivatkozott ábrákat (tanulási dinamika, skálázódási görbék, játszmahossz-eloszlás, bajnoki Elo-eredmények).
+
+A fenti mechanizmusok eredményeként a kísérletek reprodukálása a gyakorlatban a következő, jól definiált lépésekre bontható:
+\begin{enumerate}
+  \item A kód és a \texttt{requirements.txt} alapján a futtatási környezet felépítése, azonos vagy hasonló GPU-val.
+  \item A kívánt konfiguráció kiválasztása (pl.\ \texttt{configs/run4\_high\_exploration.yaml}) és a teljes tanítás lefuttatása a \texttt{main.py} szkripttel, opcionálisan rögzített \texttt{SEED} értékkel.
+  \item A benchmark-szkriptek (\texttt{tools/benchmarks.py}) futtatása opcionális teljesítménymérésekhez.
+  \item Az ábrák teljes automatikus újragenerálása a \texttt{tools/generate\_artifacts.py} eszközzel, amely a \texttt{runs/} könyvtárból olvassa ki a metrikákat.
+\end{enumerate}
+
+A rendszer felépítése, a verziózott konfigurációk, az explicit RNG-kezelés és az automatizált artefaktum-pipeline együttesen biztosítja, hogy az itt bemutatott kísérleti eredmények azonos vagy hasonló hardverkörnyezetben számottevően kis szórással, gyakorlatban reprodukálhatók legyenek.
 
 \section{Összefoglalás}
 A mérések szerint a rendszer technikai teljesítménye (\num{56887} pozíció/mp, \num{25000} NPS) a kitűzött kutatási célok szempontjából elegendőnek bizonyult. A kísérleti eredmények alapján korlátozott erőforrások mellett az \textbf{exploráció maximalizálása} a kulcs a játékerő növeléséhez, nem pedig a puszta számítási mélység vagy a frissítési sebesség.
