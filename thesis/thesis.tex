@@ -788,7 +788,7 @@ A \texttt{tools/generate\_artifacts.py} szkript ezeket az állományokat olvassa
 A fenti mechanizmusok eredményeként a kísérletek reprodukálása a gyakorlatban a következő, jól definiált lépésekre bontható:
 \begin{enumerate}
   \item A kód és a \texttt{requirements.txt} alapján a futtatási környezet felépítése, azonos vagy hasonló GPU-val.
-  \item A kívánt konfiguráció kiválasztása (pl.\ \texttt{configs/run4\_high\_exploration.yaml}) és a teljes tanítás lefuttatása a \texttt{main.py} szkripttel, opcionálisan rögzített \texttt{SEED} értékkel.
+  \item A kívánt konfiguráció kiválasztása (pl.\ \path{configs/run4_high_exploration.yaml}) és a teljes tanítás lefuttatása a \texttt{main.py} szkripttel, opcionálisan rögzített \texttt{SEED} értékkel.
   \item A benchmark-szkriptek (\texttt{tools/benchmarks.py}) futtatása opcionális teljesítménymérésekhez.
   \item Az ábrák teljes automatikus újragenerálása a \texttt{tools/generate\_artifacts.py} eszközzel, amely a \texttt{runs/} könyvtárból olvassa ki a metrikákat.
 \end{enumerate}
