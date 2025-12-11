@@ -4,7 +4,7 @@ AlphaZero-szerű, megerősítéses tanuláson (RL) alapuló sakkmotor C++ maggal
 
 ---
 
-## Követelmények
+## Követelmények / Tesztelt környezet
 
 - Windows 11 x64
 - Python 3.13
@@ -16,7 +16,7 @@ AlphaZero-szerű, megerősítéses tanuláson (RL) alapuló sakkmotor C++ maggal
 
 ## Gyors indítás
 
-1. **Virtuális környezet és csomagok** (PowerShell):
+1. **Virtuális környezet és csomagok**:
    ```powershell
    py -3.13 -m venv .venv
    .\.venv\Scripts\Activate.ps1
@@ -26,7 +26,7 @@ AlphaZero-szerű, megerősítéses tanuláson (RL) alapuló sakkmotor C++ maggal
    python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
    ```
 
-2. **C++ mag fordítása (Release)**:
+2. **C++ mag fordítása**:
    ```powershell
    cmake -S . -B build -G "Visual Studio 17 2022" -A x64
    cmake --build build --config Release
@@ -42,7 +42,7 @@ A futások eredményei és checkpointjai a `runs/` mappában jelennek meg.
 
 ---
 
-## Alap használat
+## Bővebb használat
 
 - **Tanítás konfigurációval + ráfedéssel**:
   ```powershell
@@ -54,11 +54,11 @@ A futások eredményei és checkpointjai a `runs/` mappában jelennek meg.
 
 ## Mappák röviden
 
-- `src/core/` – C++ sakkmotor, MCTS és `pybind11` kötés.
-- `src/python/` – tanítási pipeline (önjátszás, replay buffer, háló, trainer, fő CLI).
-- `configs/` – YAML konfigurációk különböző futásokhoz.
-- `runs/` – automatikusan létrehozott futási könyvtárak (checkpointok, logok).
-- `tools/` – benchmark és artifact generáló scriptek.
+- `src/core/` - C++ sakkmotor, MCTS és `pybind11` kötés.
+- `src/python/` - tanítási pipeline (önjátszás, replay buffer, háló, trainer, fő CLI).
+- `configs/` - YAML konfigurációk különböző futásokhoz.
+- `runs/` - automatikusan létrehozott futási könyvtárak (checkpointok, logok).
+- `tools/` - benchmark és artifact generáló scriptek.
 
 ---
 
