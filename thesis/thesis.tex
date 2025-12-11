@@ -306,7 +306,6 @@ Dolgozatomban öt kutatási kérdésre (RQ1-től RQ5-ig) keresem a választ, ame
   \item \textbf{RL}: megerősítéses tanulás (\textit{Reinforcement Learning})
   \item \textbf{RQ}: kutatási kérdés (\textit{Research Question})
   \item \textbf{SGD}: sztochasztikus gradiensmódszer (\textit{Stochastic Gradient Descent})
-  \item \textbf{TDP}: tervezett hőteljesítmény (\textit{Thermal Design Power})
   \item \textbf{TPU}: tenzorprocesszor-egység (\textit{Tensor Processing Unit})
   \item \textbf{UCT}: fákra alkalmazott felső konfidenciahatár (\textit{Upper Confidence bounds applied to Trees})
 \end{itemize}
@@ -460,7 +459,7 @@ A munka öt fő célkitűzése:
 \begin{enumerate}
   \item \textbf{Hibrid C++/Python architektúra megvalósítása} tiszta, jól dokumentált API-val.
   \item \textbf{Komponens-szintű gyorsulások mérése} (sakkmag, MCTS, GPU-következtetés).
-  \item \textbf{Teljes tanítási ciklus demonstrálása} egynapos költségvetéssel.
+  \item \textbf{Teljes tanítási ciklus demonstrálása} egynapos időkerettel.
   \item \textbf{Arénamérkőzések metrikáinak rögzítése} a tanulási stabilitás követéséhez.
   \item \textbf{A kísérletek reprodukálhatóságának biztosítása} benchmarkokkal és konfigurációkkal.
 \end{enumerate}
@@ -653,8 +652,6 @@ GPU (CUDA) & Float16 & 512 & \textbf{\num{81519}} \\
     \item \textbf{MCTS-skálázódás:} A keresési sebesség (NPS) a kötegméret növelésével mérsékelten nő 64-es méretig, ahol eléri a \textbf{\num{25000} NPS} körüli csúcsot, majd csökken; a skálázódás nem lineáris.
 \end{itemize}
 
-\textbf{Erőforrás-hatékonyság:} A rendszer energiahatékonysága a „Hatékonyság” forgatókönyv alapján került vizsgálatra. A 300~iterációs teljes tanítási ciklus futási ideje \textbf{\num{9.1}~óra} volt az RTX 3070 Laptop GPU-n. A becsült energiafogyasztás (\SI{220}{\watt} TDP mellett) nagyságrendileg \textbf{\SI{2.0}{\kilo\watt\hour}}, ami azt mutatja, hogy a módszertan otthoni környezetben is alkalmazható, mérsékelt energiaigénnyel; a hosszabb futások arányosan több energiát igényeltek.
-
 A mérések alapján az \textbf{RQ1}-re válaszolva kijelenthető, hogy a hibrid C++/Python architektúra a sakkmagban \num{5.3}-szoros gyorsulást, a neurális következtetésben pedig nagykötegű futtatás mellett nagyságrendileg tízszeresnél nagyobb sebességnövekedést eredményezett a Python-alapú kiinduló megoldáshoz képest. Ez a teljesítmény elegendő az egynapos önjátszásos tanítási ciklus megvalósításához.
 
 \subsection{RQ2: Skálázhatóság}
@@ -764,7 +761,7 @@ A reprodukálhatóságot három szinten támogattam: (1) verziózott konfigurác
 Minden kísérleti futás \texttt{YAML}-alapú konfigurációs fájlokból indul, amelyeket a \texttt{main.py} belépési pont \texttt{--config} és \texttt{--override} kapcsolókkal rétegez egymásra.
 A konfigurációkezelő komponens minden futás elején egy \emph{végleges}, már felülbírált konfigurációt állít elő, amelyet a rendszer a \texttt{runs/\textless{}azonosító\textgreater{}/config/merged.\{yaml,json\}} állományokba ment.
 Így a dolgozatban szereplő öt forgatókönyv (Referencia, Mély Keresés, Nagy Áteresztőképesség, Nagy Entrópia, Hatékonyság) minden hiperparaméter-beállítása (MCTS-szimulációk száma, kötegméret, explorációs paraméterek stb.) visszakereshető és más gépen is pontosan újrahasználható.
-A Python-környezet főbb csomagjai a \texttt{requirements.txt}-ben rögzítettek; a kritikus függőség, a PyTorch, fix verzióval (\texttt{torch==2.8.0}) szerepel.
+A Python-környezet főbb csomagjait a \texttt{requirements.txt}-ben rögzítettem.
 
 \medskip
 \noindent\textbf{Véletlenszám-generátorok és determinisztika.}

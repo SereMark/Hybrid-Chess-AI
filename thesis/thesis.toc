@@ -26,7 +26,7 @@
 \select@language {magyar} \contentsline {section}{\numberline {5.1}Eredmények}{27}{section.55}%
 \select@language {magyar} \contentsline {subsection}{\numberline {5.1.1}RQ1: Rendszer teljesítmény}{27}{subsection.56}%
 \select@language {magyar} \contentsline {subsection}{\numberline {5.1.2}RQ2: Skálázhatóság}{28}{subsection.59}%
-\select@language {magyar} \contentsline {subsection}{\numberline {5.1.3}RQ3: Tanulási dinamika és bajnokság}{30}{subsection.62}%
+\select@language {magyar} \contentsline {subsection}{\numberline {5.1.3}RQ3: Tanulási dinamika és bajnokság}{29}{subsection.62}%
 \select@language {magyar} \contentsline {subsection}{\numberline {5.1.4}RQ4: Adatdiverzitás}{33}{subsection.66}%
 \select@language {magyar} \contentsline {subsection}{\numberline {5.1.5}RQ5: Reprodukálhatóság}{34}{subsection.68}%
 \select@language {magyar} \contentsline {section}{\numberline {5.2}Összefoglalás}{36}{section.73}%

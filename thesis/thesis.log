@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999997 (MiKTeX 25.4) (preloaded format=xelatex 2025.11.8)  11 DEC 2025 21:26
+This is XeTeX, Version 3.141592653-2.6-0.999997 (MiKTeX 25.4) (preloaded format=xelatex 2025.11.8)  11 DEC 2025 21:50
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -1454,13 +1454,13 @@ wRoman(0)/m/n/12 ,
 ]
 1. fejezet.
 
-Underfull \hbox (badness 1168) in paragraph at lines 317--318
+Underfull \hbox (badness 1168) in paragraph at lines 316--317
 \TU/TimesNewRoman(0)/m/n/12 Az AlphaZero [[][]27[][]] 2017-ben látványosan bemu
 tatta, hogy a megerősítéses tanulás
  []
 
 
-Underfull \hbox (badness 4001) in paragraph at lines 317--318
+Underfull \hbox (badness 4001) in paragraph at lines 316--317
 \TU/TimesNewRoman(0)/m/n/12 módszer gyakorlati reprodukálása jellemzően ipari l
 éptékű erőforrásokat (például
  []
@@ -1471,13 +1471,13 @@ Underfull \hbox (badness 4001) in paragraph at lines 317--318
 
 
 ]
-Underfull \hbox (badness 1292) in paragraph at lines 328--329
+Underfull \hbox (badness 1292) in paragraph at lines 327--328
 []\TU/TimesNewRoman(0)/b/n/12 Reprodukálhatóság: \TU/TimesNewRoman(0)/m/n/12 Te
 ljesen automatizált benchmark- és artefaktumgeneráló
  []
 
 
-Underfull \hbox (badness 5711) in paragraph at lines 328--329
+Underfull \hbox (badness 5711) in paragraph at lines 327--328
 \TU/TimesNewRoman(0)/m/n/12 szkriptek, valamint verziózott YAML-konfigurációk r
 ögzítik a hardver- és
  []
@@ -1497,36 +1497,36 @@ Underfull \hbox (badness 5711) in paragraph at lines 328--329
 [13]
 
 LaTeX Font Warning: Font shape `TU/CambriaMath(1)/b/n' undefined
-(Font)              using `TU/CambriaMath(1)/m/n' instead on input line 395.
+(Font)              using `TU/CambriaMath(1)/m/n' instead on input line 394.
 
 
 LaTeX Font Warning: Font shape `TU/CambriaMath(2)/b/n' undefined
-(Font)              using `TU/CambriaMath(2)/m/n' instead on input line 395.
+(Font)              using `TU/CambriaMath(2)/m/n' instead on input line 394.
 
 LaTeX Font Info:    Font shape `TU/CambriaMath(2)/b/n' will be
-(Font)              scaled to size 8.76093pt on input line 395.
+(Font)              scaled to size 8.76093pt on input line 394.
 LaTeX Font Info:    Font shape `TU/CambriaMath(2)/b/n' will be
-(Font)              scaled to size 7.20076pt on input line 395.
+(Font)              scaled to size 7.20076pt on input line 394.
 
 LaTeX Font Warning: Font shape `TU/CambriaMath(3)/b/n' undefined
-(Font)              using `TU/CambriaMath(3)/m/n' instead on input line 395.
+(Font)              using `TU/CambriaMath(3)/m/n' instead on input line 394.
 
 LaTeX Font Info:    Font shape `TU/CambriaMath(3)/b/n' will be
-(Font)              scaled to size 8.75905pt on input line 395.
+(Font)              scaled to size 8.75905pt on input line 394.
 LaTeX Font Info:    Font shape `TU/CambriaMath(3)/b/n' will be
-(Font)              scaled to size 7.19922pt on input line 395.
+(Font)              scaled to size 7.19922pt on input line 394.
 LaTeX Font Info:    Font shape `TU/CambriaMath(2)/b/n' will be
-(Font)              scaled to size 12.00128pt on input line 395.
+(Font)              scaled to size 12.00128pt on input line 394.
 LaTeX Font Info:    Font shape `TU/CambriaMath(3)/b/n' will be
-(Font)              scaled to size 11.99872pt on input line 395.
+(Font)              scaled to size 11.99872pt on input line 394.
 
-Underfull \hbox (badness 10000) in paragraph at lines 395--396
+Underfull \hbox (badness 10000) in paragraph at lines 394--395
 \TU/TimesNewRoman(0)/m/n/12 pufferben gyűjtik. Az AlphaGo Zero [[][]28[][]] kie
 gészítő anyaga explicit módon
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 395--396
+Underfull \hbox (badness 10000) in paragraph at lines 394--395
 \TU/TimesNewRoman(0)/m/n/12 a legutóbbi $[]$$[][][] [][][]$ játékot tartalmazó 
 visszajátszási puffert ír elő. Az
  []
@@ -1534,19 +1534,19 @@ visszajátszási puffert ír elő. Az
 
 
 [14]
-Underfull \hbox (badness 6047) in paragraph at lines 418--419
+Underfull \hbox (badness 6047) in paragraph at lines 417--418
 []\TU/TimesNewRoman(0)/b/n/12 Exploráció-kizsákmányolás egyensúly\TU/TimesNewRo
 man(0)/m/n/12 : Túl konzervatív exploráció (alacsony
  []
 
 
-Underfull \hbox (badness 1231) in paragraph at lines 418--419
+Underfull \hbox (badness 1231) in paragraph at lines 417--418
 \TU/TimesNewRoman(0)/m/n/12 Dirichlet zaj, magas $[][]$) korai konvergenciát ok
 oz rossz lokális optimumba. Túl
  []
 
 
-Underfull \hbox (badness 1005) in paragraph at lines 418--419
+Underfull \hbox (badness 1005) in paragraph at lines 417--418
 \TU/TimesNewRoman(0)/m/n/12 dokumentál (a kiegészítő anyagokban), és amelyeket 
 a közösségi AlphaZero-típusú
  []
@@ -1554,7 +1554,7 @@ a közösségi AlphaZero-típusú
 
 
 [15]
-Underfull \hbox (badness 10000) in paragraph at lines 426--427
+Underfull \hbox (badness 10000) in paragraph at lines 425--426
 \TU/TimesNewRoman(0)/m/n/12 A Leela Chess Zero [[][]17[][]] nyílt forráskódú kö
 zösségi projekt, amely az
  []
@@ -1567,7 +1567,7 @@ Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
 
-Underfull \hbox (badness 1990) in paragraph at lines 447--448
+Underfull \hbox (badness 1990) in paragraph at lines 446--447
 []\TU/TimesNewRoman(0)/m/n/12 oktatási és kutatási célokra jól dokumentált, kön
 nyen újrafuttatható kísérleti
  []
@@ -1583,19 +1583,19 @@ nyen újrafuttatható kísérleti
 [19
 
 ]
-Underfull \hbox (badness 10000) in paragraph at lines 480--481
+Underfull \hbox (badness 10000) in paragraph at lines 479--480
 []\TU/TimesNewRoman(0)/m/n/12 Dolgozatom célja \TU/TimesNewRoman(0)/b/n/12 nem 
 \TU/TimesNewRoman(0)/m/n/12 egy versenyképes sakkprogram létrehozása, hanem
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 480--481
+Underfull \hbox (badness 10000) in paragraph at lines 479--480
 \TU/TimesNewRoman(0)/m/n/12 az AlphaZero-módszertan \TU/TimesNewRoman(0)/b/n/12
  megvalósíthatóságának \TU/TimesNewRoman(0)/m/n/12 demonstrálása korlátozott
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 482--483
+Underfull \hbox (badness 10000) in paragraph at lines 481--482
 \TU/TimesNewRoman(0)/m/n/12 sakkmag, PUCT-MCTS) C++23-ban, a tanulási folyamato
 kat pedig Pythonban,
  []
@@ -1607,13 +1607,13 @@ kat pedig Pythonban,
 [21]
 4. fejezet.
 
-Underfull \hbox (badness 3895) in paragraph at lines 508--509
+Underfull \hbox (badness 3895) in paragraph at lines 507--508
 \TU/TimesNewRoman(0)/m/n/12 tükrözés + színcsere), majd a hálózat kimenetét (po
 licy) visszatükrözi. Hasonló
  []
 
 
-Underfull \hbox (badness 4072) in paragraph at lines 508--509
+Underfull \hbox (badness 4072) in paragraph at lines 507--508
 \TU/TimesNewRoman(0)/m/n/12 (FEN-tükrözéssel) veszem, de a kanonikus kódolás mi
 att ez a hálózat számára
  []
@@ -1633,33 +1633,33 @@ att ez a hálózat számára
 [26]
 5. fejezet.
 
-Underfull \hbox (badness 1292) in paragraph at lines 589--590
+Underfull \hbox (badness 1292) in paragraph at lines 588--589
 \TU/TimesNewRoman(0)/m/n/12 A kiértékelés során öt kísérleti forgatókönyv kerül
 t vizsgálatra, hogy a különböző
  []
 
 LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
-(Font)              scaled to size 10.95116pt on input line 598.
+(Font)              scaled to size 10.95116pt on input line 597.
 LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
-(Font)              scaled to size 8.00085pt on input line 598.
+(Font)              scaled to size 8.00085pt on input line 597.
 LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
-(Font)              scaled to size 6.00064pt on input line 598.
+(Font)              scaled to size 6.00064pt on input line 597.
 LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
-(Font)              scaled to size 10.94882pt on input line 598.
+(Font)              scaled to size 10.94882pt on input line 597.
 LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
-(Font)              scaled to size 7.99915pt on input line 598.
+(Font)              scaled to size 7.99915pt on input line 597.
 LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
-(Font)              scaled to size 5.99936pt on input line 598.
+(Font)              scaled to size 5.99936pt on input line 597.
 
 
 [27
 
 ]
-
-[28]
 File: figures/nps_scaling.pdf Graphic file (type pdf)
 <figures/nps_scaling.pdf>
 
+
+[28]
 
 [29]
 File: figures/training_dynamics.pdf Graphic file (type pdf)
@@ -1682,69 +1682,69 @@ File: figures/game_length_dist.pdf Graphic file (type pdf)
 
 
 [33]
-Underfull \hbox (badness 2326) in paragraph at lines 763--768
+Underfull \hbox (badness 2326) in paragraph at lines 760--765
 \TU/TimesNewRoman(0)/m/n/12 fájlokból indul, amelyeket a \TU/Consolas(0)/m/n/12
  main.py \TU/TimesNewRoman(0)/m/n/12 belépési pont \TU/Consolas(0)/m/n/12 --con
 fig \TU/TimesNewRoman(0)/m/n/12 és \TU/Consolas(0)/m/n/12 --override
  []
 
 
-Underfull \hbox (badness 6808) in paragraph at lines 763--768
+Underfull \hbox (badness 6808) in paragraph at lines 760--765
 \TU/TimesNewRoman(0)/m/n/12 kapcsolókkal rétegez egymásra. A konfigurációkezelő
  komponens minden futás
  []
 
 
-Underfull \hbox (badness 5147) in paragraph at lines 763--768
+Underfull \hbox (badness 5147) in paragraph at lines 760--765
 \TU/TimesNewRoman(0)/m/n/12 elején egy \TU/TimesNewRoman(0)/m/it/12 végleges\TU
 /TimesNewRoman(0)/m/n/12 , már felülbírált konfigurációt állít elő, amelyet a r
 endszer
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 763--768
+Underfull \hbox (badness 10000) in paragraph at lines 760--765
 \TU/TimesNewRoman(0)/m/n/12 a \TU/Consolas(0)/m/n/12 runs/<azonosító>/config/me
 rged.{yaml,json} \TU/TimesNewRoman(0)/m/n/12 állományokba ment.
  []
 
 
-Underfull \hbox (badness 6792) in paragraph at lines 763--768
+Underfull \hbox (badness 6792) in paragraph at lines 760--765
 \TU/TimesNewRoman(0)/m/n/12 Így a dolgozatban szereplő öt forgatókönyv (Referen
 cia, Mély Keresés, Nagy
  []
 
 
-Underfull \hbox (badness 3815) in paragraph at lines 763--768
+Underfull \hbox (badness 3815) in paragraph at lines 760--765
 \TU/TimesNewRoman(0)/m/n/12 Áteresztőképesség, Nagy Entrópia, Hatékonyság) mind
 en hiperparaméter-beállítása
  []
 
 
-Underfull \hbox (badness 1783) in paragraph at lines 763--768
+Underfull \hbox (badness 1365) in paragraph at lines 760--765
 \TU/TimesNewRoman(0)/m/n/12 és más gépen is pontosan újrahasználható. A Python-
-környezet főbb csomagjai a
+környezet főbb csomagjait a
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 770--776
+Underfull \hbox (badness 10000) in paragraph at lines 767--773
 \TU/TimesNewRoman(0)/b/n/12 Véletlenszám-generátorok és determinisztika. \TU/Ti
 mesNewRoman(0)/m/n/12 A rendszer globális \TU/Consolas(0)/m/n/12 SEED
  []
 
 
-Underfull \hbox (badness 1360) in paragraph at lines 770--776
+Underfull \hbox (badness 1360) in paragraph at lines 767--773
 \TU/TimesNewRoman(0)/m/n/12 paramétere (\TU/Consolas(0)/m/n/12 config.SEED\TU/T
 imesNewRoman(0)/m/n/12 ) határozza meg, hogy a futás determinisztikus módban
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 770--776
+Underfull \hbox (badness 10000) in paragraph at lines 767--773
 \TU/TimesNewRoman(0)/m/n/12 beállítja a \TU/Consolas(0)/m/n/12 torch.use_determ
 inistic_algorithms(True) \TU/TimesNewRoman(0)/m/n/12 opciót, a
  []
 
 
-Underfull \hbox (badness 1331) in paragraph at lines 770--776
+Underfull \hbox (badness 1331) in paragraph at lines 767--773
 \TU/TimesNewRoman(0)/m/n/12 hardveren, viszont egyes, GPU-n futó műveletek és a
  párhuzamos önjátszás miatt
  []
@@ -1752,80 +1752,80 @@ Underfull \hbox (badness 1331) in paragraph at lines 770--776
 
 
 [34]
-Underfull \hbox (badness 10000) in paragraph at lines 777--780
+Underfull \hbox (badness 10000) in paragraph at lines 774--777
 []\TU/TimesNewRoman(0)/m/n/12 Az elemző és benchmark szkriptek külön dedikált m
 agokat használnak.
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 777--780
+Underfull \hbox (badness 10000) in paragraph at lines 774--777
 \TU/TimesNewRoman(0)/m/n/12 A \TU/Consolas(0)/m/n/12 tools/benchmarks.py \TU/Ti
 mesNewRoman(0)/m/n/12 modulban az inferencia-benchmark rögzített
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 777--780
+Underfull \hbox (badness 10000) in paragraph at lines 774--777
 \TU/Consolas(0)/m/n/12 2025\TU/TimesNewRoman(0)/m/n/12 -ös Torch-maggal fut, az
  önjátszás áteresztőképességét mérő komponens
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 777--780
+Underfull \hbox (badness 10000) in paragraph at lines 774--777
 \TU/TimesNewRoman(0)/m/n/12 a \TU/Consolas(0)/m/n/12 SelfPlayEngine \TU/TimesNe
 wRoman(0)/m/n/12 belső RNG-jét \TU/Consolas(0)/m/n/12 123\TU/TimesNewRoman(0)/m
 /n/12 -as maggal inicializálja, míg a C++
  []
 
 
-Underfull \hbox (badness 6808) in paragraph at lines 777--780
+Underfull \hbox (badness 6808) in paragraph at lines 774--777
 \TU/TimesNewRoman(0)/m/n/12 sakkmag- és MCTS-benchmarkok véletlen FEN-állásait 
 szintén paraméterezhető,
  []
 
 
-Underfull \hbox (badness 4686) in paragraph at lines 777--780
+Underfull \hbox (badness 4686) in paragraph at lines 774--777
 \TU/TimesNewRoman(0)/m/n/12 alapértelmezésben \TU/Consolas(0)/m/n/12 2025\TU/Ti
 mesNewRoman(0)/m/n/12 -ös mag vezérli. Az arénamérkőzésekre épülő bajnokság
  []
 
 
-Underfull \hbox (badness 2653) in paragraph at lines 782--786
+Underfull \hbox (badness 2653) in paragraph at lines 779--783
 \TU/TimesNewRoman(0)/b/n/12 Artefaktum- és ábragenerálás. \TU/TimesNewRoman(0)/
 m/n/12 Minden, a dolgozatban szereplő tanítási metrika,
  []
 
 
-Underfull \hbox (badness 1558) in paragraph at lines 782--786
+Underfull \hbox (badness 1558) in paragraph at lines 779--783
 \TU/TimesNewRoman(0)/m/n/12 eloszlás és Elo-összehasonlítás automatikusan gener
 ált. A tanítás során a rendszer
  []
 
 
-Underfull \hbox (badness 7504) in paragraph at lines 782--786
+Underfull \hbox (badness 7504) in paragraph at lines 779--783
 \TU/TimesNewRoman(0)/m/n/12 iterációnként CSV- és JSONL-formátumban naplózza a 
 legfontosabb mutatókat
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 782--786
+Underfull \hbox (badness 10000) in paragraph at lines 779--783
 \TU/TimesNewRoman(0)/m/n/12 (veszteségek, önjátszás- és tanítási idők, puffer- 
 és resign-statisztikák), az
  []
 
 
-Underfull \hbox (badness 3547) in paragraph at lines 782--786
+Underfull \hbox (badness 3547) in paragraph at lines 779--783
 \TU/TimesNewRoman(0)/m/n/12 konfigurációs metaadatokkal együtt, majd egységes b
 etűtípus- és stílusbeállítások
  []
 
 
-Underfull \hbox (badness 1259) in paragraph at lines 782--786
+Underfull \hbox (badness 1259) in paragraph at lines 779--783
 \TU/TimesNewRoman(0)/m/n/12 mellett automatikusan készíti el az ábrákat (tanulá
 si dinamika, skálázódási görbék,
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 791--792
+Underfull \hbox (badness 10000) in paragraph at lines 788--789
 []\TU/TimesNewRoman(0)/m/n/12 A benchmark-szkriptek (\TU/Consolas(0)/m/n/12 too
 ls/benchmarks.py\TU/TimesNewRoman(0)/m/n/12 ) futtatása opcionális
  []
@@ -1849,19 +1849,19 @@ ls/benchmarks.py\TU/TimesNewRoman(0)/m/n/12 ) futtatása opcionális
 [39
 
 ]
-Underfull \hbox (badness 10000) in paragraph at lines 837--838
+Underfull \hbox (badness 10000) in paragraph at lines 834--835
 \TU/TimesNewRoman(0)/m/n/12 konfiguráció bimodális játszmahossz-eloszlást és so
 kkal változatosabb
  []
 
 
-Underfull \hbox (badness 4060) in paragraph at lines 837--838
+Underfull \hbox (badness 4060) in paragraph at lines 834--835
 \TU/TimesNewRoman(0)/m/n/12 heurisztikát a saját Elo-skálán, ami alátámasztja a
 z adatdiverzitás szerepét
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 838--839
+Underfull \hbox (badness 10000) in paragraph at lines 835--836
 []\TU/TimesNewRoman(0)/b/n/12 RQ5, Reprodukálhatóság: \TU/TimesNewRoman(0)/m/n/
 12 a teljesen automatizált benchmark- és
  []
@@ -1870,17 +1870,17 @@ Underfull \hbox (badness 10000) in paragraph at lines 838--839
 
 [40]
 LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
-(Font)              scaled to size 10.00107pt on input line 855.
+(Font)              scaled to size 10.00107pt on input line 852.
 LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
-(Font)              scaled to size 7.00075pt on input line 855.
+(Font)              scaled to size 7.00075pt on input line 852.
 LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
-(Font)              scaled to size 5.00053pt on input line 855.
+(Font)              scaled to size 5.00053pt on input line 852.
 LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
-(Font)              scaled to size 9.99893pt on input line 855.
+(Font)              scaled to size 9.99893pt on input line 852.
 LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
-(Font)              scaled to size 6.99925pt on input line 855.
+(Font)              scaled to size 6.99925pt on input line 852.
 LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
-(Font)              scaled to size 4.99947pt on input line 855.
+(Font)              scaled to size 4.99947pt on input line 852.
 
 
 [41
