@@ -1,0 +1,1922 @@
+This is XeTeX, Version 3.141592653-2.6-0.999997 (MiKTeX 25.4) (preloaded format=xelatex 2025.11.8)  11 DEC 2025 20:45
+entering extended mode
+ restricted \write18 enabled.
+ file:line:error style messages enabled.
+ %&-line parsing enabled.
+**./thesis.tex
+(thesis.tex
+LaTeX2e <2025-06-01> patch level 1
+L3 programming layer <2025-09-02>
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/base\report.cls
+Document Class: report 2025/01/22 v1.4n Standard LaTeX document class
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/base\size12.clo
+File: size12.clo 2025/01/22 v1.4n Standard LaTeX file (size option)
+)
+\c@part=\count271
+\c@chapter=\count272
+\c@section=\count273
+\c@subsection=\count274
+\c@subsubsection=\count275
+\c@paragraph=\count276
+\c@subparagraph=\count277
+\c@figure=\count278
+\c@table=\count279
+\abovecaptionskip=\skip49
+\belowcaptionskip=\skip50
+\bibindent=\dimen148
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/iftex\iftex.sty
+Package: iftex 2024/12/12 v1.0g TeX engine tests
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/mathtools\mathtools.sty
+Package: mathtools 2024/10/04 v1.31 mathematical typesetting tools
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/graphics\keyval.sty
+Package: keyval 2022/05/29 v1.15 key=value parser (DPC)
+\KV@toks@=\toks17
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/tools\calc.sty
+Package: calc 2025/03/01 v4.3b Infix arithmetic (KKT,FJ)
+\calc@Acount=\count280
+\calc@Bcount=\count281
+\calc@Adimen=\dimen149
+\calc@Bdimen=\dimen150
+\calc@Askip=\skip51
+\calc@Bskip=\skip52
+LaTeX Info: Redefining \setlength on input line 86.
+LaTeX Info: Redefining \addtolength on input line 87.
+\calc@Ccount=\count282
+\calc@Cskip=\skip53
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/mathtools\mhsetup.sty
+Package: mhsetup 2021/03/18 v1.4 programming setup (MH)
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amsmath.sty
+Package: amsmath 2025/06/16 v2.17y AMS math features
+\@mathmargin=\skip54
+
+For additional information on amsmath, use the `?' option.
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amstext.sty
+Package: amstext 2024/11/17 v2.01 AMS text
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amsgen.sty
+File: amsgen.sty 1999/11/30 v2.0 generic functions
+\@emptytoks=\toks18
+\ex@=\dimen151
+))
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amsbsy.sty
+Package: amsbsy 1999/11/29 v1.2d Bold Symbols
+\pmbraise@=\dimen152
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amsopn.sty
+Package: amsopn 2022/04/08 v2.04 operator names
+)
+\inf@bad=\count283
+LaTeX Info: Redefining \frac on input line 233.
+\uproot@=\count284
+\leftroot@=\count285
+LaTeX Info: Redefining \overline on input line 398.
+LaTeX Info: Redefining \colon on input line 409.
+\classnum@=\count286
+\DOTSCASE@=\count287
+LaTeX Info: Redefining \ldots on input line 495.
+LaTeX Info: Redefining \dots on input line 498.
+LaTeX Info: Redefining \cdots on input line 619.
+\Mathstrutbox@=\box53
+\strutbox@=\box54
+LaTeX Info: Redefining \big on input line 721.
+LaTeX Info: Redefining \Big on input line 722.
+LaTeX Info: Redefining \bigg on input line 723.
+LaTeX Info: Redefining \Bigg on input line 724.
+\big@size=\dimen153
+LaTeX Font Info:    Redeclaring font encoding OML on input line 742.
+LaTeX Font Info:    Redeclaring font encoding OMS on input line 743.
+\macc@depth=\count288
+LaTeX Info: Redefining \bmod on input line 904.
+LaTeX Info: Redefining \pmod on input line 909.
+LaTeX Info: Redefining \smash on input line 939.
+LaTeX Info: Redefining \relbar on input line 969.
+LaTeX Info: Redefining \Relbar on input line 970.
+\c@MaxMatrixCols=\count289
+\dotsspace@=\muskip17
+\c@parentequation=\count290
+\dspbrk@lvl=\count291
+\tag@help=\toks19
+\row@=\count292
+\column@=\count293
+\maxfields@=\count294
+\andhelp@=\toks20
+\eqnshift@=\dimen154
+\alignsep@=\dimen155
+\tagshift@=\dimen156
+\tagwidth@=\dimen157
+\totwidth@=\dimen158
+\lineht@=\dimen159
+\@envbody=\toks21
+\multlinegap=\skip55
+\multlinetaggap=\skip56
+\mathdisplay@stack=\toks22
+LaTeX Info: Redefining \[ on input line 2949.
+LaTeX Info: Redefining \] on input line 2950.
+)
+\g_MT_multlinerow_int=\count295
+\l_MT_multwidth_dim=\dimen160
+\origjot=\skip57
+\l_MT_shortvdotswithinadjustabove_dim=\dimen161
+\l_MT_shortvdotswithinadjustbelow_dim=\dimen162
+\l_MT_above_intertext_sep=\dimen163
+\l_MT_below_intertext_sep=\dimen164
+\l_MT_above_shortintertext_sep=\dimen165
+\l_MT_below_shortintertext_sep=\dimen166
+\xmathstrut@box=\box55
+\xmathstrut@dim=\dimen167
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/fontspec\fontspec.sty
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/l3packages/xparse\xpars
+e.sty
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/l3kernel\expl3.sty
+Package: expl3 2025-09-02 L3 programming layer (loader) 
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/l3backend\l3backend-xet
+ex.def
+File: l3backend-xetex.def 2025-06-09 L3 backend support: XeTeX
+\g__graphics_track_int=\count296
+\g__pdfannot_backend_int=\count297
+\g__pdfannot_backend_link_int=\count298
+))
+Package: xparse 2024-08-16 L3 Experimental document command parser
+)
+Package: fontspec 2025/09/29 v2.9g Font selection for XeLaTeX and LuaLaTeX
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/fontspec\fontspec-xetex
+.sty
+Package: fontspec-xetex 2025/09/29 v2.9g Font selection for XeLaTeX and LuaLaTe
+X
+\l__fontspec_script_int=\count299
+\l__fontspec_language_int=\count300
+\l__fontspec_strnum_int=\count301
+\l__fontspec_tmp_int=\count302
+\l__fontspec_tmpa_int=\count303
+\l__fontspec_tmpb_int=\count304
+\l__fontspec_tmpc_int=\count305
+\l__fontspec_em_int=\count306
+\l__fontspec_emdef_int=\count307
+\l__fontspec_strong_int=\count308
+\l__fontspec_strongdef_int=\count309
+\l__fontspec_tmpa_dim=\dimen168
+\l__fontspec_tmpb_dim=\dimen169
+\l__fontspec_tmpc_dim=\dimen170
+ (C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/base\fontenc.sty
+Package: fontenc 2024/12/21 v2.1c Standard LaTeX package
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/fontspec\fontspec.cfg))
+)
+
+Package fontspec Info: 
+(fontspec)             Font family 'TimesNewRoman(0)' created for font 'Times
+(fontspec)             New Roman' with options [Ligatures=TeX].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.: <->"Times New
+(fontspec)             Roman/OT:script=latn;language=dflt;mapping=tex-text;"
+(fontspec)             - 'small caps'  (m/sc) with NFSS spec.: <->"Times New
+(fontspec)             Roman/OT:script=latn;language=dflt;+smcp;mapping=tex-tex
+t;"
+(fontspec)             - 'bold' (b/n) with NFSS spec.: <->"Times New
+(fontspec)             Roman/B/OT:script=latn;language=dflt;mapping=tex-text;"
+(fontspec)             - 'bold small caps'  (b/sc) with NFSS spec.: <->"Times
+(fontspec)             New
+(fontspec)             Roman/B/OT:script=latn;language=dflt;+smcp;mapping=tex-t
+ext;"
+(fontspec)             - 'italic' (m/it) with NFSS spec.: <->"Times New
+(fontspec)             Roman/I/OT:script=latn;language=dflt;mapping=tex-text;"
+(fontspec)             - 'italic small caps'  (m/scit) with NFSS spec.:
+(fontspec)             <->"Times New
+(fontspec)             Roman/I/OT:script=latn;language=dflt;+smcp;mapping=tex-t
+ext;"
+(fontspec)             - 'bold italic' (b/it) with NFSS spec.: <->"Times New
+(fontspec)             Roman/BI/OT:script=latn;language=dflt;mapping=tex-text;"
+
+(fontspec)             - 'bold italic small caps'  (b/scit) with NFSS spec.:
+(fontspec)             <->"Times New
+(fontspec)             Roman/BI/OT:script=latn;language=dflt;+smcp;mapping=tex-
+text;"
+
+
+Package fontspec Info: 
+(fontspec)             Font family 'Arial(0)' created for font 'Arial' with
+(fontspec)             options [Ligatures=TeX].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.:
+(fontspec)             <->"Arial/OT:script=latn;language=dflt;mapping=tex-text;
+"
+(fontspec)             - 'small caps'  (m/sc) with NFSS spec.:
+(fontspec)             <->"Arial/OT:script=latn;language=dflt;+smcp;mapping=tex
+-text;"
+(fontspec)             - 'bold' (b/n) with NFSS spec.:
+(fontspec)             <->"Arial/B/OT:script=latn;language=dflt;mapping=tex-tex
+t;"
+(fontspec)             - 'bold small caps'  (b/sc) with NFSS spec.:
+(fontspec)             <->"Arial/B/OT:script=latn;language=dflt;+smcp;mapping=t
+ex-text;"
+(fontspec)             - 'italic' (m/it) with NFSS spec.:
+(fontspec)             <->"Arial/I/OT:script=latn;language=dflt;mapping=tex-tex
+t;"
+(fontspec)             - 'italic small caps'  (m/scit) with NFSS spec.:
+(fontspec)             <->"Arial/I/OT:script=latn;language=dflt;+smcp;mapping=t
+ex-text;"
+(fontspec)             - 'bold italic' (b/it) with NFSS spec.:
+(fontspec)             <->"Arial/BI/OT:script=latn;language=dflt;mapping=tex-te
+xt;"
+(fontspec)             - 'bold italic small caps'  (b/scit) with NFSS spec.:
+(fontspec)             <->"Arial/BI/OT:script=latn;language=dflt;+smcp;mapping=
+tex-text;"
+
+
+Package fontspec Info: 
+(fontspec)             Font family 'Consolas(0)' created for font 'Consolas'
+(fontspec)             with options
+(fontspec)             [WordSpace={1,0,0},HyphenChar=None,PunctuationSpace=Word
+Space].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.:
+(fontspec)             <->"Consolas/OT:script=latn;language=dflt;"
+(fontspec)             - 'bold' (b/n) with NFSS spec.:
+(fontspec)             <->"Consolas/B/OT:script=latn;language=dflt;"
+(fontspec)             - 'italic' (m/it) with NFSS spec.:
+(fontspec)             <->"Consolas/I/OT:script=latn;language=dflt;"
+(fontspec)             - 'bold italic' (b/it) with NFSS spec.:
+(fontspec)             <->"Consolas/BI/OT:script=latn;language=dflt;"
+
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/unicode-math\unicode-ma
+th.sty
+Package: unicode-math 2023/08/13 v0.8r Unicode maths in XeLaTeX and LuaLaTeX
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/unicode-math\unicode-ma
+th-xetex.sty
+Package: unicode-math-xetex 2023/08/13 v0.8r Unicode maths in XeLaTeX and LuaLa
+TeX
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/l3packages/l3keys2e\l3k
+eys2e.sty
+Package: l3keys2e 2024-08-16 LaTeX2e option processing using LaTeX3 keys
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/base\fix-cm.sty
+Package: fix-cm 2020/11/24 v1.1t fixes to LaTeX
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/base\ts1enc.def
+File: ts1enc.def 2001/06/05 v3.0e (jk/car/fm) Standard LaTeX file
+LaTeX Font Info:    Redeclaring font encoding TS1 on input line 47.
+LaTeX Encoding Info:    Redeclaring text command \capitalcedilla (encoding TS1)
+ on input line 49.
+LaTeX Encoding Info:    Redeclaring text command \capitalogonek (encoding TS1) 
+on input line 52.
+LaTeX Encoding Info:    Redeclaring text command \capitalgrave (encoding TS1) o
+n input line 55.
+LaTeX Encoding Info:    Redeclaring text command \capitalacute (encoding TS1) o
+n input line 56.
+LaTeX Encoding Info:    Redeclaring text command \capitalcircumflex (encoding T
+S1) on input line 57.
+LaTeX Encoding Info:    Redeclaring text command \capitaltilde (encoding TS1) o
+n input line 58.
+LaTeX Encoding Info:    Redeclaring text command \capitaldieresis (encoding TS1
+) on input line 59.
+LaTeX Encoding Info:    Redeclaring text command \capitalhungarumlaut (encoding
+ TS1) on input line 60.
+LaTeX Encoding Info:    Redeclaring text command \capitalring (encoding TS1) on
+ input line 61.
+LaTeX Encoding Info:    Redeclaring text command \capitalcaron (encoding TS1) o
+n input line 62.
+LaTeX Encoding Info:    Redeclaring text command \capitalbreve (encoding TS1) o
+n input line 63.
+LaTeX Encoding Info:    Redeclaring text command \capitalmacron (encoding TS1) 
+on input line 64.
+LaTeX Encoding Info:    Redeclaring text command \capitaldotaccent (encoding TS
+1) on input line 65.
+LaTeX Encoding Info:    Redeclaring text command \t (encoding TS1) on input lin
+e 66.
+LaTeX Encoding Info:    Redeclaring text command \capitaltie (encoding TS1) on 
+input line 67.
+LaTeX Encoding Info:    Redeclaring text command \newtie (encoding TS1) on inpu
+t line 68.
+LaTeX Encoding Info:    Redeclaring text command \capitalnewtie (encoding TS1) 
+on input line 69.
+LaTeX Encoding Info:    Redeclaring text symbol \textcapitalcompwordmark (encod
+ing TS1) on input line 70.
+LaTeX Encoding Info:    Redeclaring text symbol \textascendercompwordmark (enco
+ding TS1) on input line 71.
+LaTeX Encoding Info:    Redeclaring text symbol \textquotestraightbase (encodin
+g TS1) on input line 72.
+LaTeX Encoding Info:    Redeclaring text symbol \textquotestraightdblbase (enco
+ding TS1) on input line 73.
+LaTeX Encoding Info:    Redeclaring text symbol \texttwelveudash (encoding TS1)
+ on input line 74.
+LaTeX Encoding Info:    Redeclaring text symbol \textthreequartersemdash (encod
+ing TS1) on input line 75.
+LaTeX Encoding Info:    Redeclaring text symbol \textleftarrow (encoding TS1) o
+n input line 76.
+LaTeX Encoding Info:    Redeclaring text symbol \textrightarrow (encoding TS1) 
+on input line 77.
+LaTeX Encoding Info:    Redeclaring text symbol \textblank (encoding TS1) on in
+put line 78.
+LaTeX Encoding Info:    Redeclaring text symbol \textdollar (encoding TS1) on i
+nput line 79.
+LaTeX Encoding Info:    Redeclaring text symbol \textquotesingle (encoding TS1)
+ on input line 80.
+LaTeX Encoding Info:    Redeclaring text command \textasteriskcentered (encodin
+g TS1) on input line 81.
+LaTeX Encoding Info:    Redeclaring text symbol \textdblhyphen (encoding TS1) o
+n input line 92.
+LaTeX Encoding Info:    Redeclaring text symbol \textfractionsolidus (encoding 
+TS1) on input line 93.
+LaTeX Encoding Info:    Redeclaring text symbol \textzerooldstyle (encoding TS1
+) on input line 94.
+LaTeX Encoding Info:    Redeclaring text symbol \textoneoldstyle (encoding TS1)
+ on input line 95.
+LaTeX Encoding Info:    Redeclaring text symbol \texttwooldstyle (encoding TS1)
+ on input line 96.
+LaTeX Encoding Info:    Redeclaring text symbol \textthreeoldstyle (encoding TS
+1) on input line 97.
+LaTeX Encoding Info:    Redeclaring text symbol \textfouroldstyle (encoding TS1
+) on input line 98.
+LaTeX Encoding Info:    Redeclaring text symbol \textfiveoldstyle (encoding TS1
+) on input line 99.
+LaTeX Encoding Info:    Redeclaring text symbol \textsixoldstyle (encoding TS1)
+ on input line 100.
+LaTeX Encoding Info:    Redeclaring text symbol \textsevenoldstyle (encoding TS
+1) on input line 101.
+LaTeX Encoding Info:    Redeclaring text symbol \texteightoldstyle (encoding TS
+1) on input line 102.
+LaTeX Encoding Info:    Redeclaring text symbol \textnineoldstyle (encoding TS1
+) on input line 103.
+LaTeX Encoding Info:    Redeclaring text symbol \textlangle (encoding TS1) on i
+nput line 104.
+LaTeX Encoding Info:    Redeclaring text symbol \textminus (encoding TS1) on in
+put line 105.
+LaTeX Encoding Info:    Redeclaring text symbol \textrangle (encoding TS1) on i
+nput line 106.
+LaTeX Encoding Info:    Redeclaring text symbol \textmho (encoding TS1) on inpu
+t line 107.
+LaTeX Encoding Info:    Redeclaring text symbol \textbigcircle (encoding TS1) o
+n input line 108.
+LaTeX Encoding Info:    Redeclaring text command \textcircled (encoding TS1) on
+ input line 109.
+LaTeX Encoding Info:    Redeclaring text symbol \textohm (encoding TS1) on inpu
+t line 115.
+LaTeX Encoding Info:    Redeclaring text symbol \textlbrackdbl (encoding TS1) o
+n input line 116.
+LaTeX Encoding Info:    Redeclaring text symbol \textrbrackdbl (encoding TS1) o
+n input line 117.
+LaTeX Encoding Info:    Redeclaring text symbol \textuparrow (encoding TS1) on 
+input line 118.
+LaTeX Encoding Info:    Redeclaring text symbol \textdownarrow (encoding TS1) o
+n input line 119.
+LaTeX Encoding Info:    Redeclaring text symbol \textasciigrave (encoding TS1) 
+on input line 120.
+LaTeX Encoding Info:    Redeclaring text symbol \textborn (encoding TS1) on inp
+ut line 121.
+LaTeX Encoding Info:    Redeclaring text symbol \textdivorced (encoding TS1) on
+ input line 122.
+LaTeX Encoding Info:    Redeclaring text symbol \textdied (encoding TS1) on inp
+ut line 123.
+LaTeX Encoding Info:    Redeclaring text symbol \textleaf (encoding TS1) on inp
+ut line 124.
+LaTeX Encoding Info:    Redeclaring text symbol \textmarried (encoding TS1) on 
+input line 125.
+LaTeX Encoding Info:    Redeclaring text symbol \textmusicalnote (encoding TS1)
+ on input line 126.
+LaTeX Encoding Info:    Redeclaring text symbol \texttildelow (encoding TS1) on
+ input line 127.
+LaTeX Encoding Info:    Redeclaring text symbol \textdblhyphenchar (encoding TS
+1) on input line 128.
+LaTeX Encoding Info:    Redeclaring text symbol \textasciibreve (encoding TS1) 
+on input line 129.
+LaTeX Encoding Info:    Redeclaring text symbol \textasciicaron (encoding TS1) 
+on input line 130.
+LaTeX Encoding Info:    Redeclaring text symbol \textacutedbl (encoding TS1) on
+ input line 131.
+LaTeX Encoding Info:    Redeclaring text symbol \textgravedbl (encoding TS1) on
+ input line 132.
+LaTeX Encoding Info:    Redeclaring text symbol \textdagger (encoding TS1) on i
+nput line 133.
+LaTeX Encoding Info:    Redeclaring text symbol \textdaggerdbl (encoding TS1) o
+n input line 134.
+LaTeX Encoding Info:    Redeclaring text symbol \textbardbl (encoding TS1) on i
+nput line 135.
+LaTeX Encoding Info:    Redeclaring text symbol \textperthousand (encoding TS1)
+ on input line 136.
+LaTeX Encoding Info:    Redeclaring text symbol \textbullet (encoding TS1) on i
+nput line 137.
+LaTeX Encoding Info:    Redeclaring text symbol \textcelsius (encoding TS1) on 
+input line 138.
+LaTeX Encoding Info:    Redeclaring text symbol \textdollaroldstyle (encoding T
+S1) on input line 139.
+LaTeX Encoding Info:    Redeclaring text symbol \textcentoldstyle (encoding TS1
+) on input line 140.
+LaTeX Encoding Info:    Redeclaring text symbol \textflorin (encoding TS1) on i
+nput line 141.
+LaTeX Encoding Info:    Redeclaring text symbol \textcolonmonetary (encoding TS
+1) on input line 142.
+LaTeX Encoding Info:    Redeclaring text symbol \textwon (encoding TS1) on inpu
+t line 143.
+LaTeX Encoding Info:    Redeclaring text symbol \textnaira (encoding TS1) on in
+put line 144.
+LaTeX Encoding Info:    Redeclaring text symbol \textguarani (encoding TS1) on 
+input line 145.
+LaTeX Encoding Info:    Redeclaring text symbol \textpeso (encoding TS1) on inp
+ut line 146.
+LaTeX Encoding Info:    Redeclaring text symbol \textlira (encoding TS1) on inp
+ut line 147.
+LaTeX Encoding Info:    Redeclaring text symbol \textrecipe (encoding TS1) on i
+nput line 148.
+LaTeX Encoding Info:    Redeclaring text symbol \textinterrobang (encoding TS1)
+ on input line 149.
+LaTeX Encoding Info:    Redeclaring text symbol \textinterrobangdown (encoding 
+TS1) on input line 150.
+LaTeX Encoding Info:    Redeclaring text symbol \textdong (encoding TS1) on inp
+ut line 151.
+LaTeX Encoding Info:    Redeclaring text symbol \texttrademark (encoding TS1) o
+n input line 152.
+LaTeX Encoding Info:    Redeclaring text symbol \textpertenthousand (encoding T
+S1) on input line 153.
+LaTeX Encoding Info:    Redeclaring text symbol \textpilcrow (encoding TS1) on 
+input line 154.
+LaTeX Encoding Info:    Redeclaring text symbol \textbaht (encoding TS1) on inp
+ut line 155.
+LaTeX Encoding Info:    Redeclaring text symbol \textnumero (encoding TS1) on i
+nput line 156.
+LaTeX Encoding Info:    Redeclaring text symbol \textdiscount (encoding TS1) on
+ input line 157.
+LaTeX Encoding Info:    Redeclaring text symbol \textestimated (encoding TS1) o
+n input line 158.
+LaTeX Encoding Info:    Redeclaring text symbol \textopenbullet (encoding TS1) 
+on input line 159.
+LaTeX Encoding Info:    Redeclaring text symbol \textservicemark (encoding TS1)
+ on input line 160.
+LaTeX Encoding Info:    Redeclaring text symbol \textlquill (encoding TS1) on i
+nput line 161.
+LaTeX Encoding Info:    Redeclaring text symbol \textrquill (encoding TS1) on i
+nput line 162.
+LaTeX Encoding Info:    Redeclaring text symbol \textcent (encoding TS1) on inp
+ut line 163.
+LaTeX Encoding Info:    Redeclaring text symbol \textsterling (encoding TS1) on
+ input line 164.
+LaTeX Encoding Info:    Redeclaring text symbol \textcurrency (encoding TS1) on
+ input line 165.
+LaTeX Encoding Info:    Redeclaring text symbol \textyen (encoding TS1) on inpu
+t line 166.
+LaTeX Encoding Info:    Redeclaring text symbol \textbrokenbar (encoding TS1) o
+n input line 167.
+LaTeX Encoding Info:    Redeclaring text symbol \textsection (encoding TS1) on 
+input line 168.
+LaTeX Encoding Info:    Redeclaring text symbol \textasciidieresis (encoding TS
+1) on input line 169.
+LaTeX Encoding Info:    Redeclaring text symbol \textcopyright (encoding TS1) o
+n input line 170.
+LaTeX Encoding Info:    Redeclaring text symbol \textordfeminine (encoding TS1)
+ on input line 171.
+LaTeX Encoding Info:    Redeclaring text symbol \textcopyleft (encoding TS1) on
+ input line 172.
+LaTeX Encoding Info:    Redeclaring text symbol \textlnot (encoding TS1) on inp
+ut line 173.
+LaTeX Encoding Info:    Redeclaring text symbol \textcircledP (encoding TS1) on
+ input line 174.
+LaTeX Encoding Info:    Redeclaring text symbol \textregistered (encoding TS1) 
+on input line 175.
+LaTeX Encoding Info:    Redeclaring text symbol \textasciimacron (encoding TS1)
+ on input line 176.
+LaTeX Encoding Info:    Redeclaring text symbol \textdegree (encoding TS1) on i
+nput line 177.
+LaTeX Encoding Info:    Redeclaring text symbol \textpm (encoding TS1) on input
+ line 178.
+LaTeX Encoding Info:    Redeclaring text symbol \texttwosuperior (encoding TS1)
+ on input line 179.
+LaTeX Encoding Info:    Redeclaring text symbol \textthreesuperior (encoding TS
+1) on input line 180.
+LaTeX Encoding Info:    Redeclaring text symbol \textasciiacute (encoding TS1) 
+on input line 181.
+LaTeX Encoding Info:    Redeclaring text symbol \textmu (encoding TS1) on input
+ line 182.
+LaTeX Encoding Info:    Redeclaring text symbol \textparagraph (encoding TS1) o
+n input line 183.
+LaTeX Encoding Info:    Redeclaring text symbol \textperiodcentered (encoding T
+S1) on input line 184.
+LaTeX Encoding Info:    Redeclaring text symbol \textreferencemark (encoding TS
+1) on input line 185.
+LaTeX Encoding Info:    Redeclaring text symbol \textonesuperior (encoding TS1)
+ on input line 186.
+LaTeX Encoding Info:    Redeclaring text symbol \textordmasculine (encoding TS1
+) on input line 187.
+LaTeX Encoding Info:    Redeclaring text symbol \textsurd (encoding TS1) on inp
+ut line 188.
+LaTeX Encoding Info:    Redeclaring text symbol \textonequarter (encoding TS1) 
+on input line 189.
+LaTeX Encoding Info:    Redeclaring text symbol \textonehalf (encoding TS1) on 
+input line 190.
+LaTeX Encoding Info:    Redeclaring text symbol \textthreequarters (encoding TS
+1) on input line 191.
+LaTeX Encoding Info:    Redeclaring text symbol \texteuro (encoding TS1) on inp
+ut line 192.
+LaTeX Encoding Info:    Redeclaring text symbol \texttimes (encoding TS1) on in
+put line 193.
+LaTeX Encoding Info:    Redeclaring text symbol \textdiv (encoding TS1) on inpu
+t line 194.
+))
+\g__um_fam_int=\count310
+\g__um_fonts_used_int=\count311
+\l__um_primecount_int=\count312
+\g__um_primekern_muskip=\muskip18
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/unicode-math\unicode-ma
+th-table.tex)))
+
+Package fontspec Info: 
+(fontspec)             Could not resolve font "Cambria Math/B" (it probably
+(fontspec)             doesn't exist).
+
+
+Package fontspec Info: 
+(fontspec)             Font family 'CambriaMath(0)' created for font 'Cambria
+(fontspec)             Math' with options
+(fontspec)             [BoldItalicFont={},ItalicFont={},SmallCapsFont={},Script
+=Math].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.: <->"Cambria
+(fontspec)             Math/OT:script=math;language=dflt;"
+
+
+Package fontspec Info: 
+(fontspec)             Could not resolve font "Cambria Math/B" (it probably
+(fontspec)             doesn't exist).
+
+
+Package fontspec Info: 
+(fontspec)             Font family 'CambriaMath(1)' created for font 'Cambria
+(fontspec)             Math' with options
+(fontspec)             [BoldItalicFont={},ItalicFont={},SmallCapsFont={},Script
+=Math,SizeFeatures={{Size=10.38-},{Size=7.98-10.38,Font=Cambria
+(fontspec)             Math,Style=MathScript},{Size=-7.98,Font=Cambria
+(fontspec)             Math,Style=MathScriptScript}}].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.: <10.38->"Cambria
+(fontspec)             Math/OT:script=math;language=dflt;"<7.98-10.38>"Cambria
+(fontspec)             Math/OT:script=math;language=dflt;+ssty=0;"<-7.98>"Cambr
+ia
+(fontspec)             Math/OT:script=math;language=dflt;+ssty=1;"
+
+LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
+(Font)              `operators' in the math version `normal' on input line 21.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
+(Font)                  OT1/cmr/m/n --> TU/CambriaMath(1)/m/n on input line 21.
+
+LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
+(Font)              `operators' in the math version `bold' on input line 21.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
+(Font)                  OT1/cmr/bx/n --> TU/CambriaMath(1)/b/n on input line 21
+.
+
+Package fontspec Info: 
+(fontspec)             Cambria Math scale = 1.0001.
+
+
+Package fontspec Info: 
+(fontspec)             Could not resolve font "Cambria Math/B" (it probably
+(fontspec)             doesn't exist).
+
+
+Package fontspec Info: 
+(fontspec)             Cambria Math scale = 1.0001.
+
+
+Package fontspec Info: 
+(fontspec)             Cambria Math scale = 1.0001.
+
+
+Package fontspec Info: 
+(fontspec)             Cambria Math scale = 1.0001.
+
+
+Package fontspec Info: 
+(fontspec)             Font family 'CambriaMath(2)' created for font 'Cambria
+(fontspec)             Math' with options
+(fontspec)             [BoldItalicFont={},ItalicFont={},SmallCapsFont={},Script
+=Math,SizeFeatures={{Size=10.38-},{Size=7.98-10.38,Font=Cambria
+(fontspec)             Math,Style=MathScript},{Size=-7.98,Font=Cambria
+(fontspec)             Math,Style=MathScriptScript}},ScaleAgain=1.0001,FontAdju
+stment={\fontdimen
+(fontspec)             8\font =9.08203pt\relax \fontdimen 9\font
+(fontspec)             =7.03125pt\relax \fontdimen 10\font =5.50781pt\relax
+(fontspec)             \fontdimen 11\font =8.02734pt\relax \fontdimen 12\font
+(fontspec)             =6.03516pt\relax \fontdimen 13\font =4.39453pt\relax
+(fontspec)             \fontdimen 14\font =4.39453pt\relax \fontdimen 15\font
+(fontspec)             =3.60352pt\relax \fontdimen 16\font =2.44922pt\relax
+(fontspec)             \fontdimen 17\font =2.44922pt\relax \fontdimen 18\font
+(fontspec)             =2.69531pt\relax \fontdimen 19\font =1.875pt\relax
+(fontspec)             \fontdimen 22\font =3.42773pt\relax \fontdimen 20\font
+(fontspec)             =0pt\relax \fontdimen 21\font =0pt\relax }].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.:
+(fontspec)             <10.38->s*[1.0001]"Cambria
+(fontspec)             Math/OT:script=math;language=dflt;"<7.98-10.38>s*[1.0001
+]"Cambria
+(fontspec)             Math/OT:script=math;language=dflt;+ssty=0;"<-7.98>s*[1.0
+001]"Cambria
+(fontspec)             Math/OT:script=math;language=dflt;+ssty=1;"
+
+LaTeX Font Info:    Encoding `OMS' has changed to `TU' for symbol font
+(Font)              `symbols' in the math version `normal' on input line 21.
+LaTeX Font Info:    Overwriting symbol font `symbols' in version `normal'
+(Font)                  OMS/cmsy/m/n --> TU/CambriaMath(2)/m/n on input line 21
+.
+LaTeX Font Info:    Encoding `OMS' has changed to `TU' for symbol font
+(Font)              `symbols' in the math version `bold' on input line 21.
+LaTeX Font Info:    Overwriting symbol font `symbols' in version `bold'
+(Font)                  OMS/cmsy/b/n --> TU/CambriaMath(2)/b/n on input line 21
+.
+
+Package fontspec Info: 
+(fontspec)             Cambria Math scale = 0.9999.
+
+
+Package fontspec Info: 
+(fontspec)             Could not resolve font "Cambria Math/B" (it probably
+(fontspec)             doesn't exist).
+
+
+Package fontspec Info: 
+(fontspec)             Cambria Math scale = 0.9999.
+
+
+Package fontspec Info: 
+(fontspec)             Cambria Math scale = 0.9999.
+
+
+Package fontspec Info: 
+(fontspec)             Cambria Math scale = 0.9999.
+
+
+Package fontspec Info: 
+(fontspec)             Font family 'CambriaMath(3)' created for font 'Cambria
+(fontspec)             Math' with options
+(fontspec)             [BoldItalicFont={},ItalicFont={},SmallCapsFont={},Script
+=Math,SizeFeatures={{Size=10.38-},{Size=7.98-10.38,Font=Cambria
+(fontspec)             Math,Style=MathScript},{Size=-7.98,Font=Cambria
+(fontspec)             Math,Style=MathScriptScript}},ScaleAgain=0.9999,FontAdju
+stment={\fontdimen
+(fontspec)             8\font =0.7793pt\relax \fontdimen 9\font
+(fontspec)             =0.7793pt\relax \fontdimen 10\font =0.7793pt\relax
+(fontspec)             \fontdimen 11\font =2.92969pt\relax \fontdimen 12\font
+(fontspec)             =7.26563pt\relax \fontdimen 13\font =0pt\relax }].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.:
+(fontspec)             <10.38->s*[0.9999]"Cambria
+(fontspec)             Math/OT:script=math;language=dflt;"<7.98-10.38>s*[0.9999
+]"Cambria
+(fontspec)             Math/OT:script=math;language=dflt;+ssty=0;"<-7.98>s*[0.9
+999]"Cambria
+(fontspec)             Math/OT:script=math;language=dflt;+ssty=1;"
+
+LaTeX Font Info:    Encoding `OMX' has changed to `TU' for symbol font
+(Font)              `largesymbols' in the math version `normal' on input line 2
+1.
+LaTeX Font Info:    Overwriting symbol font `largesymbols' in version `normal'
+(Font)                  OMX/cmex/m/n --> TU/CambriaMath(3)/m/n on input line 21
+.
+LaTeX Font Info:    Encoding `OMX' has changed to `TU' for symbol font
+(Font)              `largesymbols' in the math version `bold' on input line 21.
+
+LaTeX Font Info:    Overwriting symbol font `largesymbols' in version `bold'
+(Font)                  OMX/cmex/m/n --> TU/CambriaMath(3)/b/n on input line 21
+.
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/babel\babel.sty
+Package: babel 2025/10/01 v25.13 The multilingual framework for LuaLaTeX, pdfLa
+TeX and XeLaTeX
+\babel@savecnt=\count313
+LaTeX Encoding Info:    Redeclaring text command \ij (encoding OT1) on input li
+ne 2045.
+LaTeX Encoding Info:    Redeclaring text command \IJ (encoding OT1) on input li
+ne 2047.
+LaTeX Encoding Info:    Redeclaring text command \ij (encoding T1) on input lin
+e 2049.
+LaTeX Encoding Info:    Redeclaring text command \IJ (encoding T1) on input lin
+e 2050.
+LaTeX Encoding Info:    Ignoring declaration for text command \ij (encoding ?) 
+on input line 2051.
+LaTeX Encoding Info:    Ignoring declaration for text command \IJ (encoding ?) 
+on input line 2053.
+LaTeX Encoding Info:    Ignoring declaration for text command \SS (encoding ?) 
+on input line 2078.
+\U@D=\dimen171
+\l@unhyphenated=\language79
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/babel\xebabel.def)
+\bbl@readstream=\read2
+\bbl@dirlevel=\count314
+
+*************************************
+* Local config file bblopts.cfg used
+*
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/arabi\bblopts.cfg
+File: bblopts.cfg 2005/09/08 v0.1 add Arabic and Farsi to "declared" options of
+ babel
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/babel-hungarian\magyar.
+ldf
+Language: magyar 2025/05/02 v1.5d Hungarian support for babel
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/babel/locale/hu\babel
+-magyar.tex
+Package babel Info: Importing font and identification data for magyar
+(babel)             from babel-hu.ini. Reported on input line 12.
+)
+Package babel Info: Making ` an active character on input line 2778.
+\c@footnote@add=\count315
+\c@footnote@ch=\count316
+))
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/cite\cite.sty
+LaTeX Info: Redefining \cite on input line 302.
+LaTeX Info: Redefining \nocite on input line 332.
+Package: cite 2015/02/27  v 5.5
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/csquotes\csquotes.sty
+Package: csquotes 2024-04-04 v5.2o context-sensitive quotations (JAW)
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/etoolbox\etoolbox.sty
+Package: etoolbox 2025/10/02 v2.5m e-TeX tools for LaTeX (JAW)
+\etb@tempcnta=\count317
+)
+\csq@reset=\count318
+\csq@gtype=\count319
+\csq@glevel=\count320
+\csq@qlevel=\count321
+\csq@maxlvl=\count322
+\csq@tshold=\count323
+\csq@ltx@everypar=\toks23
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/csquotes\csquotes.def
+File: csquotes.def 2024-04-04 v5.2o csquotes generic definitions (JAW)
+)
+Package csquotes Info: Trying to load configuration file 'csquotes.cfg'...
+Package csquotes Info: ... configuration file loaded successfully.
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/csquotes\csquotes.cfg
+File: csquotes.cfg 
+)
+Package csquotes Info: Enabling multilingual quotes.
+) (C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/geometry\geometry.sty
+Package: geometry 2020/01/02 v5.9 Page Geometry
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/iftex\ifvtex.sty
+Package: ifvtex 2019/10/25 v1.7 ifvtex legacy package. Use iftex instead.
+)
+\Gm@cnth=\count324
+\Gm@cntv=\count325
+\c@Gm@tempcnt=\count326
+\Gm@bindingoffset=\dimen172
+\Gm@wd@mp=\dimen173
+\Gm@odd@mp=\dimen174
+\Gm@even@mp=\dimen175
+\Gm@layoutwidth=\dimen176
+\Gm@layoutheight=\dimen177
+\Gm@layouthoffset=\dimen178
+\Gm@layoutvoffset=\dimen179
+\Gm@dimlist=\toks24
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/geometry\geometry.cfg))
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/setspace\setspace.sty
+Package: setspace 2022/12/04 v6.7b set line spacing
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/microtype\microtype.sty
+Package: microtype 2025/07/09 v3.2b Micro-typographical refinements (RS)
+\MT@toks=\toks25
+\MT@tempbox=\box56
+\MT@count=\count327
+LaTeX Info: Redefining \noprotrusionifhmode on input line 1087.
+LaTeX Info: Redefining \leftprotrusion on input line 1088.
+\MT@prot@toks=\toks26
+LaTeX Info: Redefining \rightprotrusion on input line 1107.
+LaTeX Info: Redefining \textls on input line 1449.
+\MT@outer@kern=\dimen180
+LaTeX Info: Redefining \microtypecontext on input line 2053.
+LaTeX Info: Redefining \textmicrotypecontext on input line 2070.
+\MT@listname@count=\count328
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/microtype\microtype-xet
+ex.def
+File: microtype-xetex.def 2025/07/09 v3.2b Definitions specific to xetex (RS)
+LaTeX Info: Redefining \lsstyle on input line 443.
+LaTeX Info: Redefining \lslig on input line 451.
+\MT@outer@space=\skip58
+)
+Package microtype Info: Loading configuration file microtype.cfg.
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/microtype\microtype.cfg
+File: microtype.cfg 2025/07/09 v3.2b microtype main configuration file (RS)
+)
+LaTeX Info: Redefining \microtypesetup on input line 3065.
+) (C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/siunitx\siunitx.sty
+Package: siunitx 2025-07-09 v3.4.14 A comprehensive (SI) units package
+\l__siunitx_number_uncert_offset_int=\count329
+\l__siunitx_number_exponent_fixed_int=\count330
+\l__siunitx_number_min_decimal_int=\count331
+\l__siunitx_number_min_integer_int=\count332
+\l__siunitx_number_round_precision_int=\count333
+\l__siunitx_number_lower_threshold_int=\count334
+\l__siunitx_number_upper_threshold_int=\count335
+\l__siunitx_number_group_first_int=\count336
+\l__siunitx_number_group_size_int=\count337
+\l__siunitx_number_group_minimum_int=\count338
+\l__siunitx_angle_tmp_dim=\dimen181
+\l__siunitx_angle_marker_box=\box57
+\l__siunitx_angle_unit_box=\box58
+\l__siunitx_compound_count_int=\count339
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/translations\translatio
+ns.sty
+Package: translations 2022/02/05 v1.12 internationalization of LaTeX2e packages
+ (CN)
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/pdftexcmds\pdftexcmds
+.sty
+Package: pdftexcmds 2020-06-27 v0.33 Utility functions of pdfTeX for LuaTeX (HO
+)
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/infwarerr\infwarerr.s
+ty
+Package: infwarerr 2019/12/03 v1.5 Providing info/warning/error messages (HO)
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/ltxcmds\ltxcmds.sty
+Package: ltxcmds 2023-12-04 v1.26 LaTeX kernel commands for general use (HO)
+)
+Package pdftexcmds Info: \pdf@primitive is available.
+Package pdftexcmds Info: \pdf@ifprimitive is available.
+Package pdftexcmds Info: \pdfdraftmode not found.
+))
+\l__siunitx_table_tmp_box=\box59
+\l__siunitx_table_tmp_dim=\dimen182
+\l__siunitx_table_column_width_dim=\dimen183
+\l__siunitx_table_integer_box=\box60
+\l__siunitx_table_decimal_box=\box61
+\l__siunitx_table_uncert_box=\box62
+\l__siunitx_table_before_box=\box63
+\l__siunitx_table_after_box=\box64
+\l__siunitx_table_before_dim=\dimen184
+\l__siunitx_table_carry_dim=\dimen185
+\l__siunitx_unit_tmp_int=\count340
+\l__siunitx_unit_position_int=\count341
+\l__siunitx_unit_total_int=\count342
+ (C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/tools\array.sty
+Package: array 2025/06/08 v2.6j Tabular extension package (FMi)
+\col@sep=\dimen186
+\ar@mcellbox=\box65
+\extrarowheight=\dimen187
+\NC@list=\toks27
+\extratabsurround=\skip59
+\backup@length=\skip60
+\ar@cellbox=\box66
+))
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/graphics\graphicx.sty
+Package: graphicx 2024/12/31 v1.2e Enhanced LaTeX Graphics (DPC,SPQR)
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/graphics\graphics.sty
+Package: graphics 2024/08/06 v1.4g Standard LaTeX Graphics (DPC,SPQR)
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/graphics\trig.sty
+Package: trig 2023/12/02 v1.11 sin cos tan (DPC)
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/graphics-cfg\graphics.c
+fg
+File: graphics.cfg 2016/06/04 v1.11 sample graphics configuration
+)
+Package graphics Info: Driver file: xetex.def on input line 106.
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/graphics-def\xetex.def
+File: xetex.def 2025/09/29 v5.0o Graphics/color driver for xetex
+))
+\Gin@req@height=\dimen188
+\Gin@req@width=\dimen189
+) (C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/float\float.sty
+Package: float 2001/11/08 v1.3d Float enhancements (AL)
+\c@float@type=\count343
+\float@exts=\toks28
+\float@box=\box67
+\@float@everytoks=\toks29
+\@floatcapt=\box68
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/booktabs\booktabs.sty
+Package: booktabs 2020/01/12 v1.61803398 Publication quality tables
+\heavyrulewidth=\dimen190
+\lightrulewidth=\dimen191
+\cmidrulewidth=\dimen192
+\belowrulesep=\dimen193
+\belowbottomsep=\dimen194
+\aboverulesep=\dimen195
+\abovetopsep=\dimen196
+\cmidrulesep=\dimen197
+\cmidrulekern=\dimen198
+\defaultaddspace=\dimen199
+\@cmidla=\count344
+\@cmidlb=\count345
+\@aboverulesep=\dimen256
+\@belowrulesep=\dimen257
+\@thisruleclass=\count346
+\@lastruleclass=\count347
+\@thisrulewidth=\dimen258
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/listings\listings.sty
+\lst@mode=\count348
+\lst@gtempboxa=\box69
+\lst@token=\toks30
+\lst@length=\count349
+\lst@currlwidth=\dimen259
+\lst@column=\count350
+\lst@pos=\count351
+\lst@lostspace=\dimen260
+\lst@width=\dimen261
+\lst@newlines=\count352
+\lst@lineno=\count353
+\lst@maxwidth=\dimen262
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/listings\lstpatch.sty
+File: lstpatch.sty 2024/09/23 1.10c (Carsten Heinz)
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/listings\lstmisc.sty
+File: lstmisc.sty 2024/09/23 1.10c (Carsten Heinz)
+\c@lstnumber=\count354
+\lst@skipnumbers=\count355
+\lst@framebox=\box70
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/listings\listings.cfg
+File: listings.cfg 2024/09/23 1.10c listings configuration
+))
+Package: listings 2024/09/23 1.10c (Carsten Heinz)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/xcolor\xcolor.sty
+Package: xcolor 2024/09/29 v3.02 LaTeX color extensions (UK)
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/graphics-cfg\color.cfg
+File: color.cfg 2016/01/02 v1.6 sample color configuration
+)
+Package xcolor Info: Driver file: xetex.def on input line 274.
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/graphics\mathcolor.ltx)
+Package xcolor Info: Model `cmy' substituted by `cmy0' on input line 1349.
+Package xcolor Info: Model `RGB' extended on input line 1365.
+Package xcolor Info: Model `HTML' substituted by `rgb' on input line 1367.
+Package xcolor Info: Model `Hsb' substituted by `hsb' on input line 1368.
+Package xcolor Info: Model `tHsb' substituted by `hsb' on input line 1369.
+Package xcolor Info: Model `HSB' substituted by `hsb' on input line 1370.
+Package xcolor Info: Model `Gray' substituted by `gray' on input line 1371.
+Package xcolor Info: Model `wave' substituted by `hsb' on input line 1372.
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/algorithms\algorithm.st
+y
+Invalid UTF-8 byte or sequence at line 11 replaced by U+FFFD.
+Package: algorithm 2009/08/24 v0.1 Document Style `algorithm' - floating enviro
+nment
+ (C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/base\ifthen.sty
+Package: ifthen 2024/03/16 v1.1e Standard LaTeX ifthen package (DPC)
+)
+\@float@every@algorithm=\toks31
+\c@algorithm=\count356
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/algorithms\algorithmic.
+sty
+Invalid UTF-8 byte or sequence at line 11 replaced by U+FFFD.
+Package: algorithmic 2009/08/24 v0.1 Document Style `algorithmic'
+\c@ALC@unique=\count357
+\c@ALC@line=\count358
+\c@ALC@rem=\count359
+\c@ALC@depth=\count360
+\ALC@tlm=\skip61
+\algorithmicindent=\skip62
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/chngcntr\chngcntr.sty
+Package: chngcntr 2018/04/09 v1.1a change counter resetting
+Package chngcntr Info: \counterwithout already defined.
+(chngcntr)             Quitting chngcntr on input line 21.
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/hyperref\hyperref.sty
+Package: hyperref 2025-07-12 v7.01o Hypertext links for LaTeX
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/kvsetkeys\kvsetkeys.sty
+Package: kvsetkeys 2022-10-05 v1.19 Key value parser (HO)
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/kvdefinekeys\kvdefine
+keys.sty
+Package: kvdefinekeys 2019-12-19 v1.6 Define keys (HO)
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/pdfescape\pdfescape.s
+ty
+Package: pdfescape 2019/12/09 v1.15 Implements pdfTeX's escape features (HO)
+) (C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/hycolor\hycolor.sty
+Package: hycolor 2020-01-27 v1.10 Color options for hyperref/bookmark (HO)
+) (C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/hyperref\nameref.sty
+Package: nameref 2025-06-21 v2.57 Cross-referencing by name of section
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/refcount\refcount.sty
+Package: refcount 2019/12/15 v3.6 Data extraction from label references (HO)
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/gettitlestring\gettit
+lestring.sty
+Package: gettitlestring 2019/12/15 v1.6 Cleanup title references (HO)
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/kvoptions\kvoptions.sty
+Package: kvoptions 2022-06-15 v3.15 Key value format for package options (HO)
+))
+\c@section@level=\count361
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/stringenc\stringenc.s
+ty
+Package: stringenc 2019/11/29 v1.12 Convert strings between diff. encodings (HO
+)
+)
+\@linkdim=\dimen263
+\Hy@linkcounter=\count362
+\Hy@pagecounter=\count363
+ (C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/hyperref\pd1enc.def
+File: pd1enc.def 2025-07-12 v7.01o Hyperref: PDFDocEncoding definition (HO)
+) (C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/intcalc\intcalc.sty
+Package: intcalc 2019/12/15 v1.3 Expandable calculations with integers (HO)
+)
+\Hy@SavedSpaceFactor=\count364
+ (C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/hyperref\puenc.def
+File: puenc.def 2025-07-12 v7.01o Hyperref: PDF Unicode definition (HO)
+)
+Package hyperref Info: Option `unicode' set `true' on input line 4066.
+Package hyperref Info: Option `hypertexnames' set `false' on input line 4066.
+Package hyperref Info: Hyper figures OFF on input line 4195.
+Package hyperref Info: Link nesting OFF on input line 4200.
+Package hyperref Info: Hyper index ON on input line 4203.
+Package hyperref Info: Plain pages OFF on input line 4210.
+Package hyperref Info: Backreferencing OFF on input line 4215.
+Package hyperref Info: Implicit mode ON; LaTeX internals redefined.
+Package hyperref Info: Bookmarks ON on input line 4462.
+\c@Hy@tempcnt=\count365
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/url\url.sty
+\Urlmuskip=\muskip19
+Package: url 2013/09/16  ver 3.4  Verb mode for urls, etc.
+)
+LaTeX Info: Redefining \url on input line 4801.
+\XeTeXLinkMargin=\dimen264
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/bitset\bitset.sty
+Package: bitset 2019/12/09 v1.3 Handle bit-vector datatype (HO)
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/bigintcalc\bigintcalc
+.sty
+Package: bigintcalc 2019/12/15 v1.5 Expandable calculations on big integers (HO
+)
+))
+\Fld@menulength=\count366
+\Field@Width=\dimen265
+\Fld@charsize=\dimen266
+Package hyperref Info: Hyper figures OFF on input line 6078.
+Package hyperref Info: Link nesting OFF on input line 6083.
+Package hyperref Info: Hyper index ON on input line 6086.
+Package hyperref Info: backreferencing OFF on input line 6093.
+Package hyperref Info: Link coloring OFF on input line 6098.
+Package hyperref Info: Link coloring with OCG OFF on input line 6103.
+Package hyperref Info: PDF/A mode OFF on input line 6108.
+\Hy@abspage=\count367
+\c@Item=\count368
+\c@Hfootnote=\count369
+)
+Package hyperref Info: Driver (autodetected): hxetex.
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/hyperref\hxetex.def
+File: hxetex.def 2025-07-12 v7.01o Hyperref driver for XeTeX
+\pdfm@box=\box71
+\c@Hy@AnnotLevel=\count370
+\HyField@AnnotCount=\count371
+\Fld@listcount=\count372
+\c@bookmark@seq@number=\count373
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/rerunfilecheck\rerunfil
+echeck.sty
+Package: rerunfilecheck 2025-06-21 v1.11 Rerun checks for auxiliary files (HO)
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/generic/uniquecounter\uniquec
+ounter.sty
+Package: uniquecounter 2019/12/15 v1.4 Provide unlimited unique counter (HO)
+)
+Package uniquecounter Info: New unique counter `rerunfilecheck' on input line 2
+84.
+)
+\Hy@SectionHShift=\skip63
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/xurl\xurl.sty
+Package: xurl 2022/01/09 v 0.10 modify URL breaks
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/bookmark\bookmark.sty
+Package: bookmark 2023-12-10 v1.31 PDF bookmarks (HO)
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/bookmark\bkm-dvipdfm.de
+f
+File: bkm-dvipdfm.def 2023-12-10 v1.31 bookmark driver for dvipdfm (HO)
+\BKM@id=\count374
+))
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/cleveref\cleveref.sty
+Package: cleveref 2018/03/27 v0.21.4 Intelligent cross-referencing
+Package cleveref Info: `hyperref' support loaded on input line 2370.
+LaTeX Info: Redefining \cref on input line 2370.
+LaTeX Info: Redefining \Cref on input line 2370.
+LaTeX Info: Redefining \crefrange on input line 2370.
+LaTeX Info: Redefining \Crefrange on input line 2370.
+LaTeX Info: Redefining \cpageref on input line 2370.
+LaTeX Info: Redefining \Cpageref on input line 2370.
+LaTeX Info: Redefining \cpagerefrange on input line 2370.
+LaTeX Info: Redefining \Cpagerefrange on input line 2370.
+LaTeX Info: Redefining \labelcref on input line 2370.
+LaTeX Info: Redefining \labelcpageref on input line 2370.
+Package cleveref Info: `listings' support loaded on input line 3131.
+Package cleveref Info: include cross-reference names in hyperlinks on input lin
+e 7836.
+Package cleveref Info: include cross-reference names in hyperlinks on input lin
+e 7852.
+Package cleveref Info: no abbreviation of names on input line 7852.
+)
+==> First Aid for cleveref.sty applied!
+Package hyperref Info: Option `colorlinks' set `true' on input line 143.
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/fancyhdr\fancyhdr.sty
+Package: fancyhdr 2025/02/07 v5.2 Extensive control of page headers and footers
+
+\f@nch@headwidth=\skip64
+\f@nch@offset@elh=\skip65
+\f@nch@offset@erh=\skip66
+\f@nch@offset@olh=\skip67
+\f@nch@offset@orh=\skip68
+\f@nch@offset@elf=\skip69
+\f@nch@offset@erf=\skip70
+\f@nch@offset@olf=\skip71
+\f@nch@offset@orf=\skip72
+\f@nch@height=\skip73
+\f@nch@footalignment=\skip74
+\f@nch@widthL=\skip75
+\f@nch@widthC=\skip76
+\f@nch@widthR=\skip77
+\@temptokenb=\toks32
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/titlesec\titlesec.sty
+Package: titlesec 2025/01/04 v2.17 Sectioning titles
+\ttl@box=\box72
+\beforetitleunit=\skip78
+\aftertitleunit=\skip79
+\ttl@plus=\dimen267
+\ttl@minus=\dimen268
+\ttl@toksa=\toks33
+\titlewidth=\dimen269
+\titlewidthlast=\dimen270
+\titlewidthfirst=\dimen271
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/caption\caption.sty
+Package: caption 2023/08/05 v3.6o Customizing captions (AR)
+
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/caption\caption3.sty
+Package: caption3 2023/07/31 v2.4d caption3 kernel (AR)
+\caption@tempdima=\dimen272
+\captionmargin=\dimen273
+\caption@leftmargin=\dimen274
+\caption@rightmargin=\dimen275
+\caption@width=\dimen276
+\caption@indent=\dimen277
+\caption@parindent=\dimen278
+\caption@hangindent=\dimen279
+Package caption Info: Standard document class detected.
+Package caption Info: hungarian babel package is loaded.
+)
+\c@caption@flags=\count375
+\c@continuedfloat=\count376
+Package caption Info: hungarian babel package is loaded.
+Package caption Info: float package is loaded.
+Package caption Info: hyperref package is loaded.
+Package caption Info: listings package is loaded.
+)
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/enumitem\enumitem.sty
+Package: enumitem 2025/02/06 v3.11 Customized lists
+\labelindent=\skip80
+\enit@outerparindent=\dimen280
+\enit@toks=\toks34
+\enit@inbox=\box73
+\enit@count@id=\count377
+\enitdp@description=\count378
+)
+Package csquotes Info: Checking for multilingual support...
+Package csquotes Info: ... found 'babel' package.
+
+(thesis.aux)
+\openout1 = `thesis.aux'.
+
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 192.
+LaTeX Font Info:    ... okay on input line 192.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 192.
+LaTeX Font Info:    ... okay on input line 192.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 192.
+LaTeX Font Info:    ... okay on input line 192.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 192.
+LaTeX Font Info:    ... okay on input line 192.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 192.
+LaTeX Font Info:    ... okay on input line 192.
+LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 192.
+LaTeX Font Info:    ... okay on input line 192.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 192.
+LaTeX Font Info:    ... okay on input line 192.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 192.
+LaTeX Font Info:    ... okay on input line 192.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 192.
+LaTeX Font Info:    ... okay on input line 192.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 192.
+LaTeX Font Info:    ... okay on input line 192.
+LaTeX Font Info:    Overwriting math alphabet `\mathrm' in version `normal'
+(Font)                  TU/CambriaMath(1)/m/n --> TU/TimesNewRoman(0)/m/n on in
+put line 192.
+LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `normal'
+(Font)                  OT1/cmr/m/it --> TU/TimesNewRoman(0)/m/it on input line
+ 192.
+LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `normal'
+(Font)                  OT1/cmr/bx/n --> TU/TimesNewRoman(0)/b/n on input line 
+192.
+LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `normal'
+(Font)                  OT1/cmss/m/n --> TU/Arial(0)/m/n on input line 192.
+LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
+(Font)                  OT1/cmss/bx/n --> TU/Arial(0)/b/n on input line 192.
+LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `normal'
+(Font)                  OT1/cmtt/m/n --> TU/Consolas(0)/m/n on input line 192.
+LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
+(Font)                  OT1/cmtt/m/n --> TU/Consolas(0)/b/n on input line 192.
+
+
+Package unicode-math Warning: Using \overbracket and \underbracket from
+(unicode-math)                `mathtools' package.
+(unicode-math)                 
+(unicode-math)                 Use \Uoverbracket and \Uunderbracket for
+(unicode-math)                original `unicode-math' definition.
+
+
+Package unicode-math Warning: I'm going to overwrite the following commands
+(unicode-math)                from the `mathtools' package: 
+(unicode-math)                 
+(unicode-math)                     \dblcolon, \coloneqq, \Coloneqq, \eqqcolon.
+(unicode-math)                
+(unicode-math)                 
+(unicode-math)                 Note that since I won't overwrite the other
+(unicode-math)                colon-like commands, using them will lead to
+(unicode-math)                inconsistencies.
+
+
+LaTeX Warning: Please use \usepackage[T1]{fontenc} with
+               \usepackage[magyar]{babel}, to get accented chars hyphenated.
+
+
+LaTeX Warning: Please use \usepackage[latin2]{inputenc}
+               or \usepackage[utf8]{inputenc}
+               with \usepackage[magyar]{babel}.
+
+*geometry* driver: auto-detecting
+*geometry* detected driver: xetex
+*geometry* verbose mode - [ preamble ] result:
+* driver: xetex
+* paper: a4paper
+* layout: <same size as paper>
+* layoutoffset:(h,v)=(0.0pt,0.0pt)
+* bindingoffset: 28.45274pt
+* modes: 
+* h-part:(L,W,R)=(71.13188pt, 426.79137pt, 71.13188pt)
+* v-part:(T,H,B)=(71.13188pt, 702.78308pt, 71.13188pt)
+* \paperwidth=597.50787pt
+* \paperheight=845.04684pt
+* \textwidth=426.79137pt
+* \textheight=702.78308pt
+* \oddsidemargin=27.31464pt
+* \evensidemargin=-1.1381pt
+* \topmargin=-38.1381pt
+* \headheight=14.5pt
+* \headsep=25.0pt
+* \topskip=12.0pt
+* \footskip=30.0pt
+* \marginparwidth=35.0pt
+* \marginparsep=10.0pt
+* \columnsep=10.0pt
+* \skip\footins=10.8pt plus 4.0pt minus 2.0pt
+* \hoffset=0.0pt
+* \voffset=0.0pt
+* \mag=1000
+* \@twocolumnfalse
+* \@twosidefalse
+* \@mparswitchfalse
+* \@reversemarginfalse
+* (1in=72.27pt=25.4mm, 1cm=28.453pt)
+
+LaTeX Info: Redefining \microtypecontext on input line 192.
+Package microtype Info: Applying patch `item' on input line 192.
+Package microtype Info: Applying patch `toc' on input line 192.
+Package microtype Info: Applying patch `eqnum' on input line 192.
+Package microtype Info: Applying patch `footnote' on input line 192.
+Package microtype Info: Applying patch `verbatim' on input line 192.
+LaTeX Info: Redefining \microtypesetup on input line 192.
+Package microtype Info: Character protrusion enabled (level 2).
+Package microtype Info: Using default protrusion set `alltext'.
+Package microtype Info: No adjustment of tracking.
+Package microtype Info: No adjustment of spacing.
+Package microtype Info: No adjustment of kerning.
+Package microtype Info: Loading generic protrusion settings for font family
+(microtype)             `TimesNewRoman' (encoding: TU).
+(microtype)             For optimal results, create family-specific settings.
+(microtype)             See the microtype manual for details.
+Package translations Info: no dictionary file `translations-basic-dictionary-hu
+ngarian.trsl' found. on input line 192.
+\c@lstlisting=\count379
+Package hyperref Info: Link coloring ON on input line 192.
+Package caption Info: Begin \AtBeginDocument code.
+Package caption Info: End \AtBeginDocument code.
+(C:\Users\serem\AppData\Local\Programs\MiKTeX\tex/latex/base\report.cls
+LaTeX Info: Redefining \cal on input line 577.
+LaTeX Info: Redefining \mit on input line 578.
+)
+Package babel Info: 'magyar' activates 'magyar' shorthands.
+(babel)             Reported on input line 192.
+Package hyperref Info: Option `pageanchor' set `false' on input line 197.
+File: figures/SZTE_cimer.jpg Graphic file (type bmp)
+<figures/SZTE_cimer.jpg>
+
+
+[1
+
+
+]
+Package hyperref Info: Option `pageanchor' set `true' on input line 236.
+
+
+[2
+
+
+]
+Underfull \hbox (badness 5893) in paragraph at lines 260--261
+\TU/TimesNewRoman(0)/m/n/12 Dolgozatomban egy neurális hálózatokat és Monte Car
+lo fakeresést kombináló,
+ []
+
+
+Underfull \hbox (badness 1838) in paragraph at lines 266--271
+[]\TU/TimesNewRoman(0)/m/n/12 Munkám főbb hozzájárulásai a következők: korlátos
+ erőforrásokra optimalizált,
+ []
+
+
+Underfull \hbox (badness 1616) in paragraph at lines 266--271
+\TU/TimesNewRoman(0)/m/n/12 C++/Python hibrid AlphaZero-típusú sakkmotor megval
+ósítása; a „Mindig világos”
+ []
+
+
+
+[3
+
+
+] (thesis.toc
+Package microtype Info: Loading generic protrusion settings for font family
+(microtype)             `CambriaMath' (encoding: TU).
+(microtype)             For optimal results, create family-specific settings.
+(microtype)             See the microtype manual for details.
+LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
+(Font)              scaled to size 12.00128pt on input line 8.
+LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
+(Font)              scaled to size 8.76093pt on input line 8.
+LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
+(Font)              scaled to size 7.20076pt on input line 8.
+LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
+(Font)              scaled to size 11.99872pt on input line 8.
+LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
+(Font)              scaled to size 8.75905pt on input line 8.
+LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
+(Font)              scaled to size 7.19922pt on input line 8.
+
+
+[4
+
+
+])
+\tf@toc=\write3
+\openout3 = `thesis.toc'.
+
+
+
+[5] (thesis.lot)
+\tf@lot=\write4
+\openout4 = `thesis.lot'.
+
+
+
+[6
+
+
+] (thesis.lof)
+\tf@lof=\write5
+\openout5 = `thesis.lof'.
+
+
+
+[7
+
+
+]
+Underfull \hbox (badness 10000) in paragraph at lines 295--296
+[]\TU/TimesNewRoman(0)/b/n/12 AMP\TU/TimesNewRoman(0)/m/n/12 : automatikus keve
+rt pontosság (\TU/TimesNewRoman(0)/m/it/12 Automatic Mixed Precision\TU/TimesNe
+wRoman(0)/m/n/12 ,
+ []
+
+
+
+[8
+
+
+]
+1. fejezet.
+
+Underfull \hbox (badness 1168) in paragraph at lines 317--318
+\TU/TimesNewRoman(0)/m/n/12 Az AlphaZero [[][]27[][]] 2017-ben látványosan bemu
+tatta, hogy a megerősítéses tanulás
+ []
+
+
+Underfull \hbox (badness 4001) in paragraph at lines 317--318
+\TU/TimesNewRoman(0)/m/n/12 módszer gyakorlati reprodukálása jellemzően ipari l
+éptékű erőforrásokat (például
+ []
+
+
+
+[9
+
+
+]
+Underfull \hbox (badness 1292) in paragraph at lines 328--329
+[]\TU/TimesNewRoman(0)/b/n/12 Reprodukálhatóság: \TU/TimesNewRoman(0)/m/n/12 Te
+ljesen automatizált benchmark- és artefaktumgeneráló
+ []
+
+
+Underfull \hbox (badness 5711) in paragraph at lines 328--329
+\TU/TimesNewRoman(0)/m/n/12 szkriptek, valamint verziózott YAML-konfigurációk r
+ögzítik a hardver- és
+ []
+
+
+
+[10]
+2. fejezet.
+
+
+[11
+
+]
+
+[12]
+
+[13]
+
+LaTeX Font Warning: Font shape `TU/CambriaMath(1)/b/n' undefined
+(Font)              using `TU/CambriaMath(1)/m/n' instead on input line 395.
+
+
+LaTeX Font Warning: Font shape `TU/CambriaMath(2)/b/n' undefined
+(Font)              using `TU/CambriaMath(2)/m/n' instead on input line 395.
+
+LaTeX Font Info:    Font shape `TU/CambriaMath(2)/b/n' will be
+(Font)              scaled to size 8.76093pt on input line 395.
+LaTeX Font Info:    Font shape `TU/CambriaMath(2)/b/n' will be
+(Font)              scaled to size 7.20076pt on input line 395.
+
+LaTeX Font Warning: Font shape `TU/CambriaMath(3)/b/n' undefined
+(Font)              using `TU/CambriaMath(3)/m/n' instead on input line 395.
+
+LaTeX Font Info:    Font shape `TU/CambriaMath(3)/b/n' will be
+(Font)              scaled to size 8.75905pt on input line 395.
+LaTeX Font Info:    Font shape `TU/CambriaMath(3)/b/n' will be
+(Font)              scaled to size 7.19922pt on input line 395.
+LaTeX Font Info:    Font shape `TU/CambriaMath(2)/b/n' will be
+(Font)              scaled to size 12.00128pt on input line 395.
+LaTeX Font Info:    Font shape `TU/CambriaMath(3)/b/n' will be
+(Font)              scaled to size 11.99872pt on input line 395.
+
+Underfull \hbox (badness 10000) in paragraph at lines 395--396
+\TU/TimesNewRoman(0)/m/n/12 pufferben gyűjtik. Az AlphaGo Zero [[][]28[][]] kie
+gészítő anyaga explicit módon
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 395--396
+\TU/TimesNewRoman(0)/m/n/12 a legutóbbi $[]$$[][][] [][][]$ játékot tartalmazó 
+visszajátszási puffert ír elő. Az
+ []
+
+
+
+[14]
+Underfull \hbox (badness 6047) in paragraph at lines 418--419
+[]\TU/TimesNewRoman(0)/b/n/12 Exploráció-kizsákmányolás egyensúly\TU/TimesNewRo
+man(0)/m/n/12 : Túl konzervatív exploráció (alacsony
+ []
+
+
+Underfull \hbox (badness 1231) in paragraph at lines 418--419
+\TU/TimesNewRoman(0)/m/n/12 Dirichlet zaj, magas $[][]$) korai konvergenciát ok
+oz rossz lokális optimumba. Túl
+ []
+
+
+Underfull \hbox (badness 1005) in paragraph at lines 418--419
+\TU/TimesNewRoman(0)/m/n/12 dokumentál (a kiegészítő anyagokban), és amelyeket 
+a közösségi AlphaZero-típusú
+ []
+
+
+
+[15]
+Underfull \hbox (badness 10000) in paragraph at lines 426--427
+\TU/TimesNewRoman(0)/m/n/12 A Leela Chess Zero [[][]17[][]] nyílt forráskódú kö
+zösségi projekt, amely az
+ []
+
+
+
+[16]
+Package microtype Info: Loading generic protrusion settings for font family
+(microtype)             `Consolas' (encoding: TU).
+(microtype)             For optimal results, create family-specific settings.
+(microtype)             See the microtype manual for details.
+
+Underfull \hbox (badness 1990) in paragraph at lines 447--448
+[]\TU/TimesNewRoman(0)/m/n/12 oktatási és kutatási célokra jól dokumentált, kön
+nyen újrafuttatható kísérleti
+ []
+
+
+
+[17]
+
+[18]
+3. fejezet.
+
+
+[19
+
+]
+Underfull \hbox (badness 10000) in paragraph at lines 480--481
+[]\TU/TimesNewRoman(0)/m/n/12 Dolgozatom célja \TU/TimesNewRoman(0)/b/n/12 nem 
+\TU/TimesNewRoman(0)/m/n/12 egy versenyképes sakkprogram létrehozása, hanem
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 480--481
+\TU/TimesNewRoman(0)/m/n/12 az AlphaZero-módszertan \TU/TimesNewRoman(0)/b/n/12
+ megvalósíthatóságának \TU/TimesNewRoman(0)/m/n/12 demonstrálása korlátozott
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 482--483
+\TU/TimesNewRoman(0)/m/n/12 sakkmag, PUCT-MCTS) C++23-ban, a tanulási folyamato
+kat pedig Pythonban,
+ []
+
+
+
+[20]
+
+[21]
+4. fejezet.
+
+Underfull \hbox (badness 3895) in paragraph at lines 508--509
+\TU/TimesNewRoman(0)/m/n/12 tükrözés + színcsere), majd a hálózat kimenetét (po
+licy) visszatükrözi. Hasonló
+ []
+
+
+Underfull \hbox (badness 4072) in paragraph at lines 508--509
+\TU/TimesNewRoman(0)/m/n/12 (FEN-tükrözéssel) veszem, de a kanonikus kódolás mi
+att ez a hálózat számára
+ []
+
+
+
+[22
+
+]
+
+[23]
+
+[24]
+
+[25]
+
+[26]
+5. fejezet.
+
+Underfull \hbox (badness 1292) in paragraph at lines 590--591
+\TU/TimesNewRoman(0)/m/n/12 A kiértékelés során öt kísérleti forgatókönyv kerül
+t vizsgálatra, hogy a különböző
+ []
+
+LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
+(Font)              scaled to size 10.95116pt on input line 599.
+LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
+(Font)              scaled to size 8.00085pt on input line 599.
+LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
+(Font)              scaled to size 6.00064pt on input line 599.
+LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
+(Font)              scaled to size 10.94882pt on input line 599.
+LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
+(Font)              scaled to size 7.99915pt on input line 599.
+LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
+(Font)              scaled to size 5.99936pt on input line 599.
+
+
+[27
+
+]
+
+[28]
+File: figures/nps_scaling.pdf Graphic file (type pdf)
+<figures/nps_scaling.pdf>
+
+
+[29]
+File: figures/training_dynamics.pdf Graphic file (type pdf)
+<figures/training_dynamics.pdf>
+
+
+[30]
+File: figures/evaluation_win_rate.pdf Graphic file (type pdf)
+<figures/evaluation_win_rate.pdf>
+
+
+[31]
+File: figures/tournament_elo.pdf Graphic file (type pdf)
+<figures/tournament_elo.pdf>
+
+
+[32]
+File: figures/game_length_dist.pdf Graphic file (type pdf)
+<figures/game_length_dist.pdf>
+
+
+[33]
+Underfull \hbox (badness 2326) in paragraph at lines 764--769
+\TU/TimesNewRoman(0)/m/n/12 fájlokból indul, amelyeket a \TU/Consolas(0)/m/n/12
+ main.py \TU/TimesNewRoman(0)/m/n/12 belépési pont \TU/Consolas(0)/m/n/12 --con
+fig \TU/TimesNewRoman(0)/m/n/12 és \TU/Consolas(0)/m/n/12 --override
+ []
+
+
+Underfull \hbox (badness 6808) in paragraph at lines 764--769
+\TU/TimesNewRoman(0)/m/n/12 kapcsolókkal rétegez egymásra. A konfigurációkezelő
+ komponens minden futás
+ []
+
+
+Underfull \hbox (badness 5147) in paragraph at lines 764--769
+\TU/TimesNewRoman(0)/m/n/12 elején egy \TU/TimesNewRoman(0)/m/it/12 végleges\TU
+/TimesNewRoman(0)/m/n/12 , már felülbírált konfigurációt állít elő, amelyet a r
+endszer
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 764--769
+\TU/TimesNewRoman(0)/m/n/12 a \TU/Consolas(0)/m/n/12 runs/<azonosító>/config/me
+rged.{yaml,json} \TU/TimesNewRoman(0)/m/n/12 állományokba ment.
+ []
+
+
+Underfull \hbox (badness 6792) in paragraph at lines 764--769
+\TU/TimesNewRoman(0)/m/n/12 Így a dolgozatban szereplő öt forgatókönyv (Referen
+cia, Mély Keresés, Nagy
+ []
+
+
+Underfull \hbox (badness 3815) in paragraph at lines 764--769
+\TU/TimesNewRoman(0)/m/n/12 Áteresztőképesség, Nagy Entrópia, Hatékonyság) mind
+en hiperparaméter-beállítása
+ []
+
+
+Underfull \hbox (badness 1783) in paragraph at lines 764--769
+\TU/TimesNewRoman(0)/m/n/12 és más gépen is pontosan újrahasználható. A Python-
+környezet főbb csomagjai a
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 771--777
+\TU/TimesNewRoman(0)/b/n/12 Véletlenszám-generátorok és determinisztika. \TU/Ti
+mesNewRoman(0)/m/n/12 A rendszer globális \TU/Consolas(0)/m/n/12 SEED
+ []
+
+
+Underfull \hbox (badness 1360) in paragraph at lines 771--777
+\TU/TimesNewRoman(0)/m/n/12 paramétere (\TU/Consolas(0)/m/n/12 config.SEED\TU/T
+imesNewRoman(0)/m/n/12 ) határozza meg, hogy a futás determinisztikus módban
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 771--777
+\TU/TimesNewRoman(0)/m/n/12 beállítja a \TU/Consolas(0)/m/n/12 torch.use_determ
+inistic_algorithms(True) \TU/TimesNewRoman(0)/m/n/12 opciót, a
+ []
+
+
+Underfull \hbox (badness 1331) in paragraph at lines 771--777
+\TU/TimesNewRoman(0)/m/n/12 hardveren, viszont egyes, GPU-n futó műveletek és a
+ párhuzamos önjátszás miatt
+ []
+
+
+
+[34]
+Underfull \hbox (badness 10000) in paragraph at lines 778--781
+[]\TU/TimesNewRoman(0)/m/n/12 Az elemző és benchmark szkriptek külön dedikált m
+agokat használnak.
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 778--781
+\TU/TimesNewRoman(0)/m/n/12 A \TU/Consolas(0)/m/n/12 tools/benchmarks.py \TU/Ti
+mesNewRoman(0)/m/n/12 modulban az inferencia-benchmark rögzített
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 778--781
+\TU/Consolas(0)/m/n/12 2025\TU/TimesNewRoman(0)/m/n/12 -ös Torch-maggal fut, az
+ önjátszás áteresztőképességét mérő komponens
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 778--781
+\TU/TimesNewRoman(0)/m/n/12 a \TU/Consolas(0)/m/n/12 SelfPlayEngine \TU/TimesNe
+wRoman(0)/m/n/12 belső RNG-jét \TU/Consolas(0)/m/n/12 123\TU/TimesNewRoman(0)/m
+/n/12 -as maggal inicializálja, míg a C++
+ []
+
+
+Underfull \hbox (badness 6808) in paragraph at lines 778--781
+\TU/TimesNewRoman(0)/m/n/12 sakkmag- és MCTS-benchmarkok véletlen FEN-állásait 
+szintén paraméterezhető,
+ []
+
+
+Underfull \hbox (badness 4686) in paragraph at lines 778--781
+\TU/TimesNewRoman(0)/m/n/12 alapértelmezésben \TU/Consolas(0)/m/n/12 2025\TU/Ti
+mesNewRoman(0)/m/n/12 -ös mag vezérli. Az arénamérkőzésekre épülő bajnokság
+ []
+
+
+Underfull \hbox (badness 2653) in paragraph at lines 783--787
+\TU/TimesNewRoman(0)/b/n/12 Artefaktum- és ábragenerálás. \TU/TimesNewRoman(0)/
+m/n/12 Minden, a dolgozatban szereplő tanítási metrika,
+ []
+
+
+Underfull \hbox (badness 1558) in paragraph at lines 783--787
+\TU/TimesNewRoman(0)/m/n/12 eloszlás és Elo-összehasonlítás automatikusan gener
+ált. A tanítás során a rendszer
+ []
+
+
+Underfull \hbox (badness 7504) in paragraph at lines 783--787
+\TU/TimesNewRoman(0)/m/n/12 iterációnként CSV- és JSONL-formátumban naplózza a 
+legfontosabb mutatókat
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 783--787
+\TU/TimesNewRoman(0)/m/n/12 (veszteségek, önjátszás- és tanítási idők, puffer- 
+és resign-statisztikák), az
+ []
+
+
+Underfull \hbox (badness 3547) in paragraph at lines 783--787
+\TU/TimesNewRoman(0)/m/n/12 konfigurációs metaadatokkal együtt, majd egységes b
+etűtípus- és stílusbeállítások
+ []
+
+
+Underfull \hbox (badness 1259) in paragraph at lines 783--787
+\TU/TimesNewRoman(0)/m/n/12 mellett automatikusan készíti el az ábrákat (tanulá
+si dinamika, skálázódási görbék,
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 792--793
+[]\TU/TimesNewRoman(0)/m/n/12 A benchmark-szkriptek (\TU/Consolas(0)/m/n/12 too
+ls/benchmarks.py\TU/TimesNewRoman(0)/m/n/12 ) futtatása opcionális
+ []
+
+
+
+[35]
+
+[36]
+6. fejezet.
+
+
+[37
+
+]
+
+[38]
+7. fejezet.
+
+
+[39
+
+]
+Underfull \hbox (badness 10000) in paragraph at lines 838--839
+\TU/TimesNewRoman(0)/m/n/12 konfiguráció bimodális játszmahossz-eloszlást és so
+kkal változatosabb
+ []
+
+
+Underfull \hbox (badness 4060) in paragraph at lines 838--839
+\TU/TimesNewRoman(0)/m/n/12 heurisztikát a saját Elo-skálán, ami alátámasztja a
+z adatdiverzitás szerepét
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 839--840
+[]\TU/TimesNewRoman(0)/b/n/12 RQ5, Reprodukálhatóság: \TU/TimesNewRoman(0)/m/n/
+12 a teljesen automatizált benchmark- és
+ []
+
+
+
+[40]
+LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
+(Font)              scaled to size 10.00107pt on input line 856.
+LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
+(Font)              scaled to size 7.00075pt on input line 856.
+LaTeX Font Info:    Font shape `TU/CambriaMath(2)/m/n' will be
+(Font)              scaled to size 5.00053pt on input line 856.
+LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
+(Font)              scaled to size 9.99893pt on input line 856.
+LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
+(Font)              scaled to size 6.99925pt on input line 856.
+LaTeX Font Info:    Font shape `TU/CambriaMath(3)/m/n' will be
+(Font)              scaled to size 4.99947pt on input line 856.
+
+
+[41
+
+
+]
+
+[42]
+
+[43]
+
+[44
+
+
+]
+
+[45
+
+
+] (thesis.aux)
+ ***********
+LaTeX2e <2025-06-01> patch level 1
+L3 programming layer <2025-09-02>
+ ***********
+
+
+LaTeX Font Warning: Some font shapes were not available, defaults substituted.
+
+ ) 
+Here is how much of TeX's memory you used:
+ 30772 strings out of 403197
+ 608560 string characters out of 5455937
+ 1224282 words of memory out of 5000000
+ 58945 multiletter control sequences out of 15000+600000
+ 633791 words of font info for 141 fonts, out of 8000000 for 9000
+ 1348 hyphenation exceptions out of 8191
+ 73i,12n,107p,1385b,1191s stack positions out of 10000i,1000n,20000p,200000b,200000s
+
+Output written on thesis.pdf (45 pages).
