@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999997 (MiKTeX 25.4) (preloaded format=xelatex 2025.11.8)  11 DEC 2025 21:50
+This is XeTeX, Version 3.141592653-2.6-0.999997 (MiKTeX 25.4) (preloaded format=xelatex 2025.11.8)  11 DEC 2025 21:57
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -1682,50 +1682,6 @@ File: figures/game_length_dist.pdf Graphic file (type pdf)
 
 
 [33]
-Underfull \hbox (badness 2326) in paragraph at lines 760--765
-\TU/TimesNewRoman(0)/m/n/12 fájlokból indul, amelyeket a \TU/Consolas(0)/m/n/12
- main.py \TU/TimesNewRoman(0)/m/n/12 belépési pont \TU/Consolas(0)/m/n/12 --con
-fig \TU/TimesNewRoman(0)/m/n/12 és \TU/Consolas(0)/m/n/12 --override
- []
-
-
-Underfull \hbox (badness 6808) in paragraph at lines 760--765
-\TU/TimesNewRoman(0)/m/n/12 kapcsolókkal rétegez egymásra. A konfigurációkezelő
- komponens minden futás
- []
-
-
-Underfull \hbox (badness 5147) in paragraph at lines 760--765
-\TU/TimesNewRoman(0)/m/n/12 elején egy \TU/TimesNewRoman(0)/m/it/12 végleges\TU
-/TimesNewRoman(0)/m/n/12 , már felülbírált konfigurációt állít elő, amelyet a r
-endszer
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 760--765
-\TU/TimesNewRoman(0)/m/n/12 a \TU/Consolas(0)/m/n/12 runs/<azonosító>/config/me
-rged.{yaml,json} \TU/TimesNewRoman(0)/m/n/12 állományokba ment.
- []
-
-
-Underfull \hbox (badness 6792) in paragraph at lines 760--765
-\TU/TimesNewRoman(0)/m/n/12 Így a dolgozatban szereplő öt forgatókönyv (Referen
-cia, Mély Keresés, Nagy
- []
-
-
-Underfull \hbox (badness 3815) in paragraph at lines 760--765
-\TU/TimesNewRoman(0)/m/n/12 Áteresztőképesség, Nagy Entrópia, Hatékonyság) mind
-en hiperparaméter-beállítása
- []
-
-
-Underfull \hbox (badness 1365) in paragraph at lines 760--765
-\TU/TimesNewRoman(0)/m/n/12 és más gépen is pontosan újrahasználható. A Python-
-környezet főbb csomagjait a
- []
-
-
 Underfull \hbox (badness 10000) in paragraph at lines 767--773
 \TU/TimesNewRoman(0)/b/n/12 Véletlenszám-generátorok és determinisztika. \TU/Ti
 mesNewRoman(0)/m/n/12 A rendszer globális \TU/Consolas(0)/m/n/12 SEED
@@ -1744,93 +1700,32 @@ inistic_algorithms(True) \TU/TimesNewRoman(0)/m/n/12 opciót, a
  []
 
 
-Underfull \hbox (badness 1331) in paragraph at lines 767--773
-\TU/TimesNewRoman(0)/m/n/12 hardveren, viszont egyes, GPU-n futó műveletek és a
- párhuzamos önjátszás miatt
+Underfull \hbox (badness 10000) in paragraph at lines 767--773
+\TU/Consolas(0)/m/n/12 CUBLAS_WORKSPACE_CONFIG \TU/TimesNewRoman(0)/m/n/12 körn
+yezeti változót, letiltja a cuDNN adaptív
+ []
+
+
+Underfull \hbox (badness 3849) in paragraph at lines 767--773
+\TU/TimesNewRoman(0)/m/n/12 szálak számát. Ez a kombináció gyakorlatban közel d
+eterminisztikus viselkedést
+ []
+
+
+Underfull \hbox (badness 6842) in paragraph at lines 767--773
+\TU/TimesNewRoman(0)/m/n/12 eredményez ugyanazon hardveren, viszont egyes, GPU-
+n futó műveletek és a
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 767--773
+\TU/TimesNewRoman(0)/m/n/12 párhuzamos önjátszás miatt bitpontosan azonos futás
+ok nem minden esetben
  []
 
 
 
 [34]
-Underfull \hbox (badness 10000) in paragraph at lines 774--777
-[]\TU/TimesNewRoman(0)/m/n/12 Az elemző és benchmark szkriptek külön dedikált m
-agokat használnak.
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 774--777
-\TU/TimesNewRoman(0)/m/n/12 A \TU/Consolas(0)/m/n/12 tools/benchmarks.py \TU/Ti
-mesNewRoman(0)/m/n/12 modulban az inferencia-benchmark rögzített
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 774--777
-\TU/Consolas(0)/m/n/12 2025\TU/TimesNewRoman(0)/m/n/12 -ös Torch-maggal fut, az
- önjátszás áteresztőképességét mérő komponens
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 774--777
-\TU/TimesNewRoman(0)/m/n/12 a \TU/Consolas(0)/m/n/12 SelfPlayEngine \TU/TimesNe
-wRoman(0)/m/n/12 belső RNG-jét \TU/Consolas(0)/m/n/12 123\TU/TimesNewRoman(0)/m
-/n/12 -as maggal inicializálja, míg a C++
- []
-
-
-Underfull \hbox (badness 6808) in paragraph at lines 774--777
-\TU/TimesNewRoman(0)/m/n/12 sakkmag- és MCTS-benchmarkok véletlen FEN-állásait 
-szintén paraméterezhető,
- []
-
-
-Underfull \hbox (badness 4686) in paragraph at lines 774--777
-\TU/TimesNewRoman(0)/m/n/12 alapértelmezésben \TU/Consolas(0)/m/n/12 2025\TU/Ti
-mesNewRoman(0)/m/n/12 -ös mag vezérli. Az arénamérkőzésekre épülő bajnokság
- []
-
-
-Underfull \hbox (badness 2653) in paragraph at lines 779--783
-\TU/TimesNewRoman(0)/b/n/12 Artefaktum- és ábragenerálás. \TU/TimesNewRoman(0)/
-m/n/12 Minden, a dolgozatban szereplő tanítási metrika,
- []
-
-
-Underfull \hbox (badness 1558) in paragraph at lines 779--783
-\TU/TimesNewRoman(0)/m/n/12 eloszlás és Elo-összehasonlítás automatikusan gener
-ált. A tanítás során a rendszer
- []
-
-
-Underfull \hbox (badness 7504) in paragraph at lines 779--783
-\TU/TimesNewRoman(0)/m/n/12 iterációnként CSV- és JSONL-formátumban naplózza a 
-legfontosabb mutatókat
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 779--783
-\TU/TimesNewRoman(0)/m/n/12 (veszteségek, önjátszás- és tanítási idők, puffer- 
-és resign-statisztikák), az
- []
-
-
-Underfull \hbox (badness 3547) in paragraph at lines 779--783
-\TU/TimesNewRoman(0)/m/n/12 konfigurációs metaadatokkal együtt, majd egységes b
-etűtípus- és stílusbeállítások
- []
-
-
-Underfull \hbox (badness 1259) in paragraph at lines 779--783
-\TU/TimesNewRoman(0)/m/n/12 mellett automatikusan készíti el az ábrákat (tanulá
-si dinamika, skálázódási görbék,
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 788--789
-[]\TU/TimesNewRoman(0)/m/n/12 A benchmark-szkriptek (\TU/Consolas(0)/m/n/12 too
-ls/benchmarks.py\TU/TimesNewRoman(0)/m/n/12 ) futtatása opcionális
- []
-
-
 
 [35]
 
@@ -1911,11 +1806,11 @@ LaTeX Font Warning: Some font shapes were not available, defaults substituted.
 
  ) 
 Here is how much of TeX's memory you used:
- 30772 strings out of 403197
- 608560 string characters out of 5455937
+ 30777 strings out of 403197
+ 608753 string characters out of 5455937
  1224282 words of memory out of 5000000
- 58945 multiletter control sequences out of 15000+600000
- 633791 words of font info for 141 fonts, out of 8000000 for 9000
+ 58948 multiletter control sequences out of 15000+600000
+ 633799 words of font info for 142 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
  73i,12n,107p,1385b,1191s stack positions out of 10000i,1000n,20000p,200000b,200000s
 

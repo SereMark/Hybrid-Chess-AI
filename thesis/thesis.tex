@@ -758,35 +758,35 @@ A reprodukálhatóságot három szinten támogattam: (1) verziózott konfigurác
 
 \medskip
 \noindent\textbf{Konfigurációk és futtatási környezet.}
-Minden kísérleti futás \texttt{YAML}-alapú konfigurációs fájlokból indul, amelyeket a \texttt{main.py} belépési pont \texttt{--config} és \texttt{--override} kapcsolókkal rétegez egymásra.
-A konfigurációkezelő komponens minden futás elején egy \emph{végleges}, már felülbírált konfigurációt állít elő, amelyet a rendszer a \texttt{runs/\textless{}azonosító\textgreater{}/config/merged.\{yaml,json\}} állományokba ment.
+Minden kísérleti futás \textsc{YAML}-alapú konfigurációs fájlokból indul, amelyeket a \path{main.py} belépési pont \texttt{--config} és \texttt{--override} kapcsolókkal rétegez egymásra.
+A konfigurációkezelő komponens minden futás elején egy \emph{végleges}, már felülbírált konfigurációt állít elő, amelyet a rendszer a \path{runs/<azonosító>/config/merged.{yaml,json}} állományokba ment.
 Így a dolgozatban szereplő öt forgatókönyv (Referencia, Mély Keresés, Nagy Áteresztőképesség, Nagy Entrópia, Hatékonyság) minden hiperparaméter-beállítása (MCTS-szimulációk száma, kötegméret, explorációs paraméterek stb.) visszakereshető és más gépen is pontosan újrahasználható.
-A Python-környezet főbb csomagjait a \texttt{requirements.txt}-ben rögzítettem.
+A Python-környezet főbb csomagjait a \path{requirements.txt}-ben rögzítettem.
 
 \medskip
 \noindent\textbf{Véletlenszám-generátorok és determinisztika.}
 A rendszer globális \texttt{SEED} paramétere (\texttt{config.SEED}) határozza meg, hogy a futás determinisztikus módban történjen-e.
-Amennyiben a \texttt{SEED} értéke nem nulla, a \texttt{main.py} a tanítás indításakor inicializálja a Python beépített \texttt{random} modulját, a \texttt{NumPy} véletlenszám-generátorát, valamint a \texttt{torch} CPU- és GPU-RNG-it a megadott maggal.
-Ezzel párhuzamosan beállítja a \texttt{torch.use\_deterministic\_algorithms(True)} opciót, a \texttt{CUBLAS\_WORKSPACE\_CONFIG} környezeti változót, letiltja a \texttt{cuDNN} adaptív \texttt{benchmark} módját, illetve a logikai processzorszámhoz igazítja az intra- és inter-op szálak számát.
+Amennyiben a \texttt{SEED} értéke nem nulla, a \path{main.py} a tanítás indításakor inicializálja a Python beépített \texttt{random} modulját, a NumPy véletlenszám-generátorát, valamint a \texttt{torch} CPU- és GPU-RNG-it a megadott maggal.
+Ezzel párhuzamosan beállítja a \texttt{torch.use\_deterministic\_algorithms(True)} opciót, a \texttt{CUBLAS\_WORKSPACE\_CONFIG} környezeti változót, letiltja a cuDNN adaptív \texttt{benchmark} módját, illetve a logikai processzorszámhoz igazítja az intra- és inter-op szálak számát.
 Ez a kombináció gyakorlatban közel determinisztikus viselkedést eredményez ugyanazon hardveren, viszont egyes, GPU-n futó műveletek és a párhuzamos önjátszás miatt bitpontosan azonos futások nem minden esetben garantálhatók.
 A teljesítménymérések és Elo-becslések emiatt várhatóan néhány tíz pont nagyságrendű szórást mutatnak.
 
 Az elemző és benchmark szkriptek külön dedikált magokat használnak.
-A \texttt{tools/benchmarks.py} modulban az inferencia-benchmark rögzített \texttt{2025}-ös Torch-maggal fut, az önjátszás áteresztőképességét mérő komponens a \texttt{SelfPlayEngine} belső RNG-jét \texttt{123}-as maggal inicializálja, míg a C++ sakkmag- és MCTS-benchmarkok véletlen FEN-állásait szintén paraméterezhető, alapértelmezésben \texttt{2025}-ös mag vezérli.
-Az arénamérkőzésekre épülő bajnokság \texttt{NumPy} \texttt{default\_rng(2025)} generátorral készül, így a párosítások sorrendje és a lépésválasztások sztochasztikus komponense is kontrollált.
+A \path{tools/benchmarks.py} modulban az inferencia-benchmark rögzített \texttt{2025}-ös Torch-maggal fut, az önjátszás áteresztőképességét mérő komponens a \texttt{SelfPlayEngine} belső RNG-jét \texttt{123}-as maggal inicializálja, míg a C++ sakkmag- és MCTS-benchmarkok véletlen FEN-állásait szintén paraméterezhető, alapértelmezésben \texttt{2025}-ös mag vezérli.
+Az arénamérkőzésekre épülő bajnokság NumPy \texttt{default\_rng(2025)} generátorral készül, így a párosítások sorrendje és a lépésválasztások sztochasztikus komponense is kontrollált.
 
 \medskip
 \noindent\textbf{Artefaktum- és ábragenerálás.}
 Minden, a dolgozatban szereplő tanítási metrika, eloszlás és Elo-összehasonlítás automatikusan generált.
 A tanítás során a rendszer iterációnként CSV- és JSONL-formátumban naplózza a legfontosabb mutatókat (veszteségek, önjátszás- és tanítási idők, puffer- és resign-statisztikák), az arénamérkőzések PGN-fájljai pedig iterációnként elkülönített könyvtárakba kerülnek.
-A \texttt{tools/generate\_artifacts.py} szkript ezeket az állományokat olvassa be, a konfigurációs metaadatokkal együtt, majd egységes betűtípus- és stílusbeállítások mellett automatikusan készíti el az ábrákat (tanulási dinamika, skálázódási görbék, játszmahossz-eloszlás, bajnoki Elo-eredmények).
+A \path{tools/generate_artifacts.py} szkript ezeket az állományokat olvassa be, a konfigurációs metaadatokkal együtt, majd egységes betűtípus- és stílusbeállítások mellett automatikusan készíti el az ábrákat (tanulási dinamika, skálázódási görbék, játszmahossz-eloszlás, bajnoki Elo-eredmények).
 
 A fenti mechanizmusok eredményeként a kísérletek reprodukálása a gyakorlatban a következő, jól definiált lépésekre bontható:
 \begin{enumerate}
-  \item A kód és a \texttt{requirements.txt} alapján a futtatási környezet felépítése, azonos vagy hasonló GPU-val.
-  \item A kívánt konfiguráció kiválasztása (pl.\ \path{configs/run4_high_exploration.yaml}) és a teljes tanítás lefuttatása a \texttt{main.py} szkripttel, opcionálisan rögzített \texttt{SEED} értékkel.
-  \item A benchmark-szkriptek (\texttt{tools/benchmarks.py}) futtatása opcionális teljesítménymérésekhez.
-  \item Az ábrák teljes automatikus újragenerálása a \texttt{tools/generate\_artifacts.py} eszközzel, amely a \texttt{runs/} könyvtárból olvassa ki a metrikákat.
+  \item A kód és a \path{requirements.txt} alapján a futtatási környezet felépítése, azonos vagy hasonló GPU-val.
+  \item A kívánt konfiguráció kiválasztása (pl.\ \path{configs/run4_high_exploration.yaml}) és a teljes tanítás lefuttatása a \path{main.py} szkripttel, opcionálisan rögzített \texttt{SEED} értékkel.
+  \item A benchmark-szkriptek (\path{tools/benchmarks.py}) futtatása opcionális teljesítménymérésekhez.
+  \item Az ábrák teljes automatikus újragenerálása a \path{tools/generate_artifacts.py} eszközzel, amely a \path{runs/} könyvtárból olvassa ki a metrikákat.
 \end{enumerate}
 
 A rendszer felépítése, a verziózott konfigurációk, az explicit RNG-kezelés és az automatizált artefaktum-pipeline együttesen biztosítja, hogy az itt bemutatott kísérleti eredmények azonos vagy hasonló hardverkörnyezetben számottevően kis szórással, gyakorlatban reprodukálhatók legyenek.
