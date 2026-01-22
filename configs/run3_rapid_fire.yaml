@@ -1,6 +1,6 @@
-# FUTAM 3: NAGY ÁTERESZTŐKÉPESSÉG (sekély keresés)
-# Cél: 14 000 parti / ~15 óra (gyors keresés)
-# Hardvercél: RTX 3070 Mobile + Ryzen 5800H
+# RUN 3: HIGH THROUGHPUT (shallow search)
+# Goal: 14,000 games / ~15 hours (fast search)
+# Hardware Target: RTX 3070 Mobile + Ryzen 5800H
 
 MODEL:
   blocks: 6

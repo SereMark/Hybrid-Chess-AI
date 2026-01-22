@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import torch
 
-pytest.importorskip("chesscore", reason="hiányzik a chesscore kiterjesztés")
+pytest.importorskip("chesscore", reason="missing chesscore extension")
 
 import encoder
 from train_loop import run_training_iteration

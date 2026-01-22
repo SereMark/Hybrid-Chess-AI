@@ -97,7 +97,7 @@ def _load_opening_book(path_spec: object) -> list[tuple[str, float]]:
         p = Path(__file__).resolve().parents[2] / p
     p = p.resolve()
     if not p.exists():
-        raise FileNotFoundError(f"A megadott megnyitási könyv fájl nem található: {p}")
+        raise FileNotFoundError(f"The specified opening book file was not found: {p}")
     payload = json.loads(p.read_text(encoding="utf-8"))
     entries = payload.get("entries", []) if isinstance(payload, dict) else payload
     out: list[tuple[str, float]] = []
@@ -259,7 +259,7 @@ class SelfPlayEngine:
             try:
                 entries = _load_opening_book(C.SELFPLAY.opening_book_path)
             except Exception as exc:
-                self.log.warning("A megnyitási könyv betöltése sikertelen: %s", exc)
+                self.log.warning("Failed to load opening book: %s", exc)
         weights = np.array([w for _, w in entries], dtype=np.float64)
         self._opening_book: list[tuple[str, float]] = []
         self._opening_cumulative: np.ndarray | None = None
@@ -314,11 +314,11 @@ class SelfPlayEngine:
 
         if log_transition:
             self.log.info(
-                "Elbírálási ütemezés: iter=%d fázis=%s engedélyezve=%s min_lépések=%d "
-                "érték_küszöb=%.3f tartósság=%d anyagi_különbség=%.2f",
+                "Adjudication schedule: iter=%d phase=%s enabled=%s min_plies=%d "
+                "value_threshold=%.3f persist=%d material_diff=%.2f",
                 iteration,
                 self.adjudication_phase,
-                "igen" if state.enabled else "nem",
+                "yes" if state.enabled else "no",
                 state.min_plies,
                 state.value_margin,
                 state.persist_plies,
@@ -378,7 +378,7 @@ class SelfPlayEngine:
             try:
                 res, moves, term, visits = f.result()
             except Exception as exc:
-                self.log.exception("Az önjátszó szál hibával leállt: %s", exc)
+                self.log.exception("Self-play thread stopped with error: %s", exc)
                 continue
             stats.add(result=res, moves=moves, termination=term, visits=visits)
         return stats.to_dict()
@@ -643,7 +643,7 @@ class SelfPlayEngine:
     ) -> None:
         outcome = self._normalize_result(result)
         if outcome is None:
-            self.log.warning("A játszma eldobva ismeretlen eredmény miatt: %r", result)
+            self.log.warning("Game dropped due to unknown result: %r", result)
             return
 
         with self._buffer_lock:

@@ -1,6 +1,6 @@
-# FUTAM 1: REFERENCIA (kontroll)
-# Cél: 7 000 parti / ~15 óra
-# Hardvercél: RTX 3070 Mobile + Ryzen 5800H
+# RUN 1: REFERENCE (control)
+# Goal: 7,000 games / ~15 hours
+# Hardware Target: RTX 3070 Mobile + Ryzen 5800H
 
 MODEL:
   blocks: 6

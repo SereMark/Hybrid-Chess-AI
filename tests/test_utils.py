@@ -106,7 +106,7 @@ def test_select_move_sampling_uses_probabilities() -> None:
     assert float(probabilities.sum()) == pytest.approx(1.0, rel=1e-6, abs=1e-6)
 
 
-@pytest.mark.skipif(not _ARENA_AVAILABLE, reason="hiányzik a chesscore vagy az arena modul")
+@pytest.mark.skipif(not _ARENA_AVAILABLE, reason="missing chesscore or arena module")
 def test_square_helpers_round_trip() -> None:
     square = 27
     assert _square_file(square) == 3
@@ -117,7 +117,7 @@ def test_square_helpers_round_trip() -> None:
     assert _square_name(last_square) == "h8"
 
 
-@pytest.mark.skipif(not _ARENA_AVAILABLE, reason="hiányzik a chesscore vagy az arena modul")
+@pytest.mark.skipif(not _ARENA_AVAILABLE, reason="missing chesscore or arena module")
 def test_score_tracker_summarises_results() -> None:
     tracker = _ScoreTracker(total_games=4)
     tracker.record(True, ccore.WHITE_WIN)
@@ -138,7 +138,7 @@ def test_score_tracker_summarises_results() -> None:
     assert math.isclose(result.elapsed_s, 12.5)
 
 
-@pytest.mark.skipif(not _ARENA_AVAILABLE, reason="hiányzik a chesscore vagy az arena modul")
+@pytest.mark.skipif(not _ARENA_AVAILABLE, reason="missing chesscore or arena module")
 def test_prepare_pgn_directory_and_save(tmp_path: Path) -> None:
     directory = _prepare_pgn_directory(tmp_path / "pgn")
     assert directory is not None
@@ -160,7 +160,7 @@ def test_prepare_pgn_directory_and_save(tmp_path: Path) -> None:
     assert "1. e4 e5 1-0" in text
 
 
-@pytest.mark.skipif(not _ARENA_AVAILABLE, reason="hiányzik a chesscore vagy az arena modul")
+@pytest.mark.skipif(not _ARENA_AVAILABLE, reason="missing chesscore or arena module")
 def test_result_to_str_handled_outcomes() -> None:
     assert _result_to_str(ccore.WHITE_WIN) == "1-0"
     assert _result_to_str(ccore.BLACK_WIN) == "0-1"

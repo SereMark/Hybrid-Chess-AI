@@ -14,7 +14,7 @@ import torch
 RLOG = logging.getLogger("hybridchess.runtime")
 TLOG = logging.getLogger("hybridchess.trainer")
 
-CLI_DESCRIPTION = "Hibrid sakk MI tanítási belépési pont"
+CLI_DESCRIPTION = "Hybrid Chess AI training entry point"
 __all__ = ["main"]
 
 
@@ -27,8 +27,8 @@ def _parse_args(args: Sequence[str]) -> argparse.Namespace:
         dest="configs",
         default=[],
         help=(
-            "Alap konfigurációs fájl(ok), YAML. Az első felülírja az alapértelmezéseket, "
-            "a továbbiak egymásra rétegződnek."
+            "Base config file(s), YAML. The first one overrides defaults, "
+            "subsequent ones layer on top."
         ),
     )
     parser.add_argument(
@@ -37,18 +37,18 @@ def _parse_args(args: Sequence[str]) -> argparse.Namespace:
         action="append",
         dest="overrides",
         default=[],
-        help="Felülbíráló konfigurációs fájl(ok), az összes alap konfiguráció után kerülnek alkalmazásra.",
+        help="Override config file(s), applied after all base configs.",
     )
     parser.add_argument(
         "--resume",
         action="store_true",
-        help="Edzés folytatása a legutóbbi mentési pontról.",
+        help="Resume training from the latest checkpoint.",
     )
     parser.add_argument(
         "--device",
         type=str,
         default=None,
-        help="Torch eszköz karakterlánc (pl. 'cuda', 'cuda:0', 'cpu').",
+        help="Torch device string (e.g., 'cuda', 'cuda:0', 'cpu').",
     )
     return parser.parse_args(list(args))
 
@@ -60,17 +60,17 @@ def _apply_cli_configs(parsed: argparse.Namespace) -> None:
             C.load_file(path, replace=(idx == 0))
             loaded.append(str(path))
         except Exception as exc:
-            RLOG.error("Nem sikerült betölteni a(z) %s konfigurációt: %s", path, exc)
+            RLOG.error("Failed to load config %s: %s", path, exc)
             raise
     for path in parsed.overrides:
         try:
             C.load_file(path)
             loaded.append(str(path))
         except Exception as exc:
-            RLOG.error("Nem sikerült betölteni a(z) %s felülbíráló fájlt: %s", path, exc)
+            RLOG.error("Failed to load override file %s: %s", path, exc)
             raise
     if loaded:
-        RLOG.info("Betöltött konfiguráció felülbírálások: %s", ", ".join(loaded))
+        RLOG.info("Loaded config overrides: %s", ", ".join(loaded))
 
 
 def _resolve_thread_settings() -> tuple[int, int]:
@@ -135,7 +135,7 @@ def _configure_torch_backends(has_cuda: bool) -> None:
         set_precision(prec)
 
     if not has_cuda:
-        TLOG.warning("A CUDA nem érhető el; az edzés CPU-n fog futni")
+        TLOG.warning("CUDA not available; training will run on CPU")
         return
 
     allow_tf32_matmul = str(getattr(C.TORCH, "cuda_matmul_fp32_precision", "tf32")).lower() == "tf32"
@@ -193,7 +193,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         trainer.train()
     except KeyboardInterrupt:
-        TLOG.warning("Megszakítás; mentési pont készítése")
+        TLOG.warning("Interrupted; creating checkpoint")
         save_checkpoint(trainer)
         return 130
     finally:

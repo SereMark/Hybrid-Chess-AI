@@ -49,16 +49,16 @@ def run_training_iteration(trainer: Any) -> dict[str, float | int | str]:
     if not C.RESIGN.enabled:
         trainer.selfplay_engine.enable_resign(False)
         trainer.selfplay_engine.resign_consecutive = 0
-        resign_status = "kikapcsolva"
+        resign_status = "disabled"
     elif trainer.iteration < C.RESIGN.cooldown_iters:
         trainer.selfplay_engine.enable_resign(False)
         trainer.selfplay_engine.resign_consecutive = 0
-        resign_status = "bemelegítés"
+        resign_status = "warmup"
     else:
         trainer.selfplay_engine.enable_resign(True)
         trainer.selfplay_engine.set_resign_params(C.RESIGN.value_threshold, C.RESIGN.min_plies)
         trainer.selfplay_engine.resign_consecutive = int(max(1, C.RESIGN.consecutive_required))
-        resign_status = "engedélyezve"
+        resign_status = "enabled"
 
     trainer.selfplay_engine.update_adjudication(trainer.iteration)
     t0 = time.time()

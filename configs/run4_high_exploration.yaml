@@ -1,6 +1,6 @@
-# FUTAM 4: NAGY ENTRÓPIA (exploráció)
-# Cél: 7 000 parti / ~15 óra (magas zaj)
-# Hardvercél: RTX 3070 Mobile + Ryzen 5800H
+# RUN 4: HIGH ENTROPY (exploration)
+# Goal: 7,000 games / ~15 hours (high noise)
+# Hardware Target: RTX 3070 Mobile + Ryzen 5800H
 
 MODEL:
   blocks: 6

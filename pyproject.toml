@@ -5,9 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hybrid-chess-ai"
 version = "0.1.0"
-description = "AlphaZero-stílusú sakk megerősítéses tanulási verem pybind11 sakkmaggal és PyTorch hálózattal."
+description = "AlphaZero-style chess Reinforcement Learning stack with C++ move generation (pybind11) and PyTorch network."
 readme = "README.md"
-license = { text = "Proprietary" }
+license = { text = "MIT" }
 requires-python = ">=3.13"
 authors = [
   { name = "Sere Gergő Márk", email = "seremark056@gmail.com" },

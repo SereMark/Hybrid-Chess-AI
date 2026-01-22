@@ -1,6 +1,6 @@
-# FUTAM 5: HATÉKONYSÁG (gyakori frissítés)
-# Cél: 3 500 parti / ~12-15 óra (erőforrás-korlátos szimuláció)
-# Hardvercél: RTX 3070 Mobile + Ryzen 5800H
+# RUN 5: EFFICIENCY (frequent updates)
+# Goal: 3,500 games / ~12-15 hours (resource-constrained simulation)
+# Hardware Target: RTX 3070 Mobile + Ryzen 5800H
 
 MODEL:
   blocks: 6

@@ -22,11 +22,11 @@ except ImportError:
     pass
 
 RUN_NAME_MAPPING = {
-    "20251125-124632": "Referencia",
-    "20251126-100221": "Mély Keresés",
-    "20251126-205609": "Nagy Áteresztőképesség",
-    "20251127-153749": "Nagy Entrópia",
-    "20251128-101517": "Hatékonyság",
+    "20251125-124632": "Reference",
+    "20251126-100221": "Deep Search",
+    "20251126-205609": "High Throughput",
+    "20251127-153749": "High Entropy",
+    "20251128-101517": "Efficiency",
 }
 
 logging.basicConfig(
@@ -48,11 +48,11 @@ system_fonts = [f.name for f in fm.fontManager.ttflist]
 has_times = 'Times New Roman' in system_fonts
 
 if has_times:
-    logger.info("A 'Times New Roman' betűtípus elérhető.")
+    logger.info("Times New Roman font available.")
     serif_fonts = ['Times New Roman']
 else:
-    logger.error("KRITIKUS HIBA: A 'Times New Roman' betűtípus nem található.")
-    sys.exit("A futás leállítva: a betűtípus-követelmény nem teljesült.")
+    logger.error("CRITICAL ERROR: Times New Roman font not found.")
+    sys.exit("Run stopped: font requirement not met.")
 
 plt.rcParams.update({
     'font.family': 'serif',
@@ -70,33 +70,33 @@ plt.rcParams.update({
 })
 
 L10N = {
-    "iteration": "Iteráció",
-    "policy_loss": "Stratégia Veszteség",
-    "value_loss": "Értékbecslési Veszteség",
-    "entropy": "Entrópia",
-    "win_rate": "Győzelmi Arány",
-    "draw_rate": "Döntetlen Arány",
-    "game_length": "Játékhossz",
-    "count": "Relatív Gyakoriság",
-    "elo": "Elo Pontszám",
-    "nps": "Keresési Sebesség (NPS)",
-    "batch_size": "Kötegméret",
-    "speedup": "Maximális Gyorsulás",
-    "baseline": "Python Bázis",
-    "cpp_movegen": "C++ Lépésgenerálás",
-    "batching": "GPU Kötegelés",
-    "training_dynamics": "Tanulási Dinamika",
-    "system_efficiency": "Rendszer Hatékonyság",
-    "tournament_standings": "Bajnokság Eredmények",
-    "sims": "Szimuláció",
-    "games": "Játszma",
-    "density": "Sűrűség",
-    "time_elapsed": "Eltelt Idő (óra)",
-    "workers": "Szálak Száma",
-    "games_per_sec": "Játszma / mp",
-    "ideal_scaling": "Elméleti Maximum",
-    "Random": "Véletlen",
-    "Greedy": "Mohó",
+    "iteration": "Iteration",
+    "policy_loss": "Policy Loss",
+    "value_loss": "Value Loss",
+    "entropy": "Entropy",
+    "win_rate": "Win Rate",
+    "draw_rate": "Draw Rate",
+    "game_length": "Game Length",
+    "count": "Relative Frequency",
+    "elo": "Elo Rating",
+    "nps": "Search Speed (NPS)",
+    "batch_size": "Batch Size",
+    "speedup": "Max Speedup",
+    "baseline": "Python Baseline",
+    "cpp_movegen": "C++ Movegen",
+    "batching": "GPU Batching",
+    "training_dynamics": "Training Dynamics",
+    "system_efficiency": "System Efficiency",
+    "tournament_standings": "Tournament Standings",
+    "sims": "Simulations",
+    "games": "Games",
+    "density": "Density",
+    "time_elapsed": "Time Elapsed (h)",
+    "workers": "Worker Threads",
+    "games_per_sec": "Games / sec",
+    "ideal_scaling": "Theoretical Max",
+    "Random": "Random",
+    "Greedy": "Greedy",
 }
 
 def t(key: str) -> str:
@@ -114,7 +114,7 @@ class RunData:
 def save_figure(fig: plt.Figure, name: str) -> None:
     path = FIGURES_OUT / f"{name}.pdf"
     fig.savefig(path)
-    logger.info(f"Ábra elmentve: {path}")
+    logger.info(f"Figure saved: {path}")
 
 def ema(data: List[float], alpha: float = 0.1) -> List[float]:
     if not data:
@@ -149,7 +149,7 @@ def generate_run_labels(runs: List[RunData]) -> None:
                 continue
             diff_keys.append(key)
 
-    logger.info(f"Megkülönböztető konfigurációs kulcsok: {diff_keys}")
+    logger.info(f"Distinctive config keys: {diff_keys}")
 
     known_names = set(RUN_NAME_MAPPING.values())
     for r, cfg in zip(runs, configs):
@@ -246,7 +246,7 @@ def load_run_data() -> List[RunData]:
                                 m[k] = v
                         metrics.append(m)
             except Exception as e:
-                logger.warning(f"Nem sikerült beolvasni a metrikákat ehhez: {p.name}: {e}")
+                logger.warning(f"Failed to load metrics for: {p.name}: {e}")
 
         if not metrics:
             continue
@@ -277,7 +277,7 @@ def plot_training_metrics(runs: List[RunData]) -> None:
         ax.plot(iters, vals, label=r.label)
     ax.set_title(t("policy_loss"))
     ax.set_xlabel(t("iteration"))
-    ax.set_ylabel("Keresztentrópia")
+    ax.set_ylabel("Cross Entropy")
 
     ax = axes[0, 1]
     for r in runs:
@@ -293,16 +293,16 @@ def plot_training_metrics(runs: List[RunData]) -> None:
         times = [m.get('elapsed_s', 0) / 3600.0 for m in r.metrics]
         vals = ema([m.get('policy_loss', float('nan')) for m in r.metrics])
         ax.plot(times, vals, label=r.label)
-    ax.set_title(f"{t('policy_loss')} az idő függvényében")
+    ax.set_title(f"{t('policy_loss')} vs Time")
     ax.set_xlabel(t("time_elapsed"))
-    ax.set_ylabel("Keresztentrópia")
+    ax.set_ylabel("Cross Entropy")
 
     ax = axes[1, 1]
     for r in runs:
         times = [m.get('elapsed_s', 0) / 3600.0 for m in r.metrics]
         vals = ema([m.get('value_loss', float('nan')) for m in r.metrics])
         ax.plot(times, vals, label=r.label)
-    ax.set_title(f"{t('value_loss')} az idő függvényében")
+    ax.set_title(f"{t('value_loss')} vs Time")
     ax.set_xlabel(t("time_elapsed"))
     ax.set_ylabel("MSE")
 
@@ -381,8 +381,8 @@ def plot_game_lengths(runs: List[RunData]) -> None:
         plt.close(fig)
         return
 
-    ax.set_title(t("game_length") + " Eloszlás")
-    ax.set_xlabel("Fél-lépések száma")
+    ax.set_title(t("game_length") + " Distribution")
+    ax.set_xlabel("Half-moves")
     ax.set_ylabel(t("density"))
     ax.legend()
     ax.grid(True, alpha=0.3)
@@ -420,7 +420,7 @@ def plot_system_scaling() -> None:
         ax.plot(x_indices, ideal_y, 'r--', marker='x', linewidth=2, label=t('ideal_scaling'))
         ax.legend()
 
-        ax.set_title("Önjáték Teljesítmény Skálázódása")
+        ax.set_title("Self-play Throughput Scaling")
         ax.set_xlabel(t("workers"))
         ax.set_ylabel(t("games_per_sec"))
 
@@ -431,7 +431,7 @@ def plot_system_scaling() -> None:
         mcts_df = pd.read_csv(mcts_path)
         sns.lineplot(data=mcts_df, x='batch_size', y='nps', marker='o', ax=ax, linewidth=2, color='#2ecc71')
         ax.set_xscale('log', base=2)
-        ax.set_title("Keresési Sebesség (NPS)")
+        ax.set_title("Search Speed (NPS)")
         ax.set_xlabel(t("batch_size"))
         ax.set_ylabel("NPS")
 
@@ -443,7 +443,7 @@ def plot_system_scaling() -> None:
     elif not df[df['type'] == 'training'].empty:
         tr_df = df[df['type'] == 'training'].sort_values('batch_size')
         sns.lineplot(data=tr_df, x='batch_size', y='steps_per_sec', marker='o', ax=ax)
-        ax.set_title("Tanítási Lépés/mp")
+        ax.set_title("Training Step/sec")
 
     fig.tight_layout()
     save_figure(fig, "nps_scaling")
@@ -489,15 +489,15 @@ def plot_tournament_elo() -> None:
         save_figure(fig, "tournament_elo")
         plt.close(fig)
     except Exception as e:
-        logger.error(f"Hiba a bajnoki ábra készítésekor: {e}")
+        logger.error(f"Error creating tournament plot: {e}")
 
 def main() -> None:
-    logger.info("Eredmény-generálás indítása...")
+    logger.info("Starting artifact generation...")
 
     runs = load_run_data()
     generate_run_labels(runs)
 
-    logger.info(f"Betöltött futások száma: {len(runs)}.")
+    logger.info(f"Loaded runs: {len(runs)}.")
 
     plot_training_metrics(runs)
     plot_win_rates(runs)
@@ -505,7 +505,7 @@ def main() -> None:
     plot_system_scaling()
     plot_tournament_elo()
 
-    logger.info(f"Eredmény-generálás kész. Az ábrák ide kerültek: {FIGURES_OUT}")
+    logger.info(f"Artifact generation complete. Figures saved to: {FIGURES_OUT}")
 
 if __name__ == '__main__':
     main()

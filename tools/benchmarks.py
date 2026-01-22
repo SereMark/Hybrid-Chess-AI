@@ -50,8 +50,8 @@ def import_module_safe(name: str, error_msg: str) -> ModuleType:
         raise SystemExit(error_msg) from exc
 
 
-ccore = import_module_safe("chesscore", "Nem sikerült importálni a chesscore kiterjesztést.")
-chess = import_module_safe("chess", "Hiányzó python-chess függőség.")
+ccore = import_module_safe("chesscore", "Failed to import chesscore extension.")
+chess = import_module_safe("chess", "Missing python-chess dependency.")
 
 import config as C
 from encoder import INPUT_PLANES, POLICY_SIZE
@@ -62,11 +62,11 @@ from train_loop import train_step
 from utils import DEFAULT_START_FEN, select_visit_count_move, select_autocast_dtype
 
 RUN_NAME_MAPPING = {
-    "20251125-124632": "Referencia",
-    "20251126-100221": "Mély Keresés",
-    "20251126-205609": "Nagy Áteresztőképesség",
-    "20251127-153749": "Nagy Entrópia",
-    "20251128-101517": "Hatékonyság",
+    "20251125-124632": "Reference",
+    "20251126-100221": "Deep Search",
+    "20251126-205609": "High Throughput",
+    "20251127-153749": "High Entropy",
+    "20251128-101517": "Efficiency",
 }
 
 
@@ -139,7 +139,7 @@ def summarize_measurements(measurements: Sequence[Measurement], *, metadata: dic
 
 def render_markdown_table(measurements: Sequence[Measurement]) -> str:
     if not measurements:
-        return "Nincs összegyűjtött mérés."
+        return "No measurements collected."
 
     rows = [m.summary() for m in measurements]
     extra_keys = sorted({
@@ -261,7 +261,7 @@ def detect_devices(explicit: Sequence[str] | None = None) -> list[str]:
 
 def cmd_inference(args: argparse.Namespace) -> None:
     devices = detect_devices(args.devices)
-    logger.info(f"Inferencia benchmark futtatása ezeken az eszközökön: {devices}")
+    logger.info(f"Running inference benchmark on devices: {devices}")
 
     dtype_map = {"float32": torch.float32, "bfloat16": torch.bfloat16, "float16": torch.float16}
     torch.manual_seed(2025)
@@ -329,7 +329,7 @@ def cmd_inference(args: argparse.Namespace) -> None:
 
     print(render_markdown_table(measurements))
     write_reports(summarize_measurements(measurements, metadata=vars(args)), csv_path=args.output_csv)
-    logger.info(f"Inferencia riport elmentve ide: {args.output_csv}")
+    logger.info(f"Inference report saved to: {args.output_csv}")
 
 
 def bench_selfplay_throughput(device: torch.device, worker_counts: list[int], games: int, repeats: int, warmup: int) -> list[Measurement]:
@@ -419,16 +419,16 @@ def cmd_system(args: argparse.Namespace) -> None:
     measurements = []
 
     if args.mode in ("all", "selfplay"):
-        logger.info("Önjáték áteresztőképességének mérése...")
+        logger.info("Measuring self-play throughput...")
         measurements.extend(bench_selfplay_throughput(device, [1, 2, 4, 6], 8, 3, 1))
 
     if args.mode in ("all", "training"):
-        logger.info("Tanítási lépés késleltetésének mérése...")
+        logger.info("Measuring training step latency...")
         measurements.extend(bench_training_step(device, [64, 128, 256], 10, 3))
 
     print(render_markdown_table(measurements))
     write_reports(summarize_measurements(measurements, metadata=vars(args)), csv_path=args.output_csv)
-    logger.info(f"Rendszer benchmark riport elmentve ide: {args.output_csv}")
+    logger.info(f"System benchmark report saved to: {args.output_csv}")
 
 
 class Player:
@@ -565,22 +565,22 @@ def cmd_ranking(args: argparse.Namespace) -> None:
     for d in sorted([d for d in args.runs_dir.iterdir() if d.is_dir()]):
         ckpt = d / "checkpoints" / "best.pt"
         if ckpt.exists():
-            logger.info(f"Modell betöltése innen: {d.name}...")
+            logger.info(f"Loading model from: {d.name}...")
             name = RUN_NAME_MAPPING.get(d.name, d.name)
             players.append(ModelPlayer(name, ckpt, args.device))
 
     if len(players) < 2:
-        logger.error("Legalább 2 játékos szükséges.")
+        logger.error("At least 2 players are required.")
         return
 
     records = []
     rng = np.random.default_rng(2025)
     pairs = list(itertools.combinations(players, 2))
 
-    logger.info(f"Bajnokság: {len(players)} játékos, {len(pairs)} párosítás.")
+    logger.info(f"Tournament: {len(players)} players, {len(pairs)} pairings.")
     total_pairs = len(pairs)
     for idx, (p1, p2) in enumerate(pairs, start=1):
-        logger.info(f"Párosítás lejátszása {idx}/{total_pairs}: {p1.get_name()} vs {p2.get_name()}")
+        logger.info(f"Playing pairing {idx}/{total_pairs}: {p1.get_name()} vs {p2.get_name()}")
         for i in range(args.games_per_pair):
             records.append(play_game(p1, p2, i % 2 == 0, args.mcts_sims, rng))
 
@@ -595,7 +595,7 @@ def cmd_ranking(args: argparse.Namespace) -> None:
     with (args.output_dir / "ranking_results.json").open("w") as f:
         json.dump(report, f, indent=2)
 
-    print("\nBajnokság állása:")
+    print("\nTournament standings:")
     for p in ranked:
         print(f"  {p.name:<20}: {elos[p.name]:.0f}")
 
@@ -639,16 +639,16 @@ def benchmark_python_chess(fens: Sequence[str], loops: int) -> tuple[float, int]
 
 
 def cmd_chess_bench(args: argparse.Namespace) -> None:
-    logger.info("Véletlen állások generálása...")
+    logger.info("Generating random positions...")
     fens = generate_random_fens(args.positions, args.max_plies, args.seed)
-    logger.info(f"{len(fens)} állás generálva.")
+    logger.info(f"{len(fens)} positions generated.")
 
     positions_evaluated = len(fens) * args.loops
 
-    logger.info("ChessCore (C++) benchmark futtatása...")
+    logger.info("Running ChessCore (C++) benchmark...")
     cc_time, cc_moves = benchmark_chesscore(fens, args.loops)
 
-    logger.info("Python-Chess benchmark futtatása...")
+    logger.info("Running Python-Chess benchmark...")
     py_time, py_moves = benchmark_python_chess(fens, args.loops)
 
     results = [
@@ -657,11 +657,11 @@ def cmd_chess_bench(args: argparse.Namespace) -> None:
     ]
     save_csv(args.output_dir / "chess_cpp.csv", results)
 
-    print("\nEredmények:")
-    print(f"  ChessCore:    {cc_time:.3f}s ({positions_evaluated/cc_time:,.0f} állás/mp)")
-    print(f"  Python-Chess: {py_time:.3f}s ({positions_evaluated/py_time:,.0f} állás/mp)")
+    print("\nResults:")
+    print(f"  ChessCore:    {cc_time:.3f}s ({positions_evaluated/cc_time:,.0f} pos/sec)")
+    print(f"  Python-Chess: {py_time:.3f}s ({positions_evaluated/py_time:,.0f} pos/sec)")
     if cc_time > 0:
-        print(f"  Gyorsítás:   {py_time/cc_time:.2f}x")
+        print(f"  Speedup:      {py_time/cc_time:.2f}x")
 
 
 def uniform_evaluator_batched(positions: Sequence[Any], *args: Any) -> tuple[list[list[float]], list[float]]:
@@ -692,30 +692,30 @@ def cmd_mcts_bench(args: argparse.Namespace) -> None:
             b.push(rng.choice(list(b.legal_moves)))
         fens.append(b.fen())
 
-    logger.info(f"{len(fens)} állás generálva.")
+    logger.info(f"{len(fens)} positions generated.")
 
     times, nodes = [], 0
     for idx in range(args.repetitions):
-        logger.info(f"Standard benchmark futás {idx + 1}/{args.repetitions}")
+        logger.info(f"Standard benchmark run {idx + 1}/{args.repetitions}")
         t, n = benchmark_cpp_mcts(fens, args.simulations, args.max_batch)
         times.append(t)
         nodes += n
 
     mean_t = statistics.fmean(times)
-    print(f"\nEredmények (Batch={args.max_batch}):")
-    print(f"  Átlagos idő: {mean_t:.3f}s")
-    print(f"  Ráta:        {len(fens)/mean_t:,.0f} keresés/mp")
-    print(f"  NPS:         {nodes/sum(times):,.0f} csomópont/mp")
+    print(f"\nResults (Batch={args.max_batch}):")
+    print(f"  Avg time:    {mean_t:.3f}s")
+    print(f"  Rate:        {len(fens)/mean_t:,.0f} searches/sec")
+    print(f"  NPS:         {nodes/sum(times):,.0f} nodes/sec")
 
     if args.scaling:
-        logger.info("Skálázási benchmark futtatása...")
+        logger.info("Running scaling benchmark...")
         rows = []
         for bs in [1, 2, 4, 8, 16, 32, 64, 128, 256]:
             t, n = benchmark_cpp_mcts(fens[:20], args.simulations, bs)
             if t > 0:
                 rows.append({"batch_size": bs, "nps": n/t, "time_s": t})
         save_csv(args.output_dir / "mcts_scaling.csv", rows)
-        logger.info("Skálázási eredmények elmentve.")
+        logger.info("Scaling results saved.")
 
 
 def cmd_cost(args: argparse.Namespace) -> None:
@@ -743,16 +743,16 @@ def cmd_cost(args: argparse.Namespace) -> None:
     total_s = sum(c['selfplay'] + c['train'] + c['arena'] for c in costs)
     kwh = (args.gpu_tdp * (total_s / 3600)) / 1000
 
-    print("\nKÖLTSÉGELEMZÉS")
-    print(f"Teljes idő:       {total_s/3600:.2f} óra")
-    print(f"Becsült energia:  {kwh:.2f} kWh")
+    print("\nCOST ANALYSIS")
+    print(f"Total time:       {total_s/3600:.2f} hours")
+    print(f"Est. energy:      {kwh:.2f} kWh")
 
     if args.output:
         save_csv(args.output, costs)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Hybrid Chess AI - Benchmark csomag")
+    parser = argparse.ArgumentParser(description="Hybrid Chess AI - Benchmark suite")
     parser.add_argument("--quiet", "-q", action="store_true")
     subparsers = parser.add_subparsers(dest="command", required=True)
 

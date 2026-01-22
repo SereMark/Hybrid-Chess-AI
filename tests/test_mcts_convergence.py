@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-pytest.importorskip("chesscore", reason="hiányzik a chesscore kiterjesztés")
+pytest.importorskip("chesscore", reason="missing chesscore extension")
 import chesscore as ccore
 
 
@@ -52,12 +52,12 @@ class TestMCTSConvergence:
 
         uci = ccore.uci_of_move(best_move)
         assert uci == "a1a8", (
-            f"MCTS hiba: a(z) {uci} lépést választotta "
-            f"(látogatások: {visits}, szabályos lépések: {[ccore.uci_of_move(m) for m in legal]})"
+            f"MCTS error: chose move {uci} "
+            f"(visits: {visits}, legal moves: {[ccore.uci_of_move(m) for m in legal]})"
         )
 
         visit_prob = visits[best_idx] / sum(visits)
-        assert visit_prob > 0.5, f"Az MCTS magabiztossága túl alacsony: {visit_prob:.2f}"
+        assert visit_prob > 0.5, f"MCTS confidence too low: {visit_prob:.2f}"
 
     def test_simulation_scaling(self):
         pos = ccore.Position()
@@ -94,12 +94,12 @@ class TestMCTSConvergence:
         assert len(visits_2) == len(pos.legal_moves())
 
         total_visits = sum(visits_2)
-        assert total_visits >= 99, f"Túl kevés látogatás: {total_visits}"
+        assert total_visits >= 99, f"Too few visits: {total_visits}"
 
         if total_visits < prev_visits + 90:
             print(
-                f"\nMegjegyzés: A fa újrainicializálásra került "
-                f"(látogatások: {total_visits}, korábban: {prev_visits})"
+                f"\nNote: Tree was reinitialized "
+                f"(visits: {total_visits}, previous: {prev_visits})"
             )
 
     def test_policy_prior_influence(self):
@@ -119,4 +119,4 @@ class TestMCTSConvergence:
         mcts = ccore.MCTS(simulations=50, c_puct=2.0)
         visits = mcts.search_batched_legal(pos, biased_evaluator, 16)
 
-        assert np.argmax(visits) == target_idx, "Az MCTS nem követte az erős policy-priórt"
+        assert np.argmax(visits) == target_idx, "MCTS did not follow strong policy prior"

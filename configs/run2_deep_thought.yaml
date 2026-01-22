@@ -1,6 +1,6 @@
-# FUTAM 2: MÉLY KERESÉS (pontosság)
-# Cél: 3 500 parti / ~15 óra (mély keresés)
-# Hardvercél: RTX 3070 Mobile + Ryzen 5800H
+# RUN 2: DEEP SEARCH (accuracy)
+# Goal: 3,500 games / ~15 hours (deep search)
+# Hardware Target: RTX 3070 Mobile + Ryzen 5800H
 
 MODEL:
   blocks: 6

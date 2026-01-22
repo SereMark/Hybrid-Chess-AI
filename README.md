@@ -1,50 +1,50 @@
 # Hybrid Chess AI
 
-AlphaZero-szerű, megerősítéses tanuláson (RL) alapuló sakkmotor C++ maggal (MCTS + sakkmotor, `pybind11` kötés) és PyTorch policy/value hálóval. Úgy lett tervezve, hogy egy RTX 3070-es laptopon is végigfusson a teljes end-to-end tanítási és értékelési folyamat.
+AlphaZero-style chess engine based on Reinforcement Learning (RL) with a C++ core (MCTS + chess engine, `pybind11` bindings) and a PyTorch policy/value network. Designed to run the complete end-to-end training and evaluation pipeline on an RTX 3070 laptop.
 
 ---
 
-## Követelmények / Tesztelt környezet
+## Requirements / Tested Environment
 
 - Windows 11 x64
 - Python 3.13
 - Visual Studio 2022 Build Tools (Desktop C++)
 - CMake ≥ 3.21
-- NVIDIA driver + CUDA-kompatibilis GPU (RTX 30xx ajánlott)
+- NVIDIA driver + CUDA-compatible GPU (RTX 30xx recommended)
 
 ---
 
-## Gyors indítás
+## Quick Start
 
-1. **Virtuális környezet és csomagok**:
+1. **Virtual Environment and Packages**:
    ```powershell
    py -3.13 -m venv .venv
    .\.venv\Scripts\Activate.ps1
    python -m pip install --upgrade pip
    python -m pip install -r requirements.txt
-   # PyTorch: ellenőrizd a saját beállításodnak megfelelő parancsot a https://pytorch.org/get-started/locally/ oldalon
+   # PyTorch: check the command for your setup at https://pytorch.org/get-started/locally/
    python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
    ```
 
-2. **C++ mag fordítása**:
+2. **Compile C++ Core**:
    ```powershell
    cmake -S . -B build -G "Visual Studio 17 2022" -A x64
    cmake --build build --config Release
    ```
 
-3. **Alap tanítási futás**:
+3. **Basic Training Run**:
    ```powershell
    $env:PYTHONPATH = "$PWD\src\python"
    python -m main -c configs\run1_baseline.yaml
    ```
 
-A futások eredményei és checkpointjai a `runs/` mappában jelennek meg.
+Checkpoints and results will appear in the `runs/` directory.
 
 ---
 
-## Bővebb használat
+## Advanced Usage
 
-- **Tanítás konfigurációval + ráfedéssel**:
+- **Training with Configuration + Overrides**:
   ```powershell
   $env:PYTHONPATH = "$PWD\src\python"
   python -m main -c configs\run1_baseline.yaml -o configs\my_overrides.yaml
@@ -52,17 +52,17 @@ A futások eredményei és checkpointjai a `runs/` mappában jelennek meg.
 
 ---
 
-## Mappák röviden
+## Directory Structure
 
-- `src/core/` - C++ sakkmotor, MCTS és `pybind11` kötés.
-- `src/python/` - tanítási pipeline (önjátszás, replay buffer, háló, trainer, fő CLI).
-- `configs/` - YAML konfigurációk különböző futásokhoz.
-- `runs/` - automatikusan létrehozott futási könyvtárak (checkpointok, logok).
-- `tools/` - benchmark és artifact generáló scriptek.
+- `src/core/` - C++ chess engine, MCTS, and `pybind11` bindings.
+- `src/python/` - Training pipeline (self-play, replay buffer, network, trainer, main CLI).
+- `configs/` - YAML configurations for different runs.
+- `runs/` - Automatically generated run directories (checkpoints, logs).
+- `tools/` - Benchmark and artifact generation scripts.
 
 ---
 
-## Tesztelés és minőség
+## Testing and Quality
 
 ```powershell
 $env:PYTHONPATH = "$PWD\src\python"
@@ -70,4 +70,22 @@ python -m pytest
 python -m black src/python tests
 python -m ruff check src/python tests
 python -m mypy src/python
+```
+
+---
+
+## Citation and License
+
+This project is licensed under the MIT License, with the following **exceptions**:
+
+1. **Thesis**: The `thesis/` directory is **excluded** from the open-source license. All rights are reserved for the thesis document. Do not copy or redistribute the thesis text/figures.
+2. **Citation**: If you use this codebase in your work, you **must** cite the author:
+
+```bibtex
+@software{HybridChessAI2026,
+  author = {Sere Gergő Márk},
+  title = {Hybrid Chess AI: AlphaZero-style RL with C++ Core},
+  year = {2026},
+  url = {https://github.com/SereMark/Hybrid-Chess-AI}
+}
 ```

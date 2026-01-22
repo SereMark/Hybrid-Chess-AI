@@ -176,7 +176,7 @@ void MCTS::expand_node_with_priors(Node* node,
   normalize_priors_inplace(priors);
 
   if (moves.size() > std::numeric_limits<uint16_t>::max()) {
-    throw std::overflow_error("túl sok gyerek");
+    throw std::overflow_error("too many children");
   }
 
   const uint32_t node_idx = node_pool_.get_index(node);
@@ -260,7 +260,7 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position,
                                             const EvalLegalBatchFn& eval_fn,
                                             int max_batch) {
   if (max_batch <= 0) {
-    throw std::invalid_argument("max_batch > 0 legyen");
+    throw std::invalid_argument("max_batch must be > 0");
   }
 
   ensure_root(position);
@@ -295,7 +295,7 @@ std::vector<int> MCTS::search_batched_legal(const chess::Position& position,
     eval_fn(to_eval, pending_encoded, pending_counts, eval_priors, eval_values);
     
     if (eval_priors.size() != pending_moves.size() || eval_values.size() != pending_moves.size()) {
-      throw std::runtime_error("az értékelési callback visszatérési méretei nem egyeznek");
+      throw std::runtime_error("evaluation callback return sizes do not match");
     }
     for (size_t i = 0; i < to_eval.size(); ++i) {
       const uint32_t node_idx = eval_path_offsets[i];

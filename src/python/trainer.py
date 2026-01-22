@@ -88,7 +88,7 @@ class Trainer:
             if resumed_root != initial_root:
                 self._configure_run_paths(resumed_root)
 
-        self.metrics.append_json({"event": "indítás", "timestamp": time.time(), "run_root": self.run_root})
+        self.metrics.append_json({"event": "start", "timestamp": time.time(), "run_root": self.run_root})
 
         self.ema: EMA | None = EMA(self.model) if C.TRAIN.ema_enabled else None
         self.best_model = self._clone_model()
@@ -129,7 +129,7 @@ class Trainer:
                 self._maybe_checkpoint()
                 self._maybe_flush_cuda_cache()
 
-            self.log.info("Az edzés befejeződött %s iteráció után.", self.iteration)
+            self.log.info("Training finished after %s iterations.", self.iteration)
         finally:
             self.close()
 
@@ -236,7 +236,7 @@ class Trainer:
 
         self.best_model.load_state_dict(candidate_model.state_dict(), strict=True)
         save_best_model(self)
-        decision = "elfogadva (automatikus)"
+        decision = "accepted (automatic)"
 
         result.notes.append(decision)
 
@@ -271,32 +271,32 @@ class Trainer:
 
         train_line = (
             f"TRN iter={self.iteration}/{C.TRAIN.total_iterations} "
-            f"lépések={stats['train_steps_actual']}/{stats['train_steps_planned']} "
+            f"steps={stats['train_steps_actual']}/{stats['train_steps_planned']} "
             f"lossP={stats['policy_loss']:.3f} lossV={stats['value_loss']:.3f} "
-            f"entrópia={stats['entropy']:.3f} lr={stats['learning_rate']:.2e} "
+            f"entropy={stats['entropy']:.3f} lr={stats['learning_rate']:.2e} "
             f"grad={stats['avg_grad_norm']:.2f} samples/s={stats['samples_per_sec']:.0f} "
-            f"puffer={stats['buffer_percent']:.0f}% recent={stats['train_recent_pct']:.0f}% "
-            f"feladás={stats['resign_status']} "
+            f"buffer={stats['buffer_percent']:.0f}% recent={stats['train_recent_pct']:.0f}% "
+            f"resign={stats['resign_status']} "
             f"adj={stats['adjudication_phase']}("
-            f"{'be' if stats['adjudication_enabled'] else 'ki'}) "
+            f"{'on' if stats['adjudication_enabled'] else 'off'}) "
             f"min={int(stats['adjudication_min_plies'])} "
-            f"margó={float(stats['adjudication_value_margin']):.3f} "
-            f"perzisztencia={int(stats['adjudication_persist_plies'])}"
+            f"margin={float(stats['adjudication_value_margin']):.3f} "
+            f"persist={int(stats['adjudication_persist_plies'])}"
         )
         sp_line = (
-            f"SP  játszmák={games} W/D/L={sp_w}/{sp_d}/{sp_b} "
-            f"természetes={natural_pct:.1f}% elbírált={adjudicated_pct:.1f}% "
-            f"feladás={resigned_pct:.1f}% kifutás={exhausted_pct:.1f}% "
-            f"látogatások/lépés={visit_per_move:.1f}"
+            f"SP  games={games} W/D/L={sp_w}/{sp_d}/{sp_b} "
+            f"natural={natural_pct:.1f}% adjudicated={adjudicated_pct:.1f}% "
+            f"resign={resigned_pct:.1f}% exhausted={exhausted_pct:.1f}% "
+            f"visits/move={visit_per_move:.1f}"
         )
-        arena_line = "ARÉNA kihagyva"
+        arena_line = "ARENA skipped"
         if arena_result is not None:
             arena_line = (
-                f"ARÉNA {arena_result.notes[0].upper():<6} "
-                f"eredmény={arena_result.score_pct:.1f}% "
+                f"ARENA {arena_result.notes[0].upper():<6} "
+                f"result={arena_result.score_pct:.1f}% "
                 f"W/D/L={arena_result.candidate_wins}/{arena_result.draws}/{arena_result.baseline_wins} "
-                f"döntetlen={arena_result.draw_pct:.1f}% döntéses={arena_result.decisive_pct:.1f}% "
-                f"idő={format_time(arena_result.elapsed_s)}"
+                f"draw={arena_result.draw_pct:.1f}% decisive={arena_result.decisive_pct:.1f}% "
+                f"time={format_time(arena_result.elapsed_s)}"
             )
 
         self.log.info(sp_line)

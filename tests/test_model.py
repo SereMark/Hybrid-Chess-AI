@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-pytest.importorskip("chesscore", reason="hiányzik a chesscore kiterjesztés")
+pytest.importorskip("chesscore", reason="missing chesscore extension")
 
 import torch
 from network import INPUT_PLANES, POLICY_OUTPUT, ChessNet, ResidualBlock

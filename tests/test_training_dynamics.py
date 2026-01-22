@@ -10,7 +10,7 @@ from network import INPUT_PLANES, POLICY_OUTPUT, ChessNet
         "cpu",
         pytest.param(
             "cuda",
-            marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="Nincs CUDA"),
+            marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="No CUDA"),
         ),
     ],
 )
@@ -52,7 +52,7 @@ class TestTrainingDynamics:
 
         assert (
             final_loss < initial_loss * 0.25
-        ), f"Nem sikerült túltanítani: kezdeti {initial_loss:.4f} -> végső {final_loss:.4f}"
+        ), f"Failed to overfit: initial {initial_loss:.4f} -> final {final_loss:.4f}"
 
     def test_gradient_flow(self, device):
         device = torch.device(device)
@@ -65,7 +65,7 @@ class TestTrainingDynamics:
         loss.backward()
 
         assert x.grad is not None
-        assert x.grad.abs().mean() > 0, "A bemeneti gradiens nulla (hibás visszaterjesztés)"
+        assert x.grad.abs().mean() > 0, "Input gradient is zero (backprop failed)"
 
         has_grad = 0
         total_params = 0
@@ -74,7 +74,7 @@ class TestTrainingDynamics:
             if param.grad is not None and param.grad.abs().sum() > 0:
                 has_grad += 1
 
-        assert has_grad > total_params * 0.5, f"Túl sok paraméter nem kapott gradienst: {has_grad}/{total_params}"
+        assert has_grad > total_params * 0.5, f"Too many parameters have no gradient: {has_grad}/{total_params}"
 
     def test_value_bounds(self, device):
         device = torch.device(device)

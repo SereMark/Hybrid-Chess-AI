@@ -1,3 +1,23 @@
+# Build artifacts
 build/
-__pycache__/
+dist/
 *.pyd
+*.so
+*.dll
+*.exe
+*.obj
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+.env
+*.egg-info/
+runs/
+
+# IDEs
+.vscode/
+.idea/
+*.swp

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-pytest.importorskip("chesscore", reason="hiányzik a chesscore kiterjesztés")
+pytest.importorskip("chesscore", reason="missing chesscore extension")
 
 import chesscore as ccore
 
@@ -22,10 +22,10 @@ class TestChessLogicScientific:
                     pos.make_move(m)
                     found = True
                     break
-            assert found, f"A(z) {uci} lépés nem szabályos a(z) {pos.to_fen()} állásban"
+            assert found, f"Move {uci} is not legal in position {pos.to_fen()}"
 
         assert pos.result() == ccore.WHITE_WIN
-        assert len(pos.legal_moves()) == 0, "Matt helyzetben 0 szabályos lépésnek kell lennie"
+        assert len(pos.legal_moves()) == 0, "There should be 0 legal moves in checkmate"
 
     def test_stalemate_detection(self):
         pos = ccore.Position()
@@ -65,9 +65,9 @@ class TestChessLogicScientific:
                 mate_move = m
                 break
 
-        assert mate_move is not None, "az a1a8 lépésnek szabályosnak kell lennie"
+        assert mate_move is not None, "move a1a8 should be legal"
 
         pos.make_move(mate_move)
         assert pos.result() == ccore.WHITE_WIN, (
-            f"Az a1a8 után az eredménynek világos győzelme (WHITE_WIN) kellene legyen, " f"de {pos.result()} lett"
+            f"After a1a8 the result should be WHITE_WIN, " f"but got {pos.result()}"
         )
