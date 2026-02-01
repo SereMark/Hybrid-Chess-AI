@@ -155,14 +155,14 @@ class ReplayBuffer:
     def _validate_state(self, state: np.ndarray) -> np.ndarray:
         array = np.asarray(state, dtype=np.uint8)
         if array.shape != self._state_shape:
-            raise ValueError(f"a state tömb alakja {array.shape} nem egyezik a várt {self._state_shape} alakzattal")
+            raise ValueError(f"state array shape {array.shape} does not match expected {self._state_shape}")
         return array
 
     @staticmethod
     def _validate_sparse(values: Iterable[int], *, dtype: DTypeLike) -> np.ndarray:
         array = np.asarray(values, dtype=dtype)
         if array.ndim != 1:
-            raise ValueError("a ritka (sparse) tömböknek egydimenziósaknak kell lenniük")
+            raise ValueError("sparse arrays must be 1-dimensional")
         return array
 
     def state_dict(self) -> dict[str, Any]:
@@ -203,12 +203,12 @@ class ReplayBuffer:
         states_arr = np.asarray(data["states"], dtype=np.uint8)
         expected_shape = (capacity,) + state_shape
         if states_arr.shape != expected_shape:
-            raise ValueError(f"a state tömb alakja {states_arr.shape} nem egyezik a várt {expected_shape} alakzattal")
+            raise ValueError(f"state array shape {states_arr.shape} does not match expected {expected_shape}")
         self._states[:] = states_arr
 
         entries_serialized = list(data["entries"])
         if len(entries_serialized) != capacity:
-            raise ValueError("az entries lista hossza nem egyezik a kapacitással")
+            raise ValueError("length of entries list does not match capacity")
 
         self._entries = []
         for item in entries_serialized:

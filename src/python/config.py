@@ -225,12 +225,12 @@ def _load_payload_from_path(path: Path) -> Mapping[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(path)
     if path.suffix.lower() not in {".yaml", ".yml"}:
-        raise ValueError(f"Nem támogatott konfigurációs formátum: {path.suffix}")
+        raise ValueError(f"Unsupported configuration format: {path.suffix}")
     if yaml is None:
-        raise RuntimeError("A PyYAML csomag szükséges.")
+        raise RuntimeError("The PyYAML package is required.")
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping):
-        raise TypeError(f"A(z) {path} konfigurációjának leképezésnek (mappingnek) kell lennie")
+        raise TypeError(f"Configuration for {path} must be a mapping")
     return payload
 
 

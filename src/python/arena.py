@@ -200,7 +200,7 @@ def play_match(
             )
         except Exception as exc:
             result, moves_san = ccore.DRAW, []
-            logging.getLogger("hybridchess.arena").exception("Az aréna játszma hibával leállt: %s", exc)
+            logging.getLogger("hybridchess.arena").exception("Arena game stopped with error: %s", exc)
 
         tracker.record(candidate_white, result)
 
@@ -403,7 +403,7 @@ def _move_to_san(
         elif next_position.in_check():
             san += "+"
     except Exception as exc:
-        logging.getLogger("hybridchess.arena").debug("Nem sikerült kiszámítani a SAN utójelet: %s", exc)
+        logging.getLogger("hybridchess.arena").debug("Failed to calculate SAN suffix: %s", exc)
     return san
 
 

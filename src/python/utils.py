@@ -204,7 +204,7 @@ class MetricsReporter:
                     writer.writeheader()
                 writer.writerow(row)
         except Exception as exc:
-            raise RuntimeError("Nem sikerült hozzáfűzni a metrikasort a fájlhoz") from exc
+            raise RuntimeError("Failed to append metric row to file") from exc
 
     def _append_jsonl(self, row: Mapping[str, object]) -> None:
         if not self.jsonl_path:
@@ -218,7 +218,7 @@ class MetricsReporter:
                 json.dump(safe_row, h, separators=(",", ":"))
                 h.write("\n")
         except Exception as exc:
-            raise RuntimeError("Nem sikerült hozzáfűzni a metrikasort a JSONL fájlhoz") from exc
+            raise RuntimeError("Failed to append metric row to JSONL file") from exc
 
 
 def select_visit_count_move(
@@ -256,38 +256,38 @@ def format_time(seconds: float) -> str:
 def startup_summary(trainer: Any) -> str:
     has_cuda = bool(trainer.device.type == "cuda" and torch.cuda.is_available())
     amp_enabled = bool(getattr(trainer, "_amp_enabled", C.TORCH.amp_enabled))
-    autocast_mode = "fp16" if amp_enabled else "kikapcsolva"
+    autocast_mode = "fp16" if amp_enabled else "disabled"
     params_m = sum(p.numel() for p in trainer.model.parameters()) / 1e6
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     device_name = getattr(trainer, "device_name", str(trainer.device))
     lines = [
-        f"[{timestamp}] Hibrid sakk MI edzés",
-        f"eszköz={device_name} ({trainer.device}) cuda={'igen' if has_cuda else 'nem'} autocast={autocast_mode} "
-        f"paraméterek={params_m:.2f}M visszajátszási_tár={C.REPLAY.capacity:,}",
+        f"[{timestamp}] Hybrid Chess AI Training",
+        f"device={device_name} ({trainer.device}) cuda={'yes' if has_cuda else 'no'} autocast={autocast_mode} "
+        f"params={params_m:.2f}M replay_buffer={C.REPLAY.capacity:,}",
         " ".join(
             [
-                f"edző iterációk={C.TRAIN.total_iterations}",
-                f"játszmák/iter={C.TRAIN.games_per_iter}",
-                f"batch_méret={trainer.train_batch_size}",
+                f"train_iters={C.TRAIN.total_iterations}",
+                f"games/iter={C.TRAIN.games_per_iter}",
+                f"batch_size={trainer.train_batch_size}",
                 f"lr={C.TRAIN.learning_rate_init:.2e}->{C.TRAIN.learning_rate_final:.2e}",
                 f"grad_clip={C.TRAIN.grad_clip_norm}",
             ]
         ),
         " ".join(
             [
-                f"önjátszó szálak={C.SELFPLAY.num_workers}",
-                f"szimulációk={C.MCTS.train_simulations}->{C.MCTS.train_simulations_min}",
-                f"hőmérséklet_lépések={C.SELFPLAY.temperature_moves}",
-                f"max_lépésszám={C.SELFPLAY.game_max_plies}",
-                f"elbírálási_margó={C.SELFPLAY.adjudication_value_margin}",
-                f"elbírálási_bemelegítés={C.SELFPLAY.adjudication_warmup_iters}",
-                f"elbírálási_rámpa={C.SELFPLAY.adjudication_ramp_iters}",
+                f"selfplay_threads={C.SELFPLAY.num_workers}",
+                f"simulations={C.MCTS.train_simulations}->{C.MCTS.train_simulations_min}",
+                f"temp_moves={C.SELFPLAY.temperature_moves}",
+                f"max_moves={C.SELFPLAY.game_max_plies}",
+                f"adj_margin={C.SELFPLAY.adjudication_value_margin}",
+                f"adj_warmup={C.SELFPLAY.adjudication_warmup_iters}",
+                f"adj_ramp={C.SELFPLAY.adjudication_ramp_iters}",
             ]
         ),
         " ".join(
             [
-                f"aréna minden={C.ARENA.eval_every_iters}. iteráció",
-                f"játszmák={C.ARENA.games_per_eval}",
+                f"arena every={C.ARENA.eval_every_iters} iters",
+                f"games={C.ARENA.games_per_eval}",
             ]
         ),
         f"metrics_csv={getattr(getattr(trainer, 'metrics', None), 'csv_path', '')}",

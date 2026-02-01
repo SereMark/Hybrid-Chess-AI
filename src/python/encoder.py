@@ -172,7 +172,7 @@ def _bitboard_to_mask(bb: Any) -> np.ndarray:
 def _state_from_position(position: Any) -> PositionState:
     pieces_obj = getattr(position, "pieces", None)
     if pieces_obj is None:
-        raise TypeError("a pozíció objektumnak nincs 'pieces' attribútuma")
+        raise TypeError("position object has no 'pieces' attribute")
     try:
         seq = list(pieces_obj)
     except TypeError:

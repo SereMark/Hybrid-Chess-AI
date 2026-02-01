@@ -155,9 +155,9 @@ def save_checkpoint(trainer: Any) -> None:
         if C.LOG.archive_checkpoints and "checkpoint_archive" in artifacts:
             torch.save(payload, artifacts["checkpoint_archive"])
         _write_metadata(trainer, artifacts)
-        trainer.log.info("[MENTÉS] mentve -> %s", ckpt_path)
+        trainer.log.info("[SAVE] saved -> %s", ckpt_path)
     except Exception as exc:
-        trainer.log.warning("A mentési pont elmentése sikertelen: %s", exc)
+        trainer.log.warning("Failed to save checkpoint: %s", exc)
 
 
 def save_best_model(trainer: Any) -> None:
@@ -173,9 +173,9 @@ def save_best_model(trainer: Any) -> None:
         tmp = f"{best_path}.tmp"
         torch.save(payload, tmp)
         os.replace(tmp, best_path)
-        trainer.log.info("[LEGJOBB] modell mentve -> %s", best_path)
+        trainer.log.info("[BEST] model saved -> %s", best_path)
     except Exception as exc:
-        trainer.log.warning("A legjobb modell mentése sikertelen: %s", exc)
+        trainer.log.warning("Failed to save best model: %s", exc)
 
 
 def _collect_candidate_paths(trainer: Any) -> list[str]:
@@ -217,7 +217,7 @@ def try_resume(trainer: Any) -> None:
             break
 
     if path is None:
-        trainer.log.info("[MENTÉS] nem található mentési pont; új futás indul")
+        trainer.log.info("[SAVE] checkpoint not found; starting new run")
         return
 
     try:
@@ -274,7 +274,7 @@ def try_resume(trainer: Any) -> None:
             try:
                 trainer.selfplay_engine.load_state_dict(sp_state)
             except Exception as exc:
-                trainer.log.warning("[MENTÉS] az önjátszó állapotának visszaállítása sikertelen: %s", exc)
+                trainer.log.warning("[SAVE] failed to restore self-play state: %s", exc)
 
         trainer.selfplay_engine.update_adjudication(trainer.iteration)
 
@@ -283,8 +283,8 @@ def try_resume(trainer: Any) -> None:
             try:
                 trainer._arena_rng.bit_generator.state = arena_state
             except Exception as exc:
-                trainer.log.warning("[MENTÉS] az aréna RNG állapotának visszaállítása sikertelen: %s", exc)
+                trainer.log.warning("[SAVE] failed to restore arena RNG state: %s", exc)
 
-        trainer.log.info("[FOLYTATÁS] innen: %s @ iter %s", path, trainer.iteration)
+        trainer.log.info("[RESUME] from: %s @ iter %s", path, trainer.iteration)
     except Exception as exc:
-        trainer.log.warning("[FOLYTATÁS] sikertelen: %s", exc)
+        trainer.log.warning("[RESUME] failed: %s", exc)

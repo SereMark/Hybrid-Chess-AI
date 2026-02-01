@@ -160,7 +160,7 @@ class BatchedEvaluator:
         if counts is not None:
             if not isinstance(moves_per_position, np.ndarray):
                 raise TypeError(
-                    "Ha a counts argumentum meg van adva, a moves_per_position értékének numpy tömbnek kell lennie"
+                    "If the counts argument is provided, moves_per_position must be a numpy array"
                 )
 
             flat_moves = moves_per_position
@@ -174,7 +174,7 @@ class BatchedEvaluator:
 
         if len(positions_list) != len(moves_list):
             raise ValueError(
-                "a positions ({}) és a moves ({}) listáknak azonos hosszúságúnak kell lenniük".format(
+                "positions ({}) and moves ({}) lists must be of the same length".format(
                     len(positions_list), len(moves_list)
                 )
             )
@@ -222,11 +222,11 @@ class BatchedEvaluator:
 
     def _dispatch_eval(self, positions_list: list[Any], moves_list: list[Any]) -> tuple[list[np.ndarray], np.ndarray]:
         if len(positions_list) != len(moves_list):
-            raise ValueError("a positions és a moves listáknak azonos hosszúságúnak kell lenniük")
+            raise ValueError("positions and moves lists must be of the same length")
         if not positions_list:
             return [], np.zeros((0,), dtype=np.float32)
         if self._shutdown.is_set():
-            raise RuntimeError("Az értékelő le lett állítva")
+            raise RuntimeError("The evaluator has been stopped")
 
         if self._batch_cap <= 1 and self._coalesce_ms <= 0:
             with self.model_lock:
@@ -238,7 +238,7 @@ class BatchedEvaluator:
         request = _EvalRequest(positions_list, moves_list)
         with self._cv:
             if self._shutdown.is_set():
-                raise RuntimeError("Az értékelő le lett állítva")
+                raise RuntimeError("The evaluator has been stopped")
             self._queue.append(request)
             self._cv.notify()
 
@@ -261,7 +261,7 @@ class BatchedEvaluator:
                 request.event.wait()
 
         if request.out_probs is None or request.out_values is None:
-            raise RuntimeError("Az értékelő kérése sikertelen volt")
+            raise RuntimeError("Evaluator request failed")
         probs_np = [np.asarray(arr, dtype=np.float32, copy=False) for arr in request.out_probs]
         values_np = np.asarray(request.out_values, dtype=np.float32, copy=False)
         return probs_np, values_np
@@ -509,7 +509,7 @@ class BatchedEvaluator:
                         request.event.set()
                         offset += size
                 except Exception:
-                    self.log.exception("Az értékelő kötegelt feldolgozása sikertelen volt")
+                    self.log.exception("Evaluator batch processing failed")
                     for request in batch:
                         request.out_probs = [np.zeros((0,), dtype=np.float32) for _ in range(request.size)]
                         request.out_values = np.zeros((request.size,), dtype=np.float32)

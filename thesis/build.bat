@@ -8,11 +8,11 @@ pushd "%~dp0" >nul
 
 where %ENGINE% >nul 2>nul
 if errorlevel 1 (
-    echo [ERROR] LaTeX engine "%ENGINE%" nem található.
+    echo [ERROR] LaTeX engine "%ENGINE%" not found.
     goto :end
 )
 
-echo [1/4] Régi segédfájlok törlése: "%FILENAME%"...
+echo [1/4] Deleting old auxiliary files: "%FILENAME%"...
 for %%E in (
     aux log toc out lof lot
     bbl blg run.xml synctex.gz
@@ -21,10 +21,10 @@ for %%E in (
 ) do (
     if exist "%FILENAME%.%%E" del /q "%FILENAME%.%%E"
 )
-echo Kész.
+echo Done.
 echo.
 
-echo [2/4] 1. fordítás (Hivatkozások gyűjtése)...
+echo [2/4] Compilation 1 (Collecting citations)...
 %ENGINE% -interaction=nonstopmode -file-line-error "%FILENAME%.tex"
 if errorlevel 1 (
     set "FAILPASS=1"
@@ -32,7 +32,7 @@ if errorlevel 1 (
 )
 echo.
 
-echo [3/4] 2. fordítás (Kereszthivatkozások rendezése)...
+echo [3/4] Compilation 2 (Sorting cross-references)...
 %ENGINE% -interaction=nonstopmode -file-line-error "%FILENAME%.tex" >nul
 if errorlevel 1 (
     set "FAILPASS=2"
@@ -40,7 +40,7 @@ if errorlevel 1 (
 )
 echo.
 
-echo [4/4] 3. fordítás (Végső tördelés)...
+echo [4/4] Compilation 3 (Final layout)...
 %ENGINE% -interaction=nonstopmode -file-line-error "%FILENAME%.tex" >nul
 if errorlevel 1 (
     set "FAILPASS=3"
@@ -49,16 +49,16 @@ if errorlevel 1 (
 
 echo.
 if exist "%FILENAME%.pdf" (
-    echo      SIKER! "%FILENAME%.pdf" létrehozva.
+    echo      SUCCESS! "%FILENAME%.pdf" created.
 ) else (
-    echo [WARNING] A fordítás lefutott, de "%FILENAME%.pdf" nem található.
+    echo [WARNING] Compilation finished, but "%FILENAME%.pdf" not found.
 )
 echo.
 goto :end
 
 :fail
 echo.
-echo [ERROR] A fordítás a(z) %FAILPASS%. passzban hibával leállt.
+echo [ERROR] Compilation failed in pass %FAILPASS%.
 echo.
 
 :end

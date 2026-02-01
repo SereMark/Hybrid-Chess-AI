@@ -21,7 +21,7 @@ INPUT_PLANES: int = int(getattr(ccore, "INPUT_PLANES", 14 * 8 + 7))
 POLICY_OUTPUT: int = int(getattr(ccore, "POLICY_SIZE", 73 * NSQUARES))
 
 if POLICY_OUTPUT % max(1, NSQUARES) != 0:
-    raise ValueError("A POLICY_SIZE értékének az NSQUARES egész számú többszörösének kell lennie")
+    raise ValueError("POLICY_SIZE must be an integer multiple of NSQUARES")
 
 
 class ResidualBlock(nn.Module):
