@@ -1,0 +1,100 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hybrid-chess-ai"
+version = "0.1.0"
+description = "AlphaZero-style chess Reinforcement Learning stack with C++ move generation (pybind11) and PyTorch network."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.13"
+authors = [
+  { name = "Sere Gergo Mark" },
+]
+dependencies = [
+  "numpy>=1.26",
+  "pyyaml>=6.0",
+  "python-chess>=1.999",
+  "pybind11>=2.10",
+  "torch==2.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "black",
+  "mypy",
+  "pytest",
+  "ruff",
+]
+benchmarks = [
+  "matplotlib",
+  "pandas",
+  "seaborn",
+]
+
+[project.scripts]
+hybrid-chess-train = "main:main"
+
+[tool.setuptools]
+package-dir = { "" = "src/python" }
+py-modules = [
+  "arena",
+  "checkpoint",
+  "config",
+  "encoder",
+  "inference",
+  "main",
+  "network",
+  "optimization",
+  "replay_buffer",
+  "self_play",
+  "trainer",
+  "train_loop",
+  "utils",
+]
+
+[tool.black]
+line-length = 120
+target-version = ["py313"]
+skip-string-normalization = true
+extend-exclude = '''
+/(
+  build|
+  dist|
+  logs|
+  checkpoints|
+  runs|
+  __pycache__|
+  \.venv|
+  .+\.egg-info
+)/
+'''
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = [
+  "build",
+  "dist",
+  "logs",
+  "checkpoints",
+  "runs",
+  "__pycache__",
+  ".venv",
+  "tools",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.format]
+quote-style = "preserve"
+
+[tool.mypy]
+python_version = "3.13"
+files = ["src/python", "tests"]
+ignore_missing_imports = true
+allow_redefinition = true
+warn_unused_configs = true
+pretty = true

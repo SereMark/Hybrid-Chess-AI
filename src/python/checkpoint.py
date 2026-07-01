@@ -1,0 +1,296 @@
+from __future__ import annotations
+
+import contextlib
+import json
+import os
+import time
+from dataclasses import asdict, is_dataclass
+from pathlib import Path
+from typing import Any
+
+import config as C
+import numpy as np
+import torch
+from torch.amp import GradScaler
+
+__all__ = ["get_run_root", "save_checkpoint", "save_best_model", "try_resume"]
+
+
+def _load_trusted_checkpoint(path: str | os.PathLike[str] | Path, *, map_location: str = "cpu") -> Any:
+    return torch.load(path, map_location=map_location, weights_only=False)
+
+
+def _timestamped_path(base_path: str, iteration: int | None = None) -> str:
+    stem, ext = os.path.splitext(base_path)
+    tag = f"_iter{int(iteration):05d}" if iteration is not None else ""
+    return f"{stem}{tag}_{int(time.time())}{ext or '.pt'}"
+
+
+def _resolve_run_root(trainer: Any) -> str:
+    existing = getattr(trainer, "run_root", None)
+    if existing:
+        return str(existing)
+    env_root = os.environ.get("HYBRID_CHESS_RUN_DIR")
+    run_id = os.environ.get("HYBRID_CHESS_RUN_ID") or time.strftime("%Y%m%d-%H%M%S")
+    root = os.path.join(env_root or C.LOG.runs_dir, run_id)
+    trainer.run_root = root
+    return root
+
+
+def get_run_root(trainer: Any) -> str:
+    return _resolve_run_root(trainer)
+
+
+def _experiment_paths(trainer: Any, iteration: int | None = None) -> dict[str, str]:
+    root = _resolve_run_root(trainer)
+    paths = {
+        "root": root,
+        "checkpoint": os.path.join(root, "checkpoints", "latest.pt"),
+        "best_model": os.path.join(root, "checkpoints", "best.pt"),
+        "metadata": os.path.join(root, "run_info.json"),
+    }
+    if iteration is not None:
+        paths["checkpoint_archive"] = _timestamped_path(paths["checkpoint"], iteration)
+    return paths
+
+
+def _write_config_snapshot(snapshot: dict[str, Any], config_dir: Path) -> None:
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "merged.json").write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
+    try:
+        import yaml  # type: ignore[import-untyped]
+    except Exception:
+        yaml = None
+    if yaml is not None:
+        with (config_dir / "merged.yaml").open("w", encoding="utf-8") as handle:
+            yaml.safe_dump(snapshot, handle, sort_keys=False)
+
+
+def _write_metadata(trainer: Any, artifacts: dict[str, str]) -> None:
+    meta = {
+        "iteration": int(trainer.iteration),
+        "total_games": int(trainer.total_games),
+        "device": str(trainer.device),
+        "device_name": getattr(trainer, "device_name", str(trainer.device)),
+        "run_root": artifacts["root"],
+        "artifacts": {
+            "checkpoint": artifacts["checkpoint"],
+            "best_model": artifacts["best_model"],
+            "metadata": artifacts["metadata"],
+        },
+        "seed": int(getattr(C, "SEED", 0)),
+        "log_paths": {},
+        "timestamps": {
+            "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "elapsed_s": float(max(0.0, time.time() - trainer.start_time)),
+        },
+    }
+    default_metrics = Path(artifacts["root"]) / "metrics" / "training.csv"
+    metrics_path = getattr(getattr(trainer, "metrics", None), "csv_path", str(default_metrics))
+    arena_dir = Path(getattr(trainer, "arena_dir", Path(Path(artifacts["root"]) / "arena_games"))).as_posix()
+    meta["log_paths"] = {"metrics_csv": str(metrics_path), "arena_dir": arena_dir}
+
+    snapshot: dict[str, Any] = {}
+    for name in (
+        "LOG",
+        "TORCH",
+        "DATA",
+        "MODEL",
+        "EVAL",
+        "SELFPLAY",
+        "REPLAY",
+        "SAMPLING",
+        "MCTS",
+        "RESIGN",
+        "TRAIN",
+        "ARENA",
+    ):
+        cfg = getattr(C, name, None)
+        if cfg is None:
+            continue
+        snapshot[name] = asdict(cfg) if is_dataclass(cfg) and not isinstance(cfg, type) else cfg
+    meta["config_snapshot"] = snapshot
+
+    meta_path = Path(artifacts["metadata"])
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    _write_config_snapshot(snapshot, meta_path.parent / "config")
+
+
+def save_checkpoint(trainer: Any) -> None:
+    try:
+        artifacts = _experiment_paths(trainer, trainer.iteration)
+        ckpt_path = artifacts["checkpoint"]
+        Path(ckpt_path).parent.mkdir(parents=True, exist_ok=True)
+
+        base = getattr(trainer.model, "_orig_mod", trainer.model)
+
+        selfplay_state: dict[str, Any] | None = None
+        with contextlib.suppress(Exception):
+            selfplay_state = trainer.selfplay_engine.state_dict()
+
+        arena_state: dict[str, Any] | None = None
+        if hasattr(trainer, "_arena_rng"):
+            with contextlib.suppress(Exception):
+                arena_state = trainer._arena_rng.bit_generator.state
+
+        # Saving only the weights would restart the experiment in a subtly
+        # different state, so keep the training and random state together.
+        payload = {
+            "iter": int(trainer.iteration),
+            "total_games": int(trainer.total_games),
+            "elapsed_s": float(max(0.0, time.time() - trainer.start_time)),
+            "model": base.state_dict(),
+            "best_model": trainer.best_model.state_dict(),
+            "optimizer": trainer.optimizer.state_dict(),
+            "scheduler": {"t": int(trainer.scheduler.t), "total": int(trainer.scheduler.total)},
+            "scaler": trainer.scaler.state_dict(),
+            "ema": trainer.ema.shadow if trainer.ema is not None else None,
+            "selfplay_state": selfplay_state,
+            "arena_rng_state": arena_state,
+            "rng": {
+                "py": __import__("random").getstate(),
+                "np": np.random.get_state(),
+                "torch_cpu": torch.get_rng_state(),
+                "torch_cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+            },
+        }
+        tmp = f"{ckpt_path}.tmp"
+        torch.save(payload, tmp)
+        os.replace(tmp, ckpt_path)
+        if C.LOG.archive_checkpoints and "checkpoint_archive" in artifacts:
+            torch.save(payload, artifacts["checkpoint_archive"])
+        _write_metadata(trainer, artifacts)
+        trainer.log.info("[SAVE] saved -> %s", ckpt_path)
+    except Exception as exc:
+        trainer.log.warning("Failed to save checkpoint: %s", exc)
+
+
+def save_best_model(trainer: Any) -> None:
+    try:
+        artifacts = _experiment_paths(trainer, trainer.iteration)
+        best_path = artifacts["best_model"]
+        Path(best_path).parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "iter": int(trainer.iteration),
+            "total_games": int(trainer.total_games),
+            "model": trainer.best_model.state_dict(),
+        }
+        tmp = f"{best_path}.tmp"
+        torch.save(payload, tmp)
+        os.replace(tmp, best_path)
+        trainer.log.info("[BEST] model saved -> %s", best_path)
+    except Exception as exc:
+        trainer.log.warning("Failed to save best model: %s", exc)
+
+
+def _collect_candidate_paths(trainer: Any) -> list[str]:
+    candidates: list[str] = []
+    env_root = os.environ.get("HYBRID_CHESS_RESUME")
+    if env_root:
+        candidates.append(os.path.join(env_root, "checkpoints", "latest.pt"))
+    if getattr(trainer, "run_root", None):
+        candidates.append(os.path.join(trainer.run_root, "checkpoints", "latest.pt"))
+
+    runs_dir = Path(C.LOG.runs_dir)
+    if runs_dir.is_dir():
+        recent_runs = sorted(
+            (p for p in runs_dir.iterdir() if p.is_dir()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for run in recent_runs:
+            candidate = run / "checkpoints" / "latest.pt"
+            if candidate.is_file():
+                candidates.append(str(candidate))
+                break
+    return candidates
+
+
+def try_resume(trainer: Any) -> None:
+    candidates = _collect_candidate_paths(trainer)
+    seen: set[str] = set()
+    path: str | None = None
+    for c in candidates:
+        if not c:
+            continue
+        norm = os.path.normpath(c)
+        if norm in seen:
+            continue
+        seen.add(norm)
+        if os.path.isfile(c):
+            path = c
+            break
+
+    if path is None:
+        trainer.log.info("[SAVE] checkpoint not found; starting new run")
+        return
+
+    try:
+        ckpt = _load_trusted_checkpoint(path, map_location="cpu")
+        base = getattr(trainer.model, "_orig_mod", trainer.model)
+        base.load_state_dict(ckpt.get("model", {}), strict=True)
+
+        run_root = Path(path).resolve().parent.parent if "checkpoints" in Path(path).parts else None
+        if run_root:
+            trainer.run_root = str(run_root)
+
+        if trainer.ema is not None and ckpt.get("ema") is not None:
+            trainer.ema.shadow = ckpt["ema"]
+
+        if "best_model" in ckpt:
+            trainer.best_model.load_state_dict(ckpt["best_model"], strict=True)
+        elif run_root:
+            best_path = run_root / "checkpoints" / "best.pt"
+            if best_path.is_file():
+                best_ckpt = _load_trusted_checkpoint(best_path, map_location="cpu")
+                state = best_ckpt.get("model", best_ckpt)
+                trainer.best_model.load_state_dict(state, strict=True)
+
+        trainer.best_model.eval()
+
+        if "optimizer" in ckpt:
+            trainer.optimizer.load_state_dict(ckpt["optimizer"])
+        sched = ckpt.get("scheduler")
+        if isinstance(sched, dict):
+            trainer.scheduler.set_total_steps(int(sched.get("total", trainer.scheduler.total)))
+            trainer.scheduler.t = int(sched.get("t", trainer.scheduler.t))
+
+        if "scaler" in ckpt and isinstance(trainer.scaler, GradScaler):
+            trainer.scaler.load_state_dict(ckpt["scaler"])
+
+        trainer.iteration = int(ckpt.get("iter", 0))
+        trainer.total_games = int(ckpt.get("total_games", 0))
+        elapsed_s = float(ckpt.get("elapsed_s", 0.0))
+        if elapsed_s > 0.0:
+            trainer.start_time = time.time() - elapsed_s
+
+        rng = ckpt.get("rng", {})
+        if "py" in rng:
+            __import__("random").setstate(rng["py"])
+        if "np" in rng:
+            np.random.set_state(rng["np"])
+        if "torch_cpu" in rng:
+            torch.set_rng_state(rng["torch_cpu"])
+        if rng.get("torch_cuda") is not None and torch.cuda.is_available():
+            torch.cuda.set_rng_state_all(rng["torch_cuda"])
+
+        sp_state = ckpt.get("selfplay_state")
+        if sp_state is not None:
+            try:
+                trainer.selfplay_engine.load_state_dict(sp_state)
+            except Exception as exc:
+                trainer.log.warning("[SAVE] failed to restore self-play state: %s", exc)
+
+        trainer.selfplay_engine.update_adjudication(trainer.iteration)
+
+        arena_state = ckpt.get("arena_rng_state")
+        if arena_state is not None and hasattr(trainer, "_arena_rng"):
+            try:
+                trainer._arena_rng.bit_generator.state = arena_state
+            except Exception as exc:
+                trainer.log.warning("[SAVE] failed to restore arena RNG state: %s", exc)
+
+        trainer.log.info("[RESUME] from: %s @ iter %s", path, trainer.iteration)
+    except Exception as exc:
+        trainer.log.warning("[RESUME] failed: %s", exc)

@@ -1,0 +1,2 @@
+# Kept for tools that expect requirements.txt; pyproject.toml is the main list.
+-e .[dev,benchmarks]

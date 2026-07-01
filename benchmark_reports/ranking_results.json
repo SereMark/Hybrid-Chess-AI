@@ -1,0 +1,7367 @@
+{
+  "metadata": {
+    "mcts_sims": 320,
+    "device": "cuda"
+  },
+  "elo": {
+    "M\u00e9ly Keres\u00e9s": 1195.976434476975,
+    "Random": 1169.9315641368485,
+    "Hat\u00e9konys\u00e1g": 1164.8939149533817,
+    "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g": 1198.9734295623052,
+    "Nagy Entr\u00f3pia": 1249.24303728745,
+    "Greedy": 1228.002750168591,
+    "Referencia": 1192.9788694144488
+  },
+  "matches": [
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 30
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 28
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 59
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 112
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 121
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 122
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 108
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 93
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 130
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 66
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 36
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 78
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 71
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 95
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 111
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 98
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 87
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Greedy",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 111
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 122
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 100
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 98
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 119
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 82
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 70
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 131
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 146
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 109
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 105
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 38
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 44
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 61
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 138
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 59
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 73
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 94
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 103
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 31
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 136
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 5
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 92
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 57
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 48
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 104
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 61
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 90
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 69
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 70
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 43
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 70
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 97
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 120
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 99
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 49
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 119
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 128
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 117
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 90
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 137
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 102
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 64
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 86
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 99
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 62
+    },
+    {
+      "p1": "Random",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 141
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 53
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 103
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 132
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 126
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Random",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 135
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 109
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 78
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 103
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 76
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 86
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 137
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 107
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 106
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 89
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 88
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 129
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 93
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 92
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 102
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 93
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 133
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 126
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 137
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 101
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 66
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 47
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 100
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 130
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 56
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Referencia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 106
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 107
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 85
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 92
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 112
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 75
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 90
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 123
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 100
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 143
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 144
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 39
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 47
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 45
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 132
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 77
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 142
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 51
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 87
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 126
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 122
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 149
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 118
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 112
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 145
+    },
+    {
+      "p1": "Greedy",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 97
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 70
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 51
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 89
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 135
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 90
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 61
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 130
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 78
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 111
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 122
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 103
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 147
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 52
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 59
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 71
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 70
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 41
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 137
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 134
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 109
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 132
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 99
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 84
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 104
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 93
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 138
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 125
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 112
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 121
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 104
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 81
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 102
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 50
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 115
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 84
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 59
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 142
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 113
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 98
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 91
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 34
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 149
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 88
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 85
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 100
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 89
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 137
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 112
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 100
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 107
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 56
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 101
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 30
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 66
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 66
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 72
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 47
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 106
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 126
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 97
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 141
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 44
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 80
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 68
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 41
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 96
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 92
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 125
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 112
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "move_limit",
+      "moves": 150
+    },
+    {
+      "p1": "Greedy",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 122
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 69
+    },
+    {
+      "p1": "Referencia",
+      "p2": "M\u00e9ly Keres\u00e9s",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 74
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 64
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 68
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 63
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "p2",
+      "reason": "checkmate",
+      "moves": 77
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 67
+    },
+    {
+      "p1": "Referencia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "p1",
+      "reason": "checkmate",
+      "moves": 108
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 54
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 57
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 55
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 48
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 44
+    },
+    {
+      "p1": "M\u00e9ly Keres\u00e9s",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 46
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 73
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Nagy Entr\u00f3pia",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 50
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 49
+    },
+    {
+      "p1": "Nagy \u00c1tereszt\u0151k\u00e9pess\u00e9g",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 52
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 86
+    },
+    {
+      "p1": "Nagy Entr\u00f3pia",
+      "p2": "Hat\u00e9konys\u00e1g",
+      "winner": "draw",
+      "reason": "draw",
+      "moves": 58
+    }
+  ]
+}

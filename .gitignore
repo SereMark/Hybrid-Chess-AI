@@ -1,0 +1,38 @@
+# Build artifacts
+build/
+dist/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+*.pyd
+*.so
+*.dll
+*.exe
+*.obj
+*.lib
+*.exp
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+.env
+*.egg-info/
+
+# Experiment outputs and model artifacts
+runs/
+checkpoints/
+logs/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# IDEs
+.vscode/
+.idea/
+*.swp

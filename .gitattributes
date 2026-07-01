@@ -1,0 +1,22 @@
+* text=auto
+
+.editorconfig text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+CMakeLists.txt text eol=lf
+LICENSE text eol=lf
+requirements.txt text eol=lf
+
+*.bat text eol=crlf
+*.md text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+*.pt filter=lfs diff=lfs merge=lfs -text
+*.pth filter=lfs diff=lfs merge=lfs -text
+*.ckpt filter=lfs diff=lfs merge=lfs -text
+*.pdf binary
+*.jpg binary
+*.png binary
